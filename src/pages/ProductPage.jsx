@@ -1,68 +1,73 @@
 import { useState, useEffect } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, Link } from 'react-router-dom'
 import {
   CreditCard, Landmark, Plane, Banknote, Coins,
-  Filter, Plus, Check, ArrowRightLeft, Trash2, X
+  Filter, Plus, Check, ArrowRightLeft, Trash2, X,
+  Search, ArrowUpDown
 } from 'lucide-react'
 import AdBanner from '../components/AdBanner'
+import { CATEGORIES, PRODUCTS } from '../data/products'
 
-const CATEGORIES = [
-  { id: 'all', name: 'すべて', icon: Filter },
-  { id: 'savings', name: '銀行・預金', icon: Landmark },
-  { id: 'cards', name: 'カード', icon: CreditCard },
-  { id: 'loans', name: 'ローン', icon: Banknote },
-  { id: 'insurance', name: '旅行保険', icon: Plane },
-  { id: 'points', name: 'ポイ活', icon: Coins },
+// スペック値から数値を抽出 (金利・還元率・保険料など)
+const parseSpecValue = (val) => {
+  if (!val || val === '無料') return 0
+  const cleaned = String(val).replace(/,/g, '')
+  const m = cleaned.match(/([\d.]+)/)
+  return m ? parseFloat(m[1]) : 0
+}
+
+// カテゴリ別フィルター (金利・手数料・ポイント等で絞り込み)
+const CATEGORY_FILTERS = {
+  savings: [
+    { id: 'rate_02', label: '金利0.2%以上', specIndex: 0, fn: (v) => parseSpecValue(v) >= 0.2 },
+    { id: 'rate_03', label: '金利0.25%以上', specIndex: 0, fn: (v) => parseSpecValue(v) >= 0.25 },
+    { id: 'rate_03_high', label: '金利0.3%以上', specIndex: 0, fn: (v) => parseSpecValue(v) >= 0.3 },
+  ],
+  cards: [
+    { id: 'fee_free', label: '年会費無料', specIndex: 0, fn: (v) => v === '無料' || v === '永年無料' },
+    { id: 'return_1', label: '還元率1%以上', specIndex: 1, fn: (v) => parseSpecValue(v) >= 1 },
+    { id: 'return_05', label: '還元率0.5%以上', specIndex: 1, fn: (v) => parseSpecValue(v) >= 0.5 },
+  ],
+  loans: [
+    { id: 'rate_025', label: '変動金利0.25%以下', specIndex: 0, fn: (v) => parseSpecValue(v) <= 0.25 && parseSpecValue(v) > 0 },
+    { id: 'rate_03', label: '変動金利0.3%以下', specIndex: 0, fn: (v) => parseSpecValue(v) <= 0.3 && parseSpecValue(v) > 0 },
+    { id: 'danshin_100', label: '団信がん100%', specIndex: 1, fn: (v) => v?.includes('100%') },
+  ],
+  insurance: [
+    { id: 'price_1200', label: '保険料1,200円以下', specIndex: 0, fn: (v) => parseSpecValue(v) <= 1200 },
+    { id: 'price_1500', label: '保険料1,500円以下', specIndex: 0, fn: (v) => parseSpecValue(v) <= 1500 },
+    { id: 'museigen', label: '治療救援無制限', specIndex: 1, fn: (v) => v === '無制限' },
+  ],
+  points: [
+    { id: 'return_1', label: '還元率1%以上', specIndex: 0, fn: (v) => parseSpecValue(v) >= 1 },
+    { id: 'return_05', label: '還元率0.5%以上', specIndex: 0, fn: (v) => parseSpecValue(v) >= 0.5 },
+  ],
+}
+
+// 並び替え (中立表現: 金利順・名前順など)
+const SORT_OPTIONS = [
+  { id: 'default', label: '表示順', fn: (a, b) => a.id - b.id },
+  { id: 'name', label: '名前順', fn: (a, b) => (a.name > b.name ? 1 : -1) },
+  { id: 'provider', label: '提供会社順', fn: (a, b) => (a.provider > b.provider ? 1 : -1) },
 ]
 
-const PRODUCTS = [
-  // 銀行・預金 (savings)
-  { id: 1, category: 'savings', name: '楽天銀行 スーパー定期', provider: '楽天銀行', image: 'https://companieslogo.com/img/orig/4755.T-1160655a.png', badge: '金利UP', specs: [{ label: '金利', value: '0.25%' }, { label: '期間', value: '1年' }, { label: '最低預入', value: '1万円' }] },
-  { id: 2, category: 'savings', name: 'SBJ銀行 定期預金', provider: 'SBJ銀行', image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/3/30/Shinhan_Financial_Group_Logo.svg/2560px-Shinhan_Financial_Group_Logo.svg.png', badge: '高金利', specs: [{ label: '金利', value: '0.35%' }, { label: '期間', value: '3年' }, { label: '最低預入', value: '10万円' }] },
-  { id: 3, category: 'savings', name: 'ソニー銀行 定期預金', provider: 'ソニー銀行', image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/07/Sony_Group_Logo_2024.svg/2560px-Sony_Group_Logo_2024.svg.png', badge: 'ネット銀行', specs: [{ label: '金利', value: '0.20%' }, { label: '期間', value: '1年' }, { label: '最低預入', value: '1万円' }] },
-  { id: 4, category: 'savings', name: '住信SBIネット銀行 定期預金', provider: '住信SBIネット銀行', image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/7/7a/SBI_Group_logo.svg/2560px-SBI_Group_logo.svg.png', badge: '業界トップ', specs: [{ label: '金利', value: '0.30%' }, { label: '期間', value: '2年' }, { label: '最低預入', value: '1万円' }] },
-  { id: 5, category: 'savings', name: '三菱UFJ銀行 スーパー定期', provider: '三菱UFJ銀行', image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/8f/Mitsubishi_UFJ_Financial_Group_logo.svg/2560px-Mitsubishi_UFJ_Financial_Group_logo.svg.png', badge: 'メガバンク', specs: [{ label: '金利', value: '0.15%' }, { label: '期間', value: '1年' }, { label: '最低預入', value: '10万円' }] },
-  // カード (cards)
-  { id: 6, category: 'cards', name: '楽天カード', provider: '楽天カード', image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/d2/Rakuten_Card_logo.svg/2560px-Rakuten_Card_logo.svg.png', badge: '人気No.1', specs: [{ label: '年会費', value: '無料' }, { label: '還元率', value: '1.0%' }, { label: '保険', value: '利用付帯' }] },
-  { id: 7, category: 'cards', name: '三井住友カード (NL)', provider: '三井住友カード', image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/2d/Sumitomo_Mitsui_Financial_Group_logo.svg/1200px-Sumitomo_Mitsui_Financial_Group_logo.svg.png', badge: '即時発行', specs: [{ label: '年会費', value: '無料' }, { label: '還元率', value: '0.5%' }, { label: '保険', value: '最高2000万' }] },
-  { id: 8, category: 'cards', name: 'JCB CARD W', provider: 'JCB', image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/6/6b/JCB_logo.svg/1200px-JCB_logo.svg.png', badge: '39歳以下', specs: [{ label: '年会費', value: '無料' }, { label: '還元率', value: '1.0%~5.5%' }, { label: '保険', value: '最高2000万' }] },
-  { id: 9, category: 'cards', name: 'PayPayカード', provider: 'PayPay', image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/5/5e/PayPay_logo.svg/2560px-PayPay_logo.svg.png', badge: '還元率最高', specs: [{ label: '年会費', value: '無料' }, { label: '還元率', value: '0.5%~3.0%' }, { label: '保険', value: '海外旅行' }] },
-  { id: 10, category: 'cards', name: 'アメリカン・エキスプレス・ゴールド', provider: 'アメリゴ', image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/3/30/American_Express_logo.svg/2560px-American_Express_logo.svg.png', badge: '上級者向け', specs: [{ label: '年会費', value: '33,000円' }, { label: '還元率', value: '1.0%' }, { label: '保険', value: '最高5億円' }] },
-  // ローン (loans)
-  { id: 11, category: 'loans', name: 'auじぶん銀行 住宅ローン', provider: 'auじぶん銀行', image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c9/Kddi_logo.svg/2560px-Kddi_logo.svg.png', badge: '金利引下', specs: [{ label: '変動金利', value: '0.219%' }, { label: '団信', value: 'がん50%' }, { label: '手数料', value: '2.20%' }] },
-  { id: 12, category: 'loans', name: 'ソニー銀行 住宅ローン', provider: 'ソニー銀行', image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/07/Sony_Group_Logo_2024.svg/2560px-Sony_Group_Logo_2024.svg.png', badge: 'ネット専用', specs: [{ label: '変動金利', value: '0.249%' }, { label: '団信', value: 'がん100%' }, { label: '手数料', value: '2.20%' }] },
-  { id: 13, category: 'loans', name: 'プロミス カードローン', provider: 'SMBCコンシューマーファイナンス', image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/2d/Sumitomo_Mitsui_Financial_Group_logo.svg/1200px-Sumitomo_Mitsui_Financial_Group_logo.svg.png', badge: '即日融資', specs: [{ label: '金利', value: '3.0%~18.0%' }, { label: '限度額', value: '500万円' }, { label: '審査', value: '最短30分' }] },
-  { id: 14, category: 'loans', name: '楽天銀行 住宅ローン', provider: '楽天銀行', image: 'https://companieslogo.com/img/orig/4755.T-1160655a.png', badge: '楽天ポイント', specs: [{ label: '変動金利', value: '0.239%' }, { label: '団信', value: 'がん50%' }, { label: '手数料', value: '2.20%' }] },
-  // 旅行保険 (insurance)
-  { id: 15, category: 'insurance', name: 'ソニー損保の海外旅行保険', provider: 'ソニー損保', image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/07/Sony_Group_Logo_2024.svg/2560px-Sony_Group_Logo_2024.svg.png', badge: 'リピート率No.1', specs: [{ label: '保険料', value: '1,200円~' }, { label: '治療救援', value: '無制限' }, { label: 'サポート', value: '24時間日本語' }] },
-  { id: 16, category: 'insurance', name: '楽天の海外旅行保険', provider: '楽天損保', image: 'https://companieslogo.com/img/orig/4755.T-1160655a.png', badge: 'ポイント還元', specs: [{ label: '保険料', value: '980円~' }, { label: '治療救援', value: '3,000万円' }, { label: 'サポート', value: '24時間対応' }] },
-  { id: 17, category: 'insurance', name: 'あいおいニッセイ 海外旅行保険', provider: 'あいおいニッセイ', image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/8f/Mitsubishi_UFJ_Financial_Group_logo.svg/2560px-Mitsubishi_UFJ_Financial_Group_logo.svg.png', badge: '空港申込可', specs: [{ label: '保険料', value: '1,500円~' }, { label: '治療救援', value: '無制限' }, { label: 'サポート', value: '年中無休' }] },
-  { id: 18, category: 'insurance', name: 'アクサダイレクト 海外旅行保険', provider: 'アクサ損保', image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/5/5e/AXA_Logo.svg/2560px-AXA_Logo.svg.png', badge: 'シンプル', specs: [{ label: '保険料', value: '1,080円~' }, { label: '治療救援', value: '5,000万円' }, { label: 'サポート', value: '24時間' }] },
-  // ポイ活 (points)
-  { id: 19, category: 'points', name: '楽天ポイントカード', provider: '楽天', image: 'https://companieslogo.com/img/orig/4755.T-1160655a.png', badge: 'ポイント2倍', specs: [{ label: '還元率', value: '1.0%' }, { label: '提携', value: '楽天市場' }, { label: '特典', value: '株主優待' }] },
-  { id: 20, category: 'points', name: 'PayPay ポイント', provider: 'PayPay', image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/5/5e/PayPay_logo.svg/2560px-PayPay_logo.svg.png', badge: 'キャッシュバック', specs: [{ label: '還元率', value: '0.5%~5.0%' }, { label: '提携', value: '全国店舗' }, { label: '特典', value: 'PayPayボーナス' }] },
-  { id: 21, category: 'points', name: 'dポイント クラブ', provider: 'NTTドコモ', image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/4a/NTT_Docomo_logo.svg/2560px-NTT_Docomo_logo.svg.png', badge: 'd払い連携', specs: [{ label: '還元率', value: '0.5%~2.0%' }, { label: '提携', value: 'ドコモ系' }, { label: '特典', value: 'dポイント2倍' }] },
-  { id: 22, category: 'points', name: 'Tポイントカード', provider: 'カルチュア・コンビニエンス・クラブ', image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/0c/T-Point_logo.svg/2560px-T-Point_logo.svg.png', badge: '全国展開', specs: [{ label: '還元率', value: '0.5%~1.0%' }, { label: '提携', value: 'コンビニ・飲食' }, { label: '特典', value: 'Tカード統合' }] },
-  // 追加: 銀行・預金
-  { id: 23, category: 'savings', name: 'りそな銀行 ムーディーズ預金', provider: 'りそな銀行', image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/5/5a/Resona_Holdings_logo.svg/2560px-Resona_Holdings_logo.svg.png', badge: '金利変動', specs: [{ label: '金利', value: '0.20%' }, { label: '期間', value: '1年' }, { label: '最低預入', value: '1万円' }] },
-  { id: 24, category: 'savings', name: 'セブン銀行 定期預金', provider: 'セブン銀行', image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/2c/Seven_%26_I_Holdings_logo.svg/2560px-Seven_%26_I_Holdings_logo.svg.png', badge: 'コンビニ窓口', specs: [{ label: '金利', value: '0.25%' }, { label: '期間', value: '1年' }, { label: '最低預入', value: '1万円' }] },
-  // 追加: カード
-  { id: 25, category: 'cards', name: 'EPOSカード ゴールド', provider: 'エポスカード', image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/2c/Seven_%26_I_Holdings_logo.svg/2560px-Seven_%26_I_Holdings_logo.svg.png', badge: 'マルイ提携', specs: [{ label: '年会費', value: '無料' }, { label: '還元率', value: '0.5%~1.0%' }, { label: '保険', value: '海外旅行' }] },
-  { id: 26, category: 'cards', name: 'オリコカード', provider: 'オリエントコーポレーション', image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/8f/Orico_logo.svg/2560px-Orico_logo.svg.png', badge: '分割手数料無料', specs: [{ label: '年会費', value: '無料' }, { label: '還元率', value: '0.5%' }, { label: '特典', value: 'ポイント2倍' }] },
-  // 追加: ローン
-  { id: 27, category: 'loans', name: 'イオン銀行 住宅ローン', provider: 'イオン銀行', image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/8f/Aeon_logo.svg/2560px-Aeon_logo.svg.png', badge: 'イオン優遇', specs: [{ label: '変動金利', value: '0.239%' }, { label: '団信', value: 'がん100%' }, { label: '手数料', value: '2.20%' }] },
-  { id: 28, category: 'loans', name: 'みずほ銀行 住宅ローン', provider: 'みずほ銀行', image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/7/7a/Mizuho_Financial_Group_logo.svg/2560px-Mizuho_Financial_Group_logo.svg.png', badge: 'メガバンク', specs: [{ label: '変動金利', value: '0.265%' }, { label: '団信', value: 'がん50%' }, { label: '手数料', value: '2.20%' }] },
-  // 追加: 保険
-  { id: 29, category: 'insurance', name: '三井住友海上 海外旅行保険', provider: '三井住友海上', image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/2d/Sumitomo_Mitsui_Financial_Group_logo.svg/1200px-Sumitomo_Mitsui_Financial_Group_logo.svg.png', badge: '24時間サポート', specs: [{ label: '保険料', value: '1,350円~' }, { label: '治療救援', value: '無制限' }, { label: 'サポート', value: '日本語対応' }] },
-  { id: 30, category: 'insurance', name: '損保ジャパン 海外旅行保険', provider: '損保ジャパン', image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/8f/Mitsubishi_UFJ_Financial_Group_logo.svg/2560px-Mitsubishi_UFJ_Financial_Group_logo.svg.png', badge: 'Web割引', specs: [{ label: '保険料', value: '1,100円~' }, { label: '治療救援', value: '5,000万円' }, { label: 'サポート', value: '24時間' }] },
-  // 追加: ポイント
-  { id: 31, category: 'points', name: 'Pontaポイント', provider: 'ロイヤリティマーケティング', image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/6/6b/Ponta_logo.svg/2560px-Ponta_logo.svg.png', badge: '全国展開', specs: [{ label: '還元率', value: '0.5%~2.0%' }, { label: '提携', value: 'ガソリンスタンド' }, { label: '特典', value: 'Ponta倍' }] },
-]
+const getCategorySortOptions = (category) => {
+  const base = [{ id: 'default', label: '表示順', fn: (a, b) => a.id - b.id }]
+  if (category === 'savings') base.push({ id: 'rate', label: '金利が高い順', fn: (a, b) => parseSpecValue(b.specs[0]?.value) - parseSpecValue(a.specs[0]?.value) })
+  if (category === 'cards') base.push({ id: 'return', label: '還元率が高い順', fn: (a, b) => parseSpecValue(b.specs[1]?.value) - parseSpecValue(a.specs[1]?.value) })
+  if (category === 'loans') base.push({ id: 'rate', label: '金利が低い順', fn: (a, b) => parseSpecValue(a.specs[0]?.value) - parseSpecValue(b.specs[0]?.value) })
+  if (category === 'insurance') base.push({ id: 'price', label: '保険料が安い順', fn: (a, b) => parseSpecValue(a.specs[0]?.value) - parseSpecValue(b.specs[0]?.value) })
+  if (category === 'points') base.push({ id: 'return', label: '還元率が高い順', fn: (a, b) => parseSpecValue(b.specs[0]?.value) - parseSpecValue(a.specs[0]?.value) })
+  return base
+}
 
 export default function ProductPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const initialCategory = searchParams.get('category') || 'all'
   const [activeCategory, setActiveCategory] = useState(initialCategory)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [activeFilters, setActiveFilters] = useState([])
+  const [sortBy, setSortBy] = useState('default')
   const [compareList, setCompareList] = useState([])
   const [isCompareModalOpen, setIsCompareModalOpen] = useState(false)
 
@@ -78,6 +83,12 @@ export default function ProductPage() {
     if (compareList.length > 0) setCompareList([])
     setActiveCategory(catId)
     setSearchParams({ category: catId })
+    setSortBy('default')
+    setActiveFilters([])
+  }
+
+  const toggleFilter = (filterId) => {
+    setActiveFilters((prev) => (prev.includes(filterId) ? prev.filter((f) => f !== filterId) : [...prev, filterId]))
   }
 
   const toggleCompare = (product) => {
@@ -96,9 +107,34 @@ export default function ProductPage() {
     setCompareList([...compareList, product])
   }
 
-  const filteredProducts = activeCategory === 'all'
+  const categoryProducts = activeCategory === 'all'
     ? PRODUCTS
     : PRODUCTS.filter((p) => p.category === activeCategory)
+
+  const filteredBySearch = searchQuery.trim()
+    ? categoryProducts.filter(
+        (p) =>
+          p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          p.provider.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : categoryProducts
+
+  const filters = CATEGORY_FILTERS[activeCategory] || []
+  const filteredBySpec = activeFilters.length === 0
+    ? filteredBySearch
+    : filteredBySearch.filter((p) => {
+        return activeFilters.every((filterId) => {
+          const f = filters.find((x) => x.id === filterId)
+          if (!f) return true
+          const spec = p.specs[f.specIndex]
+          if (!spec) return false
+          return f.fn(spec.value)
+        })
+      })
+
+  const sortOptions = activeCategory === 'all' ? SORT_OPTIONS : getCategorySortOptions(activeCategory)
+  const sortFn = sortOptions.find((o) => o.id === sortBy)?.fn || SORT_OPTIONS[0].fn
+  const filteredProducts = [...filteredBySpec].sort(sortFn)
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 pb-32 font-sans">
@@ -126,6 +162,59 @@ export default function ProductPage() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* 検索 */}
+        <div className="relative mb-6">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+          <input
+            type="text"
+            placeholder="商品名・提供会社で検索"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-11 pr-4 py-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-medium outline-none focus:ring-2 focus:ring-orange-500/30 placeholder-slate-400"
+          />
+        </div>
+
+        {/* カテゴリ別フィルター (金利・手数料・ポイント等) */}
+        {filters.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-4">
+            {filters.map((f) => {
+              const isActive = activeFilters.includes(f.id)
+              return (
+                <button
+                  key={f.id}
+                  onClick={() => toggleFilter(f.id)}
+                  className={`px-4 py-2 rounded-xl font-bold text-sm transition ${
+                    isActive
+                      ? 'bg-orange-500 text-white'
+                      : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-orange-500'
+                  }`}
+                >
+                  {f.label}
+                </button>
+              )
+            })}
+          </div>
+        )}
+
+        {/* 並び替え */}
+        <div className="flex items-center gap-2 mb-6">
+          <ArrowUpDown size={18} className="text-slate-500 dark:text-slate-400 shrink-0" />
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+            className="px-4 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-bold text-sm outline-none focus:ring-2 focus:ring-orange-500/30"
+          >
+            {sortOptions.map((opt) => (
+              <option key={opt.id} value={opt.id}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+          <span className="text-sm text-slate-500 dark:text-slate-400 ml-2">
+            {filteredProducts.length}件
+          </span>
+        </div>
+
         {/* 広告バナー */}
         <div className="mb-8">
           <AdBanner variant="horizontal" />
@@ -136,16 +225,21 @@ export default function ProductPage() {
           {filteredProducts.map((product) => {
             const isSelected = compareList.find((p) => p.id === product.id)
             return (
-              <div
+              <Link
                 key={product.id}
-                className={`group relative bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-sm border transition-all duration-300 ${
+                to={`/products/${product.id}`}
+                className={`group relative bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-sm border transition-all duration-300 block ${
                   isSelected
                     ? 'border-orange-500 ring-2 ring-orange-500/20 shadow-xl transform -translate-y-1'
                     : 'border-slate-200 dark:border-slate-800 hover:border-orange-500 hover:shadow-lg'
                 }`}
               >
                 <button
-                  onClick={() => toggleCompare(product)}
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    toggleCompare(product)
+                  }}
                   className={`absolute top-4 right-4 p-2 rounded-full transition-all z-10 flex items-center gap-2 font-bold text-xs ${
                     isSelected
                       ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/30'
@@ -189,7 +283,7 @@ export default function ProductPage() {
                     </div>
                   ))}
                 </div>
-              </div>
+              </Link>
             )
           })}
         </div>
@@ -275,9 +369,13 @@ export default function ProductPage() {
                       </div>
                     ))}
                     <div className="h-12 flex items-center justify-center pt-4">
-                      <button className="w-full bg-orange-500 hover:bg-orange-600 text-white py-2 rounded-lg font-bold text-sm shadow-md transition">
-                        選択
-                      </button>
+                      <Link
+                        to={`/products/${product.id}`}
+                        onClick={() => setIsCompareModalOpen(false)}
+                        className="w-full bg-orange-500 hover:bg-orange-600 text-white py-2 rounded-lg font-bold text-sm shadow-md transition flex items-center justify-center"
+                      >
+                        詳細・申込
+                      </Link>
                     </div>
                   </div>
                 ))}

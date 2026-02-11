@@ -25,8 +25,8 @@ git commit -m "Initial commit: MoneyMart 2.0"
 4. **Create repository** 클릭 (README, .gitignore 추가하지 않기)
 
 ```bash
-# GitHub 저장소 연결 (본인 username과 저장소명으로 변경)
-git remote add origin https://github.com/YOUR_USERNAME/MoneyMart2.0.git
+# GitHub 저장소 연결
+git remote add origin https://github.com/eycapitaluk-create/MoneyMart2.0.git
 
 # main 브랜치로 푸시
 git branch -M main

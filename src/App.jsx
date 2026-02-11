@@ -7,6 +7,7 @@ import FundDetailPage from './pages/FundDetailPage'
 import FundComparePage from './pages/FundComparePage'
 import StockPage from './pages/StockPage'
 import ProductPage from './pages/ProductPage'
+import ProductDetailPage from './pages/ProductDetailPage'
 import LoungePage from './pages/LoungePage'
 import AcademyPage from './pages/AcademyPage'
 import PrimePage from './pages/PrimePage'
@@ -30,6 +31,7 @@ const App = () => {
         <Route path="/funds/:id" element={<FundDetailPage />} />
         <Route path="/stocks" element={<StockPage />} />
         <Route path="/products" element={<ProductPage />} />
+        <Route path="/products/:id" element={<ProductDetailPage />} />
         <Route path="/lounge" element={<LoungePage />} />
         <Route path="/academy" element={<AcademyPage />} />
         <Route path="/prime" element={<PrimePage />} />

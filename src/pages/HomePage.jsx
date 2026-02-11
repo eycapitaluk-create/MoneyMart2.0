@@ -235,7 +235,7 @@ export default function HomePage({ openRiskModal }) {
       <section className="max-w-7xl mx-auto px-4 mb-16">
         <div className="flex items-center justify-between mb-6 px-2">
           <h2 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-2">
-            <CreditCard className="text-orange-500" /> 人気のクレジットカード
+            <CreditCard className="text-orange-500" /> クレジットカード比較
           </h2>
           <button onClick={() => navigate('/products?category=cards')} className="text-xs font-bold text-slate-400 hover:text-orange-500 flex items-center gap-1">
             すべて見る <ChevronRight size={14} />

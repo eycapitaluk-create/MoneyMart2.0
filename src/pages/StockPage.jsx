@@ -6,6 +6,7 @@ import {
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts'
+import { supabase } from '../lib/supabase'
 
 const MARKET_INDICES = [
   { name: '日本市場', price: '38,920.15', change: 1.25 },
@@ -83,6 +84,81 @@ export default function StockPage() {
   const [newsTab, setNewsTab] = useState('news') // 'news' | 'company' | 'disclosure'
   const [liveTicker, setLiveTicker] = useState(MARKET_INDICES.map((i) => ({ ...i, price: parsePrice(i.price) })))
   const [liveStocks, setLiveStocks] = useState({ JP: [...STOCKS.JP], US: [...STOCKS.US] })
+  const [marketLoading, setMarketLoading] = useState(true)
+  const [marketError, setMarketError] = useState('')
+  const [usingMockData, setUsingMockData] = useState(true)
+
+  // Supabase latest stock data load
+  useEffect(() => {
+    const loadLatestStocks = async () => {
+      setMarketLoading(true)
+      setMarketError('')
+      try {
+        const { data: latestRows, error: latestErr } = await supabase
+          .from('v_stock_latest')
+          .select('symbol,trade_date,open,high,low,close,volume')
+          .limit(200)
+
+        if (latestErr) throw latestErr
+        if (!latestRows || latestRows.length === 0) {
+          setUsingMockData(true)
+          setMarketLoading(false)
+          return
+        }
+
+        const symbols = [...new Set(latestRows.map((r) => r.symbol).filter(Boolean))]
+        const { data: symbolRows, error: symbolErr } = await supabase
+          .from('stock_symbols')
+          .select('symbol,name,exchange')
+          .in('symbol', symbols)
+        if (symbolErr) throw symbolErr
+
+        const symbolMap = new Map((symbolRows || []).map((s) => [s.symbol, s]))
+        const mapped = latestRows.map((r) => {
+          const meta = symbolMap.get(r.symbol) || {}
+          const open = Number(r.open || 0)
+          const close = Number(r.close || 0)
+          const change = close - open
+          const rate = open > 0 ? (change / open) * 100 : 0
+          return {
+            id: r.symbol,
+            code: r.symbol,
+            name: meta.name || r.symbol,
+            price: close,
+            change,
+            rate,
+            sector: meta.exchange || 'Market',
+            tag: '',
+            news: `${r.symbol} の最新終値データ (${r.trade_date})`,
+          }
+        })
+
+        const jp = mapped.filter((s) => /\.(XTKS|XJPX|TSE|JP)$/i.test(s.code) || /^\d{4}/.test(s.code))
+        const us = mapped.filter((s) => !(/\.(XTKS|XJPX|TSE|JP)$/i.test(s.code) || /^\d{4}/.test(s.code)))
+
+        const nextStocks = {
+          JP: jp.length > 0 ? jp : [...STOCKS.JP],
+          US: us.length > 0 ? us : [...STOCKS.US],
+        }
+
+        setLiveStocks(nextStocks)
+        setUsingMockData(false)
+
+        const nextSelected = nextStocks[activeTab]?.[0] || nextStocks.US[0] || nextStocks.JP[0]
+        if (nextSelected) {
+          setSelectedStock(nextSelected)
+          setChartData(generateChartData(nextSelected.rate > 0))
+        }
+      } catch (err) {
+        setMarketError(err.message || 'データの読み込みに失敗しました')
+        setUsingMockData(true)
+      } finally {
+        setMarketLoading(false)
+      }
+    }
+
+    loadLatestStocks()
+  }, [])
 
   // 티커 실시간 시뮬레이션 (2~4초마다 미세 변동)
   useEffect(() => {
@@ -102,6 +178,7 @@ export default function StockPage() {
 
   // 주식 리스트 실시간 시뮬레이션 (3~5초마다 미세 변동, 베이스 가격 근처에서 변동)
   useEffect(() => {
+    if (!usingMockData) return undefined
     const id = setInterval(() => {
       setLiveStocks((prev) => ({
         JP: prev.JP.map((s) => {
@@ -126,12 +203,15 @@ export default function StockPage() {
       }))
     }, 3500 + Math.random() * 2000)
     return () => clearInterval(id)
-  }, [])
+  }, [usingMockData])
 
   const handleTabChange = (tab) => {
     setActiveTab(tab)
-    setSelectedStock(STOCKS[tab][0])
-    setChartData(generateChartData(STOCKS[tab][0].rate > 0))
+    const next = liveStocks[tab]?.[0] || STOCKS[tab][0]
+    if (next) {
+      setSelectedStock(next)
+      setChartData(generateChartData(next.rate > 0))
+    }
   }
 
   const handleStockClick = (stock) => {
@@ -139,7 +219,10 @@ export default function StockPage() {
     setChartData(generateChartData(stock.rate > 0))
   }
 
-  const displayedStock = liveStocks[activeTab]?.find((s) => s.id === selectedStock.id) ?? selectedStock
+  const displayedStock =
+    liveStocks[activeTab]?.find((s) => s.id === selectedStock.id) ||
+    liveStocks[activeTab]?.[0] ||
+    selectedStock
 
   const toggleWatch = (id, e) => {
     e.stopPropagation()
@@ -164,6 +247,9 @@ export default function StockPage() {
             <h1 className="text-2xl font-black text-slate-900 dark:text-white flex items-center gap-2">
               <Zap className="text-yellow-500 fill-yellow-500" size={24} /> 株式・マーケット
             </h1>
+            <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${usingMockData ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'}`}>
+              {usingMockData ? 'MOCK' : 'SUPABASE'}
+            </span>
             <div className="flex bg-slate-200 dark:bg-slate-800 p-1 rounded-lg">
               {['JP', 'US'].map((tab) => (
                 <button
@@ -185,6 +271,14 @@ export default function StockPage() {
             />
           </div>
         </div>
+        {marketLoading && (
+          <p className="text-xs font-bold text-slate-400 mb-3">最新データを読み込み中...</p>
+        )}
+        {marketError && (
+          <p className="text-xs font-bold text-amber-600 dark:text-amber-400 mb-3">
+            {marketError}（モックデータ表示中）
+          </p>
+        )}
 
         {/* 2. 流れるマーケットティッカー */}
         <div className="bg-slate-900 rounded-2xl overflow-hidden mb-6 -mx-4 sm:-mx-6 md:-mx-8">

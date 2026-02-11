@@ -1,216 +1,376 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
-  TrendingUp, TrendingDown, Globe, Clock,
-  Activity, Zap, BarChart3
+  TrendingUp, Calendar, Newspaper, Activity, Loader2,
+  Trophy, ArrowRight, Gift, Building2, Landmark, ChevronRight, Crown,
+  Zap, Map, Gauge, ArrowUpRight, ArrowDownRight,
 } from 'lucide-react'
-import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
-} from 'recharts'
 
-const CHART_DATA = [
-  { time: '09:00', price: 38800 },
-  { time: '09:30', price: 38850 },
-  { time: '10:00', price: 38950 },
-  { time: '10:30', price: 38920 },
-  { time: '11:00', price: 38980 },
-  { time: '11:30', price: 39020 },
-  { time: '12:00', price: 39050 },
-  { time: '12:30', price: 39100 },
-  { time: '13:00', price: 39050 },
-  { time: '13:30', price: 39120 },
-  { time: '14:00', price: 39200 },
-  { time: '14:30', price: 39180 },
-  { time: '15:00', price: 39150 },
-]
+import { supabase } from '../lib/supabase'
 
-const NEWS_DATA = [
-  { id: 1, title: '日経平均、一時4万円台回復 半導体株がけん引', source: '日経新聞', time: '10分前', tag: '市況' },
-  { id: 2, title: '米FRB、利下げ観測強まる 次回のFOMCに注目', source: 'Bloomberg', time: '1時間前', tag: '海外' },
-  { id: 3, title: '新NISA、つみたて投資枠の利用が急増 20代・30代中心に', source: 'MoneyMart', time: '2時間前', tag: '国内' },
-  { id: 4, title: 'トヨタ、過去最高益を更新 EV販売も好調', source: 'Reuters', time: '3時間前', tag: '企業' },
-  { id: 5, title: '円安が続く中、輸入物価の上昇懸念 企業業績に影響', source: '東洋経済', time: '4時間前', tag: '為替' },
-  { id: 6, title: 'ビットコインETFの流入額が過去最高を更新', source: 'CoinDesk', time: '5時間前', tag: '仮想通貨' },
-  { id: 7, title: '欧州中央銀行、利下げを継続 経済減速への対応', source: 'WSJ', time: '6時間前', tag: '海外' },
-  { id: 8, title: '東京エレクトロン、半導体製造装置受注が好調', source: '日経新聞', time: '7時間前', tag: '企業' },
-]
+const shortenCategory = (name) => {
+  if (!name) return 'その他'
+  if (name.includes('米国')) return '米国株'
+  if (name.includes('国内') || name.includes('日本')) return '日本株'
+  if (name.includes('先進国')) return '先進国'
+  if (name.includes('新興国')) return '新興国'
+  if (name.includes('全世界')) return '全世界'
+  if (name.includes('債券')) return '債券'
+  if (name.includes('REIT')) return 'REIT'
+  return 'その他'
+}
 
 export default function MarketPage() {
-  const [selectedPeriod, setSelectedPeriod] = useState('1D')
+  const [topFunds, setTopFunds] = useState([])
+  const [inflowFunds, setInflowFunds] = useState([])
+  const [isLoading, setIsLoading] = useState(true)
+
+  const heatmapData = [
+    { name: '半導体', change: 2.5, weight: 3 },
+    { name: '自動車', change: 1.8, weight: 2 },
+    { name: '銀行', change: 0.9, weight: 2 },
+    { name: '商社', change: 1.2, weight: 1 },
+    { name: '不動産', change: -0.4, weight: 1 },
+    { name: '医薬品', change: -1.2, weight: 1 },
+    { name: '通信', change: 0.3, weight: 1 },
+    { name: '小売り', change: -0.8, weight: 1 },
+    { name: '電力', change: 1.5, weight: 1 },
+    { name: '食品', change: -0.2, weight: 1 },
+    { name: '鉄鋼', change: 0.5, weight: 1 },
+  ]
+
+  const marketSentiment = {
+    score: 75,
+    status: 'Risk On',
+    desc: '投資家心理は改善。積極的な投資が推奨される局面です。',
+  }
+
+  const campaigns = [
+    {
+      id: 1,
+      tag: '証券口座',
+      title: '新NISA 口座開設',
+      desc: '取引手数料 0円！最短翌日から取引可能',
+      color: 'from-orange-500 to-red-500',
+      icon: <TrendingUp className="text-white opacity-20" size={60} />,
+    },
+    {
+      id: 2,
+      tag: '銀行',
+      title: '円定期 特別金利',
+      desc: '年 0.45% (税引前) 6ヶ月ものキャンペーン',
+      color: 'from-emerald-500 to-teal-600',
+      icon: <Landmark className="text-white opacity-20" size={60} />,
+    },
+    {
+      id: 3,
+      tag: 'ローン',
+      title: '住宅ローン借り換え',
+      desc: '変動金利 年0.29%〜 保証料0円プラン',
+      color: 'from-blue-600 to-indigo-600',
+      icon: <Building2 className="text-white opacity-20" size={60} />,
+    },
+  ]
+
+  const news = [
+    { source: 'Reuters', time: '10:30', title: '米ハイテク株が反発、AI需要への期待続く' },
+    { source: 'Bloomberg', time: '09:45', title: '日銀、マイナス金利解除後の国債買い入れ額を維持' },
+    { source: '日経', time: '08:15', title: '新NISA、成長投資枠の利用額が1兆円突破' },
+    { source: 'CNBC', time: '06:00', title: '原油先物、中東情勢の緊迫化で3日続伸' },
+  ]
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setIsLoading(true)
+        const { data: fundsData, error } = await supabase
+          .from('funds')
+          .select('*, fund_prices(return_1y, net_assets, asset_flow_month, price)')
+          .limit(100)
+
+        if (error) throw error
+
+        const processed = (fundsData || []).map((f) => {
+          const priceSource = Array.isArray(f.fund_prices) ? f.fund_prices[0] : f.fund_prices
+          const priceData = priceSource || {}
+          return {
+            id: f.quick_code,
+            name: f.name,
+            category: f.category,
+            shortCat: shortenCategory(f.category),
+            return1y: Number(priceData.return_1y || 0),
+            inflow: Number(priceData.asset_flow_month || 0),
+            price: Number(priceData.price || 0),
+          }
+        })
+
+        setTopFunds([...processed].sort((a, b) => b.return1y - a.return1y).slice(0, 5))
+        setInflowFunds([...processed].sort((a, b) => b.inflow - a.inflow).slice(0, 5))
+      } catch (err) {
+        console.error('Data Fetch Error:', err)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    fetchData()
+  }, [])
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 pb-20 font-sans">
-      {/* ヘッダー */}
-      <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 pt-8 pb-6 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto flex items-end justify-between">
-          <div>
-            <h1 className="text-3xl font-black text-slate-900 dark:text-white flex items-center gap-2">
-              <Activity className="text-orange-500" size={28} /> マーケット情報
-            </h1>
-            <p className="text-slate-500 dark:text-slate-400 mt-2 text-sm font-medium">
-              世界の金融市場の動きをリアルタイムでチェック
-            </p>
+    <div className="max-w-7xl mx-auto px-4 py-6 animate-fadeIn pb-32 min-h-screen bg-gray-50 dark:bg-slate-900 font-sans transition-colors duration-300">
+      {/* 1. Scrolling News Ticker */}
+      <div className="bg-slate-900 dark:bg-black text-white rounded-2xl shadow-md mb-6 border border-slate-700 overflow-hidden">
+        <div className="py-3 overflow-hidden whitespace-nowrap">
+          <div className="inline-flex animate-ticker items-center gap-10 pl-4 pr-16 min-w-max">
+            {[...news, ...news, ...news].map((item, i) => (
+              <span key={`${item.source}-${i}`} className="flex items-center gap-2 text-xs md:text-sm shrink-0">
+                <span className="text-orange-400 font-black">{item.source}</span>
+                <span className="text-slate-200 font-bold">{item.title}</span>
+                <span className="text-slate-500 font-mono">{item.time}</span>
+              </span>
+            ))}
           </div>
-          <span className="text-xs font-bold text-green-500 bg-green-100 dark:bg-green-900/30 px-2 py-1 rounded-full animate-pulse">
-            ● リアルタイム更新中
-          </span>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* 1. 主要指数カード */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-          {[
-            { name: '日本市場', price: '39,150', change: '+1.25%', up: true, icon: '🇯🇵' },
-            { name: '日本市場(全株)', price: '2,715', change: '+0.88%', up: true, icon: '🇯🇵' },
-            { name: '米国市場', price: '5,089', change: '+0.03%', up: true, icon: '🇺🇸' },
-            { name: '米国市場(NY)', price: '20,120', change: '-0.15%', up: false, icon: '🇺🇸' },
-            { name: 'ビットコイン', price: '¥9.85M', change: '-2.40%', up: false, icon: '₿' },
-            { name: '金', price: '¥10,850', change: '+0.82%', up: true, icon: '🥇' },
-          ].map((item, idx) => (
-            <div key={idx} className="bg-white dark:bg-slate-900 p-4 lg:p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 hover:shadow-md transition overflow-hidden min-w-0">
-              <div className="flex items-start justify-between gap-2 mb-3">
-                <div className="flex items-start gap-2 min-w-0 flex-1">
-                  <span className="text-xl lg:text-2xl shrink-0">{item.icon}</span>
-                  <span className="font-bold text-slate-700 dark:text-slate-300 text-sm lg:text-base break-words leading-tight">{item.name}</span>
-                </div>
-                {item.up ? <TrendingUp className="text-red-500 shrink-0" size={20} /> : <TrendingDown className="text-blue-500 shrink-0" size={20} />}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left Column */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* 2. Sector Heatmap */}
+          <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 transition-colors">
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Map className="text-blue-600 dark:text-blue-400" size={20} /> セクターヒートマップ
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  本日の業種別騰落率 (サイズは時価総額)
+                </p>
               </div>
-              <div className="flex items-end gap-2 min-w-0">
-                <span className="text-xl lg:text-2xl font-black text-slate-900 dark:text-white truncate min-w-0">{item.price}</span>
-                <span className={`font-bold mb-1 shrink-0 text-sm ${item.up ? 'text-red-500' : 'text-blue-500'}`}>
-                  {item.change}
-                </span>
+            </div>
+
+            <div className="grid grid-cols-4 grid-rows-3 gap-2 h-[320px]">
+              {heatmapData.map((item, idx) => {
+                let bgClass = 'bg-gray-100'
+                if (item.change >= 2) bgClass = 'bg-red-600'
+                else if (item.change >= 1) bgClass = 'bg-red-500'
+                else if (item.change >= 0) bgClass = 'bg-red-400'
+                else if (item.change >= -1) bgClass = 'bg-emerald-400'
+                else if (item.change >= -2) bgClass = 'bg-emerald-500'
+                else bgClass = 'bg-emerald-600'
+
+                const spanClass =
+                  item.weight === 3
+                    ? 'col-span-2 row-span-2'
+                    : item.weight === 2
+                      ? 'col-span-2 row-span-1'
+                      : 'col-span-1 row-span-1'
+
+                return (
+                  <div
+                    key={idx}
+                    className={`${spanClass} ${bgClass} rounded-xl p-4 flex flex-col items-center justify-center text-white transition hover:scale-[1.02] cursor-pointer shadow-sm relative overflow-hidden group`}
+                  >
+                    <span className="font-bold text-sm md:text-base z-10">{item.name}</span>
+                    <span className="font-black text-lg md:text-xl z-10 flex items-center">
+                      {item.change > 0 ? <ArrowUpRight size={16} /> : <ArrowDownRight size={16} />}
+                      {Math.abs(item.change)}%
+                    </span>
+                    <div className="absolute inset-0 bg-white opacity-0 group-hover:opacity-10 transition" />
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* AD 1 */}
+          <div className="bg-gradient-to-r from-slate-800 to-slate-900 dark:from-black dark:to-slate-900 rounded-2xl p-6 text-white shadow-lg relative overflow-hidden group cursor-pointer border border-slate-700">
+            <div className="relative z-10 flex justify-between items-center">
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <Crown className="text-yellow-400" size={20} fill="currentColor" />
+                  <span className="text-xs font-bold bg-yellow-500/20 text-yellow-300 px-2 py-0.5 rounded border border-yellow-500/30">
+                    MoneyMart Pro
+                  </span>
+                </div>
+                <h3 className="text-xl font-black mb-1">市場の「先」を読む。</h3>
+                <p className="text-sm text-slate-400">機関投資家レベルのデータ分析とAI予測。</p>
+              </div>
+              <div className="bg-white text-slate-900 px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-slate-100 transition shadow-lg shrink-0">
+                詳細を見る
+              </div>
+            </div>
+            <div className="absolute -right-10 -bottom-20 w-48 h-48 bg-yellow-500/10 rounded-full blur-3xl group-hover:bg-yellow-500/20 transition duration-700" />
+          </div>
+
+          {/* 3. Ranking Section */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="bg-white dark:bg-slate-800 p-5 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 transition-colors">
+              <div className="flex items-center gap-2 mb-4 pb-2 border-b border-slate-100 dark:border-slate-700">
+                <Trophy size={18} className="text-yellow-500" />
+                <h3 className="font-bold text-slate-800 dark:text-white text-sm">リターンランキング (1年)</h3>
+              </div>
+              {isLoading ? (
+                <div className="py-10 flex items-center justify-center text-slate-400">
+                  <Loader2 size={18} className="animate-spin mr-2" /> 読み込み中...
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {topFunds.map((fund, i) => (
+                    <div key={fund.id || i} className="flex items-center justify-between group cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 p-2 -mx-2 rounded-lg transition">
+                      <div className="flex items-center gap-3 overflow-hidden">
+                        <span className={`w-5 h-5 flex items-center justify-center rounded text-[10px] font-bold shrink-0 ${i < 3 ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-400' : 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400'}`}>{i + 1}</span>
+                        <div className="truncate">
+                          <div className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate">{fund.name}</div>
+                          <div className="text-[10px] text-slate-400 dark:text-slate-500">{fund.shortCat}</div>
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <div className="text-sm font-black text-red-500 dark:text-red-400">
+                          +{fund.return1y.toFixed(1)}%
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="bg-white dark:bg-slate-800 p-5 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 transition-colors">
+              <div className="flex items-center gap-2 mb-4 pb-2 border-b border-slate-100 dark:border-slate-700">
+                <TrendingUp size={18} className="text-emerald-500" />
+                <h3 className="font-bold text-slate-800 dark:text-white text-sm">資金流入ランキング (月間)</h3>
+              </div>
+              {isLoading ? (
+                <div className="py-10 flex items-center justify-center text-slate-400">
+                  <Loader2 size={18} className="animate-spin mr-2" /> 読み込み中...
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {inflowFunds.map((fund, i) => (
+                    <div key={fund.id || i} className="flex items-center justify-between group cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 p-2 -mx-2 rounded-lg transition">
+                      <div className="flex items-center gap-3 overflow-hidden">
+                        <span className={`w-5 h-5 flex items-center justify-center rounded text-[10px] font-bold shrink-0 ${i < 3 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-400' : 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400'}`}>{i + 1}</span>
+                        <div className="truncate">
+                          <div className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate">{fund.name}</div>
+                          <div className="text-[10px] text-slate-400 dark:text-slate-500">{fund.shortCat}</div>
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <div className="text-sm font-black text-emerald-600 dark:text-emerald-400">
+                          +{fund.inflow.toLocaleString()}億
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Right Column */}
+        <div className="space-y-6">
+          <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 transition-colors">
+            <div className="flex items-center gap-2 mb-4 pb-2 border-b border-slate-100 dark:border-slate-700">
+              <Gauge size={18} className="text-orange-500" />
+              <h3 className="font-bold text-slate-800 dark:text-white text-sm">AI 市場センチメント</h3>
+            </div>
+            <div className="flex flex-col items-center">
+              <div className="relative w-full h-4 bg-slate-100 dark:bg-slate-700 rounded-full mb-3">
+                <div className="absolute top-0 left-0 h-full rounded-full bg-gradient-to-r from-blue-400 via-yellow-400 to-red-500" style={{ width: `${marketSentiment.score}%` }} />
+              </div>
+              <div className="flex justify-between w-full text-[10px] font-bold text-slate-400 mb-2">
+                <span>Risk Off (悲観)</span>
+                <span>Risk On (楽観)</span>
+              </div>
+              <div className="text-center">
+                <span className="text-3xl font-black text-slate-900 dark:text-white">{marketSentiment.score}</span>
+                <span className="text-xs font-bold text-slate-500 dark:text-slate-400">/100</span>
+                <div className="text-sm font-bold text-orange-600 mt-1">{marketSentiment.status}</div>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-3 bg-slate-50 dark:bg-slate-700/50 p-2 rounded leading-relaxed">
+                {marketSentiment.desc}
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 transition-colors">
+            <div className="flex items-center gap-2 mb-4 pb-2 border-b border-slate-100 dark:border-slate-700">
+              <Calendar size={18} className="text-slate-500 dark:text-slate-400" />
+              <h3 className="font-bold text-slate-800 dark:text-white text-sm">今週の経済指標</h3>
+            </div>
+            <div className="relative border-l-2 border-slate-100 dark:border-slate-700 ml-2 space-y-6 pl-4 py-2">
+              <div className="relative">
+                <div className="absolute -left-[21px] top-1 w-3 h-3 bg-blue-500 rounded-full border-2 border-white dark:border-slate-800" />
+                <div className="text-[10px] font-bold text-slate-400 mb-1">2/12 (水)</div>
+                <div className="text-xs font-bold text-slate-800 dark:text-slate-200">🇺🇸 消費者物価指数 (CPI)</div>
+                <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 bg-slate-50 dark:bg-slate-700 p-1.5 rounded">
+                  注目度: <span className="text-orange-500">★★★★★</span>
+                </div>
+              </div>
+              <div className="relative">
+                <div className="absolute -left-[21px] top-1 w-3 h-3 bg-red-500 rounded-full border-2 border-white dark:border-slate-800" />
+                <div className="text-[10px] font-bold text-slate-400 mb-1">2/15 (土)</div>
+                <div className="text-xs font-bold text-slate-800 dark:text-slate-200">🇯🇵 GDP 速報値</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 transition-colors">
+            <div className="flex items-center gap-2 mb-4 pb-2 border-b border-slate-100 dark:border-slate-700">
+              <Newspaper size={18} className="text-slate-500 dark:text-slate-400" />
+              <h3 className="font-bold text-slate-800 dark:text-white text-sm">マーケット速報</h3>
+            </div>
+            <div className="space-y-4">
+              {news.map((item, i) => (
+                <div key={i} className="group cursor-pointer">
+                  <div className="flex justify-between items-center text-[10px] text-slate-400 mb-1">
+                    <span className="bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded font-bold text-slate-500 dark:text-slate-300">{item.source}</span>
+                    <span>{item.time}</span>
+                  </div>
+                  <p className="text-xs font-bold text-slate-700 dark:text-slate-300 leading-relaxed group-hover:text-blue-600 dark:group-hover:text-blue-400 transition line-clamp-2">
+                    {item.title}
+                  </p>
+                </div>
+              ))}
+            </div>
+            <button className="w-full mt-5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 text-xs font-bold text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 transition flex items-center justify-center gap-1">
+              ニュースをもっと見る <ArrowRight size={12} />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* AD 2 */}
+      <div className="mt-12">
+        <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-6 flex items-center gap-2 px-2">
+          <Gift className="text-orange-500" /> キャンペーン・ピックアップ
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {campaigns.map((ad) => (
+            <div
+              key={ad.id}
+              className="bg-white dark:bg-slate-800 rounded-3xl overflow-hidden shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-xl transition-all duration-300 group cursor-pointer hover:-translate-y-1 relative h-48"
+              onClick={() => alert('キャンペーン詳細へ移動します')}
+            >
+              <div className={`absolute inset-0 bg-gradient-to-br ${ad.color} opacity-90 p-6 flex flex-col justify-between text-white`}>
+                <div>
+                  <span className="text-[10px] font-black bg-white/20 px-2 py-1 rounded inline-block mb-3 border border-white/20">
+                    {ad.tag}
+                  </span>
+                  <h3 className="text-2xl font-black leading-tight mb-2 drop-shadow-md">{ad.title}</h3>
+                  <p className="text-xs font-bold opacity-90">{ad.desc}</p>
+                </div>
+                <div className="flex justify-end">
+                  <div className="bg-white/20 p-2 rounded-full backdrop-blur-sm group-hover:bg-white group-hover:text-orange-600 transition">
+                    <ChevronRight size={20} />
+                  </div>
+                </div>
+              </div>
+              <div className="absolute -bottom-6 -right-6 transform rotate-12 scale-110 group-hover:scale-125 transition duration-500">
+                {ad.icon}
               </div>
             </div>
           ))}
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* 2. メインチャートエリア */}
-          <div className="lg:col-span-2 space-y-6">
-            <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
-                <div>
-                  <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                    <span className="w-2 h-6 bg-orange-500 rounded-full" />
-                    日本市場 チャート
-                  </h2>
-                </div>
-                <div className="flex bg-slate-100 dark:bg-slate-800 rounded-xl p-1">
-                  {['1D', '1W', '1M', '3M', '1Y'].map((p) => (
-                    <button
-                      key={p}
-                      onClick={() => setSelectedPeriod(p)}
-                      className={`px-4 py-1.5 text-xs font-bold rounded-lg transition ${
-                        selectedPeriod === p
-                          ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm'
-                          : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
-                      }`}
-                    >
-                      {p}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="h-[300px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={CHART_DATA}>
-                    <defs>
-                      <linearGradient id="colorPrice" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#ef4444" stopOpacity={0.2} />
-                        <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" className="dark:stroke-slate-700" />
-                    <XAxis dataKey="time" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
-                    <YAxis domain={['auto', 'auto']} hide />
-                    <Tooltip
-                      contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="price"
-                      stroke="#ef4444"
-                      strokeWidth={3}
-                      fillOpacity={1}
-                      fill="url(#colorPrice)"
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
-            {/* AIマーケット分析レポート */}
-            <div className="bg-gradient-to-r from-slate-900 to-slate-800 rounded-3xl p-8 text-white relative overflow-hidden flex items-center justify-between">
-              <div className="relative z-10">
-                <div className="flex items-center gap-2 mb-2 text-orange-400 font-bold text-sm">
-                  <Zap size={16} /> AI Market Analysis
-                </div>
-                <h3 className="text-xl font-bold mb-1">今の市場は「買い時」？</h3>
-                <p className="text-slate-400 text-sm">AIが過去20年のデータを分析し、今週のトレンドを予測。</p>
-              </div>
-              <button className="relative z-10 bg-white text-slate-900 px-4 py-2 rounded-xl font-bold text-sm hover:bg-orange-50 transition">
-                レポートを見る
-              </button>
-              <div className="absolute right-0 top-0 w-32 h-32 bg-orange-500/20 blur-3xl rounded-full" />
-            </div>
-          </div>
-
-          {/* 3. ニュース & ランキング */}
-          <div className="space-y-6">
-            <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800">
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="font-bold text-lg text-slate-900 dark:text-white flex items-center gap-2">
-                  <Globe size={18} className="text-blue-500" /> 最新ニュース
-                </h3>
-                <button className="text-xs text-slate-400 hover:text-blue-500">すべて見る</button>
-              </div>
-              <div className="space-y-4">
-                {NEWS_DATA.map((news) => (
-                  <div key={news.id} className="group cursor-pointer">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500">
-                        {news.tag}
-                      </span>
-                      <span className="text-xs text-slate-400 flex items-center gap-1">
-                        <Clock size={10} /> {news.time}
-                      </span>
-                    </div>
-                    <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200 group-hover:text-blue-600 line-clamp-2 leading-relaxed">
-                      {news.title}
-                    </h4>
-                    <div className="h-px bg-slate-50 dark:bg-slate-800 mt-4 group-last:hidden" />
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* セクター別騰落率 */}
-            <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800">
-              <h3 className="font-bold text-lg text-slate-900 dark:text-white mb-4 flex items-center gap-2">
-                <BarChart3 size={18} className="text-purple-500" /> セクター別騰落率
-              </h3>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="bg-red-50 dark:bg-red-900/20 p-3 rounded-xl text-center">
-                  <p className="text-xs text-slate-500 dark:text-slate-400">半導体</p>
-                  <p className="font-black text-red-500">+2.4%</p>
-                </div>
-                <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-xl text-center">
-                  <p className="text-xs text-slate-500 dark:text-slate-400">銀行</p>
-                  <p className="font-black text-blue-500">-0.8%</p>
-                </div>
-                <div className="bg-red-50 dark:bg-red-900/20 p-3 rounded-xl text-center">
-                  <p className="text-xs text-slate-500 dark:text-slate-400">自動車</p>
-                  <p className="font-black text-red-500">+1.1%</p>
-                </div>
-                <div className="bg-slate-50 dark:bg-slate-800 p-3 rounded-xl text-center">
-                  <p className="text-xs text-slate-500 dark:text-slate-400">不動産</p>
-                  <p className="font-black text-slate-500">0.0%</p>
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </div>

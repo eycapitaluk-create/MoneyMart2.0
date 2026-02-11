@@ -1,5 +1,5 @@
 import { Link, useNavigate } from 'react-router-dom'
-import { Menu, X, ChevronDown, LogIn, Sun, Moon } from 'lucide-react'
+import { Menu, X, LogIn, Sun, Moon } from 'lucide-react'
 import { useState } from 'react'
 
 export default function Navbar({ darkMode, onToggleDarkMode }) {
@@ -41,23 +41,7 @@ export default function Navbar({ darkMode, onToggleDarkMode }) {
 
               <Link to="/stocks" className="hover:text-orange-500 transition">株式</Link>
 
-              {/* 金融商品 ドロップダウン */}
-              <div className="relative group">
-                <button className="hover:text-orange-500 transition flex items-center gap-1">
-                  金融商品 <ChevronDown size={14} />
-                </button>
-                <div className="absolute top-full left-0 w-56 bg-white dark:bg-slate-800 shadow-xl rounded-xl border border-slate-100 dark:border-slate-700 p-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
-                  {productCategories.map((cat) => (
-                    <Link
-                      key={cat.id}
-                      to={`/products?category=${cat.id}`}
-                      className="block p-2.5 hover:bg-orange-50 dark:hover:bg-slate-700 hover:text-orange-600 rounded-lg transition"
-                    >
-                      {cat.name}
-                    </Link>
-                  ))}
-                </div>
-              </div>
+              <Link to="/products" className="hover:text-orange-500 transition">金融商品</Link>
             </div>
           </div>
 

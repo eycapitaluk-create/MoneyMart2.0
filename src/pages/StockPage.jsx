@@ -1,94 +1,142 @@
 import { useState, useEffect } from 'react'
 import {
-  Search, Star, TrendingUp, TrendingDown,
-  Zap, PieChart, Bell, Plus, Layout, Check
+  Search, Star, Plus, Layout,
+  TrendingUp, TrendingDown, Clock, Info,
+  ChevronDown, Wallet, ArrowRight, ShieldCheck, ExternalLink,
 } from 'lucide-react'
 import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
+  ComposedChart, Area, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
 } from 'recharts'
 import { supabase } from '../lib/supabase'
+import { MOCK_STOCKS, REGION_BY_SYMBOL } from '../data/mockStocks'
 
-const MARKET_INDICES = [
-  { name: '日本市場', price: '38,920.15', change: 1.25 },
-  { name: '日本市場(全株)', price: '2,715.30', change: 0.88 },
-  { name: '日本市場(成長)', price: '750.40', change: -0.45 },
-  { name: '日本市場(新興)', price: '648.20', change: 0.62 },
-  { name: 'USD/JPY', price: '150.45', change: 0.05 },
-  { name: 'EUR/JPY', price: '163.20', change: -0.12 },
-  { name: '米国市場', price: '39,150.80', change: -0.15 },
-  { name: '米国市場（ハイテク）', price: '16,200.50', change: 1.10 },
-  { name: '米国市場（大型株）', price: '5,088.80', change: 0.35 },
-  { name: '金', price: '10,850', change: 0.82 },
-  { name: '原油WTI', price: '72.40', change: -1.20 },
+const TIMEFRAMES = ['1D', '1W', '1M', '3M', '1Y', '5Y']
+
+const MARKET_TICKER = [
+  { name: '米国大型株', value: 5088.8, change: 0.35 },
+  { name: '欧州主要株', value: 4982.6, change: 0.28 },
+  { name: '英国主要株', value: 8145.3, change: -0.19 },
+  { name: 'USD/JPY', value: 148.55, change: -0.1 },
 ]
 
-const STOCKS = {
-  JP: [
-    { id: '7203', code: '7203', name: 'トヨタ自動車', price: 3580, change: 85, rate: 2.43, sector: '自動車', tag: '決算好調', news: 'EV販売台数が過去最高を更新、北米市場でシェア拡大' },
-    { id: '6758', code: '6758', name: 'ソニーG', price: 13200, change: -150, rate: -1.12, sector: '電気機器', tag: '', news: 'ゲーム事業の収益見通しを下方修正、株価に売り圧力' },
-    { id: '8035', code: '8035', name: '東京エレクトロン', price: 38900, change: 1400, rate: 3.73, sector: '半導体', tag: 'AI特需', news: '生成AI向け製造装置の受注が急増、アナリストが目標株価引き上げ' },
-    { id: '9984', code: '9984', name: 'ソフトバンクG', price: 8450, change: 120, rate: 1.44, sector: '投資', tag: '自社株買い', news: 'アーム株の上昇が寄与、NAV（純資産価値）が大幅改善' },
-    { id: '7974', code: '7974', name: '任天堂', price: 8800, change: -20, rate: -0.23, sector: 'ゲーム', tag: '', news: '次世代機の発表延期との報道で失望売りが広がる' },
-    { id: '9983', code: '9983', name: 'ファーストリテイリング', price: 42100, change: -50, rate: -0.12, sector: '小売', tag: '', news: 'ユニクロ海外売上高が過去最高、インド進出加速' },
-    { id: '6861', code: '6861', name: 'キーエンス', price: 68500, change: 1200, rate: 1.78, sector: '電気機器', tag: '高配当', news: 'ファクトリーオートメーション需要が堅調、決算上方修正' },
-    { id: '8306', code: '8306', name: '三菱UFJFG', price: 1580, change: 12, rate: 0.77, sector: '銀行', tag: '', news: '米国利下げ期待で銀行株買い優勢、純利益予想上方修正' },
-    { id: '9432', code: '9432', name: '日本電信電話', price: 4280, change: -35, rate: -0.81, sector: '通信', tag: '配当安定', news: 'ドコモ決算は横ばい、5G投資の負担が継続' },
-    { id: '4519', code: '4519', name: '中外製薬', price: 5420, change: 85, rate: 1.59, sector: '医薬', tag: '', news: '新薬承認取得で成長期待、アナリストが買い推奨維持' },
-  ],
-  US: [
-    { id: 'NVDA', code: 'NVDA', name: 'NVIDIA', price: 880.5, change: 25.4, rate: 2.97, sector: '半導体', tag: 'AI Leader', news: 'GTC 2024で新チップ「Blackwell」発表、圧倒的な性能差を見せつける' },
-    { id: 'TSLA', code: 'TSLA', name: 'Tesla', price: 175.3, change: -5.2, rate: -2.8, sector: '自動車', tag: '値下げ', news: '中国市場での競争激化懸念、アナリストが投資判断引き下げ' },
-    { id: 'AAPL', code: 'AAPL', name: 'Apple', price: 170.1, change: -0.5, rate: -0.3, sector: 'Tech', tag: '', news: 'EUでの独占禁止法違反による制裁金の影響を懸念' },
-    { id: 'MSFT', code: 'MSFT', name: 'Microsoft', price: 415.2, change: 3.1, rate: 0.75, sector: 'Software', tag: 'CoPilot', news: '法人向けCopilotの導入が加速、収益貢献への期待高まる' },
-    { id: 'GOOGL', code: 'GOOGL', name: 'Alphabet', price: 142.5, change: 2.8, rate: 2.0, sector: 'Tech', tag: 'Gemini', news: 'AI検索機能の拡大で広告収益への貢献期待' },
-    { id: 'AMZN', code: 'AMZN', name: 'Amazon', price: 185.2, change: 1.5, rate: 0.82, sector: '小売', tag: 'AWS', news: 'クラウド事業が予想を上回る成長、営業利益率改善' },
-    { id: 'META', code: 'META', name: 'Meta', price: 505.8, change: -3.2, rate: -0.63, sector: 'Tech', tag: '', news: 'Reality Labs赤字が継続、メタバース投資の見直し観測' },
-  ],
-}
-
-const RELATED_NEWS = [
-  { id: 1, source: '日経新聞', time: '10分前', title: '日経平均、史上最高値を更新　半導体関連が牽引', sentiment: 'positive' },
-  { id: 2, source: 'Bloomberg', time: '30分前', title: '米FRB議長「利下げ急がない」　早期緩和観測が後退', sentiment: 'negative' },
-  { id: 3, source: 'Reuters', time: '1時間前', title: 'トヨタ、春闘で満額回答　賃上げの流れ加速', sentiment: 'positive' },
-  { id: 4, source: 'TechCrunch', time: '2時間前', title: 'AIスタートアップへの投資が過熱、バブルの懸念も', sentiment: 'neutral' },
-  { id: 5, source: '東洋経済', time: '3時間前', title: 'NISA口座数が1,500万件突破　個人投資家の流入加速', sentiment: 'positive' },
-  { id: 6, source: 'WSJ', time: '4時間前', title: '英中央銀、利下げを継続　欧州経済の減速懸念', sentiment: 'negative' },
-  { id: 7, source: '日経新聞', time: '5時間前', title: '円安継続で輸出企業の業績予想を上方修正相次ぐ', sentiment: 'positive' },
-  { id: 8, source: 'CNBC', time: '6時間前', title: 'オラクル、AIクラウド契約で急成長　株価が過去高値更新', sentiment: 'positive' },
+const PLATFORM_PARTNERS = [
+  { name: 'SBI証券', fee: '無料', points: 'Tポイント', note: 'NISA対応・国内外商品が豊富', url: 'https://www.sbisec.co.jp' },
+  { name: '楽天証券', fee: '無料', points: '楽天ポイント', note: '楽天経済圏との連携が強い', url: 'https://www.rakuten-sec.co.jp' },
+  { name: 'マネックス証券', fee: '55円~', points: 'マネックスP', note: '米国株・分析ツールが強み', url: 'https://www.monex.co.jp' },
 ]
 
-const generateChartData = (isUp) => {
+const generateChartData = (points, startPrice, volatility) => {
   const data = []
-  let val = 1000
-  for (let i = 0; i < 20; i++) {
-    val = val + (Math.random() - (isUp ? 0.4 : 0.6)) * 50
-    data.push({ i, val })
+  let currentPrice = startPrice
+
+  for (let i = 0; i < points; i += 1) {
+    const change = (Math.random() - 0.48) * volatility
+    currentPrice += change
+    const volume = Math.floor(Math.random() * 1000000) + 500000
+
+    const date = new Date()
+    date.setDate(date.getDate() - (points - i))
+    const hh = 9 + Math.floor(i / 12)
+    const mm = String((i % 12) * 5).padStart(2, '0')
+    const label = points <= 90 ? `${hh}:${mm}` : `${date.getMonth() + 1}/${date.getDate()}`
+
+    data.push({
+      time: label,
+      price: Number(currentPrice.toFixed(2)),
+      volume,
+      open: currentPrice - Math.random() * 10,
+      high: currentPrice + Math.random() * 20,
+      low: currentPrice - Math.random() * 20,
+    })
   }
   return data
 }
 
-// 티커 가격 파싱 (예: "38,920.15" → 38920.15)
-const parsePrice = (s) => parseFloat(String(s).replace(/[¥$,M]/g, '').replace(/,/g, '')) || 0
-const formatTickerPrice = (val, name) => {
-  if (name === 'ビットコイン') return `¥${val.toFixed(2)}M`
-  if (name === '金') return `¥${val.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
-  if (val >= 1000) return val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-  return val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const currencyByRegion = (region) => (region === 'UK' ? 'GBP' : region === 'EU' ? 'EUR' : 'USD')
+
+const formatCurrency = (value, region) =>
+  new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: currencyByRegion(region),
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value || 0)
+
+const formatCompact = (value) => {
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`
+  return `${Math.round(value)}`
 }
 
+const estimateMonthlyPlan = ({ targetAmount, currentAmount, annualRate, years }) => {
+  const months = Math.max(1, years * 12)
+  const monthlyRate = annualRate / 12
+  const futureOfCurrent = currentAmount * (1 + monthlyRate) ** months
+  const requiredFutureFromContrib = Math.max(0, targetAmount - futureOfCurrent)
+  if (monthlyRate === 0) return requiredFutureFromContrib / months
+  const factor = ((1 + monthlyRate) ** months - 1) / monthlyRate
+  return requiredFutureFromContrib / factor
+}
+
+const inferLiveRegion = (code, exchange) => {
+  if (REGION_BY_SYMBOL[code]) return REGION_BY_SYMBOL[code]
+  if (/\.(L|LN)$/i.test(code)) return 'UK'
+  if (/\.(PA|AS|DE|MI|MC|SW|BR|LS|ST|HE)$/i.test(code)) return 'EU'
+  if (/london|lse/i.test(exchange || '')) return 'UK'
+  if (/euronext|xetra|frankfurt|paris|amsterdam|milan|madrid|europe/i.test(exchange || '')) return 'EU'
+  return 'US'
+}
+
+const ActionButton = ({ icon: Icon, active }) => (
+  <button
+    className={`p-3 rounded-xl border transition ${
+      active
+        ? 'bg-orange-500 border-orange-500 text-white'
+        : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+    }`}
+  >
+    <Icon size={20} fill={active ? 'currentColor' : 'none'} />
+  </button>
+)
+
+const SettingsBtn = () => (
+  <button className="p-1 hover:bg-slate-100 dark:hover:bg-white/10 rounded">
+    <ChevronDown size={14} className="text-slate-500" />
+  </button>
+)
+
+const InfoRow = ({ label, val }) => (
+  <div className="flex justify-between border-b border-slate-200 dark:border-white/5 pb-2 last:border-0">
+    <span className="text-slate-500">{label}</span>
+    <span className="font-bold text-slate-900 dark:text-white">{val}</span>
+  </div>
+)
+
 export default function StockPage() {
-  const [activeTab, setActiveTab] = useState('JP')
-  const [selectedStock, setSelectedStock] = useState(STOCKS.JP[0])
-  const [chartData, setChartData] = useState(() => generateChartData(true))
-  const [watchlist, setWatchlist] = useState(['7203', 'NVDA'])
-  const [newsTab, setNewsTab] = useState('news') // 'news' | 'company' | 'disclosure'
-  const [liveTicker, setLiveTicker] = useState(MARKET_INDICES.map((i) => ({ ...i, price: parsePrice(i.price) })))
-  const [liveStocks, setLiveStocks] = useState({ JP: [...STOCKS.JP], US: [...STOCKS.US] })
+  const [selectedRegion, setSelectedRegion] = useState('US')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [timeframe, setTimeframe] = useState('1M')
+  const [selectedStock, setSelectedStock] = useState(MOCK_STOCKS.US[0])
+  const [chartData, setChartData] = useState([])
+  const [watchlist, setWatchlist] = useState(['AAPL', 'NVDA'])
+  const [liveStocks, setLiveStocks] = useState({ US: [...MOCK_STOCKS.US] })
   const [marketLoading, setMarketLoading] = useState(true)
   const [marketError, setMarketError] = useState('')
   const [usingMockData, setUsingMockData] = useState(true)
+  const [goalTarget, setGoalTarget] = useState(3000)
+  const [goalYears, setGoalYears] = useState(10)
+  const [goalCurrent, setGoalCurrent] = useState(300)
+  const [goalRiskProfile, setGoalRiskProfile] = useState('balanced')
 
-  // Supabase latest stock data load
+  const mergeWithMockUniverse = (liveUs) => {
+    const liveByCode = new Map(liveUs.map((s) => [s.code, s]))
+    const merged = [...liveUs]
+    for (const m of MOCK_STOCKS.US) {
+      if (!liveByCode.has(m.code)) merged.push(m)
+    }
+    return merged
+  }
+
   useEffect(() => {
     const loadLatestStocks = async () => {
       setMarketLoading(true)
@@ -97,12 +145,14 @@ export default function StockPage() {
         const { data: latestRows, error: latestErr } = await supabase
           .from('v_stock_latest')
           .select('symbol,trade_date,open,high,low,close,volume')
-          .limit(200)
-
+          .limit(300)
         if (latestErr) throw latestErr
+
         if (!latestRows || latestRows.length === 0) {
           setUsingMockData(true)
-          setMarketLoading(false)
+          setLiveStocks({ US: [...MOCK_STOCKS.US] })
+          setSelectedStock(MOCK_STOCKS.US[0])
+          setMarketError('実データがありません。モックデータを表示します。')
           return
         }
 
@@ -114,44 +164,46 @@ export default function StockPage() {
         if (symbolErr) throw symbolErr
 
         const symbolMap = new Map((symbolRows || []).map((s) => [s.symbol, s]))
-        const mapped = latestRows.map((r) => {
-          const meta = symbolMap.get(r.symbol) || {}
-          const open = Number(r.open || 0)
-          const close = Number(r.close || 0)
-          const change = close - open
-          const rate = open > 0 ? (change / open) * 100 : 0
-          return {
-            id: r.symbol,
-            code: r.symbol,
-            name: meta.name || r.symbol,
-            price: close,
-            change,
-            rate,
-            sector: meta.exchange || 'Market',
-            tag: '',
-            news: `${r.symbol} の最新終値データ (${r.trade_date})`,
-          }
-        })
+        const mapped = latestRows
+          .map((r) => {
+            const meta = symbolMap.get(r.symbol) || {}
+            const open = Number(r.open || 0)
+            const close = Number(r.close || 0)
+            const change = close - open
+            const rate = open > 0 ? (change / open) * 100 : 0
+            return {
+              id: r.symbol,
+              code: r.symbol,
+              name: meta.name || r.symbol,
+              price: close,
+              change,
+              rate,
+              market: meta.exchange || 'Market',
+              sector: meta.exchange || 'Market',
+              region: inferLiveRegion(r.symbol, meta.exchange),
+              news: `${r.symbol} の最新終値データ (${r.trade_date})`,
+            }
+          })
+          .filter(Boolean)
 
-        const jp = mapped.filter((s) => /\.(XTKS|XJPX|TSE|JP)$/i.test(s.code) || /^\d{4}/.test(s.code))
-        const us = mapped.filter((s) => !(/\.(XTKS|XJPX|TSE|JP)$/i.test(s.code) || /^\d{4}/.test(s.code)))
-
-        const nextStocks = {
-          JP: jp.length > 0 ? jp : [...STOCKS.JP],
-          US: us.length > 0 ? us : [...STOCKS.US],
+        const usLike = mapped.filter((s) => !(/\.(XTKS|XJPX|TSE|JP)$/i.test(s.code) || /^\d{4}/.test(s.code)))
+        if (usLike.length === 0) {
+          setUsingMockData(true)
+          setLiveStocks({ US: [...MOCK_STOCKS.US] })
+          setSelectedStock(MOCK_STOCKS.US[0])
+          setMarketError('取得データが空のため、モックデータを表示します。')
+          return
         }
 
-        setLiveStocks(nextStocks)
-        setUsingMockData(false)
-
-        const nextSelected = nextStocks[activeTab]?.[0] || nextStocks.US[0] || nextStocks.JP[0]
-        if (nextSelected) {
-          setSelectedStock(nextSelected)
-          setChartData(generateChartData(nextSelected.rate > 0))
-        }
+        const merged = mergeWithMockUniverse(usLike)
+        setLiveStocks({ US: merged })
+        setUsingMockData(merged.length > usLike.length)
+        setSelectedStock(usLike[0] || merged[0] || MOCK_STOCKS.US[0])
       } catch (err) {
-        setMarketError(err.message || 'データの読み込みに失敗しました')
         setUsingMockData(true)
+        setLiveStocks({ US: [...MOCK_STOCKS.US] })
+        setSelectedStock(MOCK_STOCKS.US[0])
+        setMarketError((err.message || 'データの読み込みに失敗しました') + '（モックデータ表示中）')
       } finally {
         setMarketLoading(false)
       }
@@ -160,370 +212,412 @@ export default function StockPage() {
     loadLatestStocks()
   }, [])
 
-  // 티커 실시간 시뮬레이션 (2~4초마다 미세 변동)
+  const filteredStocks = (liveStocks.US || []).filter((s) => {
+    const regionOK = s.region === selectedRegion
+    const query = searchQuery.trim().toLowerCase()
+    if (!query) return regionOK
+    return regionOK && (`${s.code} ${s.name}`.toLowerCase().includes(query))
+  })
+
   useEffect(() => {
-    const id = setInterval(() => {
-      setLiveTicker((prev) =>
-        MARKET_INDICES.map((base, i) => {
-          const prevPrice = prev[i]?.price ?? parsePrice(base.price)
-          const isBtc = base.name === 'ビットコイン'
-          const tick = isBtc ? (Math.random() - 0.5) * 0.02 : (Math.random() - 0.5) * (prevPrice > 10000 ? 40 : prevPrice > 100 ? 0.8 : 0.08)
-          const newPrice = Math.max(prevPrice * 0.995, Math.min(prevPrice * 1.005, prevPrice + tick))
-          return { ...base, price: newPrice }
-        })
+    if (!selectedStock || selectedStock.region !== selectedRegion || !filteredStocks.some((s) => s.id === selectedStock.id)) {
+      setSelectedStock(filteredStocks[0] || null)
+    }
+  }, [selectedRegion, searchQuery, filteredStocks, selectedStock])
+
+  useEffect(() => {
+    if (!selectedStock) return
+    const pointsByTf = { '1D': 78, '1W': 30, '1M': 90, '3M': 120, '1Y': 180, '5Y': 260 }
+    const points = pointsByTf[timeframe] || 90
+    const vol = Math.max(selectedStock.price * 0.02, 0.5)
+    setChartData(generateChartData(points, selectedStock.price * 0.9, vol))
+  }, [timeframe, selectedStock])
+
+  const displayedStock = filteredStocks.find((s) => s.id === selectedStock?.id) || filteredStocks[0] || selectedStock
+  const isUp = (displayedStock?.rate || 0) > 0
+  const chartColor = isUp ? '#ef4444' : '#3b82f6'
+  const goalAnnualRate = goalRiskProfile === 'conservative' ? 0.03 : goalRiskProfile === 'aggressive' ? 0.08 : 0.05
+  const requiredMonthlyYen = estimateMonthlyPlan({
+    targetAmount: goalTarget * 10000,
+    currentAmount: goalCurrent * 10000,
+    annualRate: goalAnnualRate,
+    years: goalYears,
+  })
+
+  const toggleWatch = (id) => {
+    if (!id) return
+    setWatchlist((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
+  }
+
+  const CustomTooltip = ({ active, payload }) => {
+    if (active && payload && payload.length) {
+      const d = payload[0].payload
+      return (
+        <div className="bg-white/95 dark:bg-slate-900/95 text-slate-800 dark:text-white p-3 rounded-xl text-xs shadow-xl border border-slate-200 dark:border-slate-700 backdrop-blur-sm">
+          <p className="font-bold text-slate-500 dark:text-slate-400 mb-1">{d.time}</p>
+          <p className="font-mono">Price: <span className="font-bold">{formatCurrency(d.price, displayedStock?.region || 'US')}</span></p>
+          <p className="font-mono">Vol: <span className="text-slate-500 dark:text-slate-400">{formatCompact(d.volume)}</span></p>
+        </div>
       )
-    }, 2500 + Math.random() * 1500)
-    return () => clearInterval(id)
-  }, [])
-
-  // 주식 리스트 실시간 시뮬레이션 (3~5초마다 미세 변동, 베이스 가격 근처에서 변동)
-  useEffect(() => {
-    if (!usingMockData) return undefined
-    const id = setInterval(() => {
-      setLiveStocks((prev) => ({
-        JP: prev.JP.map((s) => {
-          const base = STOCKS.JP.find((b) => b.id === s.id)
-          if (!base) return s
-          const range = base.price > 10000 ? 20 : 10
-          const newPrice = Math.max(1, base.price + Math.round((Math.random() - 0.5) * range))
-          const change = newPrice - base.price
-          const rate = (change / base.price) * 100
-          return { ...s, price: newPrice, change, rate }
-        }),
-        US: prev.US.map((s) => {
-          const base = STOCKS.US.find((b) => b.id === s.id)
-          if (!base) return s
-          const range = base.price > 100 ? 0.5 : 0.2
-          const newPrice = Math.max(0.01, base.price + (Math.random() - 0.5) * range)
-          const rounded = Math.round(newPrice * 100) / 100
-          const change = rounded - base.price
-          const rate = (change / base.price) * 100
-          return { ...s, price: rounded, change, rate }
-        }),
-      }))
-    }, 3500 + Math.random() * 2000)
-    return () => clearInterval(id)
-  }, [usingMockData])
-
-  const handleTabChange = (tab) => {
-    setActiveTab(tab)
-    const next = liveStocks[tab]?.[0] || STOCKS[tab][0]
-    if (next) {
-      setSelectedStock(next)
-      setChartData(generateChartData(next.rate > 0))
     }
+    return null
   }
-
-  const handleStockClick = (stock) => {
-    setSelectedStock(stock)
-    setChartData(generateChartData(stock.rate > 0))
-  }
-
-  const displayedStock =
-    liveStocks[activeTab]?.find((s) => s.id === selectedStock.id) ||
-    liveStocks[activeTab]?.[0] ||
-    selectedStock
-
-  const toggleWatch = (id, e) => {
-    e.stopPropagation()
-    if (watchlist.includes(id)) {
-      setWatchlist(watchlist.filter((item) => item !== id))
-    } else {
-      setWatchlist([...watchlist, id])
-    }
-  }
-
-  const isUp = displayedStock.rate > 0
-  const colorClass = isUp ? 'text-red-500' : 'text-blue-500'
-  const strokeColor = isUp ? '#ef4444' : '#3b82f6'
-  const gradId = `stockGrad-${displayedStock.id}`
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 pb-20 font-sans">
-      <div className="max-w-7xl mx-auto px-4 pt-4 pb-6">
-        {/* 1. ヘッダー & 検索 & タブ */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
-          <div className="flex items-center gap-3 flex-wrap">
-            <h1 className="text-2xl font-black text-slate-900 dark:text-white flex items-center gap-2">
-              <Zap className="text-yellow-500 fill-yellow-500" size={24} /> 株式・マーケット
-            </h1>
-            <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${usingMockData ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'}`}>
-              {usingMockData ? 'MOCK' : 'SUPABASE'}
-            </span>
-            <div className="flex bg-slate-200 dark:bg-slate-800 p-1 rounded-lg">
-              {['JP', 'US'].map((tab) => (
-                <button
-                  key={tab}
-                  onClick={() => handleTabChange(tab)}
-                  className={`px-3 py-1 text-xs font-bold rounded-md transition ${activeTab === tab ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}
-                >
-                  {tab === 'JP' ? '🇯🇵 日本株' : '🇺🇸 米国株'}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="relative w-full md:w-80">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-            <input
-              type="text"
-              placeholder="銘柄名・コード検索..."
-              className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl font-bold text-sm outline-none focus:ring-2 focus:ring-orange-500 text-slate-900 dark:text-white"
-            />
-          </div>
-        </div>
-        {marketLoading && (
-          <p className="text-xs font-bold text-slate-400 mb-3">最新データを読み込み中...</p>
-        )}
-        {marketError && (
-          <p className="text-xs font-bold text-amber-600 dark:text-amber-400 mb-3">
-            {marketError}（モックデータ表示中）
-          </p>
-        )}
-
-        {/* 2. 流れるマーケットティッカー */}
-        <div className="bg-slate-900 rounded-2xl overflow-hidden mb-6 -mx-4 sm:-mx-6 md:-mx-8">
-          <div className="py-2 overflow-hidden whitespace-nowrap">
-            <div className="inline-flex animate-ticker items-center flex-nowrap gap-8 pl-4 pr-16 min-w-max">
-              {[...liveTicker, ...liveTicker, ...liveTicker].map((idx, i) => (
-                <span key={i} className="flex items-center gap-2 shrink-0 text-white text-xs">
-                  <span className="text-slate-400 font-bold">{idx.name}</span>
-                  <span className="font-mono tabular-nums">{formatTickerPrice(idx.price, idx.name)}</span>
-                  <span className={`font-bold ${idx.change > 0 ? 'text-red-400' : 'text-blue-400'}`}>
-                    {idx.change > 0 ? '▲' : '▼'} {Math.abs(idx.change)}%
+    <div className="min-h-screen bg-slate-50 dark:bg-[#0F172A] text-slate-900 dark:text-white font-sans pb-20">
+      <div className="max-w-7xl mx-auto px-4 pt-4">
+        <div className="bg-slate-900 dark:bg-black text-white rounded-2xl border border-slate-700 shadow-md overflow-hidden relative">
+          <div className="py-3 overflow-hidden whitespace-nowrap">
+            <div className="inline-flex animate-ticker items-center gap-10 pl-4 pr-16 min-w-max">
+              {[...MARKET_TICKER, ...MARKET_TICKER, ...MARKET_TICKER].map((idx, i) => (
+                <span key={`${idx.name}-${i}`} className="flex items-center gap-2 text-xs md:text-sm shrink-0">
+                  <span className="text-slate-300 font-black">{idx.name}</span>
+                  <span className={`font-bold ${idx.change >= 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+                    {idx.value.toLocaleString()} {idx.change >= 0 ? '▲' : '▼'} {Math.abs(idx.change)}%
                   </span>
                 </span>
               ))}
             </div>
           </div>
+          <div className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] md:text-xs font-bold bg-slate-800/90 border border-slate-700 rounded-full px-2.5 py-1">
+            Data: <span className={usingMockData ? 'text-amber-300' : 'text-emerald-300'}>{usingMockData ? 'MOCK' : 'LIVE'}</span>
+          </div>
         </div>
+      </div>
 
-        {/* 3. メインレイアウト (左: リスト / 右: 詳細) */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* [LEFT] 銘柄リスト */}
-          <div className="lg:col-span-4 flex flex-col gap-4">
-            <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
-              <div className="flex justify-between items-center mb-3">
-                <h3 className="text-xs font-bold text-slate-500 flex items-center gap-1"><PieChart size={14} /> セクター動向</h3>
-                <span className="text-[10px] bg-slate-100 dark:bg-slate-800 px-1.5 rounded text-slate-400">リアルタイム</span>
-              </div>
-              <div className="grid grid-cols-3 gap-2 text-center text-[10px] font-bold text-white">
-                <div className="bg-red-500 p-2 rounded-lg">半導体<br />+2.4%</div>
-                <div className="bg-red-400 p-2 rounded-lg">自動車<br />+1.1%</div>
-                <div className="bg-blue-500 p-2 rounded-lg">海運<br />-0.8%</div>
-              </div>
-            </div>
-
-            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden flex-1">
-              <div className="overflow-y-auto max-h-[600px] divide-y divide-slate-100 dark:divide-slate-800">
-                {liveStocks[activeTab]?.map((stock) => (
-                  <div
-                    key={stock.id}
-                    onClick={() => handleStockClick(stock)}
-                    className={`p-4 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 transition relative ${selectedStock.id === stock.id ? 'bg-orange-50 dark:bg-slate-800' : ''}`}
-                  >
-                    {selectedStock.id === stock.id && <div className="absolute left-0 top-0 bottom-0 w-1 bg-orange-500 rounded-r" />}
-                    <div className="flex justify-between items-start mb-1">
-                      <div>
-                        <span className="text-[10px] font-bold text-slate-400 mr-2">{stock.code}</span>
-                        <span className="font-bold text-slate-800 dark:text-white text-sm">{stock.name}</span>
-                      </div>
-                      <span className={`text-sm font-black tabular-nums ${stock.rate > 0 ? 'text-red-500' : 'text-blue-500'}`}>
-                        {activeTab === 'US' ? '$' : '¥'}{stock.price.toLocaleString(undefined, { minimumFractionDigits: activeTab === 'US' ? 2 : 0, maximumFractionDigits: 2 })}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-[10px] bg-slate-100 dark:bg-slate-700 text-slate-500 px-1.5 py-0.5 rounded">{stock.sector}</span>
-                      <span className={`text-xs font-bold ${stock.rate > 0 ? 'text-red-500' : 'text-blue-500'}`}>
-                        {stock.rate > 0 ? '+' : ''}{stock.rate.toFixed(2)}%
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+      <div className="max-w-7xl mx-auto p-4 lg:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div className="lg:col-span-3 space-y-4">
+          <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
+            {[
+              { id: 'US', label: '🇺🇸 米国' },
+              { id: 'UK', label: '🇬🇧 英国' },
+              { id: 'EU', label: '🇪🇺 欧州' },
+            ].map((r) => (
+              <button
+                key={r.id}
+                onClick={() => setSelectedRegion(r.id)}
+                className={`px-3 py-1.5 text-xs font-bold rounded-lg transition ${
+                  selectedRegion === r.id ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700/50'
+                }`}
+              >
+                {r.label}
+              </button>
+            ))}
           </div>
 
-          {/* [RIGHT] 詳細ダッシュボード */}
-          <div className="lg:col-span-8 space-y-6">
-            <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
-              <div className="flex justify-between items-start mb-6">
-                <div>
-                  <div className="flex items-center gap-2 mb-1 flex-wrap">
-                    <span className="text-2xl font-black text-slate-900 dark:text-white">{displayedStock.name}</span>
-                    <span className="text-sm font-bold text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-lg">{displayedStock.code}</span>
-                    {displayedStock.tag && <span className="text-xs font-bold text-white bg-orange-500 px-2 py-0.5 rounded-full animate-pulse">{displayedStock.tag}</span>}
+          <div className="relative">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="銘柄コード・社名検索"
+              className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl py-3 pl-10 pr-4 text-sm font-bold focus:border-orange-500 outline-none transition"
+            />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
+          </div>
+
+          {marketLoading && <p className="text-xs text-slate-500 dark:text-slate-400">最新データを読み込み中...</p>}
+          {marketError && <p className="text-xs text-amber-400">{marketError}</p>}
+
+          <div className="bg-white dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-white/5 overflow-hidden shadow-sm hover:shadow-md transition-shadow duration-300">
+            <div className="p-3 border-b border-slate-200 dark:border-white/5 bg-slate-50 dark:bg-white/5 flex justify-between items-center">
+              <span className="text-xs font-bold text-slate-600 dark:text-slate-400">Watchlist</span>
+              <SettingsBtn />
+            </div>
+            <div className="divide-y divide-slate-100 dark:divide-white/5 max-h-[620px] overflow-y-auto">
+              {filteredStocks.map((stock) => (
+                <div
+                  key={stock.id}
+                  onClick={() => setSelectedStock(stock)}
+                  className={`p-4 cursor-pointer hover:bg-slate-50 dark:hover:bg-white/5 transition flex justify-between items-center ${displayedStock?.id === stock.id ? 'bg-orange-50 dark:bg-white/10 border-l-4 border-orange-500' : ''}`}
+                >
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-orange-500">{stock.code}</span>
+                      <span className="text-sm font-bold text-slate-800 dark:text-slate-200">{stock.name}</span>
+                    </div>
+                    <div className="text-[10px] text-slate-500 mt-0.5">{stock.market || stock.sector || 'Market'}</div>
                   </div>
-                  <div className="flex items-baseline gap-3 flex-wrap">
-                    <span className={`text-4xl font-black tabular-nums ${colorClass}`}>
-                      {activeTab === 'US' ? '$' : '¥'}{displayedStock.price.toLocaleString(undefined, { minimumFractionDigits: activeTab === 'US' ? 2 : 0, maximumFractionDigits: 2 })}
+                  <div className="text-right">
+                    <div className="font-mono font-bold text-sm">{formatCurrency(stock.price, stock.region)}</div>
+                    <div className={`text-xs font-bold ${stock.rate > 0 ? 'text-red-400' : 'text-blue-400'}`}>
+                      {stock.rate > 0 ? '+' : ''}{stock.rate.toFixed(2)}%
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {filteredStocks.length === 0 && (
+                <div className="p-6 text-center text-sm font-bold text-slate-500 dark:text-slate-400">
+                  この地域の銘柄データはまだありません
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="lg:col-span-9 space-y-6">
+          {displayedStock && (
+            <>
+              <div className="flex justify-between items-end gap-4">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2 mb-2">
+                    <h1 className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white tracking-tight">{displayedStock.name}</h1>
+                    <span className="text-xs font-bold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-md">{displayedStock.code}</span>
+                    <span className="text-[11px] font-bold text-slate-900 bg-orange-400 px-2 py-1 rounded-md">{displayedStock.sector}</span>
+                  </div>
+                  <div className="flex flex-wrap items-baseline gap-3">
+                    <span className={`text-4xl md:text-5xl font-black tracking-tight ${isUp ? 'text-red-500' : 'text-blue-500'}`}>
+                      {formatCurrency(displayedStock.price, displayedStock.region)}
                     </span>
-                    <span className={`text-lg font-bold ${colorClass}`}>
-                      {isUp ? '▲' : '▼'} {Math.abs(displayedStock.change).toFixed(activeTab === 'US' ? 2 : 0)} ({displayedStock.rate.toFixed(2)}%)
+                    <span className={`text-base md:text-lg font-bold flex items-center ${isUp ? 'text-red-400' : 'text-blue-400'}`}>
+                      {isUp ? <TrendingUp size={20} className="mr-1.5" /> : <TrendingDown size={20} className="mr-1.5" />}
+                      {displayedStock.change.toFixed(2)} ({displayedStock.rate.toFixed(2)}%)
                     </span>
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <button
-                    onClick={(e) => toggleWatch(displayedStock.id, e)}
-                    className={`p-3 rounded-xl transition ${watchlist.includes(displayedStock.id) ? 'bg-yellow-50 dark:bg-yellow-900/20 text-yellow-500' : 'bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 hover:text-yellow-500'}`}
-                  >
-                    <Star size={20} fill={watchlist.includes(displayedStock.id) ? 'currentColor' : 'none'} />
-                  </button>
-                  <button
-                    onClick={() => alert(`${displayedStock.name} の価格アラート設定は準備中です。`)}
-                    className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 hover:text-blue-500 transition"
-                    title="価格アラート"
-                  >
-                    <Bell size={20} />
+                  <button onClick={() => toggleWatch(displayedStock.id)}>
+                    <ActionButton icon={Star} active={watchlist.includes(displayedStock.id)} />
                   </button>
                 </div>
               </div>
 
-              <div className="h-[300px] w-full mb-6 relative group">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={chartData}>
-                    <defs>
-                      <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor={strokeColor} stopOpacity={0.2} />
-                        <stop offset="95%" stopColor={strokeColor} stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" className="dark:stroke-slate-700" />
-                    <XAxis dataKey="i" hide />
-                    <YAxis domain={['auto', 'auto']} hide />
-                    <Tooltip
-                      contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
-                      cursor={{ stroke: '#94a3b8', strokeWidth: 1, strokeDasharray: '4 4' }}
-                    />
-                    <Area type="monotone" dataKey="val" stroke={strokeColor} strokeWidth={3} fillOpacity={1} fill={`url(#${gradId})`} />
-                  </AreaChart>
-                </ResponsiveContainer>
-                <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-slate-900/90 backdrop-blur text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 shadow-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none">
-                  <Zap size={14} className="text-yellow-400 flex-shrink-0" />
-                  AI分析: 決算発表を受けて買い優勢。強気トレンド継続中。
+              <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-lg overflow-hidden relative">
+                <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/70 backdrop-blur-sm">
+                  <div className="flex gap-1.5">
+                    {TIMEFRAMES.map((tf) => (
+                      <button
+                        key={tf}
+                        onClick={() => setTimeframe(tf)}
+                        className={`px-3 py-1 text-[11px] font-bold rounded-full transition ${
+                          timeframe === tf
+                            ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900'
+                            : 'text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700/50'
+                        }`}
+                      >
+                        {tf}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-2 text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                      <div className={`w-1.5 h-1.5 rounded-full ${usingMockData ? 'bg-amber-400' : 'bg-emerald-400'}`} />
+                      {usingMockData ? 'Mock Blend' : 'Live'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-4 gap-3 px-4 py-3 border-b border-slate-200 dark:border-slate-800 text-xs font-mono bg-slate-50/70 dark:bg-slate-900/40">
+                  <div className="rounded-lg bg-white dark:bg-slate-800 p-2 border border-slate-200 dark:border-slate-700"><span className="text-slate-500 block">OPEN</span><span className="text-slate-900 dark:text-white font-bold">{formatCurrency(displayedStock.price * 0.98, displayedStock.region)}</span></div>
+                  <div className="rounded-lg bg-white dark:bg-slate-800 p-2 border border-slate-200 dark:border-slate-700"><span className="text-slate-500 block">HIGH</span><span className="text-slate-900 dark:text-white font-bold">{formatCurrency(displayedStock.price * 1.02, displayedStock.region)}</span></div>
+                  <div className="rounded-lg bg-white dark:bg-slate-800 p-2 border border-slate-200 dark:border-slate-700"><span className="text-slate-500 block">LOW</span><span className="text-slate-900 dark:text-white font-bold">{formatCurrency(displayedStock.price * 0.97, displayedStock.region)}</span></div>
+                  <div className="rounded-lg bg-white dark:bg-slate-800 p-2 border border-slate-200 dark:border-slate-700"><span className="text-slate-500 block">VOL</span><span className="text-slate-900 dark:text-white font-bold">2.4M</span></div>
+                </div>
+
+                <div className="h-[380px] w-full bg-gradient-to-b from-white to-slate-50 dark:from-[#0B1221] dark:to-[#0F172A] relative">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <ComposedChart data={chartData} margin={{ top: 20, right: 8, left: 8, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="colorPrice" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor={chartColor} stopOpacity={0.25} />
+                          <stop offset="95%" stopColor={chartColor} stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="2 4" vertical={false} stroke="#cbd5e1" />
+                      <XAxis dataKey="time" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} minTickGap={30} />
+                      <YAxis
+                        yAxisId="left"
+                        orientation="right"
+                        domain={['auto', 'auto']}
+                        axisLine={false}
+                        tickLine={false}
+                        tick={{ fontSize: 10, fill: '#64748b' }}
+                        tickFormatter={(v) => formatCompact(v)}
+                        width={54}
+                      />
+                      <YAxis yAxisId="right" orientation="left" hide />
+                      <Tooltip content={<CustomTooltip />} cursor={{ stroke: '#94a3b8', strokeWidth: 1, strokeDasharray: '4 4' }} />
+                      <Bar yAxisId="right" dataKey="volume" fill="#94a3b8" opacity={0.18} barSize={3} />
+                      <Area yAxisId="left" type="monotone" dataKey="price" stroke={chartColor} strokeWidth={2.4} fill="url(#colorPrice)" activeDot={{ r: 4, strokeWidth: 0, fill: '#fff' }} />
+                      <Line yAxisId="left" type="monotone" dataKey="price" stroke={chartColor} strokeWidth={1.4} dot={false} opacity={0.9} />
+                      <ReferenceLine
+                        yAxisId="left"
+                        y={displayedStock.price * 0.99}
+                        stroke="#94a3b8"
+                        strokeDasharray="4 4"
+                        strokeOpacity={0.6}
+                        label={{ value: 'Prev', position: 'insideLeft', fill: '#94a3b8', fontSize: 10 }}
+                      />
+                    </ComposedChart>
+                  </ResponsiveContainer>
                 </div>
               </div>
 
-              {/* プラットフォームアクション（取引は連携証券で） */}
               <div className="grid grid-cols-2 gap-4">
                 <button
-                  onClick={() => {
-                    if (watchlist.includes(displayedStock.id)) {
-                      setWatchlist(watchlist.filter((id) => id !== displayedStock.id))
-                    } else {
-                      setWatchlist([...watchlist, displayedStock.id])
-                    }
-                  }}
-                  className={`py-4 font-black rounded-xl shadow-sm transition border-2 flex items-center justify-center gap-2 text-lg
-                    ${watchlist.includes(displayedStock.id)
-                      ? 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400'
-                      : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:border-orange-500 dark:hover:border-orange-500 text-slate-700 dark:text-slate-300 hover:text-orange-500 dark:hover:text-orange-500'}`}
+                  onClick={() => toggleWatch(displayedStock.id)}
+                  className="py-3.5 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-900 dark:text-white text-sm font-bold rounded-2xl transition flex items-center justify-center gap-2 border border-slate-200 dark:border-slate-700 group"
                 >
-                  {watchlist.includes(displayedStock.id) ? <Check size={20} /> : <Plus size={20} />}
-                  {watchlist.includes(displayedStock.id) ? '登録済み' : 'ウォッチリストに追加'}
+                  <Plus size={20} className="text-orange-500 group-hover:scale-110 transition" />
+                  {watchlist.includes(displayedStock.id) ? 'ウォッチ解除' : 'ウォッチリスト登録'}
                 </button>
-                <button className="py-4 bg-slate-900 dark:bg-slate-100 hover:bg-black dark:hover:bg-white text-white dark:text-slate-900 font-black rounded-xl shadow-lg transition transform active:scale-95 text-lg flex items-center justify-center gap-2">
-                  <Layout size={20} />
-                  ポートフォリオ試算
-                </button>
-              </div>
-              <p className="text-center text-[10px] text-slate-400 dark:text-slate-500 mt-3 font-bold">
-                ※ MoneyMartは証券会社ではありません。実際の取引は連携先の証券口座で行われます。
-              </p>
-            </div>
-
-            <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-              <div className="flex border-b border-slate-100 dark:border-slate-800">
-                <button
-                  onClick={() => setNewsTab('news')}
-                  className={`flex-1 py-4 text-sm font-bold transition ${newsTab === 'news' ? 'text-slate-900 dark:text-white border-b-2 border-slate-900 dark:border-orange-500 bg-slate-50 dark:bg-slate-800/50' : 'text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/30'}`}
-                >
-                  関連ニュース
-                </button>
-                <button
-                  onClick={() => setNewsTab('company')}
-                  className={`flex-1 py-4 text-sm font-bold transition ${newsTab === 'company' ? 'text-slate-900 dark:text-white border-b-2 border-slate-900 dark:border-orange-500 bg-slate-50 dark:bg-slate-800/50' : 'text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/30'}`}
-                >
-                  企業情報
-                </button>
-                <button
-                  onClick={() => setNewsTab('disclosure')}
-                  className={`flex-1 py-4 text-sm font-bold transition ${newsTab === 'disclosure' ? 'text-slate-900 dark:text-white border-b-2 border-slate-900 dark:border-orange-500 bg-slate-50 dark:bg-slate-800/50' : 'text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/30'}`}
-                >
-                  適時開示
+                <button className="py-3.5 bg-orange-600 hover:bg-orange-500 text-white text-sm font-bold rounded-2xl transition flex items-center justify-center gap-2 shadow-lg shadow-orange-500/20 group">
+                  <Layout size={20} className="group-hover:rotate-90 transition" />
+                  目標プランに追加
                 </button>
               </div>
 
-              <div className="p-2">
-                {newsTab === 'news' && (
-                  <>
-                    <div className="p-4 bg-orange-50/50 dark:bg-orange-900/20 rounded-xl mb-2 border border-orange-100 dark:border-orange-900/50">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="bg-orange-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded">HOT</span>
-                        <span className="text-xs font-bold text-orange-600 dark:text-orange-400">AI 速報</span>
-                      </div>
-                      <p className="text-sm font-bold text-slate-800 dark:text-slate-200 leading-snug">
-                        {displayedStock.news}
-                      </p>
-                    </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="bg-white dark:bg-slate-800/50 p-6 rounded-3xl border border-slate-200 dark:border-white/5 shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-0.5">
+                  <h3 className="text-sm font-bold text-slate-600 dark:text-slate-400 mb-4 flex items-center gap-2"><Info size={16} /> 企業情報</h3>
+                  <div className="space-y-3 text-sm">
+                    <InfoRow label="時価総額" val="¥42.5兆" />
+                    <InfoRow label="PER (予想)" val="12.4倍" />
+                    <InfoRow label="PBR (実績)" val="1.1倍" />
+                    <InfoRow label="配当利回り" val="2.8%" />
+                  </div>
+                </div>
 
-                    {RELATED_NEWS.map((news) => (
-                      <div key={news.id} className="p-4 hover:bg-slate-50 dark:hover:bg-slate-800/30 transition cursor-pointer group border-b border-slate-50 dark:border-slate-800 last:border-0">
-                        <div className="flex justify-between items-center mb-1">
-                          <div className="flex items-center gap-2">
-                            <span className="text-[10px] font-bold text-slate-500 bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded">{news.source}</span>
-                            <span className="text-[10px] text-slate-400">{news.time}</span>
-                          </div>
-                          {news.sentiment === 'positive' && <TrendingUp size={14} className="text-red-400" />}
-                          {news.sentiment === 'negative' && <TrendingDown size={14} className="text-blue-400" />}
-                        </div>
-                        <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300 group-hover:text-blue-600 dark:group-hover:text-orange-500 transition leading-snug">
-                          {news.title}
-                        </h4>
+                <div className="bg-white dark:bg-slate-800/50 p-6 rounded-3xl border border-slate-200 dark:border-white/5 shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-0.5">
+                  <h3 className="text-sm font-bold text-slate-600 dark:text-slate-400 mb-4 flex items-center gap-2"><Clock size={16} /> 適時開示・ニュース</h3>
+                  <div className="space-y-4">
+                    {[
+                      '2026年3月期 第3四半期決算短信',
+                      '自己株式取得に係る事項の決定に関するお知らせ',
+                      'EV生産ラインの増設投資について',
+                    ].map((news, i) => (
+                      <div key={i} className="flex gap-3 items-start group cursor-pointer">
+                        <span className="text-[10px] text-slate-500 mt-1">14:00</span>
+                        <p className="text-sm font-bold text-slate-700 dark:text-slate-300 group-hover:text-orange-500 dark:group-hover:text-orange-400 transition leading-snug">{news}</p>
                       </div>
                     ))}
-                  </>
-                )}
+                  </div>
+                </div>
+              </div>
 
-                {newsTab === 'company' && (
-                  <div className="p-6 space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="bg-gradient-to-br from-slate-900 to-slate-800 text-white p-6 rounded-3xl border border-slate-700 shadow-xl hover:shadow-2xl transition-all duration-300 hover:-translate-y-0.5">
+                  <h3 className="text-sm font-bold text-slate-200 mb-4 flex items-center gap-2">
+                    <ShieldCheck size={16} className="text-emerald-400" /> Goal Planner (Platform)
+                  </h3>
+                  <div className="space-y-4">
                     <div>
-                      <h4 className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-2">事業内容</h4>
-                      <p className="text-sm font-medium text-slate-700 dark:text-slate-300 leading-relaxed">
-                        {displayedStock.sector}セクターの代表銘柄。業績・財務状況などの詳細は公式IRを参照してください。
+                      <label className="text-xs text-slate-400 font-bold block mb-2">目標金額（万円）</label>
+                      <input
+                        type="range"
+                        min={500}
+                        max={20000}
+                        step={100}
+                        value={goalTarget}
+                        onChange={(e) => setGoalTarget(Number(e.target.value))}
+                        className="w-full accent-orange-500"
+                      />
+                      <div className="text-right text-sm font-bold mt-1">¥{goalTarget.toLocaleString()}万</div>
+                    </div>
+                    <div>
+                      <label className="text-xs text-slate-400 font-bold block mb-2">現在の投資元本（万円）</label>
+                      <input
+                        type="range"
+                        min={0}
+                        max={10000}
+                        step={50}
+                        value={goalCurrent}
+                        onChange={(e) => setGoalCurrent(Number(e.target.value))}
+                        className="w-full accent-orange-500"
+                      />
+                      <div className="text-right text-sm font-bold mt-1">¥{goalCurrent.toLocaleString()}万</div>
+                    </div>
+                    <div>
+                      <label className="text-xs text-slate-400 font-bold block mb-2">目標期間（年）: {goalYears}年</label>
+                      <input
+                        type="range"
+                        min={1}
+                        max={20}
+                        step={1}
+                        value={goalYears}
+                        onChange={(e) => setGoalYears(Number(e.target.value))}
+                        className="w-full accent-orange-500"
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      {[
+                        { id: 'conservative', label: '安定' },
+                        { id: 'balanced', label: '標準' },
+                        { id: 'aggressive', label: '積極' },
+                      ].map((mode) => (
+                        <button
+                          key={mode.id}
+                          onClick={() => setGoalRiskProfile(mode.id)}
+                          className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition ${
+                            goalRiskProfile === mode.id
+                              ? 'bg-orange-500 border-orange-500 text-white'
+                              : 'bg-slate-800 border-slate-600 text-slate-300'
+                          }`}
+                        >
+                          {mode.label}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="bg-white/10 rounded-xl p-4 border border-white/10">
+                      <p className="text-xs text-slate-300 mb-1">必要な毎月積立目安</p>
+                      <p className="text-2xl font-black text-orange-300">
+                        ¥{Math.max(0, Math.round(requiredMonthlyYen)).toLocaleString()}
+                        <span className="text-sm text-slate-300 font-bold ml-1">/ 月</span>
+                      </p>
+                      <p className="text-xs text-slate-300 mt-1">
+                        約 {(Math.max(0, requiredMonthlyYen) / 10000).toFixed(1)} 万円 / 月
+                      </p>
+                      <p className="text-[11px] text-slate-400 mt-2">
+                        参考値です。実際の成果は市場変動・コスト・税制により異なります。
                       </p>
                     </div>
-                    <div>
-                      <h4 className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-2">セクター</h4>
-                      <span className="inline-block px-3 py-1 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg font-bold text-sm">{displayedStock.sector}</span>
-                    </div>
-                    <p className="text-xs text-slate-400 pt-2">※ 企業情報は外部データに基づきます。最新情報は公式発表をご確認ください。</p>
                   </div>
-                )}
+                </div>
 
-                {newsTab === 'disclosure' && (
-                  <div className="p-6 space-y-3">
-                    <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-xl">
-                      <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-1">決算短信</p>
-                      <p className="text-sm font-bold text-slate-800 dark:text-slate-200">XXX期 決算発表</p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">準備中</p>
-                    </div>
-                    <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-xl">
-                      <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-1">適時開示</p>
-                      <p className="text-sm font-bold text-slate-800 dark:text-slate-200">重要事項のないことの確認</p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">準備中</p>
-                    </div>
-                    <p className="text-xs text-slate-400 pt-2">※ 適時開示情報はEDINET・TDnet等から取得します。</p>
+                <div className="bg-white dark:bg-slate-800/50 p-6 rounded-3xl border border-slate-200 dark:border-white/5 shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-0.5">
+                  <h3 className="text-sm font-bold text-slate-600 dark:text-slate-300 mb-4 flex items-center gap-2">
+                    <Wallet size={16} /> 執行先比較（取引は外部）
+                  </h3>
+                  <div className="space-y-3">
+                    {PLATFORM_PARTNERS.map((p) => (
+                      <a
+                        key={p.name}
+                        href={p.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="block rounded-xl border border-slate-200 dark:border-slate-700 p-3 hover:border-orange-300 dark:hover:border-orange-500/50 hover:bg-orange-50 dark:hover:bg-slate-800 transition"
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <p className="font-bold text-sm text-slate-800 dark:text-slate-200">{p.name}</p>
+                          <ExternalLink size={14} className="text-slate-400" />
+                        </div>
+                        <div className="flex items-center gap-2 text-[11px]">
+                          <span className="bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded-full font-bold">手数料 {p.fee}</span>
+                          <span className="bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-300 px-2 py-0.5 rounded-full font-bold">{p.points}</span>
+                        </div>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">{p.note}</p>
+                      </a>
+                    ))}
                   </div>
-                )}
+                  <p className="text-[11px] text-slate-400 mt-3 leading-relaxed">
+                    MoneyMartは比較・情報提供を行うプラットフォームです。実際の注文・口座開設は各社サイトで行います。
+                  </p>
+                </div>
               </div>
-              {newsTab === 'news' && (
-                <button className="w-full py-3 text-xs font-bold text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/30 transition border-t border-slate-100 dark:border-slate-800">
-                  ニュースをもっと見る
-                </button>
-              )}
-            </div>
-          </div>
+
+              <div className="bg-white dark:bg-slate-800/50 p-6 rounded-3xl border border-slate-200 dark:border-white/5 shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-0.5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300">Platform Insight</h3>
+                    <p className="text-xs text-slate-500 mt-1">価格だけでなく、あなたの目標達成への影響を可視化します。</p>
+                  </div>
+                  <button className="inline-flex items-center gap-1 text-xs font-bold text-orange-500 hover:text-orange-400">
+                    詳細を見る <ArrowRight size={14} />
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>

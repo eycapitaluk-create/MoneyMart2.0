@@ -69,6 +69,7 @@ export default function FundPage({ user, myWatchlist = [], toggleWatchlist: prop
   const [dbFunds, setDbFunds] = useState([])
   const [assetFlowData, setAssetFlowData] = useState([])
   const [selectedFlow, setSelectedFlow] = useState(null)
+  const [flowExpanded, setFlowExpanded] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [isDetailLoading, setIsDetailLoading] = useState(false)
   const [selectedFundIds, setSelectedFundIds] = useState([])
@@ -406,114 +407,38 @@ export default function FundPage({ user, myWatchlist = [], toggleWatchlist: prop
         </div>
       </div>
 
-      {/* Fund Flow Section */}
-      <div className="mb-8">
-        <div className="bg-white dark:bg-slate-900 rounded-[2rem] p-6 border border-slate-200 dark:border-slate-800 shadow-sm">
-          <div className="flex justify-between items-center mb-4">
-            <div>
-              <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                <JapaneseYen size={20} className="text-green-500" /> カテゴリー別 資金流出入 (Fund Flow)
-              </h2>
-              <p className="text-xs text-slate-400 mt-1">棒グラフをクリックすると、その中の純資産上位・下位ファンドが表示されます。</p>
-            </div>
+      <div className="mb-5 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm px-4 py-3">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <JapaneseYen size={18} className="text-green-500" />
+            <p className="text-sm font-bold text-slate-800 dark:text-slate-200">Fund Flow Summary</p>
           </div>
-          <div className="h-64 w-full">
-            {assetFlowData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={assetFlowData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" className="dark:stroke-slate-700" />
-                  <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#64748b' }} interval={0} />
-                  <YAxis fontSize={10} stroke="#94a3b8" />
-                  <Tooltip
-                    cursor={{ fill: 'rgba(0,0,0,0.05)' }}
-                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
-                    formatter={(value) => [value === 0 ? '±0 (均衡)' : `${value > 0 ? '+' : ''}${value}億円`, '推計資金流']}
-                  />
-                  <ReferenceLine y={0} stroke="#cbd5e1" strokeWidth={2} />
-                  <Bar dataKey="flow" barSize={32} radius={[4, 4, 4, 4]} onClick={handleFlowClick} cursor="pointer">
-                    {assetFlowData.map((entry, index) => (
-                      <Cell
-                        key={`cell-${index}`}
-                        fill={entry.flow === 0 ? '#94a3b8' : entry.flow > 0 ? '#ef4444' : '#3b82f6'}
-                        stroke={selectedFlow?.name === entry.name ? '#000' : 'none'}
-                        strokeWidth={2}
-                      />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="flex items-center justify-center h-full text-slate-400 text-sm">データがありません</div>
-            )}
-          </div>
-
-          {selectedFlow && (
-            <div className="mt-4 p-5 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-700 animate-slideUp">
-              <div className="flex justify-between items-center mb-4 border-b border-slate-200 dark:border-slate-700 pb-2">
-                <h3 className="font-bold text-slate-800 dark:text-white flex items-center gap-2">
-                  <span className="bg-slate-800 dark:bg-slate-600 text-white text-xs px-2 py-1 rounded">{selectedFlow.name}</span>
-                  カテゴリー内の資産規模
-                </h3>
-                <button onClick={() => setSelectedFlow(null)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
-                  <X size={18} />
-                </button>
-              </div>
-              {isDetailLoading ? (
-                <div className="flex justify-center py-10">
-                  <Loader2 className="animate-spin text-slate-400" />
-                </div>
-              ) : (
-                <div className="grid md:grid-cols-2 gap-6">
-                  <div>
-                    <h4 className="text-xs font-bold text-red-500 mb-2 flex items-center gap-1">
-                      <ArrowUp size={14} /> 純資産 Top 3 (人気)
-                    </h4>
-                    <div className="space-y-2">
-                      {selectedFlow.details.top?.length > 0 ? (
-                        selectedFlow.details.top.map((f, i) => (
-                          <div key={i} className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-red-100 dark:border-red-900/50 flex justify-between items-center shadow-sm">
-                            <div className="flex items-center gap-3">
-                              <span className="w-5 h-5 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-full flex items-center justify-center text-[10px] font-bold">{i + 1}</span>
-                              <span className="text-xs font-bold text-slate-700 dark:text-slate-300 line-clamp-1">{f.name}</span>
-                            </div>
-                            <div className="text-right">
-                              <div className="text-xs font-black text-red-500">¥{(f.aum / 100).toFixed(1)}億</div>
-                              <div className="text-[10px] text-slate-400">Return: {f.return?.toFixed(1) || '0'}%</div>
-                            </div>
-                          </div>
-                        ))
-                      ) : (
-                        <div className="text-xs text-slate-400">データがありません</div>
-                      )}
-                    </div>
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-blue-500 mb-2 flex items-center gap-1">
-                      <ArrowDown size={14} /> 純資産 Bottom 3
-                    </h4>
-                    <div className="space-y-2">
-                      {selectedFlow.details.bottom?.length > 0 ? (
-                        selectedFlow.details.bottom.map((f, i) => (
-                          <div key={i} className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-blue-100 dark:border-blue-900/50 flex justify-between items-center shadow-sm">
-                            <div className="flex items-center gap-3">
-                              <span className="w-5 h-5 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-full flex items-center justify-center text-[10px] font-bold">{i + 1}</span>
-                              <span className="text-xs font-bold text-slate-700 dark:text-slate-300 line-clamp-1">{f.name}</span>
-                            </div>
-                            <div className="text-right">
-                              <div className="text-xs font-black text-blue-500">¥{(f.aum / 100).toFixed(1)}億</div>
-                              <div className="text-[10px] text-slate-400">Return: {f.return?.toFixed(1) || '0'}%</div>
-                            </div>
-                          </div>
-                        ))
-                      ) : (
-                        <div className="text-xs text-slate-400">データがありません</div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+          <button
+            onClick={() => setFlowExpanded((prev) => !prev)}
+            className="text-xs font-bold px-3 py-1.5 rounded-full border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition w-fit"
+          >
+            {flowExpanded ? 'Flow詳細を閉じる' : 'Flow詳細を表示'}
+          </button>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {assetFlowData.slice(0, 3).map((item) => (
+            <button
+              key={item.name}
+              onClick={() => {
+                if (!flowExpanded) setFlowExpanded(true)
+                handleFlowClick(item)
+              }}
+              className={`text-xs font-bold px-3 py-1.5 rounded-full border transition ${
+                item.flow > 0
+                  ? 'bg-red-50 text-red-600 border-red-100 dark:bg-red-900/20 dark:border-red-900/50 dark:text-red-400'
+                  : item.flow < 0
+                    ? 'bg-blue-50 text-blue-600 border-blue-100 dark:bg-blue-900/20 dark:border-blue-900/50 dark:text-blue-400'
+                    : 'bg-slate-100 text-slate-500 border-slate-200 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400'
+              }`}
+            >
+              {item.name} {item.flow > 0 ? '+' : ''}{item.flow}億
+            </button>
+          ))}
         </div>
       </div>
 
@@ -728,6 +653,118 @@ export default function FundPage({ user, myWatchlist = [], toggleWatchlist: prop
               </button>
             </div>
           )}
+        </div>
+      )}
+
+      {flowExpanded && (
+        <div className="mt-8 mb-8">
+          <div className="bg-white dark:bg-slate-900 rounded-[2rem] p-6 border border-slate-200 dark:border-slate-800 shadow-sm">
+            <div className="flex justify-between items-center mb-4">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <JapaneseYen size={20} className="text-green-500" /> カテゴリー別 資金流出入 (Fund Flow)
+                </h2>
+                <p className="text-xs text-slate-400 mt-1">棒グラフをクリックすると、その中の純資産上位・下位ファンドが表示されます。</p>
+              </div>
+            </div>
+            <div className="h-64 w-full">
+              {assetFlowData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={assetFlowData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" className="dark:stroke-slate-700" />
+                    <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#64748b' }} interval={0} />
+                    <YAxis fontSize={10} stroke="#94a3b8" />
+                    <Tooltip
+                      cursor={{ fill: 'rgba(0,0,0,0.05)' }}
+                      contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
+                      formatter={(value) => [value === 0 ? '±0 (均衡)' : `${value > 0 ? '+' : ''}${value}億円`, '推計資金流']}
+                    />
+                    <ReferenceLine y={0} stroke="#cbd5e1" strokeWidth={2} />
+                    <Bar dataKey="flow" barSize={32} radius={[4, 4, 4, 4]} onClick={handleFlowClick} cursor="pointer">
+                      {assetFlowData.map((entry, index) => (
+                        <Cell
+                          key={`cell-${index}`}
+                          fill={entry.flow === 0 ? '#94a3b8' : entry.flow > 0 ? '#ef4444' : '#3b82f6'}
+                          stroke={selectedFlow?.name === entry.name ? '#000' : 'none'}
+                          strokeWidth={2}
+                        />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex items-center justify-center h-full text-slate-400 text-sm">データがありません</div>
+              )}
+            </div>
+
+            {selectedFlow && (
+              <div className="mt-4 p-5 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-700 animate-slideUp">
+                <div className="flex justify-between items-center mb-4 border-b border-slate-200 dark:border-slate-700 pb-2">
+                  <h3 className="font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                    <span className="bg-slate-800 dark:bg-slate-600 text-white text-xs px-2 py-1 rounded">{selectedFlow.name}</span>
+                    カテゴリー内の資産規模
+                  </h3>
+                  <button onClick={() => setSelectedFlow(null)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
+                    <X size={18} />
+                  </button>
+                </div>
+                {isDetailLoading ? (
+                  <div className="flex justify-center py-10">
+                    <Loader2 className="animate-spin text-slate-400" />
+                  </div>
+                ) : (
+                  <div className="grid md:grid-cols-2 gap-6">
+                    <div>
+                      <h4 className="text-xs font-bold text-red-500 mb-2 flex items-center gap-1">
+                        <ArrowUp size={14} /> 純資産 Top 3 (人気)
+                      </h4>
+                      <div className="space-y-2">
+                        {selectedFlow.details.top?.length > 0 ? (
+                          selectedFlow.details.top.map((f, i) => (
+                            <div key={i} className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-red-100 dark:border-red-900/50 flex justify-between items-center shadow-sm">
+                              <div className="flex items-center gap-3">
+                                <span className="w-5 h-5 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-full flex items-center justify-center text-[10px] font-bold">{i + 1}</span>
+                                <span className="text-xs font-bold text-slate-700 dark:text-slate-300 line-clamp-1">{f.name}</span>
+                              </div>
+                              <div className="text-right">
+                                <div className="text-xs font-black text-red-500">¥{(f.aum / 100).toFixed(1)}億</div>
+                                <div className="text-[10px] text-slate-400">Return: {f.return?.toFixed(1) || '0'}%</div>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="text-xs text-slate-400">データがありません</div>
+                        )}
+                      </div>
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-bold text-blue-500 mb-2 flex items-center gap-1">
+                        <ArrowDown size={14} /> 純資産 Bottom 3
+                      </h4>
+                      <div className="space-y-2">
+                        {selectedFlow.details.bottom?.length > 0 ? (
+                          selectedFlow.details.bottom.map((f, i) => (
+                            <div key={i} className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-blue-100 dark:border-blue-900/50 flex justify-between items-center shadow-sm">
+                              <div className="flex items-center gap-3">
+                                <span className="w-5 h-5 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-full flex items-center justify-center text-[10px] font-bold">{i + 1}</span>
+                                <span className="text-xs font-bold text-slate-700 dark:text-slate-300 line-clamp-1">{f.name}</span>
+                              </div>
+                              <div className="text-right">
+                                <div className="text-xs font-black text-blue-500">¥{(f.aum / 100).toFixed(1)}億</div>
+                                <div className="text-[10px] text-slate-400">Return: {f.return?.toFixed(1) || '0'}%</div>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="text-xs text-slate-400">データがありません</div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       )}
 

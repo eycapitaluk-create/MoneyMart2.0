@@ -3,9 +3,8 @@ import { useSearchParams, Link } from 'react-router-dom'
 import {
   CreditCard, Landmark, Plane, Banknote, Coins,
   Filter, Plus, Check, ArrowRightLeft, Trash2, X,
-  Search, ArrowUpDown
+  Search, ArrowUpDown, Sparkles, ArrowRight, ShieldCheck, Clock3
 } from 'lucide-react'
-import AdBanner from '../components/AdBanner'
 import { CATEGORIES, PRODUCTS } from '../data/products'
 
 // スペック値から数値を抽出 (金利・還元率・保険料など)
@@ -59,6 +58,126 @@ const getCategorySortOptions = (category) => {
   if (category === 'insurance') base.push({ id: 'price', label: '保険料が安い順', fn: (a, b) => parseSpecValue(a.specs[0]?.value) - parseSpecValue(b.specs[0]?.value) })
   if (category === 'points') base.push({ id: 'return', label: '還元率が高い順', fn: (a, b) => parseSpecValue(b.specs[0]?.value) - parseSpecValue(a.specs[0]?.value) })
   return base
+}
+
+const CATEGORY_THEME = {
+  all: {
+    active: 'bg-slate-900 text-white border-slate-900 shadow-lg',
+    idle: 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200',
+    heroBg: 'from-slate-900 to-slate-800',
+    accent: 'text-slate-700',
+    chip: 'bg-slate-100 text-slate-700',
+  },
+  savings: {
+    active: 'bg-blue-600 text-white border-blue-600 shadow-lg shadow-blue-500/20',
+    idle: 'bg-blue-50 text-blue-700 border-blue-100 hover:bg-blue-100',
+    heroBg: 'from-blue-700 to-indigo-700',
+    accent: 'text-blue-700',
+    chip: 'bg-blue-100 text-blue-700',
+  },
+  cards: {
+    active: 'bg-purple-600 text-white border-purple-600 shadow-lg shadow-purple-500/20',
+    idle: 'bg-purple-50 text-purple-700 border-purple-100 hover:bg-purple-100',
+    heroBg: 'from-purple-700 to-fuchsia-700',
+    accent: 'text-purple-700',
+    chip: 'bg-purple-100 text-purple-700',
+  },
+  loans: {
+    active: 'bg-green-600 text-white border-green-600 shadow-lg shadow-green-500/20',
+    idle: 'bg-green-50 text-green-700 border-green-100 hover:bg-green-100',
+    heroBg: 'from-emerald-700 to-green-700',
+    accent: 'text-green-700',
+    chip: 'bg-green-100 text-green-700',
+  },
+  points: {
+    active: 'bg-amber-500 text-white border-amber-500 shadow-lg shadow-amber-500/20',
+    idle: 'bg-amber-50 text-amber-700 border-amber-100 hover:bg-amber-100',
+    heroBg: 'from-amber-500 to-orange-600',
+    accent: 'text-amber-700',
+    chip: 'bg-amber-100 text-amber-700',
+  },
+  insurance: {
+    active: 'bg-sky-600 text-white border-sky-600 shadow-lg shadow-sky-500/20',
+    idle: 'bg-sky-50 text-sky-700 border-sky-100 hover:bg-sky-100',
+    heroBg: 'from-sky-700 to-cyan-700',
+    accent: 'text-sky-700',
+    chip: 'bg-sky-100 text-sky-700',
+  },
+}
+
+const HERO_COPY = {
+  all: {
+    title: '金融商品をまとめて比較',
+    subtitle: '手数料・金利・還元率を横断で確認して、あなたに合う選択肢を見つけましょう。',
+    promo: '最大3商品まで同時比較',
+    metricA: '最短3分',
+    metricALabel: '比較完了まで',
+    metricB: '0円',
+    metricBLabel: '比較利用料',
+  },
+  savings: {
+    title: '預金金利をスマートに比較',
+    subtitle: '期間・最低預入額・金利を一画面で確認。条件に合う預金をすぐに絞り込めます。',
+    promo: 'ネット銀行の高金利をチェック',
+    metricA: '0.35%',
+    metricALabel: '最高水準の金利例',
+    metricB: '1万円',
+    metricBLabel: '最低預入の目安',
+  },
+  cards: {
+    title: 'クレジットカードを比較',
+    subtitle: '年会費・還元率・付帯保険を比較して、あなたに合う1枚を見つけましょう。',
+    promo: '最大¥20,000 相当の特典情報も確認',
+    metricA: '1.5%',
+    metricALabel: '高還元率',
+    metricB: '¥0',
+    metricBLabel: '年会費無料の選択肢',
+  },
+  loans: {
+    title: 'ローン条件を見える化',
+    subtitle: '金利・団信・手数料を整理して比較。返済負担を下げる選択肢を探せます。',
+    promo: '借換え候補も同時に比較可能',
+    metricA: '0.219%',
+    metricALabel: '変動金利の例',
+    metricB: '最短',
+    metricBLabel: 'オンライン申込対応',
+  },
+  insurance: {
+    title: '旅行保険を条件で比較',
+    subtitle: '保険料・補償額・サポート体制を比較して、旅先リスクに備えましょう。',
+    promo: '治療救援・日本語サポートを重点比較',
+    metricA: '無制限',
+    metricALabel: '補償例',
+    metricB: '24h',
+    metricBLabel: '日本語サポート',
+  },
+  points: {
+    title: 'ポイ活サービスを比較',
+    subtitle: '還元率・提携先・キャンペーンを比較し、日常支出の効率を高めます。',
+    promo: '還元率・提携先で最適化',
+    metricA: '5.0%',
+    metricALabel: '最大還元率の例',
+    metricB: '全国',
+    metricBLabel: '提携店舗',
+  },
+}
+
+const HERO_IMAGE = {
+  all: 'https://images.unsplash.com/photo-1559526324-4b87b5e36e44?auto=format&fit=crop&w=1200&q=80',
+  savings: 'https://images.unsplash.com/photo-1579621970795-87facc2f976d?auto=format&fit=crop&w=1200&q=80',
+  cards: 'https://images.unsplash.com/photo-1556740738-b6a63e27c4df?auto=format&fit=crop&w=1200&q=80',
+  loans: 'https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?auto=format&fit=crop&w=1200&q=80',
+  insurance: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=80',
+  points: 'https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?auto=format&fit=crop&w=1200&q=80',
+}
+
+const HERO_IMAGE_OVERLAY = {
+  all: 'from-slate-900/35 via-slate-900/10 to-slate-900/45',
+  savings: 'from-blue-900/35 via-indigo-900/10 to-indigo-900/40',
+  cards: 'from-purple-900/35 via-fuchsia-900/10 to-fuchsia-900/40',
+  loans: 'from-emerald-900/35 via-green-900/10 to-green-900/40',
+  insurance: 'from-sky-900/35 via-cyan-900/10 to-cyan-900/40',
+  points: 'from-amber-900/35 via-orange-900/10 to-orange-900/40',
 }
 
 export default function ProductPage() {
@@ -135,6 +254,8 @@ export default function ProductPage() {
   const sortOptions = activeCategory === 'all' ? SORT_OPTIONS : getCategorySortOptions(activeCategory)
   const sortFn = sortOptions.find((o) => o.id === sortBy)?.fn || SORT_OPTIONS[0].fn
   const filteredProducts = [...filteredBySpec].sort(sortFn)
+  const theme = CATEGORY_THEME[activeCategory] || CATEGORY_THEME.all
+  const hero = HERO_COPY[activeCategory] || HERO_COPY.all
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 pb-32 font-sans">
@@ -147,10 +268,8 @@ export default function ProductPage() {
               <button
                 key={cat.id}
                 onClick={() => handleCategoryChange(cat.id)}
-                className={`flex items-center gap-2.5 px-5 py-3 rounded-xl font-bold text-sm whitespace-nowrap transition-all ${
-                  activeCategory === cat.id
-                    ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-lg scale-105'
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+                className={`flex items-center gap-2.5 px-5 py-3 rounded-xl border font-bold text-sm whitespace-nowrap transition-all ${
+                  activeCategory === cat.id ? theme.active : (CATEGORY_THEME[cat.id] || CATEGORY_THEME.all).idle
                 }`}
               >
                 <cat.icon size={22} />
@@ -162,6 +281,54 @@ export default function ProductPage() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className={`mb-7 rounded-3xl overflow-hidden bg-gradient-to-r ${theme.heroBg} text-white shadow-xl`}>
+          <div className="grid lg:grid-cols-2 gap-6 p-6 md:p-8">
+            <div>
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/15 border border-white/20 text-xs font-bold mb-4">
+                <Sparkles size={14} className="text-yellow-300" /> MoneyMart Product Hub
+              </div>
+              <h2 className="text-3xl md:text-5xl font-black leading-tight mb-3">{hero.title}</h2>
+              <p className="text-sm md:text-base text-white/90 font-medium leading-relaxed mb-4">
+                {hero.subtitle}
+              </p>
+              <div className="inline-flex items-center rounded-xl bg-white/15 border border-white/20 px-3 py-2 text-sm font-bold">
+                {hero.promo}
+              </div>
+              <div className="mt-6 flex flex-wrap gap-2">
+                <button className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-white text-slate-900 font-black text-sm hover:bg-slate-100 transition shadow-lg">
+                  条件で探す <ArrowRight size={16} />
+                </button>
+                <button className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-white/10 border border-white/20 font-bold text-sm hover:bg-white/20 transition">
+                  比較を開始 <ArrowRight size={16} />
+                </button>
+              </div>
+              <div className="mt-4 flex flex-wrap gap-3 text-xs font-bold text-white/90">
+                <span className="inline-flex items-center gap-1.5"><ShieldCheck size={14} /> 審査・申込は各社公式サイト</span>
+                <span className="inline-flex items-center gap-1.5"><Clock3 size={14} /> 最短3分で比較完了</span>
+              </div>
+            </div>
+            <div className="relative self-end">
+              <div className="relative rounded-2xl overflow-hidden border border-white/20 shadow-2xl bg-white/10 backdrop-blur-sm">
+                <img
+                  src={HERO_IMAGE[activeCategory] || HERO_IMAGE.all}
+                  alt="product hero"
+                  className="w-full h-56 md:h-64 object-cover saturate-[0.9] contrast-105 brightness-[0.9]"
+                />
+                <div className={`absolute inset-0 bg-gradient-to-br ${HERO_IMAGE_OVERLAY[activeCategory] || HERO_IMAGE_OVERLAY.all}`} />
+                <div className="absolute inset-0 ring-1 ring-inset ring-white/10 pointer-events-none" />
+              </div>
+              <div className="absolute top-3 right-3 rounded-xl bg-white/95 backdrop-blur text-slate-900 px-3 py-2 shadow-lg border border-white">
+                <p className="text-2xl font-black leading-none">{hero.metricA}</p>
+                <p className="text-[10px] font-bold text-slate-500 mt-1">{hero.metricALabel}</p>
+              </div>
+              <div className="absolute bottom-3 left-3 rounded-xl bg-white/95 backdrop-blur text-slate-900 px-3 py-2 shadow-lg border border-white">
+                <p className="text-2xl font-black leading-none">{hero.metricB}</p>
+                <p className="text-[10px] font-bold text-slate-500 mt-1">{hero.metricBLabel}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* 検索 */}
         <div className="relative mb-6">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
@@ -213,11 +380,6 @@ export default function ProductPage() {
           <span className="text-sm text-slate-500 dark:text-slate-400 ml-2">
             {filteredProducts.length}件
           </span>
-        </div>
-
-        {/* 広告バナー */}
-        <div className="mb-8">
-          <AdBanner variant="horizontal" />
         </div>
 
         {/* 商品リスト */}

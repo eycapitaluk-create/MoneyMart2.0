@@ -11,6 +11,8 @@ import {
   PieChart as RechartsPieChart
 } from 'recharts'
 import { supabase } from '../lib/supabase'
+import { calculateRiskScore } from '../simulators/engine/riskEngine'
+import { LEGAL_NOTICE_TEMPLATES } from '../constants/legalNoticeTemplates'
 
 const PORTFOLIO = [
   { id: 1, name: 'Fund A (Global Tech)', value: 1250000, invest: 1000000, return: 25.0, color: '#3b82f6' },
@@ -53,7 +55,13 @@ const DEBT_INFO = {
 
 const buildAiSummaryReport = ({ totalReturnRate, dti, concentration, bestReturn }) => {
   const marketTone = totalReturnRate >= 8 ? '順調' : totalReturnRate >= 3 ? '中立' : '慎重'
-  const riskLevel = dti >= 35 || concentration >= 60 ? 'やや高め' : concentration >= 45 ? '中程度' : '低め'
+  const riskScoreResult = calculateRiskScore({
+    volatilityRisk: concentration,
+    breadthRisk: Math.min(100, dti * 2),
+    flowRisk: Math.max(0, 50 - totalReturnRate),
+    fxRisk: 45,
+  })
+  const riskLevel = riskScoreResult.score >= 70 ? '低め' : riskScoreResult.score >= 40 ? '中程度' : 'やや高め'
 
   const actions = [
     concentration >= 55
@@ -67,12 +75,14 @@ const buildAiSummaryReport = ({ totalReturnRate, dti, concentration, bestReturn 
       : 'リターン改善余地あり。低コスト商品中心に積立額を段階的に増額。',
   ]
 
-  const confidence = riskLevel === '低め' ? '高' : riskLevel === '中程度' ? '中' : '中'
+  const confidence = riskScoreResult.score >= 70 ? '高' : riskScoreResult.score >= 40 ? '中' : '中'
 
   return {
     marketTone,
     riskLevel,
     confidence,
+    riskScore: riskScoreResult.score,
+    riskStatus: riskScoreResult.status,
     actions,
   }
 }
@@ -222,7 +232,9 @@ const LoanApprovalDiagnosisModal = ({ isOpen, onClose }) => {
             <p className="text-slate-500 dark:text-slate-400 font-medium leading-relaxed mb-8">
               8つの質問で、現在の属性ベースの<br />
               <span className="text-blue-500 font-bold">承認可能性の目安</span>を表示します。<br />
-              <span className="text-[11px] text-slate-400 font-bold mt-2 block bg-slate-100 dark:bg-slate-800 py-1 px-3 rounded-full w-fit mx-auto">参考値です。実際の審査結果を保証するものではありません。</span>
+              <span className="text-[11px] text-slate-400 font-bold mt-2 block bg-slate-100 dark:bg-slate-800 py-1 px-3 rounded-full w-fit mx-auto">
+                参考値です。審査結果を保証するものではありません。
+              </span>
             </p>
             <button onClick={() => setStep(1)} className="w-full py-4 bg-slate-900 dark:bg-slate-100 hover:bg-black dark:hover:bg-white text-white dark:text-slate-900 font-bold rounded-2xl shadow-lg transition transform hover:scale-[1.02]">
               診断スタート
@@ -285,9 +297,7 @@ const LoanApprovalDiagnosisModal = ({ isOpen, onClose }) => {
                   ))}
                 </ul>
               </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed mt-4">
-                この診断は参考目安です。最終可否は金融機関の審査結果により異なります。
-              </p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed mt-4">{LEGAL_NOTICE_TEMPLATES.loan}</p>
             </div>
             <button onClick={reset} className="w-full mt-6 py-4 bg-blue-500 hover:bg-blue-600 text-white font-bold rounded-2xl shadow-lg transition">
               もう一度診断する
@@ -299,7 +309,7 @@ const LoanApprovalDiagnosisModal = ({ isOpen, onClose }) => {
   )
 }
 
-const SummarySection = ({ watchlistCount }) => {
+const SummarySection = ({ watchlistCount, user }) => {
   const [reportGeneratedAt, setReportGeneratedAt] = useState(new Date())
   const [savedReport, setSavedReport] = useState(null)
   const [reportSaving, setReportSaving] = useState(false)
@@ -321,6 +331,7 @@ const SummarySection = ({ watchlistCount }) => {
         const { data, error } = await supabase
           .from('ai_reports')
           .select('payload,created_at')
+          .eq('user_id', user?.id)
           .eq('report_type', 'summary')
           .order('created_at', { ascending: false })
           .limit(1)
@@ -341,7 +352,7 @@ const SummarySection = ({ watchlistCount }) => {
     return () => {
       alive = false
     }
-  }, [])
+  }, [user?.id])
 
   const handleRegenerateReport = async () => {
     const nextReport = buildAiSummaryReport({
@@ -361,6 +372,7 @@ const SummarySection = ({ watchlistCount }) => {
       const { error } = await supabase
         .from('ai_reports')
         .insert({
+          user_id: user?.id || null,
           report_type: 'summary',
           payload: {
             generated_at: now.toISOString(),
@@ -561,7 +573,7 @@ const SummarySection = ({ watchlistCount }) => {
               </button>
             </div>
 
-            <div className="grid grid-cols-3 gap-2 mb-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
               <div className="bg-white/10 rounded-lg p-2">
                 <p className="text-[10px] text-slate-300">市場トーン</p>
                 <p className="font-black text-sm">{aiReport.marketTone}</p>
@@ -569,6 +581,10 @@ const SummarySection = ({ watchlistCount }) => {
               <div className="bg-white/10 rounded-lg p-2">
                 <p className="text-[10px] text-slate-300">ポートフォリオリスク</p>
                 <p className="font-black text-sm">{aiReport.riskLevel}</p>
+              </div>
+              <div className="bg-white/10 rounded-lg p-2">
+                <p className="text-[10px] text-slate-300">Risk Score</p>
+                <p className="font-black text-sm">{aiReport.riskScore || '-'} /100</p>
               </div>
               <div className="bg-white/10 rounded-lg p-2">
                 <p className="text-[10px] text-slate-300">信頼度</p>
@@ -583,9 +599,7 @@ const SummarySection = ({ watchlistCount }) => {
                 </p>
               ))}
             </div>
-            <p className="text-[10px] text-slate-400 mt-3">
-              ※ 本リポートは参考情報です。投資判断を保証するものではありません。
-            </p>
+            <p className="text-[10px] text-slate-400 mt-3">※ {LEGAL_NOTICE_TEMPLATES.investment}</p>
           </div>
         </div>
       </div>
@@ -808,6 +822,9 @@ const BudgetSection = () => (
           </div>
           <p className="text-[10px] text-slate-400">満期: 2026/2/28 • 補償額: ¥10,000</p>
         </div>
+        <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-3 leading-relaxed">
+          {LEGAL_NOTICE_TEMPLATES.insurance}
+        </p>
       </div>
     </div>
   </div>
@@ -925,7 +942,7 @@ const DebtSection = ({ onOpenLoanDiagnosis }) => {
   )
 }
 
-export default function MyPage({ fundWatchlist = [] }) {
+export default function MyPage({ fundWatchlist = [], user = null }) {
   const [activeTab, setActiveTab] = useState('summary')
   const [isLoanDiagnosisOpen, setIsLoanDiagnosisOpen] = useState(false)
   const watchlistCount = Array.isArray(fundWatchlist) && fundWatchlist.length > 0 ? fundWatchlist.length : DEFAULT_WATCHLIST.length
@@ -935,7 +952,7 @@ export default function MyPage({ fundWatchlist = [] }) {
       case 'wealth': return <WealthSection watchlistItems={fundWatchlist} />
       case 'budget': return <BudgetSection />
       case 'debt': return <DebtSection onOpenLoanDiagnosis={() => setIsLoanDiagnosisOpen(true)} />
-      default: return <SummarySection watchlistCount={watchlistCount} />
+      default: return <SummarySection watchlistCount={watchlistCount} user={user} />
     }
   }
 

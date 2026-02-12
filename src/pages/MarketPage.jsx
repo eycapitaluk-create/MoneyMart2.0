@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import {
   TrendingUp, Calendar, Newspaper, Activity, Loader2,
   Trophy, ArrowRight, Gift, Building2, Landmark, ChevronRight, Crown,
@@ -6,6 +6,8 @@ import {
 } from 'lucide-react'
 
 import { supabase } from '../lib/supabase'
+import { calculateRiskScore } from '../simulators/engine/riskEngine'
+import { LEGAL_NOTICE_TEMPLATES } from '../constants/legalNoticeTemplates'
 
 const shortenCategory = (name) => {
   if (!name) return 'その他'
@@ -37,12 +39,6 @@ export default function MarketPage() {
     { name: '食品', change: -0.2, weight: 1 },
     { name: '鉄鋼', change: 0.5, weight: 1 },
   ]
-
-  const marketSentiment = {
-    score: 75,
-    status: 'Risk On',
-    desc: '投資家心理は改善。積極的な投資が推奨される局面です。',
-  }
 
   const campaigns = [
     {
@@ -87,21 +83,60 @@ export default function MarketPage() {
           .select('*, fund_prices(return_1y, net_assets, asset_flow_month, price)')
           .limit(100)
 
-        if (error) throw error
+        let processed = []
+        if (!error && Array.isArray(fundsData) && fundsData.length > 0) {
+          processed = fundsData.map((f) => {
+            const priceSource = Array.isArray(f.fund_prices) ? f.fund_prices[0] : f.fund_prices
+            const priceData = priceSource || {}
+            return {
+              id: f.quick_code,
+              name: f.name,
+              category: f.category,
+              shortCat: shortenCategory(f.category),
+              return1y: Number(priceData.return_1y || 0),
+              inflow: Number(priceData.asset_flow_month || 0),
+              price: Number(priceData.price || 0),
+            }
+          })
+        } else {
+          const { data: quickMaster, error: masterErr } = await supabase
+            .from('quick_fund_master')
+            .select('quickcode, official_fund_name, fund_short_name, standard_date')
+            .order('standard_date', { ascending: false })
+            .limit(600)
+          if (masterErr) throw masterErr
 
-        const processed = (fundsData || []).map((f) => {
-          const priceSource = Array.isArray(f.fund_prices) ? f.fund_prices[0] : f.fund_prices
-          const priceData = priceSource || {}
-          return {
-            id: f.quick_code,
-            name: f.name,
-            category: f.category,
-            shortCat: shortenCategory(f.category),
-            return1y: Number(priceData.return_1y || 0),
-            inflow: Number(priceData.asset_flow_month || 0),
-            price: Number(priceData.price || 0),
+          const dedupMap = new Map()
+          for (const row of quickMaster || []) {
+            if (!dedupMap.has(row.quickcode)) dedupMap.set(row.quickcode, row)
           }
-        })
+          const latestMaster = Array.from(dedupMap.values())
+          const quickCodes = latestMaster.map((r) => r.quickcode).slice(0, 200)
+
+          const { data: latestPrice, error: priceErr } = await supabase
+            .from('v_quick_fund_latest_price')
+            .select('quickcode, price, net_asset_value, touraku_1m_per, touraku_1y_per')
+            .in('quickcode', quickCodes)
+          if (priceErr) throw priceErr
+
+          const priceMap = new Map((latestPrice || []).map((p) => [p.quickcode, p]))
+          processed = latestMaster.map((f) => {
+            const p = priceMap.get(f.quickcode) || {}
+            const oneMonth = Number(p.touraku_1m_per || 0)
+            const aum = Number(p.net_asset_value || 0)
+            const simulatedInflow = Math.round((aum / 100) * (oneMonth / 100))
+            const name = f.official_fund_name || f.fund_short_name || f.quickcode
+            return {
+              id: f.quickcode,
+              name,
+              category: name,
+              shortCat: shortenCategory(name),
+              return1y: Number(p.touraku_1y_per || 0),
+              inflow: simulatedInflow,
+              price: Number(p.price || 0),
+            }
+          })
+        }
 
         setTopFunds([...processed].sort((a, b) => b.return1y - a.return1y).slice(0, 5))
         setInflowFunds([...processed].sort((a, b) => b.inflow - a.inflow).slice(0, 5))
@@ -113,6 +148,56 @@ export default function MarketPage() {
     }
     fetchData()
   }, [])
+
+  const marketSentiment = useMemo(() => {
+    const heatmapAbsAvg = heatmapData.reduce((acc, cur) => acc + Math.abs(Number(cur.change || 0)), 0) / Math.max(heatmapData.length, 1)
+    const heatmapPositiveRatio = heatmapData.filter((item) => Number(item.change || 0) > 0).length / Math.max(heatmapData.length, 1)
+    const topFundsAvgReturn = topFunds.reduce((acc, cur) => acc + Number(cur.return1y || 0), 0) / Math.max(topFunds.length, 1)
+    const inflowAvg = inflowFunds.reduce((acc, cur) => acc + Number(cur.inflow || 0), 0) / Math.max(inflowFunds.length, 1)
+
+    const risk = calculateRiskScore({
+      volatilityRisk: Math.min(100, heatmapAbsAvg * 18),
+      breadthRisk: 100 - (heatmapPositiveRatio * 100),
+      flowRisk: Math.max(0, 55 - Math.min(100, topFundsAvgReturn * 2)),
+      fxRisk: inflowAvg >= 0 ? 40 : 60,
+    })
+
+    return {
+      score: risk.score,
+      status: risk.status,
+      desc: risk.desc,
+    }
+  }, [topFunds, inflowFunds, heatmapData])
+
+  const sentimentSignals = useMemo(() => {
+    const heatmapAbsAvg = heatmapData.reduce((acc, cur) => acc + Math.abs(Number(cur.change || 0)), 0) / Math.max(heatmapData.length, 1)
+    const heatmapPositiveRatio = heatmapData.filter((item) => Number(item.change || 0) > 0).length / Math.max(heatmapData.length, 1)
+    const topFundsAvgReturn = topFunds.reduce((acc, cur) => acc + Number(cur.return1y || 0), 0) / Math.max(topFunds.length, 1)
+    const inflowAvg = inflowFunds.reduce((acc, cur) => acc + Number(cur.inflow || 0), 0) / Math.max(inflowFunds.length, 1)
+
+    return [
+      {
+        label: '業種変動',
+        value: `${heatmapAbsAvg.toFixed(1)}%`,
+        tone: heatmapAbsAvg >= 1.8 ? 'alert' : 'calm',
+      },
+      {
+        label: '上昇業種比率',
+        value: `${Math.round(heatmapPositiveRatio * 100)}%`,
+        tone: heatmapPositiveRatio >= 0.5 ? 'calm' : 'alert',
+      },
+      {
+        label: '上位ファンド1Y',
+        value: `${topFundsAvgReturn >= 0 ? '+' : ''}${topFundsAvgReturn.toFixed(1)}%`,
+        tone: topFundsAvgReturn >= 0 ? 'calm' : 'alert',
+      },
+      {
+        label: '平均資金流入',
+        value: `${inflowAvg >= 0 ? '+' : ''}${Math.round(inflowAvg).toLocaleString()}億`,
+        tone: inflowAvg >= 0 ? 'calm' : 'alert',
+      },
+    ]
+  }, [topFunds, inflowFunds, heatmapData])
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-6 animate-fadeIn pb-32 min-h-screen bg-gray-50 dark:bg-slate-900 font-sans transition-colors duration-300">
@@ -290,6 +375,21 @@ export default function MarketPage() {
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-3 bg-slate-50 dark:bg-slate-700/50 p-2 rounded leading-relaxed">
                 {marketSentiment.desc}
               </p>
+              <div className="mt-3 grid grid-cols-2 gap-2 w-full">
+                {sentimentSignals.map((signal) => (
+                  <div
+                    key={signal.label}
+                    className={`rounded-lg border px-2.5 py-2 text-left ${
+                      signal.tone === 'calm'
+                        ? 'border-emerald-200 bg-emerald-50/80 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-900/10 dark:text-emerald-300'
+                        : 'border-amber-200 bg-amber-50/80 text-amber-700 dark:border-amber-900/40 dark:bg-amber-900/10 dark:text-amber-300'
+                    }`}
+                  >
+                    <p className="text-[10px] font-bold opacity-80">{signal.label}</p>
+                    <p className="text-xs font-black mt-0.5">{signal.value}</p>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -373,6 +473,9 @@ export default function MarketPage() {
           ))}
         </div>
       </div>
+      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-5 leading-relaxed">
+        {LEGAL_NOTICE_TEMPLATES.investment}
+      </p>
     </div>
   )
 }

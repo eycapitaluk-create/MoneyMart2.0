@@ -4,7 +4,7 @@ import Navbar from './Navbar'
 import Footer from './Footer'
 import ChatBot from '../ChatBot'
 
-export default function Layout() {
+export default function Layout({ session = null, authReady = false }) {
   const [darkMode, setDarkMode] = useState(() => {
     if (typeof window !== 'undefined') {
       return window.matchMedia('(prefers-color-scheme: dark)').matches
@@ -24,7 +24,7 @@ export default function Layout() {
 
   return (
     <div className="min-h-screen flex flex-col bg-white dark:bg-gray-950 font-sans">
-      <Navbar darkMode={darkMode} onToggleDarkMode={toggleDarkMode} />
+      <Navbar darkMode={darkMode} onToggleDarkMode={toggleDarkMode} session={session} authReady={authReady} />
       <main className="flex-1">
         <Outlet />
       </main>

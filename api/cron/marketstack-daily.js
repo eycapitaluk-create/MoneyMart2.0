@@ -115,12 +115,13 @@ const fetchChunkRows = async (marketstackKey, symbols) => {
 
 export default async function handler(req, res) {
   const cronSecret = process.env.CRON_SECRET
-  if (cronSecret) {
-    const auth = req.headers.authorization || ''
-    const token = auth.startsWith('Bearer ') ? auth.slice(7) : ''
-    if (token !== cronSecret) {
-      return res.status(401).json({ ok: false, error: 'Unauthorized cron request' })
-    }
+  if (!cronSecret) {
+    return res.status(500).json({ ok: false, error: 'CRON_SECRET is required' })
+  }
+  const auth = req.headers.authorization || ''
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : ''
+  if (token !== cronSecret) {
+    return res.status(401).json({ ok: false, error: 'Unauthorized cron request' })
   }
 
   const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL

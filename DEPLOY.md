@@ -47,9 +47,14 @@ git push -u origin main
    - **Build Command**: `npm run build` (기본값)
    - **Output Directory**: `dist` (기본값)
    - **Install Command**: `npm install` (기본값)
-5. **Environment Variables** (필요한 경우):
+5. **Environment Variables**:
    - `VITE_SUPABASE_URL` = Supabase 프로젝트 URL
    - `VITE_SUPABASE_ANON_KEY` = Supabase anon key
+   - `SUPABASE_URL` = Supabase 프로젝트 URL (server-side)
+   - `SUPABASE_SECRET_KEY` = Supabase service role key (server-side)
+   - `CRON_SECRET` = cron 보호 토큰 (랜덤 문자열)
+   - `MARKETSTACK_ACCESS_KEY` = marketstack API key (server-side)
+   - `MARKETSTACK_SYMBOLS` = (선택) 수집 심볼 목록, 예: `AAPL,MSFT,NVDA`
 6. **Deploy** 클릭
 
 ### 방법 B: Vercel CLI
@@ -81,15 +86,22 @@ GitHub와 Vercel을 연결하면:
 
 ---
 
-## 4. 환경 변수
+## 4. 환경 변수 (중요)
 
 `.env` 파일이 있으면 다음 환경 변수를 Vercel 대시보드에 추가하세요:
 
 - **Settings** → **Environment Variables**
-- `VITE_SUPABASE_URL` (Production, Preview, Development 모두 체크)
-- `VITE_SUPABASE_ANON_KEY` (Production, Preview, Development 모두 체크)
+- `VITE_SUPABASE_URL` (Production/Preview/Development)
+- `VITE_SUPABASE_ANON_KEY` (Production/Preview/Development)
+- `SUPABASE_URL` (Production/Preview)
+- `SUPABASE_SECRET_KEY` (Production/Preview)  
+  - `SUPABASE_SERVICE_ROLE_KEY`를 쓰는 경우도 있으나, 프로젝트에서는 `SUPABASE_SECRET_KEY`를 우선 사용
+- `MARKETSTACK_ACCESS_KEY` (Production/Preview)
+- `CRON_SECRET` (Production/Preview)
+- `MARKETSTACK_SYMBOLS` (선택)
 
-⚠️ `.env` 파일은 `.gitignore`에 포함되어 있어 GitHub에 올라가지 않습니다. 반드시 Vercel 대시보드에서 직접 입력해야 합니다.
+⚠️ `SUPABASE_SECRET_KEY`, `CRON_SECRET`, `MARKETSTACK_ACCESS_KEY`는 서버 전용 비밀값입니다.  
+절대 클라이언트 코드(`VITE_*`)로 노출하지 마세요.
 
 ---
 

@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Search, Play, BookOpen, GraduationCap,
   ChevronRight, CheckCircle2, Award, Youtube
 } from 'lucide-react'
 import AdBanner from '../components/AdBanner'
+import { LEGAL_NOTICE_TEMPLATES } from '../constants/legalNoticeTemplates'
 
 const FEATURED_VIDEO = {
   id: 'f1',
@@ -47,6 +48,22 @@ const TERM_OF_DAY = {
 export default function AcademyPage() {
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState('all')
+  const [searchQuery, setSearchQuery] = useState('')
+
+  const filteredCategories = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase()
+    return VIDEO_CATEGORIES
+      .filter((category) => activeTab === 'all' || category.id === activeTab)
+      .map((category) => ({
+        ...category,
+        videos: category.videos.filter((video) => {
+          if (!query) return true
+          const target = `${video.title} ${video.level}`.toLowerCase()
+          return target.includes(query)
+        }),
+      }))
+      .filter((category) => category.videos.length > 0)
+  }, [activeTab, searchQuery])
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] dark:bg-slate-950 pb-20 font-sans">
@@ -55,7 +72,7 @@ export default function AcademyPage() {
         <nav className="flex justify-between items-center mb-8 max-w-7xl mx-auto">
           <h1 className="text-lg font-bold text-white">アカデミー</h1>
           <button
-            onClick={() => navigate('/prime')}
+            onClick={() => navigate('/mypage')}
             className="bg-white/10 text-white px-4 py-2 rounded-full text-xs font-bold hover:bg-white/20 transition"
           >
             マイページ
@@ -77,6 +94,8 @@ export default function AcademyPage() {
           <div className="relative max-w-lg mx-auto">
             <input
               type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="何を学びたいですか？ (例: NISA, チャート分析...)"
               className="w-full pl-12 pr-4 py-4 rounded-2xl bg-white dark:bg-slate-800 shadow-xl text-slate-900 dark:text-white font-bold outline-none focus:ring-4 focus:ring-orange-500/30 transition placeholder-slate-400"
             />
@@ -92,6 +111,26 @@ export default function AcademyPage() {
       <div className="max-w-7xl mx-auto px-4 -mt-10 relative z-20 grid grid-cols-1 lg:grid-cols-12 gap-8">
         {/* [Left Column] Video Content */}
         <div className="lg:col-span-8 space-y-10">
+          <div className="flex flex-wrap gap-2 px-1">
+            {[
+              { id: 'all', label: 'すべて' },
+              { id: 'beginner', label: '基礎講座' },
+              { id: 'analysis', label: '分析講座' },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`px-3 py-1.5 rounded-full text-xs font-bold border transition ${
+                  activeTab === tab.id
+                    ? 'bg-slate-900 text-white border-slate-900 dark:bg-orange-500 dark:border-orange-500'
+                    : 'bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
           <div className="bg-white dark:bg-slate-900 p-4 rounded-[2rem] shadow-xl border border-slate-100 dark:border-slate-800 group cursor-pointer hover:shadow-2xl transition">
             <div className={`aspect-video rounded-2xl ${FEATURED_VIDEO.thumbnail} relative flex items-center justify-center mb-4 overflow-hidden`}>
               <div className="w-16 h-16 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center group-hover:scale-110 transition duration-300">
@@ -100,8 +139,8 @@ export default function AcademyPage() {
               <span className="absolute bottom-4 right-4 bg-black/60 text-white text-xs font-bold px-2 py-1 rounded">
                 {FEATURED_VIDEO.duration}
               </span>
-              <span className="absolute top-4 left-4 bg-red-600 text-white text-[10px] font-black px-2 py-1 rounded uppercase tracking-wider flex items-center gap-1">
-                <Youtube size={12} /> Official
+              <span className="absolute top-4 left-4 bg-red-600 text-white text-[10px] font-black px-2 py-1 rounded tracking-wider flex items-center gap-1">
+                <Youtube size={12} /> 公式
               </span>
             </div>
             <div className="px-2">
@@ -122,7 +161,7 @@ export default function AcademyPage() {
             </div>
           </div>
 
-          {VIDEO_CATEGORIES.map((category) => (
+          {filteredCategories.map((category) => (
             <div key={category.id}>
               <div className="flex justify-between items-end mb-4 px-2">
                 <h3 className="text-xl font-black text-slate-900 dark:text-white">{category.title}</h3>
@@ -155,6 +194,11 @@ export default function AcademyPage() {
               </div>
             </div>
           ))}
+          {filteredCategories.length === 0 ? (
+            <div className="bg-white dark:bg-slate-900 p-8 rounded-2xl border border-slate-200 dark:border-slate-800 text-center text-sm font-bold text-slate-500 dark:text-slate-400">
+              該当する講座が見つかりませんでした。
+            </div>
+          ) : null}
         </div>
 
         {/* [Right Column] Sidebar */}
@@ -164,7 +208,7 @@ export default function AcademyPage() {
           <div className="bg-gradient-to-br from-indigo-900 to-slate-800 text-white p-6 rounded-[2rem] shadow-lg relative overflow-hidden">
             <div className="relative z-10">
               <div className="flex items-center gap-2 mb-4 text-indigo-300 font-bold text-xs uppercase tracking-widest">
-                <BookOpen size={16} /> Word of the Day
+                <BookOpen size={16} /> 今日の用語
               </div>
               <h3 className="text-2xl font-black mb-1">{TERM_OF_DAY.word}</h3>
               <p className="text-xs text-slate-400 mb-4 font-mono">{TERM_OF_DAY.reading}</p>
@@ -183,7 +227,7 @@ export default function AcademyPage() {
             <div className="flex justify-between items-center mb-4">
               <h3 className="font-bold text-slate-900 dark:text-white">学習レベル</h3>
               <span className="text-xs font-black text-orange-500 bg-orange-50 dark:bg-orange-900/20 px-2 py-1 rounded-full">
-                Lv.3 Beginner
+                Lv.3 初級
               </span>
             </div>
             <div className="flex justify-center mb-6">
@@ -196,7 +240,7 @@ export default function AcademyPage() {
                   <span className="text-3xl font-black text-slate-900 dark:text-white">
                     72<span className="text-sm">%</span>
                   </span>
-                  <span className="text-[10px] text-slate-400 font-bold">Next Level</span>
+                  <span className="text-[10px] text-slate-400 font-bold">次のレベルまで</span>
                 </div>
               </div>
             </div>
@@ -222,6 +266,11 @@ export default function AcademyPage() {
             </button>
           </div>
         </div>
+      </div>
+      <div className="max-w-7xl mx-auto px-4 mt-6">
+        <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+          {LEGAL_NOTICE_TEMPLATES.investment}
+        </p>
       </div>
     </div>
   )

@@ -56,6 +56,8 @@ export default function FAQPage() {
   const filteredItems = FAQ_DATA[activeTab].items.filter(
     (item) => item.q.includes(searchQuery) || item.a.includes(searchQuery)
   )
+  const openChatSupport = () => window.dispatchEvent(new Event('mm:open-chat'))
+  const openContactForm = () => window.dispatchEvent(new Event('mm:open-contact'))
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 font-sans pb-20">
@@ -165,7 +167,10 @@ export default function FAQPage() {
         <div className="mt-20 text-center">
           <h3 className="text-xl font-black text-slate-900 dark:text-white mb-6">解決しませんでしたか？</h3>
           <div className="grid md:grid-cols-2 gap-4 max-w-xl mx-auto">
-            <button className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-orange-500 hover:shadow-lg transition group text-left">
+            <button
+              onClick={openChatSupport}
+              className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-orange-500 hover:shadow-lg transition group text-left"
+            >
               <div className="w-12 h-12 bg-blue-50 dark:bg-blue-900/30 text-blue-500 rounded-full flex items-center justify-center mb-4 group-hover:bg-blue-500 group-hover:text-white transition">
                 <MessageCircle size={24} />
               </div>
@@ -176,7 +181,10 @@ export default function FAQPage() {
               </span>
             </button>
 
-            <button className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-orange-500 hover:shadow-lg transition group text-left">
+            <button
+              onClick={openContactForm}
+              className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-orange-500 hover:shadow-lg transition group text-left"
+            >
               <div className="w-12 h-12 bg-green-50 dark:bg-green-900/30 text-green-500 rounded-full flex items-center justify-center mb-4 group-hover:bg-green-500 group-hover:text-white transition">
                 <Mail size={24} />
               </div>

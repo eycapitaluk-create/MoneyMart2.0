@@ -120,6 +120,8 @@ export default function Footer() {
             <button onClick={() => navigate('/products')} className="hover:text-orange-400">金融商品</button>
             <button onClick={() => navigate('/faq')} className="hover:text-orange-400">FAQ</button>
             <button onClick={() => navigate('/mypage')} className="hover:text-orange-400">AI診断</button>
+            <button onClick={() => navigate('/legal/terms')} className="hover:text-orange-400">利用規約</button>
+            <button onClick={() => navigate('/legal/privacy')} className="hover:text-orange-400">プライバシー</button>
           </div>
           <p className="text-[9px] text-slate-500">© 2026 MoneyLab Ltd.</p>
         </div>

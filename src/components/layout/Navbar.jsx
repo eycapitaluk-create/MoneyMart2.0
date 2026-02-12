@@ -1,8 +1,9 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { Menu, X, LogIn, Sun, Moon } from 'lucide-react'
 import { useState } from 'react'
+import { supabase } from '../../lib/supabase'
 
-export default function Navbar({ darkMode, onToggleDarkMode }) {
+export default function Navbar({ darkMode, onToggleDarkMode, session = null, authReady = false }) {
   const navigate = useNavigate()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
 
@@ -13,6 +14,12 @@ export default function Navbar({ darkMode, onToggleDarkMode }) {
     { name: 'ポイント', id: 'points' },
     { name: '旅行保険', id: 'insurance' },
   ]
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    setIsMobileMenuOpen(false)
+    navigate('/')
+  }
 
   return (
     <nav className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 sticky top-0 z-50 font-sans">
@@ -64,15 +71,28 @@ export default function Navbar({ darkMode, onToggleDarkMode }) {
               {darkMode ? <Sun size={18} /> : <Moon size={18} />}
             </button>
 
-            <Link to="/mypage" className="text-sm font-bold text-slate-500 hover:text-orange-500 dark:text-slate-400 dark:hover:text-orange-500 transition">
-              マイページ
-            </Link>
-            <button
-              onClick={() => navigate('/login')}
-              className="bg-slate-900 hover:bg-black dark:bg-slate-100 dark:hover:bg-white dark:text-slate-900 text-white px-5 py-2 rounded-full text-sm font-bold transition shadow-lg flex items-center gap-2"
-            >
-              <LogIn size={16} /> ログイン
-            </button>
+            {!authReady ? (
+              <div className="h-9 w-28 rounded-full bg-slate-200 dark:bg-slate-700 animate-pulse" />
+            ) : session ? (
+              <>
+                <Link to="/mypage" className="text-sm font-bold text-slate-500 hover:text-orange-500 dark:text-slate-400 dark:hover:text-orange-500 transition">
+                  マイページ
+                </Link>
+                <button
+                  onClick={handleLogout}
+                  className="bg-slate-900 hover:bg-black dark:bg-slate-100 dark:hover:bg-white dark:text-slate-900 text-white px-5 py-2 rounded-full text-sm font-bold transition shadow-lg flex items-center gap-2"
+                >
+                  ログアウト
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => navigate('/login')}
+                className="bg-slate-900 hover:bg-black dark:bg-slate-100 dark:hover:bg-white dark:text-slate-900 text-white px-5 py-2 rounded-full text-sm font-bold transition shadow-lg flex items-center gap-2"
+              >
+                <LogIn size={16} /> ログイン
+              </button>
+            )}
           </div>
 
           {/* モバイルメニューボタン */}
@@ -117,16 +137,27 @@ export default function Navbar({ darkMode, onToggleDarkMode }) {
           </div>
 
           <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-col gap-3">
-            <Link to="/mypage" onClick={() => setIsMobileMenuOpen(false)} className="block font-bold text-orange-500">マイページ</Link>
+            {authReady && session ? <Link to="/mypage" onClick={() => setIsMobileMenuOpen(false)} className="block font-bold text-orange-500">マイページ</Link> : null}
             <Link to="/lounge" onClick={() => setIsMobileMenuOpen(false)} className="block font-bold">ラウンジ</Link>
             <Link to="/academy" onClick={() => setIsMobileMenuOpen(false)} className="block font-bold">アカデミー</Link>
             <Link to="/prime" onClick={() => setIsMobileMenuOpen(false)} className="block font-black text-yellow-500">PRIMEメンバーシップ</Link>
-            <button
-              onClick={() => { navigate('/login'); setIsMobileMenuOpen(false); }}
-              className="w-full bg-orange-500 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2"
-            >
-              <LogIn size={20} /> ログイン / 会員登録
-            </button>
+            {!authReady ? (
+              <div className="w-full h-12 rounded-xl bg-slate-200 dark:bg-slate-700 animate-pulse" />
+            ) : session ? (
+              <button
+                onClick={handleLogout}
+                className="w-full bg-slate-900 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2"
+              >
+                ログアウト
+              </button>
+            ) : (
+              <button
+                onClick={() => { navigate('/login'); setIsMobileMenuOpen(false); }}
+                className="w-full bg-orange-500 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2"
+              >
+                <LogIn size={20} /> ログイン / 会員登録
+              </button>
+            )}
           </div>
         </div>
       )}

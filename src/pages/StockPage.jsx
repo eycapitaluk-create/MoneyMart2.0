@@ -9,6 +9,10 @@ import {
 } from 'recharts'
 import { supabase } from '../lib/supabase'
 import { MOCK_STOCKS, REGION_BY_SYMBOL } from '../data/mockStocks'
+import { calculateRequiredMonthlyContribution } from '../simulators/engine/goalEngine'
+import { calculateTotalCost } from '../simulators/engine/costEngine'
+import { saveSimulatorRun } from '../services/simulatorResultService'
+import { LEGAL_NOTICE_TEMPLATES } from '../constants/legalNoticeTemplates'
 
 const TIMEFRAMES = ['1D', '1W', '1M', '3M', '1Y', '5Y']
 
@@ -68,16 +72,6 @@ const formatCompact = (value) => {
   return `${Math.round(value)}`
 }
 
-const estimateMonthlyPlan = ({ targetAmount, currentAmount, annualRate, years }) => {
-  const months = Math.max(1, years * 12)
-  const monthlyRate = annualRate / 12
-  const futureOfCurrent = currentAmount * (1 + monthlyRate) ** months
-  const requiredFutureFromContrib = Math.max(0, targetAmount - futureOfCurrent)
-  if (monthlyRate === 0) return requiredFutureFromContrib / months
-  const factor = ((1 + monthlyRate) ** months - 1) / monthlyRate
-  return requiredFutureFromContrib / factor
-}
-
 const inferLiveRegion = (code, exchange) => {
   if (REGION_BY_SYMBOL[code]) return REGION_BY_SYMBOL[code]
   if (/\.(L|LN)$/i.test(code)) return 'UK'
@@ -116,10 +110,10 @@ export default function StockPage() {
   const [selectedRegion, setSelectedRegion] = useState('US')
   const [searchQuery, setSearchQuery] = useState('')
   const [timeframe, setTimeframe] = useState('1M')
-  const [selectedStock, setSelectedStock] = useState(MOCK_STOCKS.US[0])
+  const [selectedStock, setSelectedStock] = useState(null)
   const [chartData, setChartData] = useState([])
   const [watchlist, setWatchlist] = useState(['AAPL', 'NVDA'])
-  const [liveStocks, setLiveStocks] = useState({ US: [...MOCK_STOCKS.US] })
+  const [liveStocks, setLiveStocks] = useState({ US: [] })
   const [marketLoading, setMarketLoading] = useState(true)
   const [marketError, setMarketError] = useState('')
   const [usingMockData, setUsingMockData] = useState(true)
@@ -133,6 +127,7 @@ export default function StockPage() {
   const [costYears, setCostYears] = useState(1)
   const [costTradesPerMonth, setCostTradesPerMonth] = useState(2)
   const [costFxRatio, setCostFxRatio] = useState(60)
+  const [simSaveStatus, setSimSaveStatus] = useState('')
 
   const mergeWithMockUniverse = (liveUs) => {
     const liveByCode = new Map(liveUs.map((s) => [s.code, s]))
@@ -226,10 +221,11 @@ export default function StockPage() {
   })
 
   useEffect(() => {
+    if (marketLoading) return
     if (!selectedStock || selectedStock.region !== selectedRegion || !filteredStocks.some((s) => s.id === selectedStock.id)) {
       setSelectedStock(filteredStocks[0] || null)
     }
-  }, [selectedRegion, searchQuery, filteredStocks, selectedStock])
+  }, [selectedRegion, searchQuery, filteredStocks, selectedStock, marketLoading])
 
   useEffect(() => {
     if (!selectedStock) return
@@ -242,43 +238,78 @@ export default function StockPage() {
   const displayedStock = filteredStocks.find((s) => s.id === selectedStock?.id) || filteredStocks[0] || selectedStock
   const isUp = (displayedStock?.rate || 0) > 0
   const chartColor = isUp ? '#ef4444' : '#3b82f6'
-  const goalAnnualRate = goalRiskProfile === 'conservative' ? 0.03 : goalRiskProfile === 'aggressive' ? 0.08 : 0.05
-  const requiredMonthlyYen = estimateMonthlyPlan({
+  const requiredMonthlyYen = calculateRequiredMonthlyContribution({
     targetAmount: goalTarget * 10000,
     currentAmount: goalCurrent * 10000,
-    annualRate: goalAnnualRate,
     years: goalYears,
+    riskProfile: goalRiskProfile,
   })
   const selectedBroker = PLATFORM_PARTNERS.find((p) => p.id === costBrokerId) || PLATFORM_PARTNERS[0]
   const costSummary = useMemo(() => {
-    const months = Math.max(1, costYears * 12)
-    const totalInvested = costInitialYen + costMonthlyYen * months
-    const domesticFeeTotal = selectedBroker.domesticFeePerTrade * costTradesPerMonth * months
-    const fxCostTotal = totalInvested * (selectedBroker.fxSpreadBps / 10000) * (costFxRatio / 100)
-    const managedBalanceApprox = costInitialYen + (costMonthlyYen * months * 0.5)
-    const trustFeeTotal = managedBalanceApprox * (selectedBroker.trustFeeAnnualPct / 100) * costYears
-    const totalCost = domesticFeeTotal + fxCostTotal + trustFeeTotal
-
-    const avgTotal = PLATFORM_PARTNERS.reduce((acc, broker) => {
-      const fee = broker.domesticFeePerTrade * costTradesPerMonth * months
-      const fx = totalInvested * (broker.fxSpreadBps / 10000) * (costFxRatio / 100)
-      const trust = managedBalanceApprox * (broker.trustFeeAnnualPct / 100) * costYears
-      return acc + fee + fx + trust
-    }, 0) / PLATFORM_PARTNERS.length
-
-    return {
-      totalInvested,
-      domesticFeeTotal,
-      fxCostTotal,
-      trustFeeTotal,
-      totalCost,
-      savingsVsAvg: avgTotal - totalCost,
-    }
+    return calculateTotalCost({
+      broker: selectedBroker,
+      brokers: PLATFORM_PARTNERS,
+      initialYen: costInitialYen,
+      monthlyYen: costMonthlyYen,
+      years: costYears,
+      tradesPerMonth: costTradesPerMonth,
+      fxRatio: costFxRatio,
+    })
   }, [selectedBroker, costYears, costInitialYen, costMonthlyYen, costTradesPerMonth, costFxRatio])
 
   const toggleWatch = (id) => {
     if (!id) return
     setWatchlist((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
+  }
+
+  const handleSaveGoalSimulation = async () => {
+    setSimSaveStatus('保存中...')
+    try {
+      const result = await saveSimulatorRun({
+        page: 'stocks',
+        simulatorType: 'goal_planner',
+        inputPayload: {
+          goalTarget,
+          goalYears,
+          goalCurrent,
+          goalRiskProfile,
+          selectedStock: displayedStock?.code || null,
+        },
+        outputPayload: {
+          requiredMonthlyYen: Math.max(0, Math.round(requiredMonthlyYen)),
+        },
+      })
+      setSimSaveStatus(result.saved ? 'シミュレーションを保存しました' : 'ログイン後に保存できます')
+    } catch {
+      setSimSaveStatus('保存に失敗しました')
+    }
+  }
+
+  const handleSaveCostSimulation = async () => {
+    setSimSaveStatus('保存中...')
+    try {
+      const result = await saveSimulatorRun({
+        page: 'stocks',
+        simulatorType: 'total_cost',
+        inputPayload: {
+          broker: selectedBroker?.id || null,
+          costInitialYen,
+          costMonthlyYen,
+          costYears,
+          costTradesPerMonth,
+          costFxRatio,
+        },
+        outputPayload: {
+          totalInvested: Math.round(costSummary.totalInvested),
+          totalCost: Math.round(costSummary.totalCost),
+          annualizedCost: Math.round(costSummary.totalCost / Math.max(costYears, 1)),
+          savingsVsAvg: Math.round(costSummary.savingsVsAvg),
+        },
+      })
+      setSimSaveStatus(result.saved ? 'シミュレーションを保存しました' : 'ログイン後に保存できます')
+    } catch {
+      setSimSaveStatus('保存に失敗しました')
+    }
   }
 
   const CustomTooltip = ({ active, payload }) => {
@@ -388,7 +419,16 @@ export default function StockPage() {
         </div>
 
         <div className="lg:col-span-9 space-y-6">
-          {displayedStock && (
+          {marketLoading ? (
+            <div className="space-y-6 animate-pulse">
+              <div className="h-16 bg-slate-200 dark:bg-slate-800 rounded-2xl" />
+              <div className="h-[420px] bg-slate-200 dark:bg-slate-800 rounded-3xl" />
+              <div className="grid grid-cols-2 gap-4">
+                <div className="h-14 bg-slate-200 dark:bg-slate-800 rounded-2xl" />
+                <div className="h-14 bg-slate-200 dark:bg-slate-800 rounded-2xl" />
+              </div>
+            </div>
+          ) : displayedStock ? (
             <>
               <div className="flex justify-between items-end gap-4">
                 <div>
@@ -602,6 +642,12 @@ export default function StockPage() {
                       <p className="text-[11px] text-slate-400 mt-2">
                         参考値です。実際の成果は市場変動・コスト・税制により異なります。
                       </p>
+                      <button
+                        onClick={handleSaveGoalSimulation}
+                        className="mt-3 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-white/20 hover:bg-white/30 border border-white/20"
+                      >
+                        この結果を保存
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -676,6 +722,12 @@ export default function StockPage() {
                     <p className="text-[11px] text-slate-500 dark:text-slate-400">
                       試算は概算です。実際は銘柄・注文方法・為替タイミング・キャンペーン条件等で変動します。
                     </p>
+                    <button
+                      onClick={handleSaveCostSimulation}
+                      className="px-3 py-1.5 text-[11px] font-bold rounded-lg bg-slate-900 text-white dark:bg-orange-500 hover:opacity-90"
+                    >
+                      この結果を保存
+                    </button>
                   </div>
                 </div>
 
@@ -707,6 +759,9 @@ export default function StockPage() {
                   <p className="text-[11px] text-slate-400 mt-3 leading-relaxed">
                     MoneyMartは比較・情報提供を行うプラットフォームです。実際の注文・口座開設は各社サイトで行います。
                   </p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-2 leading-relaxed">
+                    {LEGAL_NOTICE_TEMPLATES.investment}
+                  </p>
                 </div>
               </div>
 
@@ -715,6 +770,7 @@ export default function StockPage() {
                   <div>
                     <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300">Platform Insight</h3>
                     <p className="text-xs text-slate-500 mt-1">価格だけでなく、あなたの目標達成への影響を可視化します。</p>
+                    {simSaveStatus ? <p className="text-[11px] text-slate-400 mt-1">{simSaveStatus}</p> : null}
                   </div>
                   <button className="inline-flex items-center gap-1 text-xs font-bold text-orange-500 hover:text-orange-400">
                     詳細を見る <ArrowRight size={14} />
@@ -722,7 +778,7 @@ export default function StockPage() {
                 </div>
               </div>
             </>
-          )}
+          ) : null}
         </div>
       </div>
     </div>

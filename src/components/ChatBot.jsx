@@ -3,6 +3,7 @@ import {
   MessageCircle, X, Send, Mail, Bot,
   ChevronLeft, Loader2
 } from 'lucide-react'
+import { supabase } from '../lib/supabase'
 
 export default function ChatBot() {
   const [isOpen, setIsOpen] = useState(false)
@@ -21,6 +22,23 @@ export default function ChatBot() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, isOpen, mode])
+
+  useEffect(() => {
+    const openChat = () => {
+      setIsOpen(true)
+      setMode('chat')
+    }
+    const openContact = () => {
+      setIsOpen(true)
+      setMode('contact')
+    }
+    window.addEventListener('mm:open-chat', openChat)
+    window.addEventListener('mm:open-contact', openContact)
+    return () => {
+      window.removeEventListener('mm:open-chat', openChat)
+      window.removeEventListener('mm:open-contact', openContact)
+    }
+  }, [])
 
   const handleSendMessage = () => {
     if (!inputText.trim()) return
@@ -43,19 +61,30 @@ export default function ChatBot() {
     }, 1000)
   }
 
-  const handleContactSubmit = (e) => {
+  const handleContactSubmit = async (e) => {
     e.preventDefault()
     if (!contactForm.email || !contactForm.message) return
 
     setIsSending(true)
-
-    setTimeout(() => {
-      setIsSending(false)
+    try {
+      const { error } = await supabase
+        .from('support_inquiries')
+        .insert({
+          email: contactForm.email,
+          message: contactForm.message,
+          source: 'chatbot',
+          status: 'new',
+        })
+      if (error) throw error
       alert('お問い合わせを受け付けました。\n担当者より24時間以内にメールでご連絡いたします。')
       setContactForm({ email: '', message: '' })
       setMode('chat')
       setMessages(prev => [...prev, { id: Date.now(), sender: 'bot', text: 'お問い合わせありがとうございます。担当者からの連絡をお待ちください。' }])
-    }, 1500)
+    } catch {
+      alert('送信に失敗しました。しばらくしてから再度お試しください。')
+    } finally {
+      setIsSending(false)
+    }
   }
 
   return (

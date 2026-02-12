@@ -21,15 +21,15 @@ drop policy if exists "ai_reports_public_read" on public.ai_reports;
 create policy "ai_reports_public_read"
 on public.ai_reports
 for select
-to anon, authenticated
-using (true);
+to authenticated
+using (user_id = auth.uid());
 
 drop policy if exists "ai_reports_public_insert" on public.ai_reports;
 create policy "ai_reports_public_insert"
 on public.ai_reports
 for insert
-to anon, authenticated
-with check (true);
+to authenticated
+with check (user_id = auth.uid());
 
 -- Note:
 -- For production, tighten this to authenticated users only and scope by user_id.

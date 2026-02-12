@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import {
   Search, Star, Plus, Layout,
   TrendingUp, TrendingDown, Clock, Info,
@@ -20,9 +20,9 @@ const MARKET_TICKER = [
 ]
 
 const PLATFORM_PARTNERS = [
-  { name: 'SBI証券', fee: '無料', points: 'Tポイント', note: 'NISA対応・国内外商品が豊富', url: 'https://www.sbisec.co.jp' },
-  { name: '楽天証券', fee: '無料', points: '楽天ポイント', note: '楽天経済圏との連携が強い', url: 'https://www.rakuten-sec.co.jp' },
-  { name: 'マネックス証券', fee: '55円~', points: 'マネックスP', note: '米国株・分析ツールが強み', url: 'https://www.monex.co.jp' },
+  { id: 'sbi', name: 'SBI証券', fee: '無料', points: 'Tポイント', note: 'NISA対応・国内外商品が豊富', url: 'https://www.sbisec.co.jp', domesticFeePerTrade: 0, fxSpreadBps: 20, trustFeeAnnualPct: 0.18 },
+  { id: 'rakuten', name: '楽天証券', fee: '無料', points: '楽天ポイント', note: '楽天経済圏との連携が強い', url: 'https://www.rakuten-sec.co.jp', domesticFeePerTrade: 0, fxSpreadBps: 25, trustFeeAnnualPct: 0.21 },
+  { id: 'monex', name: 'マネックス証券', fee: '55円~', points: 'マネックスP', note: '米国株・分析ツールが強み', url: 'https://www.monex.co.jp', domesticFeePerTrade: 55, fxSpreadBps: 30, trustFeeAnnualPct: 0.24 },
 ]
 
 const generateChartData = (points, startPrice, volatility) => {
@@ -127,6 +127,12 @@ export default function StockPage() {
   const [goalYears, setGoalYears] = useState(10)
   const [goalCurrent, setGoalCurrent] = useState(300)
   const [goalRiskProfile, setGoalRiskProfile] = useState('balanced')
+  const [costBrokerId, setCostBrokerId] = useState('sbi')
+  const [costInitialYen, setCostInitialYen] = useState(500000)
+  const [costMonthlyYen, setCostMonthlyYen] = useState(50000)
+  const [costYears, setCostYears] = useState(1)
+  const [costTradesPerMonth, setCostTradesPerMonth] = useState(2)
+  const [costFxRatio, setCostFxRatio] = useState(60)
 
   const mergeWithMockUniverse = (liveUs) => {
     const liveByCode = new Map(liveUs.map((s) => [s.code, s]))
@@ -243,6 +249,32 @@ export default function StockPage() {
     annualRate: goalAnnualRate,
     years: goalYears,
   })
+  const selectedBroker = PLATFORM_PARTNERS.find((p) => p.id === costBrokerId) || PLATFORM_PARTNERS[0]
+  const costSummary = useMemo(() => {
+    const months = Math.max(1, costYears * 12)
+    const totalInvested = costInitialYen + costMonthlyYen * months
+    const domesticFeeTotal = selectedBroker.domesticFeePerTrade * costTradesPerMonth * months
+    const fxCostTotal = totalInvested * (selectedBroker.fxSpreadBps / 10000) * (costFxRatio / 100)
+    const managedBalanceApprox = costInitialYen + (costMonthlyYen * months * 0.5)
+    const trustFeeTotal = managedBalanceApprox * (selectedBroker.trustFeeAnnualPct / 100) * costYears
+    const totalCost = domesticFeeTotal + fxCostTotal + trustFeeTotal
+
+    const avgTotal = PLATFORM_PARTNERS.reduce((acc, broker) => {
+      const fee = broker.domesticFeePerTrade * costTradesPerMonth * months
+      const fx = totalInvested * (broker.fxSpreadBps / 10000) * (costFxRatio / 100)
+      const trust = managedBalanceApprox * (broker.trustFeeAnnualPct / 100) * costYears
+      return acc + fee + fx + trust
+    }, 0) / PLATFORM_PARTNERS.length
+
+    return {
+      totalInvested,
+      domesticFeeTotal,
+      fxCostTotal,
+      trustFeeTotal,
+      totalCost,
+      savingsVsAvg: avgTotal - totalCost,
+    }
+  }, [selectedBroker, costYears, costInitialYen, costMonthlyYen, costTradesPerMonth, costFxRatio])
 
   const toggleWatch = (id) => {
     if (!id) return
@@ -571,6 +603,79 @@ export default function StockPage() {
                         参考値です。実際の成果は市場変動・コスト・税制により異なります。
                       </p>
                     </div>
+                  </div>
+                </div>
+
+                <div className="bg-gradient-to-br from-white to-slate-50 dark:from-slate-900 dark:to-slate-800/80 p-6 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-0.5">
+                  <h3 className="text-sm font-bold text-slate-700 dark:text-slate-200 mb-4 flex items-center gap-2">
+                    <Wallet size={16} /> 実質体感コスト・シミュレーター (Total Cost)
+                  </h3>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-xs text-slate-500 dark:text-slate-400 font-bold block mb-1.5">証券会社</label>
+                      <div className="flex gap-2 flex-wrap">
+                        {PLATFORM_PARTNERS.map((p) => (
+                          <button
+                            key={p.id}
+                            onClick={() => setCostBrokerId(p.id)}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition ${
+                              costBrokerId === p.id
+                                ? 'bg-slate-900 text-white border-slate-900 dark:bg-orange-500 dark:border-orange-500'
+                                : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                            }`}
+                          >
+                            {p.name}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs text-slate-500 dark:text-slate-400 font-bold block mb-1.5">初期投資額: ¥{costInitialYen.toLocaleString()}</label>
+                      <input type="range" min={100000} max={5000000} step={10000} value={costInitialYen} onChange={(e) => setCostInitialYen(Number(e.target.value))} className="w-full accent-orange-500" />
+                    </div>
+                    <div>
+                      <label className="text-xs text-slate-500 dark:text-slate-400 font-bold block mb-1.5">毎月積立: ¥{costMonthlyYen.toLocaleString()}</label>
+                      <input type="range" min={10000} max={300000} step={5000} value={costMonthlyYen} onChange={(e) => setCostMonthlyYen(Number(e.target.value))} className="w-full accent-orange-500" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs text-slate-500 dark:text-slate-400 font-bold block mb-1.5">保有期間: {costYears}年</label>
+                        <input type="range" min={1} max={10} step={1} value={costYears} onChange={(e) => setCostYears(Number(e.target.value))} className="w-full accent-orange-500" />
+                      </div>
+                      <div>
+                        <label className="text-xs text-slate-500 dark:text-slate-400 font-bold block mb-1.5">月間取引回数: {costTradesPerMonth}回</label>
+                        <input type="range" min={1} max={12} step={1} value={costTradesPerMonth} onChange={(e) => setCostTradesPerMonth(Number(e.target.value))} className="w-full accent-orange-500" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs text-slate-500 dark:text-slate-400 font-bold block mb-1.5">外貨建比率: {costFxRatio}%</label>
+                      <input type="range" min={0} max={100} step={5} value={costFxRatio} onChange={(e) => setCostFxRatio(Number(e.target.value))} className="w-full accent-orange-500" />
+                    </div>
+
+                    <div className="bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 space-y-1.5">
+                      <p className="text-xs text-slate-500 dark:text-slate-400">総投資額（期間内）</p>
+                      <p className="text-sm font-bold text-slate-800 dark:text-slate-100">¥{Math.round(costSummary.totalInvested).toLocaleString()}</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">内訳</p>
+                      <p className="text-xs font-bold text-slate-600 dark:text-slate-300">取引手数料: ¥{Math.round(costSummary.domesticFeeTotal).toLocaleString()}</p>
+                      <p className="text-xs font-bold text-slate-600 dark:text-slate-300">為替コスト: ¥{Math.round(costSummary.fxCostTotal).toLocaleString()}</p>
+                      <p className="text-xs font-bold text-slate-600 dark:text-slate-300">信託報酬(概算): ¥{Math.round(costSummary.trustFeeTotal).toLocaleString()}</p>
+                    </div>
+
+                    <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-700/30 rounded-xl p-4">
+                      <p className="text-xs text-orange-700 dark:text-orange-300 font-bold">1年換算の実質コスト目安</p>
+                      <p className="text-2xl font-black text-orange-600 dark:text-orange-300 mt-1">
+                        ¥{Math.round(costSummary.totalCost / Math.max(costYears, 1)).toLocaleString()}
+                      </p>
+                      <p className="text-xs mt-1 text-orange-700/80 dark:text-orange-300/80">
+                        他社平均比
+                        <span className={`font-black ml-1 ${costSummary.savingsVsAvg >= 0 ? 'text-emerald-600 dark:text-emerald-300' : 'text-rose-600 dark:text-rose-300'}`}>
+                          {costSummary.savingsVsAvg >= 0 ? '-' : '+'}¥{Math.abs(Math.round(costSummary.savingsVsAvg)).toLocaleString()}
+                        </span>
+                      </p>
+                    </div>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      試算は概算です。実際は銘柄・注文方法・為替タイミング・キャンペーン条件等で変動します。
+                    </p>
                   </div>
                 </div>
 

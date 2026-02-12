@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Search, Heart, Check, Globe, DollarSign, Flag, Loader2, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
+import { Search, Heart, Check, Globe, DollarSign, Flag, Loader2, ArrowUpDown, ArrowUp, ArrowDown, BarChart2, X } from 'lucide-react'
 import {
   ScatterChart,
   Scatter,
@@ -20,7 +20,7 @@ import {
 
 import { supabase } from '../lib/supabase'
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const MONTHS = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月']
 
 const detectCategory = (code, name) => {
   const n = name ? name.toLowerCase() : ''
@@ -75,6 +75,7 @@ export default function FundPage({ user, myWatchlist = [], toggleWatchlist: prop
   const [searchTerm, setSearchTerm] = useState('')
   const [activeFilter, setActiveFilter] = useState('all')
   const [dbFunds, setDbFunds] = useState([])
+  const [selectedFundIds, setSelectedFundIds] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [watchlist, setWatchlist] = useState(() => (Array.isArray(myWatchlist) ? myWatchlist : []))
   const [currentPage, setCurrentPage] = useState(1)
@@ -238,6 +239,23 @@ export default function FundPage({ user, myWatchlist = [], toggleWatchlist: prop
     const direction = sortConfig.key === key && sortConfig.direction === 'descending' ? 'ascending' : 'descending'
     setSortConfig({ key, direction })
   }
+  const toggleCompareFund = (fundId) => {
+    setSelectedFundIds((prev) => {
+      if (prev.includes(fundId)) return prev.filter((id) => id !== fundId)
+      if (prev.length >= 3) {
+        alert('比較は最大3件まで選択できます。')
+        return prev
+      }
+      return [...prev, fundId]
+    })
+  }
+  const goToComparison = () => {
+    if (selectedFundIds.length < 2) {
+      alert('比較するには2つのファンドを選択してください。')
+      return
+    }
+    navigate(`/funds/compare?ids=${selectedFundIds.join(',')}`)
+  }
 
   const scoreToStars = (fund) => {
     const score = fund.returnRate1Y - fund.trustFee * 3 - fund.stdDev * 0.3
@@ -271,8 +289,8 @@ export default function FundPage({ user, myWatchlist = [], toggleWatchlist: prop
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 animate-fadeIn bg-[#F9FAFB] dark:bg-slate-950 min-h-screen font-sans pb-28">
       <div className="mb-6">
-        <h1 className="text-3xl font-black text-slate-900 dark:text-white">Fund Intelligence Dashboard</h1>
-        <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">Flow / Risk / List を一画面で確認</p>
+        <h1 className="text-3xl font-black text-slate-900 dark:text-white">ファンド・インテリジェンス</h1>
+        <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">資金フロー・リスク・一覧を一画面で確認</p>
       </div>
 
       <div className="mb-5 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-4">
@@ -320,8 +338,8 @@ export default function FundPage({ user, myWatchlist = [], toggleWatchlist: prop
 
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-5 mb-6">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-extrabold text-slate-900 dark:text-white">Fund Flow Trend (Past 1 Year)</h2>
-          <div className="text-xs text-slate-500 dark:text-slate-400">Flow/Accumulated AUM (simulated)</div>
+          <h2 className="text-lg font-extrabold text-slate-900 dark:text-white">ファンドフロー推移（過去1年）</h2>
+          <div className="text-xs text-slate-500 dark:text-slate-400">資金流入/累積AUM（推計）</div>
         </div>
         <div className="h-[280px]">
           <ResponsiveContainer width="100%" height="100%">
@@ -331,19 +349,19 @@ export default function FundPage({ user, myWatchlist = [], toggleWatchlist: prop
               <YAxis tick={{ fontSize: 11, fill: '#64748b' }} />
               <Tooltip
                 formatter={(v, key) => {
-                  if (key === 'netFlow') return [`${v > 0 ? '+' : ''}${v}億`, 'Net Flow']
-                  return [`${v.toLocaleString()}億`, key === 'domesticAum' ? 'AUM (Domestic)' : 'AUM (Global)']
+                  if (key === 'netFlow') return [`${v > 0 ? '+' : ''}${v}億`, '純流入']
+                  return [`${v.toLocaleString()}億`, key === 'domesticAum' ? 'AUM（国内）' : 'AUM（海外）']
                 }}
               />
               <Legend />
               <ReferenceLine y={0} stroke="#cbd5e1" />
-              <Bar dataKey="netFlow" name="Net fund flow" barSize={18}>
+              <Bar dataKey="netFlow" name="純流入" barSize={18}>
                 {flowTrendData.map((entry, i) => (
                   <Cell key={`flow-${i}`} fill={entry.netFlow >= 0 ? '#3b82f6' : '#ef4444'} />
                 ))}
               </Bar>
-              <Line type="monotone" dataKey="domesticAum" name="AUM model (domestic)" stroke="#f59e0b" strokeWidth={2.5} dot={false} />
-              <Line type="monotone" dataKey="globalAum" name="AUM model (global)" stroke="#94a3b8" strokeWidth={2.5} dot={false} />
+              <Line type="monotone" dataKey="domesticAum" name="AUMモデル（国内）" stroke="#f59e0b" strokeWidth={2.5} dot={false} />
+              <Line type="monotone" dataKey="globalAum" name="AUMモデル（海外）" stroke="#94a3b8" strokeWidth={2.5} dot={false} />
             </ComposedChart>
           </ResponsiveContainer>
         </div>
@@ -364,13 +382,13 @@ export default function FundPage({ user, myWatchlist = [], toggleWatchlist: prop
       </div>
 
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-5 mb-6">
-        <h2 className="text-lg font-extrabold text-slate-900 dark:text-white mb-4">Risk-Return Bubble Chart</h2>
+        <h2 className="text-lg font-extrabold text-slate-900 dark:text-white mb-4">リスク・リターン バブルチャート</h2>
         <div className="h-[300px]">
           <ResponsiveContainer width="100%" height="100%">
             <ScatterChart margin={{ top: 8, right: 20, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-              <XAxis type="number" dataKey="x" name="Volatility" unit="%" tick={{ fontSize: 11, fill: '#64748b' }} />
-              <YAxis type="number" dataKey="y" name="1Y Return" unit="%" tick={{ fontSize: 11, fill: '#64748b' }} />
+              <XAxis type="number" dataKey="x" name="ボラティリティ" unit="%" tick={{ fontSize: 11, fill: '#64748b' }} />
+              <YAxis type="number" dataKey="y" name="1年リターン" unit="%" tick={{ fontSize: 11, fill: '#64748b' }} />
               <ZAxis type="number" dataKey="z" range={[120, 1100]} />
               <Tooltip
                 cursor={{ strokeDasharray: '3 3' }}
@@ -380,9 +398,9 @@ export default function FundPage({ user, myWatchlist = [], toggleWatchlist: prop
                   return (
                     <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-3 text-xs shadow-lg">
                       <p className="font-bold text-slate-900 dark:text-white mb-1">{d.name}</p>
-                      <p className="text-slate-500 dark:text-slate-300">Return: {fmtPct(d.y)}</p>
-                      <p className="text-slate-500 dark:text-slate-300">Volatility: {d.x}%</p>
-                      <p className="text-slate-500 dark:text-slate-300">AUM: {d.aumDisplay}</p>
+                      <p className="text-slate-500 dark:text-slate-300">リターン: {fmtPct(d.y)}</p>
+                      <p className="text-slate-500 dark:text-slate-300">ボラティリティ: {d.x}%</p>
+                      <p className="text-slate-500 dark:text-slate-300">純資産(AUM): {d.aumDisplay}</p>
                     </div>
                   )
                 }}
@@ -396,39 +414,62 @@ export default function FundPage({ user, myWatchlist = [], toggleWatchlist: prop
           </ResponsiveContainer>
         </div>
         <div className="flex gap-4 text-xs mt-2 text-slate-500 dark:text-slate-400">
-          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-blue-500" /> Positive fund flow</span>
-          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-red-500" /> Negative fund flow</span>
+          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-blue-500" /> 資金流入優勢</span>
+          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-red-500" /> 資金流出優勢</span>
         </div>
       </div>
 
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
         <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-          <h2 className="text-lg font-extrabold text-slate-900 dark:text-white">Fund List</h2>
-          <span className="text-xs text-slate-500 dark:text-slate-400">件数 {sortedFunds.length}</span>
+          <h2 className="text-lg font-extrabold text-slate-900 dark:text-white">ファンド一覧</h2>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-slate-500 dark:text-slate-400">件数 {sortedFunds.length}</span>
+            <button
+              onClick={goToComparison}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-orange-500 text-white hover:bg-orange-400 transition"
+            >
+              <BarChart2 size={14} /> 比較する ({selectedFundIds.length}/3)
+            </button>
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead className="bg-slate-50 dark:bg-slate-800/40 text-slate-500 dark:text-slate-300 text-xs">
               <tr>
-                <th className="px-4 py-3 text-left">Rank</th>
-                <th className="px-4 py-3 text-left cursor-pointer" onClick={() => requestSort('fundName')}>Fund <SortIcon colKey="fundName" /></th>
-                <th className="px-4 py-3 text-right cursor-pointer" onClick={() => requestSort('trustFee')}>Trust Fee <SortIcon colKey="trustFee" /></th>
-                <th className="px-4 py-3 text-right cursor-pointer" onClick={() => requestSort('stdDev')}>Volatility <SortIcon colKey="stdDev" /></th>
-                <th className="px-4 py-3 text-right cursor-pointer" onClick={() => requestSort('sharpe')}>Sharpe <SortIcon colKey="sharpe" /></th>
-                <th className="px-4 py-3 text-right cursor-pointer" onClick={() => requestSort('aumValue')}>AUM <SortIcon colKey="aumValue" /></th>
-                <th className="px-4 py-3 text-right cursor-pointer" onClick={() => requestSort('returnRate1Y')}>1Y Return <SortIcon colKey="returnRate1Y" /></th>
-                <th className="px-4 py-3 text-right">Rating</th>
+                <th className="px-4 py-3 text-center">比較</th>
+                <th className="px-4 py-3 text-left">順位</th>
+                <th className="px-4 py-3 text-left cursor-pointer" onClick={() => requestSort('fundName')}>ファンド <SortIcon colKey="fundName" /></th>
+                <th className="px-4 py-3 text-right cursor-pointer" onClick={() => requestSort('trustFee')}>信託報酬 <SortIcon colKey="trustFee" /></th>
+                <th className="px-4 py-3 text-right cursor-pointer" onClick={() => requestSort('stdDev')}>ボラティリティ <SortIcon colKey="stdDev" /></th>
+                <th className="px-4 py-3 text-right cursor-pointer" onClick={() => requestSort('sharpe')}>シャープレシオ <SortIcon colKey="sharpe" /></th>
+                <th className="px-4 py-3 text-right cursor-pointer" onClick={() => requestSort('aumValue')}>純資産(AUM) <SortIcon colKey="aumValue" /></th>
+                <th className="px-4 py-3 text-right cursor-pointer" onClick={() => requestSort('returnRate1Y')}>1年リターン <SortIcon colKey="returnRate1Y" /></th>
+                <th className="px-4 py-3 text-right">評価</th>
               </tr>
             </thead>
             <tbody>
               {paginatedData.map((fund, idx) => {
                 const isWatchlisted = Array.isArray(effectiveWatchlist) && effectiveWatchlist.includes(fund.id)
+                const isCompared = selectedFundIds.includes(fund.id)
                 return (
                   <tr
                     key={fund.id}
                     className="border-t border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/40 cursor-pointer"
                     onClick={() => navigate(`/funds/${fund.id}`)}
                   >
+                    <td className="px-4 py-3 text-center">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          toggleCompareFund(fund.id)
+                        }}
+                        className={`w-5 h-5 rounded border inline-flex items-center justify-center ${
+                          isCompared ? 'bg-orange-500 border-orange-500 text-white' : 'border-slate-300 dark:border-slate-600'
+                        }`}
+                      >
+                        {isCompared ? <Check size={12} /> : null}
+                      </button>
+                    </td>
                     <td className="px-4 py-3 font-bold text-slate-600 dark:text-slate-300">{(currentPage - 1) * itemsPerPage + idx + 1}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-start justify-between gap-2">
@@ -465,7 +506,7 @@ export default function FundPage({ user, myWatchlist = [], toggleWatchlist: prop
             disabled={currentPage === 1}
             className="px-3 py-1.5 text-xs rounded border border-slate-200 dark:border-slate-700 disabled:opacity-40"
           >
-            Prev
+            前へ
           </button>
           <span className="text-xs font-bold text-slate-500 dark:text-slate-300">{currentPage} / {totalPages}</span>
           <button
@@ -473,10 +514,22 @@ export default function FundPage({ user, myWatchlist = [], toggleWatchlist: prop
             disabled={currentPage === totalPages}
             className="px-3 py-1.5 text-xs rounded border border-slate-200 dark:border-slate-700 disabled:opacity-40"
           >
-            Next
+            次へ
           </button>
         </div>
       </div>
+
+      {selectedFundIds.length > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-4 py-2.5 rounded-full shadow-2xl z-50 flex items-center gap-3 border border-slate-700">
+          <span className="text-xs font-bold">{selectedFundIds.length}件選択中</span>
+          <button onClick={goToComparison} className="text-xs font-bold text-orange-300 hover:text-orange-200 inline-flex items-center gap-1">
+            <BarChart2 size={14} /> 比較する
+          </button>
+          <button onClick={() => setSelectedFundIds([])} className="text-slate-300 hover:text-white">
+            <X size={14} />
+          </button>
+        </div>
+      )}
 
       <div className="text-right mt-4 text-xs text-slate-400">※ データ提供: QUICK | 基準日: 2026.02.02</div>
     </div>

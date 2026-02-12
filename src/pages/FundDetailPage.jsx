@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, Download, Share2, Star,
@@ -9,25 +9,112 @@ import {
   PieChart as RePieChart, Pie, Cell, Legend
 } from 'recharts'
 
-const FUND_DETAIL = {
-  id: 1,
-  name: 'eMAXIS Slim 全世界株式 (オール・カントリー)',
-  provider: '三菱UFJ国際投信',
-  price: 24580,
-  change: '+125',
-  changePercent: '+0.51%',
-  assets: '2兆8000億円',
-  fee: '0.05775%',
-  risk: 4,
-  category: '国際株式',
-  description: '日本を含む先進国および新興国の株式等に投資し、MSCIオール・カントリー・ワールド・インデックス(配当込み、円換算ベース)に連動する投資成果をめざします。',
-  portfolio: [
-    { name: '米国', value: 62 },
-    { name: '日本', value: 5.5 },
-    { name: '英国', value: 3.5 },
-    { name: 'その他先進国', value: 18 },
-    { name: '新興国', value: 11 },
-  ],
+const FUND_DETAILS = {
+  'emaxis-all': {
+    id: 'emaxis-all',
+    name: 'eMAXIS Slim 全世界株式 (オール・カントリー)',
+    provider: '三菱UFJ国際投信',
+    price: 24580,
+    change: '+125',
+    changePercent: '+0.51%',
+    assets: '2兆8000億円',
+    fee: '0.05775%',
+    risk: 4,
+    category: '全世界株式',
+    description: '日本を含む先進国および新興国の株式等に投資し、MSCIオール・カントリー・ワールド・インデックス(配当込み、円換算ベース)に連動する投資成果をめざします。',
+    portfolio: [
+      { name: '米国', value: 62 },
+      { name: '日本', value: 5.5 },
+      { name: '英国', value: 3.5 },
+      { name: 'その他先進国', value: 18 },
+      { name: '新興国', value: 11 },
+    ],
+  },
+  'emaxis-sp500': {
+    id: 'emaxis-sp500',
+    name: 'eMAXIS Slim 米国株式 (S&P500)',
+    provider: '三菱UFJ国際投信',
+    price: 28900,
+    change: '+168',
+    changePercent: '+0.58%',
+    assets: '1兆5000億円',
+    fee: '0.09372%',
+    risk: 5,
+    category: '米国株式',
+    description: '米国の大型株を中心とした指数連動を目指す低コストファンド。',
+    portfolio: [
+      { name: '米国', value: 96 },
+      { name: '現金等', value: 4 },
+    ],
+  },
+  'alliance-ab': {
+    id: 'alliance-ab',
+    name: 'アライアンス・バーンスタイン・米国成長株投信Ｄ',
+    provider: 'アライアンス・バーンスタイン',
+    price: 32500,
+    change: '+205',
+    changePercent: '+0.63%',
+    assets: '8000億円',
+    fee: '1.727%',
+    risk: 5,
+    category: '米国株式',
+    description: '米国成長株への集中投資により高い資本成長を目指します。',
+    portfolio: [
+      { name: '米国', value: 94 },
+      { name: '欧州', value: 3 },
+      { name: 'その他', value: 3 },
+    ],
+  },
+  'himuchi-plus': {
+    id: 'himuchi-plus',
+    name: 'ひふみプラス',
+    provider: 'レオス・キャピタルワークス',
+    price: 54000,
+    change: '-95',
+    changePercent: '-0.18%',
+    assets: '5000億円',
+    fee: '1.078%',
+    risk: 3,
+    category: '国内株式',
+    description: '日本株中心のアクティブ運用で中長期の成長を目指します。',
+    portfolio: [
+      { name: '日本', value: 82 },
+      { name: '現金等', value: 10 },
+      { name: '海外', value: 8 },
+    ],
+  },
+  'pictet-income': {
+    id: 'pictet-income',
+    name: 'ピクテ・グローバル・インカム株式ファンド',
+    provider: 'ピクテ投信',
+    price: 18200,
+    change: '+32',
+    changePercent: '+0.18%',
+    assets: '3000億円',
+    fee: '1.815%',
+    risk: 3,
+    category: '全世界株式',
+    description: '世界の高配当株へ分散投資し、インカム収益を重視するファンド。',
+    portfolio: [
+      { name: '米国', value: 41 },
+      { name: '欧州', value: 34 },
+      { name: 'アジア', value: 17 },
+      { name: 'その他', value: 8 },
+    ],
+  },
+}
+
+const FUND_ID_ALIAS = {
+  '1': 'emaxis-all',
+  '2': 'emaxis-sp500',
+  '3': 'alliance-ab',
+  '4': 'himuchi-plus',
+  '5': 'pictet-income',
+  'maxis-nikkei': 'emaxis-sp500',
+  'nikko-emerging': 'emaxis-all',
+  'daiwa-reit': 'himuchi-plus',
+  'muji-balance': 'pictet-income',
+  'raku-eco': 'emaxis-all',
 }
 
 const CHART_DATA_1Y = [
@@ -47,6 +134,8 @@ export default function FundDetailPage() {
   const navigate = useNavigate()
   const [amount, setAmount] = useState(10000)
   const [period, setPeriod] = useState(10)
+  const fundId = FUND_ID_ALIAS[id] || id || 'emaxis-all'
+  const selectedFund = useMemo(() => FUND_DETAILS[fundId] || FUND_DETAILS['emaxis-all'], [fundId])
 
   const futureValue = Math.floor(amount * Math.pow(1.07, period))
   const profit = futureValue - amount
@@ -76,21 +165,21 @@ export default function FundDetailPage() {
           <div className="flex flex-col md:flex-row md:items-start justify-between gap-6 mb-8">
             <div>
               <span className="inline-block px-3 py-1 rounded-full bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300 text-xs font-bold mb-3">
-                {FUND_DETAIL.category}
+                {selectedFund.category}
               </span>
               <h1 className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white leading-tight mb-2">
-                {FUND_DETAIL.name}
+                {selectedFund.name}
               </h1>
-              <p className="text-slate-500 font-medium">{FUND_DETAIL.provider}</p>
+              <p className="text-slate-500 font-medium">{selectedFund.provider}</p>
             </div>
             <div className="text-right">
               <p className="text-sm text-slate-400 font-bold mb-1">基準価額 (昨日比)</p>
               <div className="flex items-end justify-end gap-3">
                 <span className="text-4xl font-black text-slate-900 dark:text-white">
-                  ¥{FUND_DETAIL.price.toLocaleString()}
+                  ¥{selectedFund.price.toLocaleString()}
                 </span>
                 <span className="text-lg font-bold text-red-500 mb-1">
-                  {FUND_DETAIL.change} ({FUND_DETAIL.changePercent})
+                  {selectedFund.change} ({selectedFund.changePercent})
                 </span>
               </div>
             </div>
@@ -99,11 +188,11 @@ export default function FundDetailPage() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-slate-50 dark:bg-slate-800 rounded-2xl p-6">
             <div>
               <p className="text-xs text-slate-400 font-bold mb-1">純資産総額</p>
-              <p className="font-bold text-slate-900 dark:text-white">{FUND_DETAIL.assets}</p>
+              <p className="font-bold text-slate-900 dark:text-white">{selectedFund.assets}</p>
             </div>
             <div>
               <p className="text-xs text-slate-400 font-bold mb-1">信託報酬 (税込)</p>
-              <p className="font-bold text-slate-900 dark:text-white">{FUND_DETAIL.fee}</p>
+              <p className="font-bold text-slate-900 dark:text-white">{selectedFund.fee}</p>
             </div>
             <div>
               <p className="text-xs text-slate-400 font-bold mb-1">リスク等級</p>
@@ -111,7 +200,7 @@ export default function FundDetailPage() {
                 {[1, 2, 3, 4, 5].map((i) => (
                   <div
                     key={i}
-                    className={`w-2 h-4 rounded-sm ${i <= FUND_DETAIL.risk ? 'bg-orange-500' : 'bg-slate-300 dark:bg-slate-600'}`}
+                    className={`w-2 h-4 rounded-sm ${i <= selectedFund.risk ? 'bg-orange-500' : 'bg-slate-300 dark:bg-slate-600'}`}
                   />
                 ))}
               </div>
@@ -161,7 +250,7 @@ export default function FundDetailPage() {
                 <ResponsiveContainer width="100%" height="100%">
                   <RePieChart>
                     <Pie
-                      data={FUND_DETAIL.portfolio}
+                      data={selectedFund.portfolio}
                       cx="50%"
                       cy="50%"
                       innerRadius={60}
@@ -169,7 +258,7 @@ export default function FundDetailPage() {
                       paddingAngle={5}
                       dataKey="value"
                     >
-                      {FUND_DETAIL.portfolio.map((entry, index) => (
+                      {selectedFund.portfolio.map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                       ))}
                     </Pie>

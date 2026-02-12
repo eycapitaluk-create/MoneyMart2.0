@@ -222,6 +222,7 @@ export default function FundPage({ user, myWatchlist = [], toggleWatchlist: prop
     const base = dbFunds.slice(0, 30)
     return base.map((f) => {
       const isPositive = f.returnRate1Y >= 0
+      const isWatchlisted = Array.isArray(effectiveWatchlist) && effectiveWatchlist.includes(f.id)
       return {
         id: f.id,
         x: Number(f.stdDev),
@@ -230,10 +231,11 @@ export default function FundPage({ user, myWatchlist = [], toggleWatchlist: prop
         name: f.fundName,
         category: f.category,
         aumDisplay: f.aumDisplay,
-        fill: isPositive ? '#3b82f6' : '#ef4444',
+        isWatchlisted,
+        fill: isWatchlisted ? '#ef4444' : (isPositive ? '#3b82f6' : '#10b981'),
       }
     })
-  }, [dbFunds])
+  }, [dbFunds, effectiveWatchlist])
 
   const requestSort = (key) => {
     const direction = sortConfig.key === key && sortConfig.direction === 'descending' ? 'ascending' : 'descending'
@@ -401,6 +403,7 @@ export default function FundPage({ user, myWatchlist = [], toggleWatchlist: prop
                       <p className="text-slate-500 dark:text-slate-300">リターン: {fmtPct(d.y)}</p>
                       <p className="text-slate-500 dark:text-slate-300">ボラティリティ: {d.x}%</p>
                       <p className="text-slate-500 dark:text-slate-300">純資産(AUM): {d.aumDisplay}</p>
+                      {d.isWatchlisted && <p className="text-[11px] font-bold text-red-500 mt-1">ウォッチ中</p>}
                     </div>
                   )
                 }}
@@ -414,8 +417,9 @@ export default function FundPage({ user, myWatchlist = [], toggleWatchlist: prop
           </ResponsiveContainer>
         </div>
         <div className="flex gap-4 text-xs mt-2 text-slate-500 dark:text-slate-400">
-          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-blue-500" /> 資金流入優勢</span>
-          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-red-500" /> 資金流出優勢</span>
+          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-red-500" /> ウォッチ中</span>
+          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-blue-500" /> 通常（プラス傾向）</span>
+          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500" /> 通常（マイナス傾向）</span>
         </div>
       </div>
 
@@ -480,7 +484,10 @@ export default function FundPage({ user, myWatchlist = [], toggleWatchlist: prop
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
-                            toggleWatchlist(fund.id)
+                            toggleWatchlist(fund.id, {
+                              name: fund.fundName,
+                              change: fund.returnRate1Y,
+                            })
                           }}
                           className={`p-1 rounded ${isWatchlisted ? 'text-red-500' : 'text-slate-400'}`}
                         >

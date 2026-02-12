@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   PieChart, Wallet, CreditCard, TrendingUp, TrendingDown,
   AlertTriangle, ShieldCheck, ChevronRight, Bell, Settings,
@@ -17,10 +18,10 @@ const PORTFOLIO = [
   { id: 3, name: 'Fund C (REITs)', value: 105000, invest: 100000, return: 5.0, color: '#10b981' },
 ]
 
-const WATCHLIST = [
-  { id: 1, name: 'eMAXIS Slim 全世界株式', change: 25.0, trend: 'up' },
-  { id: 2, name: 'ひふみプラス', change: -10.0, trend: 'down' },
-  { id: 3, name: '楽天・全米株式', change: 5.0, trend: 'up' },
+const DEFAULT_WATCHLIST = [
+  { id: 'emaxis-all', name: 'eMAXIS Slim 全世界株式', change: 25.0, trend: 'up' },
+  { id: 'himuchi-plus', name: 'ひふみプラス', change: -10.0, trend: 'down' },
+  { id: 'raku-eco', name: '楽天・全米株式', change: 5.0, trend: 'up' },
 ]
 
 const BUDGET_DATA = [
@@ -298,7 +299,7 @@ const LoanApprovalDiagnosisModal = ({ isOpen, onClose }) => {
   )
 }
 
-const SummarySection = () => {
+const SummarySection = ({ watchlistCount }) => {
   const [reportGeneratedAt, setReportGeneratedAt] = useState(new Date())
   const [savedReport, setSavedReport] = useState(null)
   const [reportSaving, setReportSaving] = useState(false)
@@ -427,7 +428,7 @@ const SummarySection = () => {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-500">ウォッチリスト</span>
-                  <span className="font-black text-slate-900 dark:text-white">{WATCHLIST.length}銘柄</span>
+                  <span className="font-black text-slate-900 dark:text-white">{watchlistCount}銘柄</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-500">最高リターン</span>
@@ -593,8 +594,12 @@ const SummarySection = () => {
   )
 }
 
-const WealthSection = () => (
-  <div className="space-y-8">
+const WealthSection = ({ watchlistItems }) => {
+  const navigate = useNavigate()
+  const normalizedWatchlist = Array.isArray(watchlistItems) && watchlistItems.length > 0 ? watchlistItems : DEFAULT_WATCHLIST
+
+  return (
+    <div className="space-y-8">
     <div className="grid md:grid-cols-2 gap-8">
       <div className="bg-white dark:bg-slate-900 p-6 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm">
         <h3 className="font-bold text-slate-900 dark:text-white mb-6 flex items-center gap-2">
@@ -631,16 +636,23 @@ const WealthSection = () => (
           <Star size={20} className="text-yellow-400 fill-yellow-400" /> Fund Watchlist
         </h3>
         <div className="space-y-3">
-          {WATCHLIST.map((item) => (
-            <div key={item.id} className="flex items-center justify-between p-4 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl transition cursor-pointer group">
+          {normalizedWatchlist.map((item) => (
+            <button
+              key={item.id}
+              onClick={() => navigate(`/funds/${item.id}`)}
+              className="w-full flex items-center justify-between p-4 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl transition cursor-pointer group text-left"
+            >
               <span className="font-bold text-slate-700 dark:text-slate-300 text-sm group-hover:text-orange-500 transition">{item.name}</span>
               <span className={`font-bold text-sm ${item.change >= 0 ? 'text-red-500' : 'text-blue-500'}`}>
                 {item.change > 0 ? '+' : ''}{item.change}%
               </span>
-            </div>
+            </button>
           ))}
         </div>
-        <button className="w-full mt-4 py-3 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 font-bold text-sm rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 transition">
+        <button
+          onClick={() => navigate('/funds')}
+          className="w-full mt-4 py-3 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 font-bold text-sm rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 transition"
+        >
           + ウォッチリストを追加
         </button>
       </div>
@@ -658,8 +670,9 @@ const WealthSection = () => (
         レポートを読む
       </button>
     </div>
-  </div>
-)
+    </div>
+  )
+}
 
 const BudgetSection = () => (
   <div className="grid md:grid-cols-2 gap-8">
@@ -912,16 +925,17 @@ const DebtSection = ({ onOpenLoanDiagnosis }) => {
   )
 }
 
-export default function MyPage() {
+export default function MyPage({ fundWatchlist = [] }) {
   const [activeTab, setActiveTab] = useState('summary')
   const [isLoanDiagnosisOpen, setIsLoanDiagnosisOpen] = useState(false)
+  const watchlistCount = Array.isArray(fundWatchlist) && fundWatchlist.length > 0 ? fundWatchlist.length : DEFAULT_WATCHLIST.length
 
   const renderContent = () => {
     switch (activeTab) {
-      case 'wealth': return <WealthSection />
+      case 'wealth': return <WealthSection watchlistItems={fundWatchlist} />
       case 'budget': return <BudgetSection />
       case 'debt': return <DebtSection onOpenLoanDiagnosis={() => setIsLoanDiagnosisOpen(true)} />
-      default: return <SummarySection />
+      default: return <SummarySection watchlistCount={watchlistCount} />
     }
   }
 

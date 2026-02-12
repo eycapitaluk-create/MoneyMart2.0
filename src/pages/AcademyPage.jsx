@@ -1,11 +1,12 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Search, Play, BookOpen, GraduationCap,
-  ChevronRight, CheckCircle2, Award, Youtube
+  ChevronRight, CheckCircle2, Award, Youtube, Loader2
 } from 'lucide-react'
 import AdBanner from '../components/AdBanner'
 import { LEGAL_NOTICE_TEMPLATES } from '../constants/legalNoticeTemplates'
+import { fetchPublishedAcademyCourses } from '../lib/academyApi'
 
 const FEATURED_VIDEO = {
   id: 'f1',
@@ -15,6 +16,7 @@ const FEATURED_VIDEO = {
   duration: '15:24',
   tags: ['新NISA', '初心者向け', '投資信託'],
   thumbnail: 'bg-gradient-to-r from-blue-600 to-indigo-700',
+  youtubeUrl: 'https://www.youtube.com/watch?v=mmAcademy001',
 }
 
 const VIDEO_CATEGORIES = [
@@ -22,18 +24,18 @@ const VIDEO_CATEGORIES = [
     id: 'beginner',
     title: '🐣 投資1年生のための基礎講座',
     videos: [
-      { id: 1, title: '株と債券の違いとは？', time: '08:30', level: '初級', img: 'bg-emerald-500' },
-      { id: 2, title: '複利効果で資産を倍にする方法', time: '12:45', level: '初級', img: 'bg-teal-500' },
-      { id: 3, title: 'iDeCoの節税メリット', time: '10:15', level: '初級', img: 'bg-cyan-500' },
+      { id: 1, title: '株と債券の違いとは？', time: '08:30', level: '初級', img: 'bg-emerald-500', youtubeUrl: 'https://www.youtube.com/watch?v=mmAcademy101' },
+      { id: 2, title: '複利効果で資産を倍にする方法', time: '12:45', level: '初級', img: 'bg-teal-500', youtubeUrl: 'https://www.youtube.com/watch?v=mmAcademy102' },
+      { id: 3, title: 'iDeCoの節税メリット', time: '10:15', level: '初級', img: 'bg-cyan-500', youtubeUrl: 'https://www.youtube.com/watch?v=mmAcademy103' },
     ],
   },
   {
     id: 'analysis',
     title: '📊 チャート分析・テクニカル',
     videos: [
-      { id: 4, title: '移動平均線のゴールデンクロス', time: '18:20', level: '中級', img: 'bg-orange-500' },
-      { id: 5, title: 'MACDを使った売買タイミング', time: '14:10', level: '中級', img: 'bg-amber-500' },
-      { id: 6, title: 'ボリンジャーバンド完全攻略', time: '22:00', level: '上級', img: 'bg-red-500' },
+      { id: 4, title: '移動平均線のゴールデンクロス', time: '18:20', level: '中級', img: 'bg-orange-500', youtubeUrl: 'https://www.youtube.com/watch?v=mmAcademy201' },
+      { id: 5, title: 'MACDを使った売買タイミング', time: '14:10', level: '中級', img: 'bg-amber-500', youtubeUrl: 'https://www.youtube.com/watch?v=mmAcademy202' },
+      { id: 6, title: 'ボリンジャーバンド完全攻略', time: '22:00', level: '上級', img: 'bg-red-500', youtubeUrl: 'https://www.youtube.com/watch?v=mmAcademy203' },
     ],
   },
 ]
@@ -45,14 +47,107 @@ const TERM_OF_DAY = {
   example: '「A社のPERは10倍なので、同業他社より割安だ」',
 }
 
+const CATEGORY_META = {
+  beginner: { title: '🐣 投資1年生のための基礎講座' },
+  analysis: { title: '📊 チャート分析・テクニカル' },
+  general: { title: '📘 投資リテラシー講座' },
+}
+
+const formatDuration = (seconds = 0) => {
+  const safe = Math.max(0, Number(seconds || 0))
+  const mm = Math.floor(safe / 60)
+  const ss = safe % 60
+  return `${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`
+}
+
+const formatViewsJa = (views = 0) => {
+  const n = Number(views || 0)
+  if (n >= 10000) return `${(n / 10000).toFixed(1)}万回視聴`
+  return `${n.toLocaleString()}回視聴`
+}
+
+const openYoutube = (url) => {
+  const safeUrl = String(url || '').trim()
+  if (!safeUrl) return
+  window.open(safeUrl, '_blank', 'noopener,noreferrer')
+}
+
 export default function AcademyPage() {
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState('all')
   const [searchQuery, setSearchQuery] = useState('')
+  const [featuredVideo, setFeaturedVideo] = useState(FEATURED_VIDEO)
+  const [videoCategories, setVideoCategories] = useState(VIDEO_CATEGORIES)
+  const [catalogLoading, setCatalogLoading] = useState(true)
+  const [catalogSource, setCatalogSource] = useState('fallback')
+
+  useEffect(() => {
+    let alive = true
+    const loadAcademyCatalog = async () => {
+      setCatalogLoading(true)
+      try {
+        const courses = await fetchPublishedAcademyCourses()
+        if (!alive) return
+
+        if (!Array.isArray(courses) || courses.length === 0) {
+          setFeaturedVideo(FEATURED_VIDEO)
+          setVideoCategories(VIDEO_CATEGORIES)
+          setCatalogSource('fallback')
+          return
+        }
+
+        const featured = courses.find((c) => c.isFeatured) || courses[0]
+        const grouped = new Map()
+        for (const row of courses) {
+          const key = row.categoryKey || 'general'
+          if (!grouped.has(key)) grouped.set(key, [])
+          grouped.get(key).push({
+            id: row.id,
+            title: row.title,
+            time: formatDuration(row.durationSeconds || 0),
+            level: row.level || '初級',
+            img: row.thumbnailStyle || 'bg-slate-500',
+            youtubeUrl: row.youtubeUrl || '',
+          })
+        }
+
+        const categories = Array.from(grouped.entries()).map(([id, videos]) => ({
+          id,
+          title: CATEGORY_META[id]?.title || CATEGORY_META.general.title,
+          videos,
+        }))
+
+        setFeaturedVideo({
+          id: featured.id,
+          title: featured.title,
+          tutor: featured.tutorName || 'MoneyMart Academy',
+          views: formatViewsJa(featured.viewCount || 0),
+          duration: formatDuration(featured.durationSeconds || 0),
+          tags: (featured.tags || []).slice(0, 4),
+          thumbnail: featured.thumbnailStyle || 'bg-gradient-to-r from-blue-600 to-indigo-700',
+          youtubeUrl: featured.youtubeUrl || '',
+        })
+        setVideoCategories(categories)
+        setCatalogSource('live')
+      } catch {
+        if (!alive) return
+        setFeaturedVideo(FEATURED_VIDEO)
+        setVideoCategories(VIDEO_CATEGORIES)
+        setCatalogSource('fallback')
+      } finally {
+        if (alive) setCatalogLoading(false)
+      }
+    }
+
+    loadAcademyCatalog()
+    return () => {
+      alive = false
+    }
+  }, [])
 
   const filteredCategories = useMemo(() => {
     const query = searchQuery.trim().toLowerCase()
-    return VIDEO_CATEGORIES
+    return videoCategories
       .filter((category) => activeTab === 'all' || category.id === activeTab)
       .map((category) => ({
         ...category,
@@ -63,7 +158,12 @@ export default function AcademyPage() {
         }),
       }))
       .filter((category) => category.videos.length > 0)
-  }, [activeTab, searchQuery])
+  }, [activeTab, searchQuery, videoCategories])
+
+  const tabOptions = useMemo(() => ([
+    { id: 'all', label: 'すべて' },
+    ...videoCategories.map((c) => ({ id: c.id, label: c.id === 'beginner' ? '基礎講座' : c.id === 'analysis' ? '分析講座' : '一般講座' })),
+  ]), [videoCategories])
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] dark:bg-slate-950 pb-20 font-sans">
@@ -101,6 +201,16 @@ export default function AcademyPage() {
             />
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
           </div>
+          <div className="mt-3">
+            <span className={`inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-full ${
+              catalogSource === 'live'
+                ? 'text-emerald-300 bg-emerald-500/20 border border-emerald-400/30'
+                : 'text-amber-300 bg-amber-500/20 border border-amber-400/30'
+            }`}>
+              <GraduationCap size={12} />
+              Data: {catalogSource === 'live' ? 'LIVE' : 'FALLBACK'}
+            </span>
+          </div>
         </div>
 
         <div className="absolute top-0 left-0 w-full h-full bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10 pointer-events-none" />
@@ -112,11 +222,7 @@ export default function AcademyPage() {
         {/* [Left Column] Video Content */}
         <div className="lg:col-span-8 space-y-10">
           <div className="flex flex-wrap gap-2 px-1">
-            {[
-              { id: 'all', label: 'すべて' },
-              { id: 'beginner', label: '基礎講座' },
-              { id: 'analysis', label: '分析講座' },
-            ].map((tab) => (
+            {tabOptions.map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
@@ -131,13 +237,22 @@ export default function AcademyPage() {
             ))}
           </div>
 
-          <div className="bg-white dark:bg-slate-900 p-4 rounded-[2rem] shadow-xl border border-slate-100 dark:border-slate-800 group cursor-pointer hover:shadow-2xl transition">
-            <div className={`aspect-video rounded-2xl ${FEATURED_VIDEO.thumbnail} relative flex items-center justify-center mb-4 overflow-hidden`}>
+          {catalogLoading ? (
+            <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 text-sm font-bold text-slate-500 dark:text-slate-400 flex items-center justify-center gap-2">
+              <Loader2 size={18} className="animate-spin" /> 講座データを読み込み中...
+            </div>
+          ) : null}
+
+          <div
+            className="bg-white dark:bg-slate-900 p-4 rounded-[2rem] shadow-xl border border-slate-100 dark:border-slate-800 group cursor-pointer hover:shadow-2xl transition"
+            onClick={() => openYoutube(featuredVideo.youtubeUrl)}
+          >
+            <div className={`aspect-video rounded-2xl ${featuredVideo.thumbnail} relative flex items-center justify-center mb-4 overflow-hidden`}>
               <div className="w-16 h-16 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center group-hover:scale-110 transition duration-300">
                 <Play className="text-white fill-white ml-1" size={32} />
               </div>
               <span className="absolute bottom-4 right-4 bg-black/60 text-white text-xs font-bold px-2 py-1 rounded">
-                {FEATURED_VIDEO.duration}
+                {featuredVideo.duration}
               </span>
               <span className="absolute top-4 left-4 bg-red-600 text-white text-[10px] font-black px-2 py-1 rounded tracking-wider flex items-center gap-1">
                 <Youtube size={12} /> 公式
@@ -145,18 +260,18 @@ export default function AcademyPage() {
             </div>
             <div className="px-2">
               <div className="flex gap-2 mb-2">
-                {FEATURED_VIDEO.tags.map((tag, i) => (
+                {featuredVideo.tags.map((tag, i) => (
                   <span key={i} className="text-[10px] font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-2 py-0.5 rounded">
                     #{tag}
                   </span>
                 ))}
               </div>
               <h3 className="text-xl md:text-2xl font-black text-slate-900 dark:text-white mb-2 leading-tight group-hover:text-blue-600 dark:group-hover:text-orange-500 transition">
-                {FEATURED_VIDEO.title}
+                {featuredVideo.title}
               </h3>
               <div className="flex items-center justify-between text-xs font-bold text-slate-400">
-                <span>{FEATURED_VIDEO.tutor}</span>
-                <span>{FEATURED_VIDEO.views}</span>
+                <span>{featuredVideo.tutor}</span>
+                <span>{featuredVideo.views}</span>
               </div>
             </div>
           </div>
@@ -173,6 +288,7 @@ export default function AcademyPage() {
                 {category.videos.map((video) => (
                   <div
                     key={video.id}
+                    onClick={() => openYoutube(video.youtubeUrl)}
                     className="bg-white dark:bg-slate-900 p-3 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm hover:shadow-md transition cursor-pointer group"
                   >
                     <div className={`aspect-video rounded-xl ${video.img} relative mb-3 flex items-center justify-center`}>

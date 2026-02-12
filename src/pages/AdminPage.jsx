@@ -16,6 +16,15 @@ export default function AdminPage() {
   const [reports, setReports] = useState([])
   const [reportStatusFilter, setReportStatusFilter] = useState('submitted')
   const [reportLoading, setReportLoading] = useState(false)
+  const [academyForm, setAcademyForm] = useState({
+    title: '',
+    youtubeUrl: '',
+    categoryKey: 'general',
+    level: '初級',
+    isFeatured: false,
+  })
+  const [academyLoading, setAcademyLoading] = useState(false)
+  const [academyMessage, setAcademyMessage] = useState(null)
 
   const loadReports = async (status = reportStatusFilter) => {
     setReportLoading(true)
@@ -89,6 +98,45 @@ export default function AdminPage() {
       await loadReports(reportStatusFilter)
     } catch (err) {
       setMessage({ type: 'error', text: err.message || '復旧処理に失敗しました。' })
+    }
+  }
+
+  const handleAcademyChange = (e) => {
+    const { name, value, type, checked } = e.target
+    setAcademyForm((prev) => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value,
+    }))
+  }
+
+  const handleAcademySubmit = async (e) => {
+    e.preventDefault()
+    setAcademyLoading(true)
+    setAcademyMessage(null)
+    try {
+      const { error } = await supabase
+        .from('academy_courses')
+        .insert([{
+          title: academyForm.title.trim(),
+          youtube_url: academyForm.youtubeUrl.trim(),
+          category_key: academyForm.categoryKey,
+          level: academyForm.level,
+          is_featured: academyForm.isFeatured,
+          is_published: true,
+        }])
+      if (error) throw error
+      setAcademyMessage({ type: 'success', text: 'アカデミー講座を登録しました。' })
+      setAcademyForm({
+        title: '',
+        youtubeUrl: '',
+        categoryKey: 'general',
+        level: '初級',
+        isFeatured: false,
+      })
+    } catch (err) {
+      setAcademyMessage({ type: 'error', text: err.message || '講座登録に失敗しました。Academyスキーマを確認してください。' })
+    } finally {
+      setAcademyLoading(false)
     }
   }
 
@@ -166,6 +214,96 @@ export default function AdminPage() {
             )}
             <Button type="submit" disabled={loading}>
               {loading ? '登録中...' : '登録する'}
+            </Button>
+          </form>
+        </Card>
+
+        <Card className="p-6">
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">アカデミー講座登録（YouTube）</h2>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+            入力項目は5つだけです。その他の項目はシステム既定値で保存されます。
+          </p>
+          <form onSubmit={handleAcademySubmit} className="space-y-4">
+            <div>
+              <label htmlFor="academy-title" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                講座タイトル *
+              </label>
+              <input
+                id="academy-title"
+                name="title"
+                type="text"
+                required
+                value={academyForm.title}
+                onChange={handleAcademyChange}
+                className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-blue focus:border-transparent"
+                placeholder="例: 新NISA 基礎講座 #1"
+              />
+            </div>
+            <div>
+              <label htmlFor="academy-youtube" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                YouTube URL *
+              </label>
+              <input
+                id="academy-youtube"
+                name="youtubeUrl"
+                type="url"
+                required
+                value={academyForm.youtubeUrl}
+                onChange={handleAcademyChange}
+                className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-blue focus:border-transparent"
+                placeholder="https://www.youtube.com/watch?v=..."
+              />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label htmlFor="academy-category" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  カテゴリ
+                </label>
+                <select
+                  id="academy-category"
+                  name="categoryKey"
+                  value={academyForm.categoryKey}
+                  onChange={handleAcademyChange}
+                  className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                >
+                  <option value="general">一般講座</option>
+                  <option value="beginner">基礎講座</option>
+                  <option value="analysis">分析講座</option>
+                </select>
+              </div>
+              <div>
+                <label htmlFor="academy-level" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  レベル
+                </label>
+                <select
+                  id="academy-level"
+                  name="level"
+                  value={academyForm.level}
+                  onChange={handleAcademyChange}
+                  className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                >
+                  <option value="初級">初級</option>
+                  <option value="中級">中級</option>
+                  <option value="上級">上級</option>
+                </select>
+              </div>
+            </div>
+            <label className="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+              <input
+                type="checkbox"
+                name="isFeatured"
+                checked={academyForm.isFeatured}
+                onChange={handleAcademyChange}
+              />
+              代表講座（Featured）に設定
+            </label>
+            {academyMessage ? (
+              <p className={`text-sm ${academyMessage.type === 'success' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                {academyMessage.text}
+              </p>
+            ) : null}
+            <Button type="submit" disabled={academyLoading}>
+              {academyLoading ? '登録中...' : '講座を登録する'}
             </Button>
           </form>
         </Card>

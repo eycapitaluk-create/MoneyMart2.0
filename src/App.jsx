@@ -28,6 +28,12 @@ const App = () => {
   const [currentUserProfile, setCurrentUserProfile] = useState(undefined)
   const [role, setRole] = useState('viewer')
   const [roleReady, setRoleReady] = useState(false)
+  const adminEmailSet = new Set(
+    String(import.meta.env.VITE_ADMIN_EMAILS || '')
+      .split(',')
+      .map((v) => v.trim().toLowerCase())
+      .filter(Boolean)
+  )
 
   const [fundWatchlist, setFundWatchlist] = useState(() => {
     try {
@@ -115,16 +121,26 @@ const App = () => {
         setRoleReady(true)
         return
       }
-      const { data } = await supabase
+
+      const { data, error } = await supabase
         .from('user_roles')
         .select('role')
         .eq('user_id', session.user.id)
-        .single()
-      setRole(data?.role || 'viewer')
+        .maybeSingle()
+
+      const metaRole = session.user?.app_metadata?.role
+        || session.user?.user_metadata?.role
+      const email = String(session.user?.email || '').toLowerCase()
+      const fallbackRole = (metaRole === 'admin' || adminEmailSet.has(email)) ? 'admin' : 'viewer'
+
+      if (error) {
+        console.warn('role load failed, using fallback role:', error.message)
+      }
+      setRole(data?.role || fallbackRole)
       setRoleReady(true)
     }
     loadRole()
-  }, [session?.user?.id])
+  }, [session?.user?.id, session?.user?.email])
 
   const toggleFundWatchlist = (id, meta = {}) => {
     if (!id) return

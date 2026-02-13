@@ -208,6 +208,16 @@ export async function createComment({ postId, userId, content }) {
 }
 
 export async function toggleLike({ postId, userId }) {
+  const { data: targetPost, error: postErr } = await supabase
+    .from('lounge_posts')
+    .select('author_id')
+    .eq('id', postId)
+    .maybeSingle()
+  if (postErr) throw postErr
+  if (targetPost?.author_id && targetPost.author_id === userId) {
+    throw new Error('自分の投稿にはいいねできません。')
+  }
+
   const { data: existing, error: findErr } = await supabase
     .from('lounge_post_likes')
     .select('id')
@@ -224,6 +234,15 @@ export async function toggleLike({ postId, userId }) {
   const { error } = await supabase.from('lounge_post_likes').insert({ post_id: postId, user_id: userId })
   if (error) throw error
   return true
+}
+
+export async function deleteOwnPost({ postId, userId }) {
+  const { error } = await supabase
+    .from('lounge_posts')
+    .delete()
+    .eq('id', postId)
+    .eq('author_id', userId)
+  if (error) throw error
 }
 
 export async function toggleBookmark({ postId, userId }) {

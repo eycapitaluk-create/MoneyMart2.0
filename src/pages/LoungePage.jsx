@@ -3,11 +3,12 @@ import { useNavigate } from 'react-router-dom'
 import {
   Search, Bell, MessageCircle, ThumbsUp, Bookmark,
   TrendingUp, TrendingDown, Share2, Flame, Hash,
-  Send, UserPlus, UserMinus, AlertTriangle, Loader2, User
+  Send, UserPlus, UserMinus, AlertTriangle, Loader2, User, Trash2
 } from 'lucide-react'
 import {
   createComment,
   createPost,
+  deleteOwnPost,
   fetchComments,
   getCurrentLoungeUser,
   fetchFeed,
@@ -150,6 +151,11 @@ export default function LoungePage({ bootUser = undefined, authReady = false }) 
 
   const handleToggleLike = async (postId) => {
     if (!requireAuth()) return
+    const target = posts.find((p) => p.id === postId)
+    if (target?.author_id && target.author_id === user?.id) {
+      alert('自分の投稿にはいいねできません。')
+      return
+    }
     setBusyPostId(postId)
     const prev = posts
     setPosts((old) => old.map((p) => {
@@ -167,6 +173,23 @@ export default function LoungePage({ bootUser = undefined, authReady = false }) 
     } catch {
       setPosts(prev)
       alert('いいね処理に失敗しました。')
+    } finally {
+      setBusyPostId('')
+    }
+  }
+
+  const handleDeletePost = async (postId) => {
+    if (!requireAuth()) return
+    const target = posts.find((p) => p.id === postId)
+    if (!target || target.author_id !== user?.id) return
+    const confirmed = window.confirm('この投稿を削除しますか？この操作は元に戻せません。')
+    if (!confirmed) return
+    setBusyPostId(postId)
+    try {
+      await deleteOwnPost({ postId, userId: user.id })
+      setPosts((old) => old.filter((p) => p.id !== postId))
+    } catch (err) {
+      alert(err?.message || '投稿削除に失敗しました。')
     } finally {
       setBusyPostId('')
     }
@@ -527,13 +550,25 @@ export default function LoungePage({ bootUser = undefined, authReady = false }) 
 
               <div className="flex items-center justify-between pt-4 border-t border-slate-50 dark:border-slate-800">
                 <div className="flex gap-6">
+                  {(() => {
+                    const isOwnPost = post.author_id && post.author_id === user?.id
+                    return (
                   <button
-                    disabled={busyPostId === post.id}
+                    disabled={busyPostId === post.id || isOwnPost}
                     onClick={() => handleToggleLike(post.id)}
-                    className={`flex items-center gap-1.5 text-xs font-bold transition ${post.isLiked ? 'text-red-500' : 'text-slate-400 hover:text-red-500'}`}
+                    className={`flex items-center gap-1.5 text-xs font-bold transition ${
+                      isOwnPost
+                        ? 'text-slate-300 dark:text-slate-600 cursor-not-allowed'
+                        : post.isLiked
+                          ? 'text-red-500'
+                          : 'text-slate-400 hover:text-red-500'
+                    }`}
+                    title={isOwnPost ? '自分の投稿にはいいねできません' : undefined}
                   >
                     <ThumbsUp size={16} /> {post.like_count || 0}
                   </button>
+                    )
+                  })()}
                   <button
                     onClick={() => handleToggleComments(post.id)}
                     className="flex items-center gap-1.5 text-slate-400 hover:text-blue-500 text-xs font-bold transition"
@@ -556,9 +591,20 @@ export default function LoungePage({ bootUser = undefined, authReady = false }) 
                   >
                     <Bookmark size={15} /> {post.bookmark_count || 0}
                   </button>
-                  <button onClick={() => handleReport(post.id)} className="text-slate-300 hover:text-rose-500">
-                    <AlertTriangle size={15} />
-                  </button>
+                  {post.author_id && post.author_id === user?.id ? (
+                    <button
+                      disabled={busyPostId === post.id}
+                      onClick={() => handleDeletePost(post.id)}
+                      className="text-slate-400 hover:text-rose-500 disabled:opacity-50"
+                      title="投稿を削除"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  ) : (
+                    <button onClick={() => handleReport(post.id)} className="text-slate-300 hover:text-rose-500">
+                      <AlertTriangle size={15} />
+                    </button>
+                  )}
                   <span className="text-xs font-bold text-slate-300 dark:text-slate-500">{post.view_count || 0} Views</span>
                 </div>
               </div>

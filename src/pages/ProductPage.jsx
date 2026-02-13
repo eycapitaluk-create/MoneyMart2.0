@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
 import {
   CreditCard, Landmark, Plane, Banknote, Coins,
   Filter, Plus, Check, ArrowRightLeft, Trash2, X,
-  Search, ArrowUpDown, Sparkles, ArrowRight, ShieldCheck, Clock3
+  Search, ArrowUpDown, Sparkles, ArrowRight, ShieldCheck, Clock3, Star
 } from 'lucide-react'
 import { CATEGORIES, PRODUCTS } from '../data/products'
 
@@ -52,11 +52,11 @@ const SORT_OPTIONS = [
 
 const getCategorySortOptions = (category) => {
   const base = [{ id: 'default', label: '表示順', fn: (a, b) => a.id - b.id }]
-  if (category === 'savings') base.push({ id: 'rate', label: '金利が高い順', fn: (a, b) => parseSpecValue(b.specs[0]?.value) - parseSpecValue(a.specs[0]?.value) })
-  if (category === 'cards') base.push({ id: 'return', label: '還元率が高い順', fn: (a, b) => parseSpecValue(b.specs[1]?.value) - parseSpecValue(a.specs[1]?.value) })
-  if (category === 'loans') base.push({ id: 'rate', label: '金利が低い順', fn: (a, b) => parseSpecValue(a.specs[0]?.value) - parseSpecValue(b.specs[0]?.value) })
-  if (category === 'insurance') base.push({ id: 'price', label: '保険料が安い順', fn: (a, b) => parseSpecValue(a.specs[0]?.value) - parseSpecValue(b.specs[0]?.value) })
-  if (category === 'points') base.push({ id: 'return', label: '還元率が高い順', fn: (a, b) => parseSpecValue(b.specs[0]?.value) - parseSpecValue(a.specs[0]?.value) })
+  if (category === 'savings') base.push({ id: 'rate', label: '金利が高い順', fn: (a, b) => parseSpecValue(b.specs?.[0]?.value) - parseSpecValue(a.specs?.[0]?.value) })
+  if (category === 'cards') base.push({ id: 'return', label: '還元率が高い順', fn: (a, b) => parseSpecValue(b.specs?.[1]?.value) - parseSpecValue(a.specs?.[1]?.value) })
+  if (category === 'loans') base.push({ id: 'rate', label: '金利が低い順', fn: (a, b) => parseSpecValue(a.specs?.[0]?.value) - parseSpecValue(b.specs?.[0]?.value) })
+  if (category === 'insurance') base.push({ id: 'price', label: '保険料が安い順', fn: (a, b) => parseSpecValue(a.specs?.[0]?.value) - parseSpecValue(b.specs?.[0]?.value) })
+  if (category === 'points') base.push({ id: 'return', label: '還元率が高い順', fn: (a, b) => parseSpecValue(b.specs?.[0]?.value) - parseSpecValue(a.specs?.[0]?.value) })
   return base
 }
 
@@ -180,7 +180,53 @@ const HERO_IMAGE_OVERLAY = {
   points: 'from-amber-900/35 via-orange-900/10 to-orange-900/40',
 }
 
-export default function ProductPage() {
+const toNumericList = (raw = '') => (
+  String(raw)
+    .replace(/,/g, '')
+    .match(/[\d.]+/g)
+    ?.map((v) => Number(v))
+    .filter((v) => Number.isFinite(v)) || []
+)
+
+const parseMoneyLikeValue = (raw = '') => {
+  if (String(raw).includes('無料')) return 0
+  const nums = toNumericList(raw)
+  return nums.length ? nums[0] : null
+}
+
+const parsePercentMin = (raw = '') => {
+  const nums = toNumericList(raw)
+  return nums.length ? Math.min(...nums) : null
+}
+
+const parsePercentMax = (raw = '') => {
+  const nums = toNumericList(raw)
+  return nums.length ? Math.max(...nums) : null
+}
+
+const parseCoverageValue = (raw = '') => {
+  if (String(raw).includes('無制限')) return Number.POSITIVE_INFINITY
+  const nums = toNumericList(raw)
+  return nums.length ? Math.max(...nums) : null
+}
+
+const getCompareRule = (category, label = '') => {
+  if (label.includes('年会費')) return { direction: 'min', parse: parseMoneyLikeValue }
+  if (label.includes('手数料')) return { direction: 'min', parse: parsePercentMin }
+  if (label.includes('保険料')) return { direction: 'min', parse: parseMoneyLikeValue }
+  if (label.includes('最低預入')) return { direction: 'min', parse: parseMoneyLikeValue }
+  if (label.includes('還元率')) return { direction: 'max', parse: parsePercentMax }
+  if (label.includes('治療救援')) return { direction: 'max', parse: parseCoverageValue }
+  if (label.includes('団信')) return { direction: 'max', parse: parsePercentMax }
+  if (label.includes('限度額')) return { direction: 'max', parse: parseMoneyLikeValue }
+  if (label.includes('金利')) {
+    if (category === 'loans') return { direction: 'min', parse: parsePercentMin }
+    return { direction: 'max', parse: parsePercentMax }
+  }
+  return null
+}
+
+export default function ProductPage({ productInterestIds = [], toggleProductInterest }) {
   const [searchParams, setSearchParams] = useSearchParams()
   const initialCategory = searchParams.get('category') || 'all'
   const [activeCategory, setActiveCategory] = useState(initialCategory)
@@ -189,6 +235,10 @@ export default function ProductPage() {
   const [sortBy, setSortBy] = useState('default')
   const [compareList, setCompareList] = useState([])
   const [isCompareModalOpen, setIsCompareModalOpen] = useState(false)
+  const interestedIdSet = useMemo(
+    () => new Set((Array.isArray(productInterestIds) ? productInterestIds : []).map((id) => String(id))),
+    [productInterestIds]
+  )
 
   useEffect(() => {
     const urlCategory = searchParams.get('category') || 'all'
@@ -245,7 +295,8 @@ export default function ProductPage() {
         return activeFilters.every((filterId) => {
           const f = filters.find((x) => x.id === filterId)
           if (!f) return true
-          const spec = p.specs[f.specIndex]
+          const specs = Array.isArray(p.specs) ? p.specs : []
+          const spec = specs[f.specIndex]
           if (!spec) return false
           return f.fn(spec.value)
         })
@@ -256,6 +307,39 @@ export default function ProductPage() {
   const filteredProducts = [...filteredBySpec].sort(sortFn)
   const theme = CATEGORY_THEME[activeCategory] || CATEGORY_THEME.all
   const hero = HERO_COPY[activeCategory] || HERO_COPY.all
+  const bestSpecProductIdsByIndex = useMemo(() => {
+    if (!Array.isArray(compareList) || compareList.length < 2) return {}
+    const category = compareList[0]?.category
+    const result = {}
+    const maxSpecLen = Math.max(...compareList.map((p) => p.specs?.length || 0))
+
+    for (let specIdx = 0; specIdx < maxSpecLen; specIdx += 1) {
+      const label = compareList.find((p) => p.specs?.[specIdx])?.specs?.[specIdx]?.label || ''
+      const rule = getCompareRule(category, label)
+      if (!rule) continue
+
+      const candidates = compareList
+        .map((p) => {
+          const rawValue = p.specs?.[specIdx]?.value
+          const parsed = rule.parse(rawValue)
+          return { productId: p.id, value: parsed }
+        })
+        .filter((x) => Number.isFinite(x.value))
+
+      if (candidates.length < 2) continue
+      const target = rule.direction === 'min'
+        ? Math.min(...candidates.map((x) => x.value))
+        : Math.max(...candidates.map((x) => x.value))
+
+      result[specIdx] = new Set(
+        candidates
+          .filter((x) => x.value === target)
+          .map((x) => x.productId)
+      )
+    }
+
+    return result
+  }, [compareList])
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 pb-32 font-sans">
@@ -343,23 +427,43 @@ export default function ProductPage() {
 
         {/* カテゴリ別フィルター (金利・手数料・ポイント等) */}
         {filters.length > 0 && (
-          <div className="flex flex-wrap gap-2 mb-4">
-            {filters.map((f) => {
-              const isActive = activeFilters.includes(f.id)
-              return (
+          <div className="mb-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+              <div className="flex items-center gap-2">
+                <p className="text-xs font-bold text-slate-500 dark:text-slate-400">条件フィルター</p>
+                {activeFilters.length > 0 && (
+                  <span className="inline-flex items-center justify-center min-w-5 h-5 px-1 rounded-full bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300 text-[11px] font-black">
+                    {activeFilters.length}
+                  </span>
+                )}
+              </div>
+              {activeFilters.length > 0 && (
                 <button
-                  key={f.id}
-                  onClick={() => toggleFilter(f.id)}
-                  className={`px-4 py-2 rounded-xl font-bold text-sm transition ${
-                    isActive
-                      ? 'bg-orange-500 text-white'
-                      : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-orange-500'
-                  }`}
+                  onClick={() => setActiveFilters([])}
+                  className="text-xs font-bold text-slate-500 hover:text-orange-600 dark:text-slate-400 dark:hover:text-orange-300"
                 >
-                  {f.label}
+                  すべて解除
                 </button>
-              )
-            })}
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {filters.map((f) => {
+                const isActive = activeFilters.includes(f.id)
+                return (
+                  <button
+                    key={f.id}
+                    onClick={() => toggleFilter(f.id)}
+                    className={`px-4 py-2 rounded-xl font-bold text-sm transition ${
+                      isActive
+                        ? 'bg-orange-500 text-white'
+                        : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-orange-500'
+                    }`}
+                  >
+                    {f.label}
+                  </button>
+                )
+              })}
+            </div>
           </div>
         )}
 
@@ -386,6 +490,7 @@ export default function ProductPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {filteredProducts.map((product) => {
             const isSelected = compareList.find((p) => p.id === product.id)
+            const isInterested = interestedIdSet.has(String(product.id))
             return (
               <Link
                 key={product.id}
@@ -409,6 +514,25 @@ export default function ProductPage() {
                   }`}
                 >
                   {isSelected ? <><Check size={16} /> 選択中</> : <><Plus size={16} /> 比較</>}
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    toggleProductInterest?.(product.id, {
+                      name: product.name,
+                      provider: product.provider,
+                      category: product.category,
+                    })
+                  }}
+                  className={`absolute top-4 right-28 p-2 rounded-full transition-all z-10 ${
+                    isInterested
+                      ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-500'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+                  }`}
+                  title={isInterested ? '関心リストから削除' : '関心リストに追加'}
+                >
+                  <Star size={16} fill={isInterested ? 'currentColor' : 'none'} />
                 </button>
 
                 <div className="flex items-center gap-4 mb-6">
@@ -438,13 +562,18 @@ export default function ProductPage() {
                 </div>
 
                 <div className="bg-slate-50 dark:bg-slate-800 rounded-2xl p-4 grid grid-cols-3 gap-2 mb-4">
-                  {product.specs.map((spec, idx) => (
+                  {(product.specs || []).map((spec, idx) => (
                     <div key={idx} className="text-center border-r border-slate-200 dark:border-slate-700 last:border-0">
                       <p className="text-[10px] text-slate-400 font-bold mb-1">{spec.label}</p>
                       <p className="font-black text-sm text-slate-700 dark:text-slate-300">{spec.value}</p>
                     </div>
                   ))}
                 </div>
+                {isInterested && (
+                  <p className="text-[11px] font-bold text-amber-600 dark:text-amber-300">
+                    ★ 関心リストに保存済み
+                  </p>
+                )}
               </Link>
             )
           })}
@@ -454,9 +583,19 @@ export default function ProductPage() {
           <div className="text-center py-20 bg-slate-50 dark:bg-slate-900 rounded-3xl border border-dashed border-slate-300 dark:border-slate-700">
             <Filter size={48} className="mx-auto text-slate-300 mb-4" />
             <p className="text-slate-500 font-bold">該当する商品はまだありません。</p>
-            <button onClick={() => handleCategoryChange('all')} className="mt-4 text-orange-500 font-bold hover:underline">
-              すべての商品を見る
-            </button>
+            <div className="mt-4 flex items-center justify-center gap-4">
+              {activeFilters.length > 0 && (
+                <button
+                  onClick={() => setActiveFilters([])}
+                  className="text-orange-500 font-bold hover:underline"
+                >
+                  条件を緩和
+                </button>
+              )}
+              <button onClick={() => handleCategoryChange('all')} className="text-orange-500 font-bold hover:underline">
+                すべての商品を見る
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -508,7 +647,7 @@ export default function ProductPage() {
               <div className="grid gap-4" style={{ gridTemplateColumns: `minmax(120px, 1fr) repeat(${compareList.length}, minmax(140px, 1fr))` }}>
                 <div className="space-y-4 pt-32">
                   <div className="font-bold text-slate-400 text-sm h-12 flex items-center">提供会社</div>
-                  {compareList[0]?.specs.map((spec, idx) => (
+                  {(compareList[0]?.specs || []).map((spec, idx) => (
                     <div key={idx} className="font-bold text-slate-400 text-sm h-12 flex items-center border-b border-slate-100 dark:border-slate-800">
                       {spec.label}
                     </div>
@@ -525,9 +664,23 @@ export default function ProductPage() {
                     <div className="h-12 flex items-center justify-center text-sm font-bold text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800/50 rounded-lg">
                       {product.provider}
                     </div>
-                    {product.specs.map((spec, idx) => (
-                      <div key={idx} className="h-12 flex items-center justify-center font-black text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-800">
-                        {spec.value}
+                    {(product.specs || []).map((spec, idx) => (
+                      <div
+                        key={idx}
+                        className={`h-12 flex items-center justify-center font-black border-b border-slate-100 dark:border-slate-800 ${
+                          bestSpecProductIdsByIndex[idx]?.has(product.id)
+                            ? 'text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg'
+                            : 'text-slate-900 dark:text-white'
+                        }`}
+                      >
+                        <span className="inline-flex items-center gap-1">
+                          {spec.value}
+                          {bestSpecProductIdsByIndex[idx]?.has(product.id) && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300">
+                              BEST
+                            </span>
+                          )}
+                        </span>
                       </div>
                     ))}
                     <div className="h-12 flex items-center justify-center pt-4">

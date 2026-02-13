@@ -66,10 +66,10 @@ const formatViewsJa = (views = 0) => {
   return `${n.toLocaleString()}回視聴`
 }
 
-const openYoutube = (url) => {
+const isYoutubeUrl = (url) => {
   const safeUrl = String(url || '').trim()
-  if (!safeUrl) return
-  window.open(safeUrl, '_blank', 'noopener,noreferrer')
+  if (!safeUrl) return false
+  return /^https?:\/\/(www\.)?(youtube\.com|youtu\.be)\//i.test(safeUrl)
 }
 
 export default function AcademyPage() {
@@ -80,6 +80,17 @@ export default function AcademyPage() {
   const [videoCategories, setVideoCategories] = useState(VIDEO_CATEGORIES)
   const [catalogLoading, setCatalogLoading] = useState(true)
   const [catalogSource, setCatalogSource] = useState('fallback')
+  const [videoOpenStatus, setVideoOpenStatus] = useState('')
+
+  const openYoutube = (url) => {
+    const safeUrl = String(url || '').trim()
+    if (!isYoutubeUrl(safeUrl)) {
+      setVideoOpenStatus('動画リンク準備中です。しばらくしてから再度お試しください。')
+      return
+    }
+    setVideoOpenStatus('')
+    window.open(safeUrl, '_blank', 'noopener,noreferrer')
+  }
 
   useEffect(() => {
     let alive = true
@@ -123,7 +134,7 @@ export default function AcademyPage() {
           tutor: featured.tutorName || 'MoneyMart Academy',
           views: formatViewsJa(featured.viewCount || 0),
           duration: formatDuration(featured.durationSeconds || 0),
-          tags: (featured.tags || []).slice(0, 4),
+          tags: Array.isArray(featured.tags) ? featured.tags.slice(0, 4) : [],
           thumbnail: featured.thumbnailStyle || 'bg-gradient-to-r from-blue-600 to-indigo-700',
           youtubeUrl: featured.youtubeUrl || '',
         })
@@ -210,6 +221,9 @@ export default function AcademyPage() {
               <GraduationCap size={12} />
               Data: {catalogSource === 'live' ? 'LIVE' : 'FALLBACK'}
             </span>
+            {videoOpenStatus ? (
+              <p className="mt-2 text-xs font-bold text-amber-300">{videoOpenStatus}</p>
+            ) : null}
           </div>
         </div>
 
@@ -260,7 +274,7 @@ export default function AcademyPage() {
             </div>
             <div className="px-2">
               <div className="flex gap-2 mb-2">
-                {featuredVideo.tags.map((tag, i) => (
+                {(featuredVideo.tags || []).map((tag, i) => (
                   <span key={i} className="text-[10px] font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-2 py-0.5 rounded">
                     #{tag}
                   </span>
@@ -289,7 +303,9 @@ export default function AcademyPage() {
                   <div
                     key={video.id}
                     onClick={() => openYoutube(video.youtubeUrl)}
-                    className="bg-white dark:bg-slate-900 p-3 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm hover:shadow-md transition cursor-pointer group"
+                    className={`bg-white dark:bg-slate-900 p-3 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm hover:shadow-md transition cursor-pointer group ${
+                      !isYoutubeUrl(video.youtubeUrl) ? 'opacity-80' : ''
+                    }`}
                   >
                     <div className={`aspect-video rounded-xl ${video.img} relative mb-3 flex items-center justify-center`}>
                       <Play className="text-white/80 fill-white opacity-0 group-hover:opacity-100 transition transform scale-75 group-hover:scale-100" size={32} />
@@ -305,6 +321,9 @@ export default function AcademyPage() {
                     >
                       {video.level}
                     </span>
+                    {!isYoutubeUrl(video.youtubeUrl) ? (
+                      <p className="text-[10px] font-bold text-amber-500 mt-1">リンク準備中</p>
+                    ) : null}
                   </div>
                 ))}
               </div>

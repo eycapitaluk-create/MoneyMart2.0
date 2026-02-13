@@ -1,7 +1,7 @@
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import {
   CreditCard, Landmark, Plane, Banknote, Coins,
-  ArrowLeft, ExternalLink, CheckCircle2, Shield
+  ArrowLeft, ExternalLink, CheckCircle2, Shield, Star
 } from 'lucide-react'
 import { getProductById, PRODUCTS } from '../data/products'
 
@@ -21,7 +21,7 @@ const CATEGORY_LABELS = {
   points: 'ポイ活',
 }
 
-export default function ProductDetailPage() {
+export default function ProductDetailPage({ productInterestIds = [], toggleProductInterest }) {
   const { id } = useParams()
   const navigate = useNavigate()
   const product = getProductById(id)
@@ -40,6 +40,8 @@ export default function ProductDetailPage() {
   const CategoryIcon = CATEGORY_ICONS[product.category] || CreditCard
   const categoryLabel = CATEGORY_LABELS[product.category] || '金融商品'
   const description = product.description || `${product.name}の詳細情報です。各金融機関の公式サイトで最新の条件をご確認ください。`
+  const interestedIdSet = new Set((Array.isArray(productInterestIds) ? productInterestIds : []).map((v) => String(v)))
+  const isInterested = interestedIdSet.has(String(product.id))
 
   // 同カテゴリの他商品（最大3件）
   const relatedProducts = PRODUCTS.filter((p) => p.category === product.category && p.id !== product.id).slice(0, 3)
@@ -101,7 +103,7 @@ export default function ProductDetailPage() {
             </span>
           )}
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            {product.specs.map((spec, idx) => (
+            {(product.specs || []).map((spec, idx) => (
               <div key={idx} className="bg-slate-50 dark:bg-slate-800 rounded-xl p-4 text-center">
                 <p className="text-[10px] text-slate-500 dark:text-slate-400 font-bold mb-1">{spec.label}</p>
                 <p className="font-black text-slate-900 dark:text-white text-lg">{spec.value}</p>
@@ -133,6 +135,21 @@ export default function ProductDetailPage() {
         {/* CTA: 申込ボタン */}
         <div className="sticky bottom-20 left-0 right-0 z-10">
           <button
+            onClick={() => toggleProductInterest?.(product.id, {
+              name: product.name,
+              provider: product.provider,
+              category: product.category,
+            })}
+            className={`w-full mb-3 py-3 border font-black text-sm rounded-2xl transition flex items-center justify-center gap-2 ${
+              isInterested
+                ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-300 border-amber-200 dark:border-amber-800'
+                : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'
+            }`}
+          >
+            <Star size={18} fill={isInterested ? 'currentColor' : 'none'} />
+            {isInterested ? '関心リストから削除' : '関心リストに追加'}
+          </button>
+          <button
             onClick={handleApply}
             className="w-full py-4 bg-orange-500 hover:bg-orange-600 text-white font-black text-lg rounded-2xl shadow-lg shadow-orange-500/30 flex items-center justify-center gap-2 transition"
           >
@@ -152,7 +169,14 @@ export default function ProductDetailPage() {
                   className="flex items-center gap-4 p-4 rounded-xl bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 transition"
                 >
                   <div className="w-12 h-12 rounded-full bg-white dark:bg-slate-700 p-2 flex items-center justify-center overflow-hidden shrink-0">
-                    <img src={p.image} alt="" className="w-full h-full object-contain" />
+                    <img
+                      src={p.image}
+                      alt=""
+                      className="w-full h-full object-contain"
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none'
+                      }}
+                    />
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="font-bold text-slate-900 dark:text-white text-sm truncate">{p.name}</p>

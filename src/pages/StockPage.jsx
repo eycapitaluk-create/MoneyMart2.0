@@ -72,6 +72,14 @@ const formatCompact = (value) => {
   return `${Math.round(value)}`
 }
 
+const formatDailyPrice = (value, region) => (
+  Number.isFinite(Number(value)) ? formatCurrency(Number(value), region) : '--'
+)
+
+const formatDailyVolume = (value) => (
+  Number.isFinite(Number(value)) ? Number(value).toLocaleString('en-US') : '--'
+)
+
 const inferLiveRegion = (code, exchange) => {
   if (REGION_BY_SYMBOL[code]) return REGION_BY_SYMBOL[code]
   if (/\.(L|LN)$/i.test(code)) return 'UK'
@@ -177,6 +185,11 @@ export default function StockPage() {
               code: r.symbol,
               name: meta.name || r.symbol,
               price: close,
+              open: Number.isFinite(open) ? open : null,
+              high: Number.isFinite(Number(r.high)) ? Number(r.high) : null,
+              low: Number.isFinite(Number(r.low)) ? Number(r.low) : null,
+              volume: Number.isFinite(Number(r.volume)) ? Number(r.volume) : null,
+              tradeDate: r.trade_date || null,
               change,
               rate,
               market: meta.exchange || 'Market',
@@ -237,6 +250,12 @@ export default function StockPage() {
 
   const displayedStock = filteredStocks.find((s) => s.id === selectedStock?.id) || filteredStocks[0] || selectedStock
   const isUp = (displayedStock?.rate || 0) > 0
+  const hasDailyOhlcv = Boolean(
+    Number.isFinite(Number(displayedStock?.open))
+      && Number.isFinite(Number(displayedStock?.high))
+      && Number.isFinite(Number(displayedStock?.low))
+      && Number.isFinite(Number(displayedStock?.volume))
+  )
   const chartColor = isUp ? '#ef4444' : '#3b82f6'
   const requiredMonthlyYen = calculateRequiredMonthlyContribution({
     targetAmount: goalTarget * 10000,
@@ -480,10 +499,17 @@ export default function StockPage() {
                 </div>
 
                 <div className="grid grid-cols-4 gap-3 px-4 py-3 border-b border-slate-200 dark:border-slate-800 text-xs font-mono bg-slate-50/70 dark:bg-slate-900/40">
-                  <div className="rounded-lg bg-white dark:bg-slate-800 p-2 border border-slate-200 dark:border-slate-700"><span className="text-slate-500 block">OPEN</span><span className="text-slate-900 dark:text-white font-bold">{formatCurrency(displayedStock.price * 0.98, displayedStock.region)}</span></div>
-                  <div className="rounded-lg bg-white dark:bg-slate-800 p-2 border border-slate-200 dark:border-slate-700"><span className="text-slate-500 block">HIGH</span><span className="text-slate-900 dark:text-white font-bold">{formatCurrency(displayedStock.price * 1.02, displayedStock.region)}</span></div>
-                  <div className="rounded-lg bg-white dark:bg-slate-800 p-2 border border-slate-200 dark:border-slate-700"><span className="text-slate-500 block">LOW</span><span className="text-slate-900 dark:text-white font-bold">{formatCurrency(displayedStock.price * 0.97, displayedStock.region)}</span></div>
-                  <div className="rounded-lg bg-white dark:bg-slate-800 p-2 border border-slate-200 dark:border-slate-700"><span className="text-slate-500 block">VOL</span><span className="text-slate-900 dark:text-white font-bold">2.4M</span></div>
+                  <div className="rounded-lg bg-white dark:bg-slate-800 p-2 border border-slate-200 dark:border-slate-700"><span className="text-slate-500 block">当日始値</span><span className="text-slate-900 dark:text-white font-bold">{formatDailyPrice(displayedStock?.open, displayedStock?.region)}</span></div>
+                  <div className="rounded-lg bg-white dark:bg-slate-800 p-2 border border-slate-200 dark:border-slate-700"><span className="text-slate-500 block">当日高値</span><span className="text-slate-900 dark:text-white font-bold">{formatDailyPrice(displayedStock?.high, displayedStock?.region)}</span></div>
+                  <div className="rounded-lg bg-white dark:bg-slate-800 p-2 border border-slate-200 dark:border-slate-700"><span className="text-slate-500 block">当日安値</span><span className="text-slate-900 dark:text-white font-bold">{formatDailyPrice(displayedStock?.low, displayedStock?.region)}</span></div>
+                  <div className="rounded-lg bg-white dark:bg-slate-800 p-2 border border-slate-200 dark:border-slate-700"><span className="text-slate-500 block">出来高</span><span className="text-slate-900 dark:text-white font-bold">{formatDailyVolume(displayedStock?.volume)}</span></div>
+                </div>
+                <div className="px-4 py-2 border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/40">
+                  <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                    {hasDailyOhlcv
+                      ? `日次データ基準${displayedStock?.tradeDate ? ` (${displayedStock.tradeDate})` : ''}`
+                      : 'データ未取得（OHLCV）'}
+                  </p>
                 </div>
 
                 <div className="h-[380px] w-full bg-gradient-to-b from-white to-slate-50 dark:from-[#0B1221] dark:to-[#0F172A] relative">
@@ -522,6 +548,11 @@ export default function StockPage() {
                       />
                     </ComposedChart>
                   </ResponsiveContainer>
+                </div>
+                <div className="px-4 py-2 border-t border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/40">
+                  <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                    チャートは終値ベースの参考シミュレーションです。実際の約定価格とは異なる場合があります。
+                  </p>
                 </div>
               </div>
 
@@ -778,7 +809,25 @@ export default function StockPage() {
                 </div>
               </div>
             </>
-          ) : null}
+          ) : (
+            <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-8 text-center">
+              <p className="text-sm font-bold text-slate-700 dark:text-slate-200">
+                この地域に表示できる銘柄がありません。
+              </p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
+                地域タブを切り替えるか、検索条件をリセットしてください。
+              </p>
+              <button
+                onClick={() => {
+                  setSearchQuery('')
+                  setSelectedRegion('US')
+                }}
+                className="mt-4 px-4 py-2 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-xs font-bold"
+              >
+                米国銘柄を表示
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

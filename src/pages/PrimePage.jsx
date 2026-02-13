@@ -191,7 +191,7 @@ export default function PrimePage() {
             </div>
             <h3 className="font-bold text-xl text-slate-900 dark:text-white mb-2">高度なチャート分析</h3>
             <p className="text-slate-500 dark:text-slate-300 text-sm font-medium leading-relaxed">
-              TradingView有料版相当のインジケーターが使い放題。
+              高度なインジケーターと可視化機能で、市場分析をより深く行えます。
             </p>
           </div>
 
@@ -199,9 +199,9 @@ export default function PrimePage() {
             <div className="w-14 h-14 bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-300 rounded-2xl flex items-center justify-center mb-6">
               <Sparkles size={28} />
             </div>
-            <h3 className="font-bold text-xl text-slate-900 dark:text-white mb-2">AI ロボアドバイザー</h3>
+            <h3 className="font-bold text-xl text-slate-900 dark:text-white mb-2">AI 投資アシスト</h3>
             <p className="text-slate-500 dark:text-slate-300 text-sm font-medium leading-relaxed">
-              市場変動に合わせて、最適なポートフォリオを自動提案。
+              市場データをもとに、投資判断に役立つ分析インサイトを提供。
             </p>
           </div>
 

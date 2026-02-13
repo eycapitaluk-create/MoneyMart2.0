@@ -53,5 +53,9 @@ export const PRODUCTS = [
   { id: 31, category: 'points', name: 'Pontaポイント', provider: 'ロイヤリティマーケティング', image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/6/6b/Ponta_logo.svg/2560px-Ponta_logo.svg.png', badge: '全国展開', specs: [{ label: '還元率', value: '0.5%~2.0%' }, { label: '提携', value: 'ガソリンスタンド' }, { label: '特典', value: 'Ponta倍' }], description: 'ガソリンスタンド・コンビニで貯まる。Ponta倍でさらにお得。', apply_url: '#' },
 ]
 
-export const getProductById = (id) => PRODUCTS.find((p) => p.id === Number(id))
+export const getProductById = (id) => {
+  const raw = String(id ?? '').trim()
+  const parsed = Number(raw)
+  return PRODUCTS.find((p) => String(p.id) === raw || (!Number.isNaN(parsed) && p.id === parsed))
+}
 

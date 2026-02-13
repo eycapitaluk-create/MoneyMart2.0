@@ -129,16 +129,22 @@ const CHART_DATA_1Y = [
 
 const COLORS = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6']
 
-export default function FundDetailPage() {
+export default function FundDetailPage({ myWatchlist = [], toggleWatchlist }) {
   const { id } = useParams()
   const navigate = useNavigate()
   const [amount, setAmount] = useState(10000)
   const [period, setPeriod] = useState(10)
   const fundId = FUND_ID_ALIAS[id] || id || 'emaxis-all'
   const selectedFund = useMemo(() => FUND_DETAILS[fundId] || FUND_DETAILS['emaxis-all'], [fundId])
+  const feeDisplay = useMemo(() => {
+    const numeric = Number.parseFloat(String(selectedFund.fee || '').replace('%', ''))
+    if (!Number.isFinite(numeric)) return selectedFund.fee || '-'
+    return `${numeric.toFixed(3)}%`
+  }, [selectedFund.fee])
 
   const futureValue = Math.floor(amount * Math.pow(1.07, period))
   const profit = futureValue - amount
+  const isWatchlisted = Array.isArray(myWatchlist) && myWatchlist.includes(selectedFund.id)
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 pb-24 font-sans">
@@ -192,7 +198,7 @@ export default function FundDetailPage() {
             </div>
             <div>
               <p className="text-xs text-slate-400 font-bold mb-1">信託報酬 (税込)</p>
-              <p className="font-bold text-slate-900 dark:text-white">{selectedFund.fee}</p>
+              <p className="font-bold text-slate-900 dark:text-white">{feeDisplay}</p>
             </div>
             <div>
               <p className="text-xs text-slate-400 font-bold mb-1">リスク等級</p>
@@ -327,11 +333,26 @@ export default function FundDetailPage() {
                 <div className="absolute right-0 bottom-0 w-24 h-24 bg-orange-500/20 rounded-full blur-2xl" />
               </div>
 
-              <button className="w-full py-4 bg-orange-500 hover:bg-orange-600 text-white font-black text-lg rounded-xl shadow-lg shadow-orange-500/30 transition transform hover:-translate-y-1 mb-3">
-                このファンドを購入する
+              <div className="rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-4 py-3">
+                <p className="text-xs font-medium text-slate-500 dark:text-slate-300">
+                  MoneyMartでは売買注文は行わず、比較・分析情報のみ提供しています。
+                </p>
+              </div>
+              <button
+                onClick={() => toggleWatchlist?.(selectedFund.id, { name: selectedFund.name, change: Number.parseFloat(selectedFund.change) || 0 })}
+                className={`w-full mt-3 py-3 font-bold rounded-xl transition ${
+                  isWatchlisted
+                    ? 'bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-300 border border-rose-200 dark:border-rose-900/40 hover:bg-rose-100 dark:hover:bg-rose-900/30'
+                    : 'bg-orange-500 hover:bg-orange-600 text-white'
+                }`}
+              >
+                {isWatchlisted ? 'マイページから削除' : 'マイページに追加'}
               </button>
-              <button className="w-full py-3 bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-white font-bold rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 transition">
-                カートに入れる
+              <button
+                onClick={() => navigate('/funds')}
+                className="w-full mt-3 py-3 bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-white font-bold rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 transition"
+              >
+                ファンド一覧へ戻る
               </button>
             </div>
           </div>

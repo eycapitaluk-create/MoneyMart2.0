@@ -6,7 +6,52 @@ import {
   Trophy, TrendingUp, Calculator, X,
   PiggyBank, Umbrella, Briefcase
 } from 'lucide-react'
+import {
+  Area,
+  AreaChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts'
 import AdBanner from '../components/AdBanner'
+
+const FUND_RANKING = [
+  { id: 'emaxis-all', name: 'eMAXIS Slim 全世界株式 (オール・カントリー)', cat: '国際株式', ret: '+24.5%' },
+  { id: 'emaxis-sp500', name: 'eMAXIS Slim 米国株式 (S&P500)', cat: '北米株式', ret: '+28.3%' },
+  { id: 'alliance-ab', name: 'アライアンス・バーンスタイン・米国成長株投信Ｄ', cat: '北米株式', ret: '+32.1%' },
+  { id: 'himuchi-plus', name: 'ひふみプラス', cat: '国内株式', ret: '+15.4%' },
+  { id: 'raku-eco', name: '楽天・全世界・株価指数・ECO', cat: '全世界株式', ret: '+22.1%' },
+]
+
+const FUND_TREND = {
+  'emaxis-all': [
+    { m: '4月', r: 0.8 }, { m: '5月', r: 2.1 }, { m: '6月', r: 4.2 }, { m: '7月', r: 6.0 },
+    { m: '8月', r: 7.4 }, { m: '9月', r: 9.5 }, { m: '10月', r: 11.3 }, { m: '11月', r: 14.0 },
+    { m: '12月', r: 16.1 }, { m: '1月', r: 19.4 }, { m: '2月', r: 21.7 }, { m: '3月', r: 24.5 },
+  ],
+  'emaxis-sp500': [
+    { m: '4月', r: 1.1 }, { m: '5月', r: 2.7 }, { m: '6月', r: 5.5 }, { m: '7月', r: 8.0 },
+    { m: '8月', r: 9.2 }, { m: '9月', r: 11.5 }, { m: '10月', r: 14.6 }, { m: '11月', r: 17.2 },
+    { m: '12月', r: 19.0 }, { m: '1月', r: 22.6 }, { m: '2月', r: 25.0 }, { m: '3月', r: 28.3 },
+  ],
+  'alliance-ab': [
+    { m: '4月', r: 1.3 }, { m: '5月', r: 3.4 }, { m: '6月', r: 6.2 }, { m: '7月', r: 9.1 },
+    { m: '8月', r: 10.8 }, { m: '9月', r: 13.0 }, { m: '10月', r: 16.9 }, { m: '11月', r: 20.3 },
+    { m: '12月', r: 22.4 }, { m: '1月', r: 26.1 }, { m: '2月', r: 29.0 }, { m: '3月', r: 32.1 },
+  ],
+  'himuchi-plus': [
+    { m: '4月', r: 0.4 }, { m: '5月', r: 1.2 }, { m: '6月', r: 2.4 }, { m: '7月', r: 3.9 },
+    { m: '8月', r: 4.7 }, { m: '9月', r: 6.1 }, { m: '10月', r: 8.0 }, { m: '11月', r: 9.6 },
+    { m: '12月', r: 11.2 }, { m: '1月', r: 12.9 }, { m: '2月', r: 14.0 }, { m: '3月', r: 15.4 },
+  ],
+  'raku-eco': [
+    { m: '4月', r: 0.7 }, { m: '5月', r: 1.8 }, { m: '6月', r: 3.7 }, { m: '7月', r: 5.4 },
+    { m: '8月', r: 6.8 }, { m: '9月', r: 8.6 }, { m: '10月', r: 10.9 }, { m: '11月', r: 13.2 },
+    { m: '12月', r: 15.0 }, { m: '1月', r: 17.6 }, { m: '2月', r: 19.9 }, { m: '3月', r: 22.1 },
+  ],
+}
 
 const LoanSimulatorModal = ({ isOpen, onClose }) => {
   if (!isOpen) return null
@@ -20,7 +65,9 @@ const LoanSimulatorModal = ({ isOpen, onClose }) => {
     const n = year * 12
     const p = amount * 10000
     const monthly = Math.floor((p * r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1))
-    setResult({ monthly, total: monthly * n })
+    const totalRepayment = monthly * n
+    const totalInterest = Math.max(totalRepayment - p, 0)
+    setResult({ monthly, principal: p, totalRepayment, totalInterest })
   }
 
   return (
@@ -48,9 +95,23 @@ const LoanSimulatorModal = ({ isOpen, onClose }) => {
           <button onClick={calculate} className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg transition">計算する</button>
         </div>
         {result && (
-          <div className="mt-6 pt-6 border-t border-dashed border-slate-200 dark:border-slate-700 animate-slideUp text-center">
+          <div className="mt-6 pt-6 border-t border-dashed border-slate-200 dark:border-slate-700 animate-slideUp">
             <p className="text-xs text-slate-500 mb-1">毎月の返済額</p>
-            <p className="text-3xl font-black text-indigo-600 mb-2">¥{result.monthly.toLocaleString()}</p>
+            <p className="text-3xl font-black text-indigo-600 mb-4 text-center">¥{result.monthly.toLocaleString()}</p>
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div className="rounded-xl bg-slate-50 dark:bg-slate-800 p-2">
+                <p className="text-[10px] text-slate-500 font-bold">元金</p>
+                <p className="text-xs font-black text-slate-700 dark:text-slate-200">¥{result.principal.toLocaleString()}</p>
+              </div>
+              <div className="rounded-xl bg-slate-50 dark:bg-slate-800 p-2">
+                <p className="text-[10px] text-slate-500 font-bold">利息</p>
+                <p className="text-xs font-black text-rose-600">¥{result.totalInterest.toLocaleString()}</p>
+              </div>
+              <div className="rounded-xl bg-slate-50 dark:bg-slate-800 p-2">
+                <p className="text-[10px] text-slate-500 font-bold">総返済額</p>
+                <p className="text-xs font-black text-indigo-600">¥{result.totalRepayment.toLocaleString()}</p>
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -136,6 +197,7 @@ export default function HomePage({ openRiskModal }) {
   const [isLoanModalOpen, setIsLoanModalOpen] = useState(false)
   const [isInvestModalOpen, setIsInvestModalOpen] = useState(false)
   const [isRiskModalOpen, setIsRiskModalOpen] = useState(false)
+  const [selectedFundId, setSelectedFundId] = useState(FUND_RANKING[0].id)
 
   const handleRiskClick = () => {
     if (typeof openRiskModal === 'function') {
@@ -153,7 +215,6 @@ export default function HomePage({ openRiskModal }) {
     { id: 'stock', name: '株式', icon: <TrendingUp size={28} />, color: 'text-red-500', bg: 'bg-red-50 dark:bg-red-900/20', link: '/stocks' },
     { id: 'point', name: 'ポイ活', icon: <Coins size={28} />, color: 'text-yellow-500', bg: 'bg-yellow-50 dark:bg-yellow-900/20', link: '/products?category=points' },
     { id: 'ins', name: '保険', icon: <Umbrella size={28} />, color: 'text-sky-500', bg: 'bg-sky-50 dark:bg-sky-900/20', link: '/products?category=insurance' },
-    { id: 'robo', name: 'ロボアド', icon: <Sparkles size={28} />, color: 'text-purple-500', bg: 'bg-purple-50 dark:bg-purple-900/20', link: '/robo' },
   ]
 
   const recommendedCards = [
@@ -210,12 +271,12 @@ export default function HomePage({ openRiskModal }) {
 
       {/* 2. Quick Menu (8개 아이콘) */}
       <div className="max-w-6xl mx-auto px-4 -mt-16 relative z-20 mb-12">
-        <div className="bg-white dark:bg-slate-900 rounded-[2rem] shadow-xl p-6 md:p-8 border border-slate-100 dark:border-slate-800 grid grid-cols-4 md:grid-cols-8 gap-4 md:gap-6">
+        <div className="bg-white dark:bg-slate-900 rounded-[2rem] shadow-xl p-6 md:p-8 border border-slate-100 dark:border-slate-800 grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-7 gap-4 md:gap-6">
           {quickMenu.map((menu) => (
             <button
               key={menu.id}
               onClick={() => navigate(menu.link)}
-              className="flex flex-col items-center gap-2 group"
+              className="flex flex-col items-center gap-2 group w-full"
             >
               <div className={`w-16 h-16 md:w-20 md:h-20 rounded-2xl ${menu.bg} ${menu.color} flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform duration-300`}>
                 {menu.icon}
@@ -307,13 +368,16 @@ export default function HomePage({ openRiskModal }) {
               <p className="text-slate-500 dark:text-slate-400 text-sm font-medium mb-6">毎月3万円を20年間積み立てると、<br />いくらになるかチェック！</p>
               <div className="flex items-center gap-4">
                 <div className="bg-white dark:bg-slate-800 px-4 py-2 rounded-xl shadow-sm border border-pink-100 dark:border-pink-900/50">
-                  <p className="text-[10px] text-slate-400 font-bold">NISA対応</p>
-                  <p className="text-xl font-black text-pink-500">非課税</p>
+                  <p className="text-[10px] text-slate-400 font-bold">税制優遇対象</p>
+                  <p className="text-xl font-black text-pink-500">NISA活用</p>
                 </div>
                 <button className="w-10 h-10 bg-pink-500 rounded-full flex items-center justify-center text-white shadow-lg group-hover:scale-110 transition">
                   <ArrowRight size={20} />
                 </button>
               </div>
+              <p className="mt-4 text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                ※ 税制優遇は制度条件・非課税枠・運用期間により異なります。制度変更となる場合があります。
+              </p>
             </div>
             <PiggyBank size={120} className="absolute -right-4 -bottom-4 text-pink-100 dark:text-pink-900/30 group-hover:rotate-12 transition-transform duration-500" />
           </div>
@@ -357,27 +421,73 @@ export default function HomePage({ openRiskModal }) {
             </h2>
             <button onClick={() => navigate('/funds')} className="text-xs font-bold text-slate-400 hover:text-orange-500">もっと見る</button>
           </div>
-          <div className="space-y-3">
-            {[
-              { name: 'eMAXIS Slim 全世界株式 (オール・カントリー)', cat: '国際株式', ret: '+24.5%' },
-              { name: 'eMAXIS Slim 米国株式 (S&P500)', cat: '北米株式', ret: '+28.3%' },
-              { name: 'アライアンス・バーンスタイン・米国成長株投信Ｄ', cat: '北米株式', ret: '+32.1%' },
-              { name: 'ひふみプラス', cat: '国内株式', ret: '+15.4%' },
-              { name: '楽天・全世界・株価指数・ECO', cat: '全世界株式', ret: '+22.1%' },
-            ].map((fund, i) => (
-              <div key={i} className="bg-white dark:bg-slate-800 p-4 rounded-xl flex items-center gap-4 shadow-sm">
-                <span className={`font-black text-lg w-6 text-center ${i === 0 ? 'text-yellow-500' : i === 1 ? 'text-slate-400' : i === 2 ? 'text-orange-500' : 'text-slate-500'}`}>{i + 1}</span>
-                <div className="flex-1">
-                  <h3 className="font-bold text-slate-800 dark:text-slate-200 text-sm">{fund.name}</h3>
-                  <div className="flex gap-2 text-[10px] text-slate-400 mt-1">
-                    <span className="bg-slate-100 dark:bg-slate-700 px-1.5 rounded">{fund.cat}</span>
-                    <span className="text-red-500 font-bold">{fund.ret}</span>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+            {FUND_RANKING.map((fund, i) => (
+              <button
+                key={fund.id}
+                onClick={() => setSelectedFundId((prev) => (prev === fund.id ? '' : fund.id))}
+                className={`bg-white dark:bg-slate-800 rounded-xl border p-3 text-left hover:bg-slate-50 dark:hover:bg-slate-700/60 transition ${
+                  selectedFundId === fund.id
+                    ? 'border-blue-400 dark:border-blue-500 ring-2 ring-blue-200/70 dark:ring-blue-900/40'
+                    : 'border-slate-100 dark:border-slate-700'
+                }`}
+              >
+                <div className="flex items-start gap-2">
+                  <span className={`text-sm font-black ${
+                    i === 0 ? 'text-yellow-500' : i === 1 ? 'text-slate-400' : i === 2 ? 'text-orange-500' : 'text-slate-500'
+                  }`}>
+                    {i + 1}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="font-bold text-slate-800 dark:text-slate-200 text-xs leading-snug line-clamp-2">
+                      {fund.name}
+                    </h3>
+                    <div className="flex items-center justify-between mt-1 text-[10px]">
+                      <span className="bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 px-1.5 py-0.5 rounded">
+                    {fund.cat}
+                  </span>
+                      <span className="text-red-500 font-black">{fund.ret}</span>
+                    </div>
                   </div>
                 </div>
-                <ChevronRight size={16} className="text-slate-300" />
-              </div>
+              </button>
             ))}
           </div>
+          {selectedFundId ? (
+            <div className="mt-5 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-4">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-sm font-black text-slate-800 dark:text-slate-200">
+                  {(FUND_RANKING.find((f) => f.id === selectedFundId)?.name || '選択中ファンド')} - 1年収益推移
+                </p>
+                <div className="flex items-center gap-3">
+                  <span className="text-[11px] text-slate-400">単位: %</span>
+                  <button
+                    onClick={() => navigate(`/funds/${selectedFundId}`)}
+                    className="text-[11px] font-bold text-blue-600 hover:text-blue-500 dark:text-blue-300 dark:hover:text-blue-200 inline-flex items-center gap-1"
+                  >
+                    詳細を見る <ChevronRight size={12} />
+                  </button>
+                </div>
+              </div>
+              <div className="h-44">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={FUND_TREND[selectedFundId] || []} margin={{ top: 8, right: 10, left: 0, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="fundTrendFill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.35} />
+                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.02} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                    <XAxis dataKey="m" tick={{ fontSize: 11, fill: '#64748b' }} />
+                    <YAxis tick={{ fontSize: 11, fill: '#64748b' }} />
+                    <Tooltip formatter={(v) => [`${Number(v).toFixed(1)}%`, '累積収益']} />
+                    <Area type="monotone" dataKey="r" stroke="#3b82f6" strokeWidth={2} fill="url(#fundTrendFill)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          ) : null}
         </div>
       </section>
 

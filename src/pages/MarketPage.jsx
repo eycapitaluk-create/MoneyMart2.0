@@ -25,6 +25,7 @@ export default function MarketPage() {
   const [topFunds, setTopFunds] = useState([])
   const [inflowFunds, setInflowFunds] = useState([])
   const [isLoading, setIsLoading] = useState(true)
+  const [marketDataStatus, setMarketDataStatus] = useState('')
 
   const heatmapData = [
     { name: '半導体', change: 2.5, weight: 3 },
@@ -78,6 +79,7 @@ export default function MarketPage() {
     const fetchData = async () => {
       try {
         setIsLoading(true)
+        setMarketDataStatus('')
         const { data: fundsData, error } = await supabase
           .from('funds')
           .select('*, fund_prices(return_1y, net_assets, asset_flow_month, price)')
@@ -140,8 +142,12 @@ export default function MarketPage() {
 
         setTopFunds([...processed].sort((a, b) => b.return1y - a.return1y).slice(0, 5))
         setInflowFunds([...processed].sort((a, b) => b.inflow - a.inflow).slice(0, 5))
+        if (!processed.length) {
+          setMarketDataStatus('ファンドデータが空です。後ほど再度お試しください。')
+        }
       } catch (err) {
         console.error('Data Fetch Error:', err)
+        setMarketDataStatus('ランキングデータの取得に失敗しました。')
       } finally {
         setIsLoading(false)
       }
@@ -297,6 +303,10 @@ export default function MarketPage() {
                 <div className="py-10 flex items-center justify-center text-slate-400">
                   <Loader2 size={18} className="animate-spin mr-2" /> 読み込み中...
                 </div>
+              ) : topFunds.length === 0 ? (
+                <div className="py-10 text-center text-xs font-bold text-slate-500 dark:text-slate-400">
+                  {marketDataStatus || '表示できるランキングデータがありません。'}
+                </div>
               ) : (
                 <div className="space-y-3">
                   {topFunds.map((fund, i) => (
@@ -327,6 +337,10 @@ export default function MarketPage() {
               {isLoading ? (
                 <div className="py-10 flex items-center justify-center text-slate-400">
                   <Loader2 size={18} className="animate-spin mr-2" /> 読み込み中...
+                </div>
+              ) : inflowFunds.length === 0 ? (
+                <div className="py-10 text-center text-xs font-bold text-slate-500 dark:text-slate-400">
+                  {marketDataStatus || '表示できるランキングデータがありません。'}
                 </div>
               ) : (
                 <div className="space-y-3">

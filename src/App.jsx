@@ -16,11 +16,16 @@ import PrimePage from './pages/PrimePage'
 import AdminPage from './pages/AdminPage'
 import Login from './pages/Login'
 import Signup from './pages/Signup'
-import RoboPage from './pages/RoboPage'
 import MyPage from './pages/MyPage'
 import LegalPage from './pages/LegalPage'
 import FAQPage from './pages/FAQPage'
 import AboutPage from './pages/AboutPage'
+import NotFoundPage from './pages/NotFoundPage'
+import {
+  loadDbWatchlists,
+  addDbWatchlistItem,
+  removeDbWatchlistItem,
+} from './lib/myPageApi'
 
 const App = () => {
   const [session, setSession] = useState(null)
@@ -28,12 +33,6 @@ const App = () => {
   const [currentUserProfile, setCurrentUserProfile] = useState(undefined)
   const [role, setRole] = useState('viewer')
   const [roleReady, setRoleReady] = useState(false)
-  const adminEmailSet = new Set(
-    String(import.meta.env.VITE_ADMIN_EMAILS || '')
-      .split(',')
-      .map((v) => v.trim().toLowerCase())
-      .filter(Boolean)
-  )
 
   const [fundWatchlist, setFundWatchlist] = useState(() => {
     try {
@@ -48,6 +47,72 @@ const App = () => {
   useEffect(() => {
     localStorage.setItem('mm_fund_watchlist', JSON.stringify(fundWatchlist))
   }, [fundWatchlist])
+
+  const [productInterests, setProductInterests] = useState(() => {
+    try {
+      const raw = localStorage.getItem('mm_product_interests')
+      const parsed = raw ? JSON.parse(raw) : []
+      return Array.isArray(parsed) ? parsed : []
+    } catch {
+      return []
+    }
+  })
+
+  useEffect(() => {
+    localStorage.setItem('mm_product_interests', JSON.stringify(productInterests))
+  }, [productInterests])
+
+  useEffect(() => {
+    const userId = session?.user?.id
+    if (!userId) return
+
+    const syncWatchlists = async () => {
+      try {
+        const { fund, product, available } = await loadDbWatchlists(userId)
+        if (!available) return
+
+        setFundWatchlist((prev) => {
+          const mergedMap = new Map()
+          ;[...fund, ...prev].forEach((item) => mergedMap.set(item.id, item))
+          const merged = [...mergedMap.values()]
+          prev.forEach((item) => {
+            if (!fund.some((f) => f.id === item.id)) {
+              addDbWatchlistItem({
+                userId,
+                itemType: 'fund',
+                itemId: item.id,
+                itemName: item.name,
+                metadata: { change: Number(item.change || 0) },
+              }).catch(() => {})
+            }
+          })
+          return merged
+        })
+
+        setProductInterests((prev) => {
+          const mergedMap = new Map()
+          ;[...product, ...prev].forEach((item) => mergedMap.set(item.id, item))
+          const merged = [...mergedMap.values()]
+          prev.forEach((item) => {
+            if (!product.some((p) => p.id === item.id)) {
+              addDbWatchlistItem({
+                userId,
+                itemType: 'product',
+                itemId: item.id,
+                itemName: item.name,
+                metadata: { provider: item.provider || '', category: item.category || '' },
+              }).catch(() => {})
+            }
+          })
+          return merged
+        })
+      } catch (err) {
+        console.warn('watchlist sync failed:', err?.message || err)
+      }
+    }
+
+    syncWatchlists()
+  }, [session?.user?.id])
 
   useEffect(() => {
     let mounted = true
@@ -105,7 +170,6 @@ const App = () => {
       setSession(nextSession ?? null)
       setCurrentUserProfile(undefined)
       loadDisplayProfile(nextSession ?? null)
-      setRoleReady(false)
     })
 
     return () => {
@@ -115,40 +179,49 @@ const App = () => {
   }, [])
 
   useEffect(() => {
+    let alive = true
     const loadRole = async () => {
       if (!session?.user?.id) {
+        if (!alive) return
         setRole('viewer')
         setRoleReady(true)
         return
       }
 
-      const { data, error } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', session.user.id)
-        .maybeSingle()
+      setRole('viewer')
+      setRoleReady(false)
 
-      const metaRole = session.user?.app_metadata?.role
-        || session.user?.user_metadata?.role
-      const email = String(session.user?.email || '').toLowerCase()
-      const fallbackRole = (metaRole === 'admin' || adminEmailSet.has(email)) ? 'admin' : 'viewer'
+      try {
+        const { data, error } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', session.user.id)
+          .maybeSingle()
 
-      if (error) {
-        console.warn('role load failed, using fallback role:', error.message)
+        if (error) throw error
+        if (!alive) return
+        setRole(data?.role === 'admin' ? 'admin' : 'viewer')
+      } catch (err) {
+        console.warn('role load failed, fallback to viewer:', err?.message || err)
+        if (!alive) return
+        setRole('viewer')
+      } finally {
+        if (alive) setRoleReady(true)
       }
-      setRole(data?.role || fallbackRole)
-      setRoleReady(true)
     }
     loadRole()
-  }, [session?.user?.id, session?.user?.email])
+    return () => {
+      alive = false
+    }
+  }, [session?.user?.id])
 
   const toggleFundWatchlist = (id, meta = {}) => {
     if (!id) return
-    setFundWatchlist((prev) => {
-      const exists = prev.some((item) => item.id === id)
-      if (exists) return prev.filter((item) => item.id !== id)
-      return [
-        ...prev,
+    const exists = fundWatchlist.some((item) => item.id === id)
+    const next = exists
+      ? fundWatchlist.filter((item) => item.id !== id)
+      : [
+        ...fundWatchlist,
         {
           id,
           name: meta.name || String(id),
@@ -156,17 +229,72 @@ const App = () => {
           trend: Number(meta.change || 0) >= 0 ? 'up' : 'down',
         },
       ]
-    })
+    setFundWatchlist(next)
+
+    const userId = session?.user?.id
+    if (!userId) return
+    const dbOp = exists
+      ? removeDbWatchlistItem({ userId, itemType: 'fund', itemId: id })
+      : addDbWatchlistItem({
+        userId,
+        itemType: 'fund',
+        itemId: id,
+        itemName: meta.name || String(id),
+        metadata: { change: Number(meta.change || 0) },
+      })
+    dbOp.catch((err) => console.warn('fund watchlist sync failed:', err?.message || err))
+  }
+
+  const toggleProductInterest = (id, meta = {}) => {
+    if (!id) return
+    const exists = productInterests.some((item) => item.id === id)
+    const next = exists
+      ? productInterests.filter((item) => item.id !== id)
+      : [
+        ...productInterests,
+        {
+          id,
+          name: meta.name || String(id),
+          provider: meta.provider || '',
+          category: meta.category || '',
+        },
+      ]
+    setProductInterests(next)
+
+    const userId = session?.user?.id
+    if (!userId) return
+    const dbOp = exists
+      ? removeDbWatchlistItem({ userId, itemType: 'product', itemId: id })
+      : addDbWatchlistItem({
+        userId,
+        itemType: 'product',
+        itemId: id,
+        itemName: meta.name || String(id),
+        metadata: { provider: meta.provider || '', category: meta.category || '' },
+      })
+    dbOp.catch((err) => console.warn('product interest sync failed:', err?.message || err))
   }
 
   const RequireAuth = ({ children }) => {
-    if (!authReady) return null
+    if (!authReady) {
+      return (
+        <div className="min-h-[50vh] flex items-center justify-center">
+          <p className="text-sm font-bold text-slate-500 dark:text-slate-400">認証情報を確認中...</p>
+        </div>
+      )
+    }
     if (!session) return <Navigate to="/login" replace />
     return children
   }
 
   const RequireAdmin = ({ children }) => {
-    if (!authReady || !roleReady) return null
+    if (!authReady || !roleReady) {
+      return (
+        <div className="min-h-[50vh] flex items-center justify-center">
+          <p className="text-sm font-bold text-slate-500 dark:text-slate-400">管理者権限を確認中...</p>
+        </div>
+      )
+    }
     if (!session) return <Navigate to="/login" replace />
     if (role !== 'admin') return <Navigate to="/" replace />
     return children
@@ -189,19 +317,47 @@ const App = () => {
           }
         />
         <Route path="/funds/compare" element={<FundComparePage />} />
-        <Route path="/funds/:id" element={<FundDetailPage />} />
+        <Route
+          path="/funds/:id"
+          element={
+            <FundDetailPage
+              myWatchlist={fundWatchlist.map((item) => item.id)}
+              toggleWatchlist={toggleFundWatchlist}
+            />
+          }
+        />
         <Route path="/stocks" element={<StockPage />} />
-        <Route path="/products" element={<ProductPage />} />
-        <Route path="/products/:id" element={<ProductDetailPage />} />
+        <Route
+          path="/products"
+          element={
+            <ProductPage
+              productInterestIds={productInterests.map((item) => item.id)}
+              toggleProductInterest={toggleProductInterest}
+            />
+          }
+        />
+        <Route
+          path="/products/:id"
+          element={
+            <ProductDetailPage
+              productInterestIds={productInterests.map((item) => item.id)}
+              toggleProductInterest={toggleProductInterest}
+            />
+          }
+        />
         <Route path="/lounge" element={<LoungePage bootUser={currentUserProfile} authReady={authReady} />} />
         <Route path="/academy" element={<AcademyPage />} />
         <Route path="/prime" element={<PrimePage />} />
-        <Route path="/robo" element={<RoboPage />} />
         <Route
           path="/mypage"
           element={
             <RequireAuth>
-              <MyPage fundWatchlist={fundWatchlist} user={session?.user || null} />
+              <MyPage
+                fundWatchlist={fundWatchlist}
+                productInterests={productInterests}
+                toggleFundWatchlist={toggleFundWatchlist}
+                user={session?.user || null}
+              />
             </RequireAuth>
           }
         />
@@ -217,6 +373,7 @@ const App = () => {
             </RequireAdmin>
           }
         />
+        <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>
   )

@@ -1,0 +1,158 @@
+{\rtf1\ansi\deff0
+{\fonttbl{\f0 Arial;}}
+\fs22
+\b MoneyMart 2.0 - 런칭 운영 가이드 (한국어)\b0\par
+버전: 1.0\par
+작성일: 2026-02-10\par
+\par
+\b 1) 문서 목적\b0\par
+이 문서는 공식 런칭 및 운영을 위한 실무 가이드입니다.\par
+- 페이지별 관리 포인트\par
+- DB 데이터와 fallback 구분\par
+- 상품/아카데미/관리자 권한 수정 방법\par
+- 배포 전 최종 점검 항목\par
+\par
+\b 2) 관리자(Admin) 접근\b0\par
+경로: /admin\par
+권한 기준: user_roles 테이블에서 role=admin 인 사용자만 접근\par
+\par
+관리자 권한 부여 방법:\par
+1. Supabase SQL Editor 접속\par
+2. 대상 user_id 기준으로 user_roles insert/update\par
+3. role 값을 admin으로 설정\par
+\par
+권장 SQL 예시:\par
+insert into user_roles (user_id, role) values ('USER_UUID', 'admin')\par
+on conflict (user_id) do update set role='admin';\par
+\par
+\b 3) 페이지별 운영 포인트\b0\par
+\par
+\b Home / Market / Stock\b0\par
+- Home: 서비스 소개/네비게이션 허브\par
+- Market: 랭킹 + 센티먼트 + 섹터 시황\par
+- Stock: 종목 리스트 + OHLCV + 시뮬레이터\par
+\par
+데이터 소스 우선순위:\par
+- Stock: v_stock_latest + stock_symbols -> fallback mock\par
+- Market 랭킹: funds/fund_prices 또는 quick_* -> 없으면 empty-state\par
+\par
+운영 체크:\par
+- Data 배지(LIVE / QUICK / FALLBACK) 정상 표시\par
+- 데이터 없을 때 빈화면(blank) 없이 안내 문구 표시\par
+- 에러 메시지 사용자에게 보이도록 노출\par
+\par
+\b Fund 페이지 (/funds)\b0\par
+주요 구성:\par
+- 카테고리 자금흐름, 리스크-리턴 버블, 펀드 리스트\par
+- 3개까지 비교\par
+\par
+데이터 소스 우선순위:\par
+1) funds + fund_prices\par
+2) quick_fund_master + v_quick_fund_latest_price\par
+3) fallback\par
+\par
+운영 체크:\par
+- Data 배지 확인(LIVE/QUICK/FALLBACK)\par
+- 워치리스트 반영 확인\par
+- 비교 버튼 및 비교 페이지 이동 확인\par
+\par
+\b Fund 상세 (/funds/:id)\b0\par
+- 리스트/비교에서 넘어온 ID 매핑 일관성 확인\par
+- 수수료 표시 및 마이페이지 담기(워치리스트) 동작 확인\par
+\par
+\b Product 페이지 (/products)\b0\par
+운영 목적:\par
+- 검색/필터/비교/관심리스트 저장\par
+- 비교표에서 유리 조건 하이라이트\par
+\par
+핵심 주의사항:\par
+- 관심리스트 ID 타입(string/number) 정규화 유지\par
+\par
+\b Product 상세 (/products/:id)\b0\par
+- 스펙/주의문구/관련상품/외부 신청 링크 표시\par
+- 이미지 깨짐 시 안전 fallback 처리\par
+\par
+\b Academy (/academy)\b0\par
+운영 방식:\par
+- academy_courses 기반 YouTube 강의 노출\par
+- 라이브 데이터 없을 때만 fallback 카탈로그 사용\par
+\par
+관리자 입력 필수 5개:\par
+- title\par
+- youtube_url\par
+- category\par
+- level\par
+- is_featured\par
+\par
+운영 체크:\par
+- youtube_url 비어있거나 잘못되면 피드백 문구 노출\par
+- 대표 영상(Featured) 클릭 시 정상 오픈\par
+\par
+\b Lounge (/lounge)\b0\par
+- 게시글/댓글/좋아요/북마크\par
+- 본인 글 삭제 가능, 권한 없는 조작 차단 확인\par
+\par
+\b MyPage (/mypage)\b0\par
+저장 테이블:\par
+- user_watchlists\par
+- user_expenses\par
+- user_insurances\par
+- user_finance_profiles\par
+- user_asset_positions\par
+- user_point_accounts\par
+\par
+운영 체크:\par
+- 추가/수정/삭제 후 새로고침 시 유지 여부\par
+- 빈 상태에서 mock 재등장 없이 empty-state 노출\par
+- Summary DTI가 저장된 연소득 값 반영하는지 확인\par
+\par
+\b Legal / FAQ / About\b0\par
+- 라우트 접근성 및 렌더링 확인\par
+- FAQ 검색/탭 전환 시 예외 없이 동작 확인\par
+\par
+\b 4) DB 변경 운영 가이드\b0\par
+\par
+\b 상품 정보 수정\b0\par
+권장: Admin 페이지에서 CRUD 수행\par
+예외: 직접 SQL 수정 시 변경 이력/검수 기록 필수\par
+\par
+\b 아카데미 강의 수정\b0\par
+권장: Admin 페이지\par
+게시 전 youtube_url 유효성 확인\par
+\par
+\b 사용자 데이터 스키마 변경\b0\par
+1. Supabase 마이그레이션 실행\par
+2. RLS 정책 점검\par
+3. 2개 계정으로 소유권 격리 테스트(본인/타인)\par
+\par
+\b 5) 보안 및 런칭 원칙\b0\par
+- 클라이언트 노출 가능한 값으로 관리자 판정하지 않기\par
+- 관리자 권한 단일 소스: user_roles\par
+- 사용자 소유 데이터 테이블은 RLS 항상 활성화\par
+- user_id null 저장 금지(사용자 소유 데이터)\par
+\par
+\b 6) 최종 런칭 테스트 (맨 마지막 실행)\b0\par
+1. 인증/권한 가드\par
+2. Admin 접근 + 상품 CRUD\par
+3. Academy 라이브 데이터 + 영상 링크\par
+4. Fund/Stock 데이터 파이프라인 최신성\par
+5. MyPage CRUD + 새로고침 유지\par
+6. RLS 계정 간 격리 검증\par
+7. 주요 페이지 empty/error 상태 검증\par
+8. 빌드 + 프로덕션 배포 최종 확인\par
+\par
+\b 7) 빠른 트러블슈팅\b0\par
+증상: 라우트 이동 후 빈 화면\par
+확인: auth/role 로딩 가드, not-found 라우트, 콘솔 런타임 에러\par
+\par
+증상: 상품 관심리스트 표시 불일치\par
+확인: ID 타입 정규화(string/number)\par
+\par
+증상: Academy 클릭 무반응\par
+확인: youtube_url 유효성/빈 링크 피드백\par
+\par
+증상: Market/Fund 랭킹 비어 보임\par
+확인: 데이터 fetch 상태 + fallback 배지/메시지\par
+\par
+\b 문서 끝\b0\par
+}

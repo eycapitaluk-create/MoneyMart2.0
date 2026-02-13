@@ -75,10 +75,12 @@ export default function FundPage({ user, myWatchlist = [], toggleWatchlist: prop
   const [dbFunds, setDbFunds] = useState([])
   const [selectedFundIds, setSelectedFundIds] = useState([])
   const [isLoading, setIsLoading] = useState(true)
+  const [fundDataSource, setFundDataSource] = useState('fallback')
   const [watchlist, setWatchlist] = useState(() => (Array.isArray(myWatchlist) ? myWatchlist : []))
   const [currentPage, setCurrentPage] = useState(1)
   const [sortConfig, setSortConfig] = useState({ key: 'returnRate1Y', direction: 'descending' })
   const [selectedFlowCategory, setSelectedFlowCategory] = useState('')
+  const [hoveredBubbleId, setHoveredBubbleId] = useState(null)
 
   const itemsPerPage = 12
   const toggleWatchlist = typeof propToggleWatchlist === 'function'
@@ -96,7 +98,9 @@ export default function FundPage({ user, myWatchlist = [], toggleWatchlist: prop
           .order('trust_fee', { ascending: true })
 
         let formattedFunds = []
+        let nextSource = 'fallback'
         if (!fundsError && Array.isArray(fundsData) && fundsData.length > 0) {
+          nextSource = 'live'
           formattedFunds = fundsData.map((item) => {
             const priceData = item.fund_prices?.[0] || {}
             const basePrice = priceData.price || 10000
@@ -151,6 +155,7 @@ export default function FundPage({ user, myWatchlist = [], toggleWatchlist: prop
           if (quickPriceErr) throw quickPriceErr
 
           const priceMap = new Map((quickPrice || []).map((p) => [p.quickcode, p]))
+          nextSource = 'quick'
           formattedFunds = latestMaster.map((item) => {
             const priceData = priceMap.get(item.quickcode) || {}
             const basePrice = Number(priceData.price || 10000)
@@ -187,10 +192,13 @@ export default function FundPage({ user, myWatchlist = [], toggleWatchlist: prop
         }
 
         const funds = formattedFunds.length > 0 ? formattedFunds : FALLBACK_FUNDS
+        if (formattedFunds.length === 0) nextSource = 'fallback'
         setDbFunds([...funds].sort((a, b) => b.returnRate1Y - a.returnRate1Y))
+        setFundDataSource(nextSource)
       } catch (error) {
         console.error('Error fetching data:', error.message)
         setDbFunds(FALLBACK_FUNDS)
+        setFundDataSource('fallback')
       } finally {
         setIsLoading(false)
       }
@@ -300,7 +308,6 @@ export default function FundPage({ user, myWatchlist = [], toggleWatchlist: prop
   const mapData = useMemo(() => {
     const base = dbFunds.slice(0, 30)
     return base.map((f) => {
-      const isPositive = f.returnRate1Y >= 0
       const isWatchlisted = Array.isArray(effectiveWatchlist) && effectiveWatchlist.includes(f.id)
       return {
         id: f.id,
@@ -311,7 +318,6 @@ export default function FundPage({ user, myWatchlist = [], toggleWatchlist: prop
         category: f.category,
         aumDisplay: f.aumDisplay,
         isWatchlisted,
-        fill: isWatchlisted ? '#ef4444' : (isPositive ? '#3b82f6' : '#10b981'),
       }
     })
   }, [dbFunds, effectiveWatchlist])
@@ -372,6 +378,13 @@ export default function FundPage({ user, myWatchlist = [], toggleWatchlist: prop
       <div className="mb-6">
         <h1 className="text-3xl font-black text-slate-900 dark:text-white">ファンド・インテリジェンス</h1>
         <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">資金フロー・リスク・一覧を一画面で確認</p>
+        <p className={`text-xs font-bold mt-2 ${
+          fundDataSource === 'fallback'
+            ? 'text-amber-600 dark:text-amber-300'
+            : 'text-emerald-600 dark:text-emerald-300'
+        }`}>
+          Data: {fundDataSource === 'live' ? 'LIVE' : fundDataSource === 'quick' ? 'QUICK' : 'FALLBACK'}
+        </p>
       </div>
 
       <div className="mb-5 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-4">
@@ -530,16 +543,32 @@ export default function FundPage({ user, myWatchlist = [], toggleWatchlist: prop
                 />
                 <Scatter data={mapData} onClick={(entry) => navigate(`/funds/${entry.id}`)}>
                   {mapData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.fill} fillOpacity={0.8} />
+                    <Cell
+                      key={`cell-${index}`}
+                      fill={
+                        entry.id === hoveredBubbleId
+                          ? '#3b82f6'
+                          : (entry.isWatchlisted ? '#ef4444' : '#94a3b8')
+                      }
+                      fillOpacity={
+                        entry.id === hoveredBubbleId
+                          ? 0.95
+                          : (entry.isWatchlisted ? 0.85 : 0.45)
+                      }
+                      stroke={
+                        entry.id === hoveredBubbleId
+                          ? '#1d4ed8'
+                          : (entry.isWatchlisted ? '#dc2626' : '#64748b')
+                      }
+                      strokeWidth={entry.id === hoveredBubbleId ? 2 : 1}
+                      style={{ cursor: 'pointer' }}
+                      onMouseEnter={() => setHoveredBubbleId(entry.id)}
+                      onMouseLeave={() => setHoveredBubbleId(null)}
+                    />
                   ))}
                 </Scatter>
               </ScatterChart>
             </ResponsiveContainer>
-          </div>
-          <div className="flex gap-4 text-xs mt-2 text-slate-500 dark:text-slate-400">
-            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-red-500" /> ウォッチ中</span>
-            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-blue-500" /> 通常（プラス傾向）</span>
-            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500" /> 通常（マイナス傾向）</span>
           </div>
         </div>
       </div>

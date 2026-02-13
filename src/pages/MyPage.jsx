@@ -39,12 +39,6 @@ const DEFAULT_WATCHLIST = [
   { id: 'raku-eco', name: '楽天・全米株式', change: 5.0, trend: 'up' },
 ]
 
-const BUDGET_DATA = [
-  { name: '食費', value: 5000, color: '#f97316' },
-  { name: 'ショッピング', value: 3000, color: '#8b5cf6' },
-  { name: 'その他', value: 0, color: '#cbd5e1' },
-]
-
 const POINTS = {
   total: 1000,
   expiring: 0,
@@ -964,8 +958,11 @@ const BudgetSection = ({
       value,
       color: colorMap[name] || '#94a3b8',
     }))
-    return list.length > 0 ? list : BUDGET_DATA
+    return list
   })()
+  const pieData = categorySeries.length > 0
+    ? categorySeries
+    : [{ name: 'データなし', value: 1, color: '#e2e8f0' }]
 
   const recentExpenses = expenses.slice(0, 8)
   const pointTotal = pointAccounts.reduce((acc, p) => acc + Number(p.balance || 0), 0)
@@ -1139,8 +1136,8 @@ const BudgetSection = ({
           <div className="h-40 relative">
             <ResponsiveContainer width="100%" height="100%">
               <RechartsPieChart>
-                <Pie data={categorySeries} innerRadius={40} outerRadius={60} paddingAngle={5} dataKey="value">
-                  {categorySeries.map((entry, index) => (
+                <Pie data={pieData} innerRadius={40} outerRadius={60} paddingAngle={5} dataKey="value">
+                  {pieData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
                 </Pie>
@@ -1161,6 +1158,9 @@ const BudgetSection = ({
                 <span className="font-black text-slate-900 dark:text-white">¥{d.value.toLocaleString()}</span>
               </div>
             ))}
+            {categorySeries.length === 0 && (
+              <p className="text-xs font-bold text-slate-400">今月のカテゴリ支出データはまだありません。</p>
+            )}
           </div>
         </div>
 
@@ -1317,10 +1317,20 @@ const BudgetSection = ({
   )
 }
 
-const DebtSection = ({ annualIncome = 600, onAnnualIncomeChange, onSaveAnnualIncome, profileSaving, onOpenLoanDiagnosis }) => {
+const DebtSection = ({
+  annualIncome = 600,
+  debtRemainingYen = DEBT_INFO.remaining,
+  onDebtRemainingChange,
+  onSaveDebtRemaining,
+  onAnnualIncomeChange,
+  onSaveAnnualIncome,
+  profileSaving,
+  onOpenLoanDiagnosis,
+}) => {
   const [selectedScenario, setSelectedScenario] = useState('rate_up')
   const [extraMonthlyYen, setExtraMonthlyYen] = useState(0)
-  const principalYen = Number(DEBT_INFO.remaining || 0)
+  const [annualIncomeInput, setAnnualIncomeInput] = useState(String(Math.max(0, Number(annualIncome || 0))))
+  const principalYen = Math.max(0, Number(debtRemainingYen || 0))
   const remainingYears = 30
   const currentRate = 0.9
   const raisedRate = 1.4
@@ -1355,6 +1365,10 @@ const DebtSection = ({ annualIncome = 600, onAnnualIncomeChange, onSaveAnnualInc
   }
   const activeScenario = scenarioMap[selectedScenario]
   const dti = dtiBase.toFixed(1)
+
+  useEffect(() => {
+    setAnnualIncomeInput(String(Math.max(0, Number(annualIncome || 0))))
+  }, [annualIncome])
 
   const estimatePayoffMonths = (balance, annualRatePct, monthlyPayment) => {
     const monthlyRate = (annualRatePct / 100) / 12
@@ -1392,8 +1406,14 @@ const DebtSection = ({ annualIncome = 600, onAnnualIncomeChange, onSaveAnnualInc
               <span className="font-black text-slate-900 dark:text-white text-lg">¥</span>
               <input
                 type="number"
-                value={annualIncome}
-                onChange={(e) => onAnnualIncomeChange?.(Number(e.target.value) || 0)}
+                value={annualIncomeInput}
+                onChange={(e) => {
+                  const raw = String(e.target.value || '')
+                  const digitsOnly = raw.replace(/[^\d]/g, '')
+                  const normalized = digitsOnly.replace(/^0+(?=\d)/, '')
+                  setAnnualIncomeInput(normalized)
+                  onAnnualIncomeChange?.(normalized === '' ? 0 : Number(normalized))
+                }}
                 className="w-full bg-transparent font-black text-2xl text-slate-900 dark:text-white outline-none border-b-2 border-slate-200 dark:border-slate-600 focus:border-emerald-500 transition"
               />
               <span className="font-bold text-slate-400 text-sm whitespace-nowrap">万円</span>
@@ -1415,9 +1435,24 @@ const DebtSection = ({ annualIncome = 600, onAnnualIncomeChange, onSaveAnnualInc
           <div className="space-y-6">
             <div>
               <p className="text-xs text-slate-400 font-bold mb-1">残債総額</p>
-              <p className="text-3xl font-black text-slate-900 dark:text-white">¥{DEBT_INFO.remaining.toLocaleString()}</p>
+              <p className="text-3xl font-black text-slate-900 dark:text-white">¥{principalYen.toLocaleString()}</p>
               <div className="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-full mt-2">
                 <div className="w-[90%] h-full bg-slate-900 dark:bg-slate-600 rounded-full" />
+              </div>
+              <div className="mt-3 flex items-center gap-2">
+                <input
+                  type="number"
+                  value={debtRemainingYen}
+                  onChange={(e) => onDebtRemainingChange?.(Math.max(0, Number(e.target.value) || 0))}
+                  className="flex-1 px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800 text-sm"
+                  placeholder="残債総額(円)"
+                />
+                <button
+                  onClick={onSaveDebtRemaining}
+                  className="px-3 py-2 rounded-lg bg-slate-900 dark:bg-slate-700 text-white text-xs font-bold"
+                >
+                  保存
+                </button>
               </div>
             </div>
 
@@ -1587,6 +1622,14 @@ export default function MyPage({ fundWatchlist = [], productInterests = [], togg
   const [pointSaving, setPointSaving] = useState(false)
   const [profileSaving, setProfileSaving] = useState(false)
   const [myPageDbAvailable, setMyPageDbAvailable] = useState(false)
+  const [loanRemainingYen, setLoanRemainingYen] = useState(DEBT_INFO.remaining)
+
+  useEffect(() => {
+    const key = user?.id ? `mm_loan_remaining_yen:${user.id}` : 'mm_loan_remaining_yen:guest'
+    const saved = localStorage.getItem(key)
+    const parsed = Number(saved)
+    setLoanRemainingYen(Number.isFinite(parsed) && parsed >= 0 ? parsed : DEBT_INFO.remaining)
+  }, [user?.id])
 
   const watchlistCount = myPageDbAvailable
     ? (Array.isArray(fundWatchlist) ? fundWatchlist.length : 0)
@@ -1607,7 +1650,7 @@ export default function MyPage({ fundWatchlist = [], productInterests = [], togg
       }
     })
     : PORTFOLIO.map((p) => ({ ...p, source: 'mock' }))
-  const summaryBaseMonthlyYen = calcMonthlyPayment(Number(DEBT_INFO.remaining || 0), 0.9, 30)
+  const summaryBaseMonthlyYen = calcMonthlyPayment(Number(loanRemainingYen || 0), 0.9, 30)
   const summaryAnnualRepaymentManwon = (summaryBaseMonthlyYen * 12) / 10000
   const summaryDti = Number(financeProfile.annual_income_manwon || 0) > 0
     ? (summaryAnnualRepaymentManwon / Number(financeProfile.annual_income_manwon || 0)) * 100
@@ -1816,6 +1859,12 @@ export default function MyPage({ fundWatchlist = [], productInterests = [], togg
     }
   }
 
+  const handleSaveLoanRemaining = () => {
+    const key = user?.id ? `mm_loan_remaining_yen:${user.id}` : 'mm_loan_remaining_yen:guest'
+    localStorage.setItem(key, String(Math.max(0, Number(loanRemainingYen || 0))))
+    setDataStatus('残債総額を保存しました。')
+  }
+
   const handleLogout = async () => {
     await supabase.auth.signOut()
     navigate('/login')
@@ -1866,6 +1915,9 @@ export default function MyPage({ fundWatchlist = [], productInterests = [], togg
         return (
           <DebtSection
             annualIncome={financeProfile.annual_income_manwon}
+            debtRemainingYen={loanRemainingYen}
+            onDebtRemainingChange={setLoanRemainingYen}
+            onSaveDebtRemaining={handleSaveLoanRemaining}
             onAnnualIncomeChange={(v) => setFinanceProfile((prev) => ({ ...prev, annual_income_manwon: v }))}
             onSaveAnnualIncome={handleSaveFinanceProfile}
             profileSaving={profileSaving}

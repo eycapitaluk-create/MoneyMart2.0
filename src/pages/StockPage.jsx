@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, useTransition } from 'react'
 import {
   Search, Star, Plus,
   TrendingUp, TrendingDown, Clock, Info,
@@ -191,6 +191,7 @@ export default function StockPage() {
   const [costTradesPerMonth, setCostTradesPerMonth] = useState(2)
   const [costFxRatio, setCostFxRatio] = useState(60)
   const [threeMonthRateBySymbol, setThreeMonthRateBySymbol] = useState({})
+  const [isStockPending, startStockTransition] = useTransition()
   const chartInteractionRef = useRef(null)
   const panRef = useRef({
     active: false,
@@ -671,6 +672,13 @@ export default function StockPage() {
     if (!id) return
     setWatchlist((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
   }
+  const handleSelectStock = (stock) => {
+    if (!stock?.id) return
+    if (selectedStock?.id === stock.id) return
+    startStockTransition(() => {
+      setSelectedStock(stock)
+    })
+  }
   useEffect(() => {
     try {
       window.localStorage.setItem(STOCK_WATCHLIST_STORAGE_KEY, JSON.stringify(watchlist))
@@ -764,7 +772,7 @@ export default function StockPage() {
               {filteredStocks.map((stock) => (
                 <div
                   key={stock.id}
-                  onClick={() => setSelectedStock(stock)}
+                  onClick={() => handleSelectStock(stock)}
                   className={`p-4 cursor-pointer hover:bg-slate-50 dark:hover:bg-white/5 transition flex justify-between items-center ${displayedStock?.id === stock.id ? 'bg-orange-50 dark:bg-white/10 border-l-4 border-orange-500' : ''}`}
                 >
                   <div>
@@ -796,7 +804,7 @@ export default function StockPage() {
                 {topPerformers.map((stock) => (
                   <button
                     key={`top-${stock.id}`}
-                    onClick={() => setSelectedStock(stock)}
+                    onClick={() => handleSelectStock(stock)}
                     className="w-full flex items-center justify-between rounded-lg px-2 py-1.5 hover:bg-slate-50 dark:hover:bg-slate-800 text-left"
                   >
                     <span className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">{stock.code}</span>
@@ -811,7 +819,7 @@ export default function StockPage() {
                 {topDecliners.map((stock) => (
                   <button
                     key={`down-${stock.id}`}
-                    onClick={() => setSelectedStock(stock)}
+                    onClick={() => handleSelectStock(stock)}
                     className="w-full flex items-center justify-between rounded-lg px-2 py-1.5 hover:bg-slate-50 dark:hover:bg-slate-800 text-left"
                   >
                     <span className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">{stock.code}</span>
@@ -952,6 +960,9 @@ export default function StockPage() {
             <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">
               Today Insight
             </p>
+            {isStockPending && (
+              <p className="text-[11px] font-bold text-orange-500 dark:text-orange-400 mb-1">銘柄切替中...</p>
+            )}
             <p className="text-sm font-bold text-slate-800 dark:text-slate-200">
               {displayedStock
                 ? `${displayedStock.code}は${Math.abs(displayedStock.rate).toFixed(2)}% ${displayedStock.rate >= 0 ? '上昇' : '下落'}。価格推移・出来高・開示情報を合わせて、タイミングを分散して判断しましょう。`

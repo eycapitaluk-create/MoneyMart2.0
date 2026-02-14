@@ -817,8 +817,8 @@ const WealthSection = ({
 
   return (
     <div className="space-y-8">
-    <div className="grid md:grid-cols-2 gap-8">
-      <div className="bg-white dark:bg-slate-900 p-6 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm">
+    <div className="grid md:grid-cols-2 gap-4 md:gap-8">
+      <div className="bg-white dark:bg-slate-900 p-4 sm:p-6 rounded-2xl sm:rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm min-w-0">
         <div className="flex items-center justify-between mb-6">
           <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
             <TrendingUp size={20} className="text-blue-500" /> 現在の投資
@@ -895,7 +895,7 @@ const WealthSection = ({
         </div>
       </div>
 
-      <div className="bg-white dark:bg-slate-900 p-6 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm">
+      <div className="bg-white dark:bg-slate-900 p-4 sm:p-6 rounded-2xl sm:rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm min-w-0">
         <h3 className="font-bold text-slate-900 dark:text-white mb-6 flex items-center gap-2">
           <Star size={20} className="text-yellow-400 fill-yellow-400" /> ファンドウォッチリスト
         </h3>
@@ -963,7 +963,7 @@ const WealthSection = ({
       </div>
     </div>
 
-    <div className="bg-white dark:bg-slate-900 p-6 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm">
+    <div className="bg-white dark:bg-slate-900 p-4 sm:p-6 rounded-2xl sm:rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm">
       <h3 className="font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
         <Star size={18} className="text-amber-500 fill-amber-500" /> 関心商品リスト
       </h3>
@@ -995,7 +995,7 @@ const WealthSection = ({
       </button>
     </div>
 
-    <div className="bg-gradient-to-r from-slate-900 to-slate-800 rounded-2xl p-6 text-white flex items-center justify-between">
+    <div className="bg-gradient-to-r from-slate-900 to-slate-800 rounded-2xl p-4 sm:p-6 text-white flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
       <div>
         <div className="flex items-center gap-2 mb-2 text-orange-400 font-bold text-xs uppercase tracking-wider">
           <Crown size={14} /> プレミアムサービス
@@ -1188,8 +1188,8 @@ const BudgetSection = ({
   }, [recentMonthKeys, categoryMonthKey, currentMonthKey])
 
   return (
-    <div className="grid md:grid-cols-2 gap-8">
-      <div className="bg-white dark:bg-slate-900 p-6 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm">
+    <div className="grid md:grid-cols-2 gap-4 md:gap-8">
+      <div className="bg-white dark:bg-slate-900 p-4 sm:p-6 rounded-2xl sm:rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm min-w-0">
         <div className="flex justify-between items-center mb-6">
           <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
             <Wallet size={20} className="text-orange-500" /> 支出トラッカー
@@ -1349,9 +1349,9 @@ const BudgetSection = ({
         </div>
       </div>
 
-      <div className="space-y-6">
-        <div className="bg-white dark:bg-slate-900 p-6 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm">
-          <div className="flex items-center justify-between mb-6">
+      <div className="space-y-4 sm:space-y-6">
+        <div className="bg-white dark:bg-slate-900 p-4 sm:p-6 rounded-2xl sm:rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm min-w-0">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
             <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
             <Coins size={20} className="text-yellow-500" /> ポイント管理
             </h3>
@@ -1372,7 +1372,7 @@ const BudgetSection = ({
               </button>
             </div>
           )}
-          <div className="grid grid-cols-2 gap-4 mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
             <div className="relative p-4 bg-orange-50 dark:bg-orange-900/20 rounded-2xl border border-orange-100 dark:border-orange-900/50">
               <p className="text-xs text-orange-600 dark:text-orange-400 font-bold mb-1">総ポイント</p>
               <p className="text-3xl font-black text-orange-500">{pointTotal.toLocaleString()}</p>
@@ -1391,9 +1391,9 @@ const BudgetSection = ({
             )}
             {pointAccounts.map((p) => (
               <div key={p.id} className="flex justify-between items-center p-4 bg-slate-50 dark:bg-slate-800 rounded-xl">
-                <span className="bg-red-100 dark:bg-red-900/30 text-red-500 dark:text-red-400 text-[10px] font-bold px-2 py-1 rounded-full">{p.name}</span>
+                <span className="bg-red-100 dark:bg-red-900/30 text-red-500 dark:text-red-400 text-[10px] font-bold px-2 py-1 rounded-full max-w-[46%] truncate">{p.name}</span>
                 <div className="text-right flex items-center gap-2">
-                  <div>
+                  <div className="min-w-0">
                     <p className="font-black text-slate-900 dark:text-white">{Number(p.balance || 0).toLocaleString()} P</p>
                     <p className="text-[10px] text-slate-400">有効期限: {p.expiry || '-'}</p>
                   </div>
@@ -1406,8 +1406,8 @@ const BudgetSection = ({
           </div>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 p-6 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm">
-          <div className="flex justify-between items-center mb-4">
+        <div className="bg-white dark:bg-slate-900 p-4 sm:p-6 rounded-2xl sm:rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm min-w-0">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
             <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
               <ShieldCheck size={20} className="text-blue-500" /> My Insurance
             </h3>
@@ -1780,6 +1780,18 @@ export default function MyPage({ fundWatchlist = [], productInterests = [], togg
   const [profileSaving, setProfileSaving] = useState(false)
   const [myPageDbAvailable, setMyPageDbAvailable] = useState(false)
   const [loanRemainingYen, setLoanRemainingYen] = useState(DEBT_INFO.remaining)
+  const trackUserActivityEvent = async (eventName, eventMeta = {}) => {
+    if (!user?.id || !eventName) return
+    try {
+      await supabase.from('user_activity_events').insert({
+        user_id: user.id,
+        event_name: eventName,
+        event_meta: eventMeta,
+      })
+    } catch {
+      // no-op: analytics failure should not block user actions
+    }
+  }
 
   useEffect(() => {
     const key = user?.id ? `mm_loan_remaining_yen:${user.id}` : 'mm_loan_remaining_yen:guest'
@@ -1885,10 +1897,12 @@ export default function MyPage({ fundWatchlist = [], productInterests = [], togg
 
   const handleAddExpense = async (payload) => {
     setExpenseSaving(true)
+    trackUserActivityEvent('mypage_save_attempt', { section: 'expense_add' })
     try {
       const row = await addExpense(payload)
       setExpenses((prev) => [row, ...prev])
       setDataStatus('支出を保存しました。')
+      trackUserActivityEvent('mypage_save_success', { section: 'expense_add' })
     } catch (err) {
       setDataStatus(`支出保存に失敗: ${err?.message || 'unknown error'}`)
     } finally {
@@ -1909,10 +1923,12 @@ export default function MyPage({ fundWatchlist = [], productInterests = [], togg
 
   const handleAddInsurance = async (payload) => {
     setInsuranceSaving(true)
+    trackUserActivityEvent('mypage_save_attempt', { section: 'insurance_add' })
     try {
       const row = await addInsurance(payload)
       setInsurances((prev) => [row, ...prev])
       setDataStatus('保険情報を保存しました。')
+      trackUserActivityEvent('mypage_save_success', { section: 'insurance_add' })
     } catch (err) {
       setDataStatus(`保険保存に失敗: ${err?.message || 'unknown error'}`)
     } finally {
@@ -1934,6 +1950,7 @@ export default function MyPage({ fundWatchlist = [], productInterests = [], togg
   const handleSaveFinanceProfile = async () => {
     if (!user?.id) return
     setProfileSaving(true)
+    trackUserActivityEvent('mypage_save_attempt', { section: 'finance_profile_save' })
     try {
       const saved = await saveFinanceProfile({
         userId: user.id,
@@ -1945,6 +1962,7 @@ export default function MyPage({ fundWatchlist = [], productInterests = [], togg
         budget_target_yen: Number(saved.budget_target_yen || 200000),
       })
       setDataStatus('年収情報を保存しました。')
+      trackUserActivityEvent('mypage_save_success', { section: 'finance_profile_save' })
     } catch (err) {
       setDataStatus(`年収保存に失敗: ${err?.message || 'unknown error'}`)
     } finally {
@@ -1954,10 +1972,12 @@ export default function MyPage({ fundWatchlist = [], productInterests = [], togg
 
   const handleAddPointAccount = async (payload) => {
     setPointSaving(true)
+    trackUserActivityEvent('mypage_save_attempt', { section: 'point_add' })
     try {
       const row = await addPointAccount(payload)
       setPointAccounts((prev) => [row, ...prev])
       setDataStatus('ポイント情報を保存しました。')
+      trackUserActivityEvent('mypage_save_success', { section: 'point_add' })
     } catch (err) {
       setDataStatus(`ポイント保存に失敗: ${err?.message || 'unknown error'}`)
     } finally {
@@ -1978,6 +1998,7 @@ export default function MyPage({ fundWatchlist = [], productInterests = [], togg
 
   const handleAddAsset = async ({ name, current_value, invest_value, color }) => {
     if (!user?.id) return
+    trackUserActivityEvent('mypage_save_attempt', { section: 'asset_add' })
     try {
       const row = await addAssetPosition({
         user_id: user.id,
@@ -1988,6 +2009,7 @@ export default function MyPage({ fundWatchlist = [], productInterests = [], togg
       })
       setAssetPositions((prev) => [row, ...prev])
       setDataStatus('投資資産を追加しました。')
+      trackUserActivityEvent('mypage_save_success', { section: 'asset_add' })
     } catch (err) {
       setDataStatus(`資産追加に失敗: ${err?.message || 'unknown error'}`)
     }
@@ -1995,6 +2017,7 @@ export default function MyPage({ fundWatchlist = [], productInterests = [], togg
 
   const handleUpdateAsset = async ({ id, name, current_value, invest_value, color }) => {
     if (!user?.id || !id) return
+    trackUserActivityEvent('mypage_save_attempt', { section: 'asset_update' })
     try {
       const row = await updateAssetPosition({
         id,
@@ -2006,6 +2029,7 @@ export default function MyPage({ fundWatchlist = [], productInterests = [], togg
       })
       setAssetPositions((prev) => prev.map((a) => (a.id === id ? row : a)))
       setDataStatus('投資資産を更新しました。')
+      trackUserActivityEvent('mypage_save_success', { section: 'asset_update' })
     } catch (err) {
       setDataStatus(`資産更新に失敗: ${err?.message || 'unknown error'}`)
     }
@@ -2025,6 +2049,7 @@ export default function MyPage({ fundWatchlist = [], productInterests = [], togg
   const handleSaveBudgetTarget = async (nextBudgetYen) => {
     if (!user?.id) return
     setProfileSaving(true)
+    trackUserActivityEvent('mypage_save_attempt', { section: 'budget_save' })
     try {
       const saved = await saveFinanceProfile({
         userId: user.id,
@@ -2036,6 +2061,7 @@ export default function MyPage({ fundWatchlist = [], productInterests = [], togg
         budget_target_yen: Number(saved.budget_target_yen || 200000),
       })
       setDataStatus('予算目標を保存しました。')
+      trackUserActivityEvent('mypage_save_success', { section: 'budget_save' })
     } catch (err) {
       setDataStatus(`予算保存に失敗: ${err?.message || 'unknown error'}`)
     } finally {

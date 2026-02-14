@@ -3,8 +3,25 @@ import { supabase } from '../lib/supabase'
 import Button from '../components/ui/Button'
 import Card from '../components/ui/Card'
 import { fetchAdminReports, updateCommentStatus, updatePostStatus, updateReportStatus } from '../lib/loungeApi'
+import { Activity, AlertTriangle, BookOpen, Database, Package } from 'lucide-react'
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 
 export default function AdminPage() {
+  const [activeTab, setActiveTab] = useState('dashboard')
+  const [dashboardLoading, setDashboardLoading] = useState(false)
+  const [dashboardError, setDashboardError] = useState('')
+  const [dashboard, setDashboard] = useState({
+    totalProducts: 0,
+    activeProducts: 0,
+    academyCourses: 0,
+    openReports: 0,
+    dauToday: 0,
+    signupsToday: 0,
+    saveSuccessRate: 0,
+    latestStockDate: null,
+    latestFundDate: null,
+    daily: [],
+  })
   const [formData, setFormData] = useState({
     category: 'cards',
     name: '',
@@ -229,15 +246,213 @@ export default function AdminPage() {
     }
   }
 
+  const buildRecentDayLabels = (days = 7) => {
+    const labels = []
+    const now = new Date()
+    for (let i = days - 1; i >= 0; i -= 1) {
+      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i)
+      labels.push(d.toISOString().slice(0, 10))
+    }
+    return labels
+  }
+
+  const countRowsByDay = (rows, key, dayKeys) => {
+    const counter = new Map(dayKeys.map((d) => [d, 0]))
+    ;(rows || []).forEach((row) => {
+      const raw = row?.[key]
+      if (!raw) return
+      const day = String(raw).slice(0, 10)
+      if (counter.has(day)) counter.set(day, counter.get(day) + 1)
+    })
+    return counter
+  }
+
+  const loadDashboard = async () => {
+    setDashboardLoading(true)
+    setDashboardError('')
+    try {
+      const dayKeys = buildRecentDayLabels(7)
+      const dayStart = dayKeys[0]
+
+      const [
+        productsCountRes,
+        productsActiveRes,
+        academyCountRes,
+        reportsOpenRes,
+        productsRecentRes,
+        academyRecentRes,
+        reportsRecentRes,
+        latestStockRes,
+        latestFundRes,
+      ] = await Promise.all([
+        supabase.from('products').select('id', { count: 'exact', head: true }),
+        supabase.from('products').select('id', { count: 'exact', head: true }).eq('is_active', true),
+        supabase.from('academy_courses').select('id', { count: 'exact', head: true }),
+        supabase.from('lounge_reports').select('id', { count: 'exact', head: true }).in('status', ['submitted', 'reviewing']),
+        supabase.from('products').select('created_at').gte('created_at', `${dayStart}T00:00:00`),
+        supabase.from('academy_courses').select('created_at').gte('created_at', `${dayStart}T00:00:00`),
+        supabase.from('lounge_reports').select('created_at').gte('created_at', `${dayStart}T00:00:00`),
+        supabase.from('stock_prices').select('trade_date').order('trade_date', { ascending: false }).limit(1),
+        supabase.from('quick_fund_master').select('standard_date').order('standard_date', { ascending: false }).limit(1),
+      ])
+
+      const productByDay = countRowsByDay(productsRecentRes.data, 'created_at', dayKeys)
+      const academyByDay = countRowsByDay(academyRecentRes.data, 'created_at', dayKeys)
+      const reportsByDay = countRowsByDay(reportsRecentRes.data, 'created_at', dayKeys)
+      const daily = dayKeys.map((day) => ({
+        day: day.slice(5).replace('-', '/'),
+        products: productByDay.get(day) || 0,
+        academy: academyByDay.get(day) || 0,
+        reports: reportsByDay.get(day) || 0,
+      }))
+      let dauToday = 0
+      let signupsToday = 0
+      let saveSuccessRate = 0
+      const { data: adminDailyMetrics, error: dailyMetricErr } = await supabase
+        .from('admin_daily_metrics')
+        .select('metric_date,dau,signup_count,mypage_save_success_rate')
+        .order('metric_date', { ascending: false })
+        .limit(7)
+      if (!dailyMetricErr && Array.isArray(adminDailyMetrics) && adminDailyMetrics.length > 0) {
+        const latest = adminDailyMetrics[0]
+        dauToday = Number(latest.dau || 0)
+        signupsToday = Number(latest.signup_count || 0)
+        saveSuccessRate = Number(latest.mypage_save_success_rate || 0)
+      }
+
+      setDashboard({
+        totalProducts: productsCountRes.count || 0,
+        activeProducts: productsActiveRes.count || 0,
+        academyCourses: academyCountRes.count || 0,
+        openReports: reportsOpenRes.count || 0,
+        dauToday,
+        signupsToday,
+        saveSuccessRate,
+        latestStockDate: latestStockRes.data?.[0]?.trade_date || null,
+        latestFundDate: latestFundRes.data?.[0]?.standard_date || null,
+        daily,
+      })
+    } catch (err) {
+      setDashboardError(err.message || 'Failed to load business dashboard.')
+    } finally {
+      setDashboardLoading(false)
+    }
+  }
+
   useEffect(() => {
     loadReports('submitted')
     loadProducts()
+    loadDashboard()
   }, [])
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 font-sans">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">Admin Dashboard</h1>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setActiveTab('dashboard')}
+            className={`px-3 py-1.5 rounded-lg text-sm font-bold border transition ${
+              activeTab === 'dashboard'
+                ? 'bg-gray-900 text-white border-gray-900 dark:bg-white dark:text-gray-900 dark:border-white'
+                : 'bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700'
+            }`}
+          >
+            Business Dashboard
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('operations')}
+            className={`px-3 py-1.5 rounded-lg text-sm font-bold border transition ${
+              activeTab === 'operations'
+                ? 'bg-gray-900 text-white border-gray-900 dark:bg-white dark:text-gray-900 dark:border-white'
+                : 'bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700'
+            }`}
+          >
+            Operations
+          </button>
+        </div>
+
+        {activeTab === 'dashboard' && (
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <Card className="p-4">
+                <p className="text-xs font-bold text-gray-500 mb-1 flex items-center gap-1"><Package size={14} /> Total Products</p>
+                <p className="text-2xl font-black text-gray-900 dark:text-white">{dashboard.totalProducts}</p>
+              </Card>
+              <Card className="p-4">
+                <p className="text-xs font-bold text-gray-500 mb-1 flex items-center gap-1"><Activity size={14} /> Active Products</p>
+                <p className="text-2xl font-black text-emerald-600 dark:text-emerald-400">{dashboard.activeProducts}</p>
+              </Card>
+              <Card className="p-4">
+                <p className="text-xs font-bold text-gray-500 mb-1 flex items-center gap-1"><BookOpen size={14} /> Academy Courses</p>
+                <p className="text-2xl font-black text-gray-900 dark:text-white">{dashboard.academyCourses}</p>
+              </Card>
+              <Card className="p-4">
+                <p className="text-xs font-bold text-gray-500 mb-1 flex items-center gap-1"><AlertTriangle size={14} /> Open Reports</p>
+                <p className="text-2xl font-black text-rose-600 dark:text-rose-400">{dashboard.openReports}</p>
+              </Card>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <Card className="p-4">
+                <p className="text-xs font-bold text-gray-500 mb-1">DAU (Today)</p>
+                <p className="text-2xl font-black text-gray-900 dark:text-white">{dashboard.dauToday.toLocaleString()}</p>
+              </Card>
+              <Card className="p-4">
+                <p className="text-xs font-bold text-gray-500 mb-1">Signups (Today)</p>
+                <p className="text-2xl font-black text-gray-900 dark:text-white">{dashboard.signupsToday.toLocaleString()}</p>
+              </Card>
+              <Card className="p-4">
+                <p className="text-xs font-bold text-gray-500 mb-1">MyPage Save Success</p>
+                <p className="text-2xl font-black text-emerald-600 dark:text-emerald-400">{dashboard.saveSuccessRate.toFixed(1)}%</p>
+              </Card>
+            </div>
+
+            <Card className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white">7-Day Operations Trend</h2>
+                <Button type="button" variant="ghost" onClick={loadDashboard}>Refresh</Button>
+              </div>
+              {dashboardLoading ? (
+                <p className="text-sm text-gray-500">Loading dashboard...</p>
+              ) : dashboardError ? (
+                <p className="text-sm text-red-600 dark:text-red-400">{dashboardError}</p>
+              ) : (
+                <div className="h-72">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={dashboard.daily} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                      <XAxis dataKey="day" tick={{ fontSize: 11 }} />
+                      <YAxis tick={{ fontSize: 11 }} />
+                      <Tooltip />
+                      <Bar dataKey="products" name="Products" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="academy" name="Academy" fill="#10b981" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="reports" name="Reports" fill="#f97316" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </Card>
+
+            <Card className="p-4">
+              <p className="text-xs font-bold text-gray-500 mb-2 flex items-center gap-1"><Database size={14} /> Data Freshness</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-3">
+                  <p className="text-xs text-gray-500">Latest Stock Trade Date</p>
+                  <p className="text-sm font-black text-gray-900 dark:text-white">{dashboard.latestStockDate || '-'}</p>
+                </div>
+                <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-3">
+                  <p className="text-xs text-gray-500">Latest Fund Standard Date</p>
+                  <p className="text-sm font-black text-gray-900 dark:text-white">{dashboard.latestFundDate || '-'}</p>
+                </div>
+              </div>
+            </Card>
+          </>
+        )}
+
+        {activeTab === 'operations' && (
+          <>
         <Card className="p-6">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
@@ -589,6 +804,8 @@ export default function AdminPage() {
             </div>
           )}
         </Card>
+          </>
+        )}
       </div>
     </div>
   )

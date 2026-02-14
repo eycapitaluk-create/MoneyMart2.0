@@ -8,7 +8,7 @@ import {
 } from 'lucide-react'
 import {
   Cell, Pie, ResponsiveContainer, Tooltip,
-  PieChart as RechartsPieChart, AreaChart, Area, XAxis, YAxis, CartesianGrid
+  PieChart as RechartsPieChart, LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid
 } from 'recharts'
 import { supabase } from '../lib/supabase'
 import {
@@ -26,6 +26,26 @@ import {
 } from '../lib/myPageApi'
 import { calculateRiskScore } from '../simulators/engine/riskEngine'
 import { LEGAL_NOTICE_TEMPLATES } from '../constants/legalNoticeTemplates'
+import { MOCK_STOCKS } from '../data/mockStocks'
+
+const STOCK_WATCHLIST_STORAGE_KEY = 'mm_stock_watchlist_v1'
+const AI_REPORT_DRAFT_STORAGE_KEY = 'mm_ai_report_draft_v1'
+
+const saveAiReportDraft = ({ userId, payload }) => {
+  try {
+    const raw = localStorage.getItem(AI_REPORT_DRAFT_STORAGE_KEY)
+    const parsed = raw ? JSON.parse(raw) : {}
+    const key = userId ? String(userId) : 'guest'
+    parsed[key] = {
+      report_type: 'summary_hybrid',
+      updated_at: new Date().toISOString(),
+      payload,
+    }
+    localStorage.setItem(AI_REPORT_DRAFT_STORAGE_KEY, JSON.stringify(parsed))
+  } catch {
+    // ignore storage failures
+  }
+}
 
 const PORTFOLIO = [
   { id: 1, name: 'Fund A (Global Tech)', value: 1250000, invest: 1000000, return: 25.0, color: '#3b82f6' },
@@ -95,6 +115,35 @@ const buildAiSummaryReport = ({ totalReturnRate, dti, concentration, bestReturn 
     riskScore: riskScoreResult.score,
     riskStatus: riskScoreResult.status,
     actions,
+  }
+}
+
+const buildDailyMarketBrief = () => {
+  const today = new Date()
+  const dayKey = `${today.getFullYear()}-${today.getMonth() + 1}-${today.getDate()}`
+  const templates = [
+    {
+      tone: '中立',
+      headline: '主要指数は方向感に欠ける一日',
+      note: '材料待ち相場のため、分散とポジション管理を優先する局面です。',
+    },
+    {
+      tone: 'やや強気',
+      headline: '大型株中心に買いが優勢',
+      note: '短期の過熱感に注意しつつ、押し目待ちの姿勢が有効です。',
+    },
+    {
+      tone: 'やや慎重',
+      headline: '金利・為替の変動が意識される展開',
+      note: '値動きの大きい銘柄は比率管理を厳格にするのが安全です。',
+    },
+  ]
+  const idx = Math.abs(
+    dayKey.split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0)
+  ) % templates.length
+  return {
+    dateLabel: today.toLocaleDateString('ja-JP'),
+    ...templates[idx],
   }
 }
 
@@ -325,13 +374,13 @@ const SummarySection = ({
   user,
   insuranceSummary,
   portfolio = PORTFOLIO,
+  stockWatchlistItems = [],
   summaryDti = DEBT_INFO.dti,
   isMockMode = false,
 }) => {
   const navigate = useNavigate()
   const [reportGeneratedAt, setReportGeneratedAt] = useState(new Date())
   const [savedReport, setSavedReport] = useState(null)
-  const [reportSaving, setReportSaving] = useState(false)
   const [reportStatus, setReportStatus] = useState('')
   const totalInvested = portfolio.reduce((acc, item) => acc + item.invest, 0)
   const totalCurrentValue = portfolio.reduce((acc, item) => acc + item.value, 0)
@@ -343,6 +392,60 @@ const SummarySection = ({
     : 0
   const generatedReport = buildAiSummaryReport({ totalReturnRate, dti: summaryDti, concentration, bestReturn })
   const aiReport = savedReport || generatedReport
+  const dailyMarketBrief = buildDailyMarketBrief()
+  const personalizedBrief = [
+    `あなたの総損益率は ${totalReturnRate >= 0 ? '+' : ''}${totalReturnRate.toFixed(1)}% です。`,
+    `負債比率 (DTI) は ${Number(summaryDti).toFixed(1)}% で、${Number(summaryDti) >= 35 ? '返済余力の確保が優先' : '許容レンジ内'}です。`,
+    `最大集中比率は ${concentration.toFixed(1)}% で、${concentration >= 55 ? '分散強化が必要' : '分散状態は比較的良好'}です。`,
+  ]
+
+  useEffect(() => {
+    saveAiReportDraft({
+      userId: user?.id,
+      payload: {
+        market_brief: dailyMarketBrief,
+        personalized_brief: personalizedBrief,
+        metrics: {
+          total_invested: totalInvested,
+          total_current_value: totalCurrentValue,
+          total_pnl: totalPnL,
+          total_return_rate: Number(totalReturnRate.toFixed(2)),
+          dti: Number(summaryDti.toFixed(2)),
+          concentration: Number(concentration.toFixed(2)),
+          best_return: Number(bestReturn.toFixed(2)),
+        },
+        ai_report: aiReport,
+      },
+    })
+  }, [
+    user?.id,
+    dailyMarketBrief,
+    personalizedBrief,
+    totalInvested,
+    totalCurrentValue,
+    totalPnL,
+    totalReturnRate,
+    summaryDti,
+    concentration,
+    bestReturn,
+    aiReport,
+  ])
+  const assetGrowthData = (() => {
+    const now = new Date()
+    const monthLabels = []
+    for (let i = 5; i >= 0; i -= 1) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+      monthLabels.push(`${d.getMonth() + 1}月`)
+    }
+    const base = Math.max(0, totalInvested)
+    const end = Math.max(0, totalCurrentValue)
+    const diff = end - base
+    const steps = [0.55, 0.63, 0.74, 0.84, 0.93, 1]
+    return monthLabels.map((month, idx) => ({
+      month,
+      value: Math.max(0, Math.round(base + (diff * steps[idx]))),
+    }))
+  })()
 
   useEffect(() => {
     let alive = true
@@ -373,51 +476,6 @@ const SummarySection = ({
       alive = false
     }
   }, [user?.id])
-
-  const handleRegenerateReport = async () => {
-    const nextReport = buildAiSummaryReport({
-      totalReturnRate,
-      dti: summaryDti,
-      concentration,
-      bestReturn,
-    })
-    const now = new Date()
-
-    setSavedReport(nextReport)
-    setReportGeneratedAt(now)
-    setReportStatus('再生成済み（保存中...）')
-    setReportSaving(true)
-
-    try {
-      if (!user?.id) {
-        setReportStatus('ログイン情報が見つからないため保存できません')
-        return
-      }
-
-      const { error } = await supabase
-        .from('ai_reports')
-        .insert({
-          user_id: user.id,
-          report_type: 'summary',
-          payload: {
-            generated_at: now.toISOString(),
-            metrics: {
-              total_return_rate: Number(totalReturnRate.toFixed(2)),
-              dti: Number(summaryDti.toFixed(2)),
-              concentration: Number(concentration.toFixed(2)),
-              best_return: Number(bestReturn.toFixed(2)),
-            },
-            report: nextReport,
-          },
-        })
-      if (error) throw error
-      setReportStatus('再生成して保存しました')
-    } catch {
-      setReportStatus('再生成しました（DB保存は未完了）')
-    } finally {
-      setReportSaving(false)
-    }
-  }
 
   return (
     <div className="space-y-6">
@@ -496,13 +554,40 @@ const SummarySection = ({
 
           <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
             <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/60">
-              <h3 className="font-black text-slate-900 dark:text-white">銘柄別パフォーマンス</h3>
+              <h3 className="font-black text-slate-900 dark:text-white">資産成長トレンド (6ヶ月)</h3>
+            </div>
+            <div className="p-5">
+              <div className="h-56">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={assetGrowthData} margin={{ top: 8, right: 12, left: 8, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                    <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                    <YAxis
+                      tick={{ fontSize: 11, fill: '#64748b' }}
+                      axisLine={false}
+                      tickLine={false}
+                      tickFormatter={(v) => `${Math.round(v / 10000)}万`}
+                    />
+                    <Tooltip formatter={(v) => `¥${Number(v).toLocaleString()}`} />
+                    <Line type="monotone" dataKey="value" stroke="#3b82f6" strokeWidth={2.5} dot={{ r: 2 }} activeDot={{ r: 4 }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+              <p className="mt-3 text-[11px] text-slate-500 dark:text-slate-400">
+                投資元本と現在価値を基準に、6ヶ月の資産推移イメージを表示しています。
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/60">
+              <h3 className="font-black text-slate-900 dark:text-white">株式パフォーマンス</h3>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[680px] text-sm">
+              <table className="w-full min-w-[760px] text-sm">
                 <thead className="bg-slate-50 dark:bg-slate-800/40">
                   <tr className="text-left text-slate-500 text-xs uppercase tracking-wider">
-                    <th className="px-5 py-3">銘柄名</th>
+                    <th className="px-5 py-3">銘柄コード</th>
                     <th className="px-5 py-3 text-right">投資額</th>
                     <th className="px-5 py-3 text-right">現在価値</th>
                     <th className="px-5 py-3 text-right">損益</th>
@@ -510,26 +595,32 @@ const SummarySection = ({
                   </tr>
                 </thead>
                 <tbody>
-                  {portfolio.length === 0 && (
+                  {(!Array.isArray(stockWatchlistItems) || stockWatchlistItems.length === 0) && (
                     <tr className="border-t border-slate-100 dark:border-slate-800">
                       <td colSpan={5} className="px-5 py-8 text-center text-sm text-slate-500 dark:text-slate-400">
-                        登録済みの投資資産がありません。資産運用タブで追加してください。
+                        株式ウォッチリストがまだありません。株式ページで追加すると、ここに表示されます。
                       </td>
                     </tr>
                   )}
-                  {portfolio.map((fund) => {
-                    const pnl = fund.value - fund.invest
-                    const pnlRate = fund.invest > 0 ? (pnl / fund.invest) * 100 : 0
+                  {Array.isArray(stockWatchlistItems) && stockWatchlistItems.slice(0, 10).map((stock) => {
+                    const rate = Number(stock.rate || 0)
+                    const investmentAmount = 100000
+                    const presentValue = Math.round(investmentAmount * (1 + (rate / 100)))
+                    const pnl = presentValue - investmentAmount
                     return (
-                      <tr key={fund.id} className="border-t border-slate-100 dark:border-slate-800">
-                        <td className="px-5 py-4 font-bold text-slate-800 dark:text-slate-200">{fund.name}</td>
-                        <td className="px-5 py-4 text-right font-semibold text-slate-700 dark:text-slate-300">¥{fund.invest.toLocaleString()}</td>
-                        <td className="px-5 py-4 text-right font-semibold text-slate-900 dark:text-white">¥{fund.value.toLocaleString()}</td>
+                      <tr key={`summary-stock-${stock.id}`} className="border-t border-slate-100 dark:border-slate-800">
+                        <td className="px-5 py-4 font-bold text-slate-800 dark:text-slate-200">{stock.code}</td>
+                        <td className="px-5 py-4 text-right font-semibold text-slate-700 dark:text-slate-300">
+                          ¥{investmentAmount.toLocaleString()}
+                        </td>
+                        <td className="px-5 py-4 text-right font-semibold text-slate-900 dark:text-white">
+                          ¥{presentValue.toLocaleString()}
+                        </td>
                         <td className={`px-5 py-4 text-right font-black ${pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                           {pnl >= 0 ? '+' : ''}¥{pnl.toLocaleString()}
                         </td>
-                        <td className={`px-5 py-4 text-right font-black ${pnlRate >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                          {pnlRate >= 0 ? '+' : ''}{pnlRate.toFixed(1)}%
+                        <td className={`px-5 py-4 text-right font-black ${rate >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                          {rate >= 0 ? '+' : ''}{rate.toFixed(2)}%
                         </td>
                       </tr>
                     )
@@ -537,6 +628,9 @@ const SummarySection = ({
                 </tbody>
               </table>
             </div>
+            <p className="px-5 py-3 text-[11px] text-slate-500 dark:text-slate-400 border-t border-slate-100 dark:border-slate-800">
+              ※ 各銘柄は比較のため基準投資額を一律 ¥100,000 として表示しています。
+            </p>
           </div>
         </div>
 
@@ -601,13 +695,9 @@ const SummarySection = ({
                 </p>
                 {reportStatus && <p className="text-[10px] text-slate-500 mt-1">{reportStatus}</p>}
               </div>
-              <button
-                onClick={handleRegenerateReport}
-                disabled={reportSaving}
-                className="text-[11px] font-bold bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-lg border border-white/20 transition disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                {reportSaving ? '保存中...' : '再生成'}
-              </button>
+              <span className="text-[10px] font-bold bg-white/10 px-2.5 py-1 rounded-lg border border-white/20 text-slate-300">
+                日次自動更新
+              </span>
             </div>
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
@@ -629,6 +719,24 @@ const SummarySection = ({
               </div>
             </div>
 
+            <div className="mb-3 rounded-xl border border-white/10 bg-white/5 p-3">
+              <p className="text-[10px] uppercase tracking-wider text-slate-300 font-bold">Daily Market (共通)</p>
+              <p className="text-xs text-slate-300 mt-1">{dailyMarketBrief.dateLabel} ・ {dailyMarketBrief.tone}</p>
+              <p className="text-sm font-bold mt-1">{dailyMarketBrief.headline}</p>
+              <p className="text-xs text-slate-300 mt-1.5 leading-relaxed">{dailyMarketBrief.note}</p>
+            </div>
+
+            <div className="mb-4 rounded-xl border border-white/10 bg-white/5 p-3">
+              <p className="text-[10px] uppercase tracking-wider text-slate-300 font-bold">Personalized (個別)</p>
+              <div className="mt-2 space-y-1.5">
+                {personalizedBrief.map((line, idx) => (
+                  <p key={`brief-${idx}`} className="text-xs text-slate-100 leading-relaxed">
+                    ・{line}
+                  </p>
+                ))}
+              </div>
+            </div>
+
             <div className="space-y-2">
               {aiReport.actions.map((action, idx) => (
                 <p key={idx} className="text-xs leading-relaxed text-slate-200 bg-white/5 border border-white/10 rounded-lg p-2.5">
@@ -647,6 +755,7 @@ const SummarySection = ({
 
 const WealthSection = ({
   watchlistItems,
+  stockWatchlistItems = [],
   productInterests = [],
   portfolio = PORTFOLIO,
   isMockMode = false,
@@ -822,6 +931,35 @@ const WealthSection = ({
         >
           + ウォッチリストを追加
         </button>
+        <div className="mt-6 pt-6 border-t border-slate-200 dark:border-slate-800">
+          <h4 className="font-bold text-slate-900 dark:text-white mb-3 flex items-center gap-2">
+            <TrendingUp size={16} className="text-blue-500" /> 株式ウォッチリスト
+          </h4>
+          {Array.isArray(stockWatchlistItems) && stockWatchlistItems.length > 0 ? (
+            <div className="space-y-2">
+              {stockWatchlistItems.slice(0, 8).map((item) => (
+                <button
+                  key={`stock-wl-${item.id}`}
+                  onClick={() => navigate('/stocks')}
+                  className="w-full flex items-center justify-between rounded-lg px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-800 text-left"
+                >
+                  <span className="text-sm font-bold text-slate-700 dark:text-slate-300">{item.code}</span>
+                  <span className={`text-xs font-black ${Number(item.rate || 0) >= 0 ? 'text-red-500' : 'text-blue-500'}`}>
+                    {Number(item.rate || 0) >= 0 ? '+' : ''}{Number(item.rate || 0).toFixed(2)}%
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-slate-500 dark:text-slate-400">株式ウォッチリストはまだありません。</p>
+          )}
+          <button
+            onClick={() => navigate('/stocks')}
+            className="w-full mt-3 py-2.5 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 font-bold text-xs rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 transition"
+          >
+            + 株式ページで追加する
+          </button>
+        </div>
       </div>
     </div>
 
@@ -925,30 +1063,34 @@ const BudgetSection = ({
 
   const now = new Date()
   const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  const recentMonthKeys = (() => {
+    const keys = []
+    for (let i = 5; i >= 0; i -= 1) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+      keys.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+    }
+    return keys
+  })()
+  const [categoryMonthKey, setCategoryMonthKey] = useState(currentMonthKey)
   const thisMonthTotal = expenses
     .filter((e) => toMonthKey(e.spent_on) === currentMonthKey)
     .reduce((acc, e) => acc + Number(e.amount || 0), 0)
   const usedPct = budgetTargetYen > 0 ? Math.min(100, (thisMonthTotal / budgetTargetYen) * 100) : 0
 
   const trendData = (() => {
-    const keys = []
-    for (let i = 5; i >= 0; i -= 1) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
-      keys.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
-    }
-    const map = new Map(keys.map((k) => [k, 0]))
+    const map = new Map(recentMonthKeys.map((k) => [k, 0]))
     expenses.forEach((e) => {
       const k = toMonthKey(e.spent_on)
       if (map.has(k)) map.set(k, map.get(k) + Number(e.amount || 0))
     })
-    return keys.map((k) => ({ month: `${Number(k.split('-')[1])}月`, amount: map.get(k) || 0 }))
+    return recentMonthKeys.map((k) => ({ month: `${Number(k.split('-')[1])}月`, amount: map.get(k) || 0 }))
   })()
 
   const categorySeries = (() => {
     const colorMap = { 食費: '#f97316', ショッピング: '#8b5cf6', 交通: '#0ea5e9', その他: '#94a3b8' }
     const map = new Map()
     expenses
-      .filter((e) => toMonthKey(e.spent_on) === currentMonthKey)
+      .filter((e) => toMonthKey(e.spent_on) === categoryMonthKey)
       .forEach((e) => {
         const cat = e.category || 'その他'
         map.set(cat, (map.get(cat) || 0) + Number(e.amount || 0))
@@ -1039,6 +1181,11 @@ const BudgetSection = ({
   useEffect(() => {
     setBudgetInput(String(budgetTargetYen))
   }, [budgetTargetYen])
+  useEffect(() => {
+    if (!recentMonthKeys.includes(categoryMonthKey)) {
+      setCategoryMonthKey(currentMonthKey)
+    }
+  }, [recentMonthKeys, categoryMonthKey, currentMonthKey])
 
   return (
     <div className="grid md:grid-cols-2 gap-8">
@@ -1115,25 +1262,32 @@ const BudgetSection = ({
           </div>
           <div className="h-40">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={trendData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="expenseTrendFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#f97316" stopOpacity={0.25} />
-                    <stop offset="95%" stopColor="#f97316" stopOpacity={0.02} />
-                  </linearGradient>
-                </defs>
+              <BarChart data={trendData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                 <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} tickFormatter={(v) => `${Math.round(v / 1000)}k`} />
                 <Tooltip formatter={(v) => `¥${Number(v).toLocaleString()}`} />
-                <Area type="monotone" dataKey="amount" stroke="#f97316" strokeWidth={2} fill="url(#expenseTrendFill)" />
-              </AreaChart>
+                <Bar dataKey="amount" fill="#f97316" radius={[6, 6, 0, 0]} barSize={24} />
+              </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
           <div className="h-40 relative">
+            <div className="absolute -top-8 left-0">
+              <select
+                value={categoryMonthKey}
+                onChange={(e) => setCategoryMonthKey(e.target.value)}
+                className="px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-[11px] font-bold text-slate-600 dark:text-slate-300"
+              >
+                {recentMonthKeys.map((k) => (
+                  <option key={k} value={k}>
+                    {Number(k.split('-')[1])}月カテゴリ
+                  </option>
+                ))}
+              </select>
+            </div>
             <ResponsiveContainer width="100%" height="100%">
               <RechartsPieChart>
                 <Pie data={pieData} innerRadius={40} outerRadius={60} paddingAngle={5} dataKey="value">
@@ -1159,7 +1313,9 @@ const BudgetSection = ({
               </div>
             ))}
             {categorySeries.length === 0 && (
-              <p className="text-xs font-bold text-slate-400">今月のカテゴリ支出データはまだありません。</p>
+              <p className="text-xs font-bold text-slate-400">
+                選択した月のカテゴリ支出データはまだありません。
+              </p>
             )}
           </div>
         </div>
@@ -1612,6 +1768,7 @@ export default function MyPage({ fundWatchlist = [], productInterests = [], togg
   const [activeTab, setActiveTab] = useState('summary')
   const [isLoanDiagnosisOpen, setIsLoanDiagnosisOpen] = useState(false)
   const [assetPositions, setAssetPositions] = useState([])
+  const [stockWatchlistItems, setStockWatchlistItems] = useState([])
   const [pointAccounts, setPointAccounts] = useState([])
   const [expenses, setExpenses] = useState([])
   const [insurances, setInsurances] = useState([])
@@ -1630,6 +1787,33 @@ export default function MyPage({ fundWatchlist = [], productInterests = [], togg
     const parsed = Number(saved)
     setLoanRemainingYen(Number.isFinite(parsed) && parsed >= 0 ? parsed : DEBT_INFO.remaining)
   }, [user?.id])
+
+  useEffect(() => {
+    const stockUniverse = [...(MOCK_STOCKS.US || []), ...(MOCK_STOCKS.JP || [])]
+    const stockById = new Map(stockUniverse.map((s) => [String(s.id), s]))
+    const syncLocalStockWatchlist = () => {
+      try {
+        const raw = localStorage.getItem(STOCK_WATCHLIST_STORAGE_KEY)
+        const ids = raw ? JSON.parse(raw) : []
+        const normalizedIds = Array.isArray(ids) ? ids.map((v) => String(v)) : []
+        const rows = normalizedIds.map((id) => {
+          const matched = stockById.get(id)
+          if (!matched) return { id, code: id, rate: 0 }
+          return {
+            id: matched.id,
+            code: matched.code || matched.id,
+            rate: Number(matched.rate || 0),
+          }
+        })
+        setStockWatchlistItems(rows)
+      } catch {
+        setStockWatchlistItems([])
+      }
+    }
+    syncLocalStockWatchlist()
+    window.addEventListener('storage', syncLocalStockWatchlist)
+    return () => window.removeEventListener('storage', syncLocalStockWatchlist)
+  }, [])
 
   const watchlistCount = myPageDbAvailable
     ? (Array.isArray(fundWatchlist) ? fundWatchlist.length : 0)
@@ -1876,6 +2060,7 @@ export default function MyPage({ fundWatchlist = [], productInterests = [], togg
         return (
           <WealthSection
             watchlistItems={fundWatchlist}
+            stockWatchlistItems={stockWatchlistItems}
             productInterests={productInterests}
             portfolio={effectivePortfolio}
             isMockMode={!myPageDbAvailable}
@@ -1931,6 +2116,7 @@ export default function MyPage({ fundWatchlist = [], productInterests = [], togg
             user={user}
             insuranceSummary={insuranceSummary}
             portfolio={effectivePortfolio}
+            stockWatchlistItems={stockWatchlistItems}
             summaryDti={summaryDti}
             isMockMode={!myPageDbAvailable}
           />

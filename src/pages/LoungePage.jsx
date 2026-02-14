@@ -20,6 +20,8 @@ import {
   toggleFollow,
   toggleLike,
 } from '../lib/loungeApi'
+import AdBanner from '../components/AdBanner'
+import AdSidebar from '../components/AdSidebar'
 
 const LoungeStyles = () => (
   <style>{`
@@ -637,6 +639,9 @@ export default function LoungePage({ bootUser = undefined, authReady = false }) 
               ) : null}
             </div>
           ))}
+          <div className="lg:hidden">
+            <AdBanner variant="horizontal" />
+          </div>
         </div>
 
         <div className="hidden lg:block lg:col-span-3 space-y-6">
@@ -688,6 +693,7 @@ export default function LoungePage({ bootUser = undefined, authReady = false }) 
             </div>
             <Hash size={80} className="absolute -right-4 -bottom-4 text-white/10 rotate-12" />
           </div>
+          <AdSidebar />
         </div>
       </main>
     </div>

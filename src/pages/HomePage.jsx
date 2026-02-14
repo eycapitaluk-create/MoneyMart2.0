@@ -1,57 +1,20 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  ArrowRight, BarChart2, Sparkles, ChevronRight,
+  ArrowRight, BarChart2, Sparkles, ChevronRight, ChevronDown,
   CreditCard, Landmark, Home, Coins,
   Trophy, TrendingUp, Calculator, X,
   PiggyBank, Umbrella, Briefcase
 } from 'lucide-react'
-import {
-  Area,
-  AreaChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts'
 import AdBanner from '../components/AdBanner'
 
 const FUND_RANKING = [
-  { id: 'emaxis-all', name: 'eMAXIS Slim 全世界株式 (オール・カントリー)', cat: '国際株式', ret: '+24.5%' },
-  { id: 'emaxis-sp500', name: 'eMAXIS Slim 米国株式 (S&P500)', cat: '北米株式', ret: '+28.3%' },
-  { id: 'alliance-ab', name: 'アライアンス・バーンスタイン・米国成長株投信Ｄ', cat: '北米株式', ret: '+32.1%' },
-  { id: 'himuchi-plus', name: 'ひふみプラス', cat: '国内株式', ret: '+15.4%' },
-  { id: 'raku-eco', name: '楽天・全世界・株価指数・ECO', cat: '全世界株式', ret: '+22.1%' },
+  { id: 'emaxis-all', name: 'eMAXIS Slim 全世界株式 (オール・カントリー)', cat: '国際株式', ret: '+24.5%', risk: '中', expense: '0.0572%', aum: '¥5.8兆', dividend: '再投資型' },
+  { id: 'emaxis-sp500', name: 'eMAXIS Slim 米国株式 (S&P500)', cat: '北米株式', ret: '+28.3%', risk: '中〜高', expense: '0.0937%', aum: '¥6.2兆', dividend: '再投資型' },
+  { id: 'alliance-ab', name: 'アライアンス・バーンスタイン・米国成長株投信Ｄ', cat: '北米株式', ret: '+32.1%', risk: '高', expense: '1.7270%', aum: '¥1.1兆', dividend: '分配型' },
+  { id: 'himuchi-plus', name: 'ひふみプラス', cat: '国内株式', ret: '+15.4%', risk: '中', expense: '1.0780%', aum: '¥4,300億', dividend: '再投資型' },
+  { id: 'raku-eco', name: '楽天・全世界・株価指数・ECO', cat: '全世界株式', ret: '+22.1%', risk: '中', expense: '0.1320%', aum: '¥2,100億', dividend: '再投資型' },
 ]
-
-const FUND_TREND = {
-  'emaxis-all': [
-    { m: '4月', r: 0.8 }, { m: '5月', r: 2.1 }, { m: '6月', r: 4.2 }, { m: '7月', r: 6.0 },
-    { m: '8月', r: 7.4 }, { m: '9月', r: 9.5 }, { m: '10月', r: 11.3 }, { m: '11月', r: 14.0 },
-    { m: '12月', r: 16.1 }, { m: '1月', r: 19.4 }, { m: '2月', r: 21.7 }, { m: '3月', r: 24.5 },
-  ],
-  'emaxis-sp500': [
-    { m: '4月', r: 1.1 }, { m: '5月', r: 2.7 }, { m: '6月', r: 5.5 }, { m: '7月', r: 8.0 },
-    { m: '8月', r: 9.2 }, { m: '9月', r: 11.5 }, { m: '10月', r: 14.6 }, { m: '11月', r: 17.2 },
-    { m: '12月', r: 19.0 }, { m: '1月', r: 22.6 }, { m: '2月', r: 25.0 }, { m: '3月', r: 28.3 },
-  ],
-  'alliance-ab': [
-    { m: '4月', r: 1.3 }, { m: '5月', r: 3.4 }, { m: '6月', r: 6.2 }, { m: '7月', r: 9.1 },
-    { m: '8月', r: 10.8 }, { m: '9月', r: 13.0 }, { m: '10月', r: 16.9 }, { m: '11月', r: 20.3 },
-    { m: '12月', r: 22.4 }, { m: '1月', r: 26.1 }, { m: '2月', r: 29.0 }, { m: '3月', r: 32.1 },
-  ],
-  'himuchi-plus': [
-    { m: '4月', r: 0.4 }, { m: '5月', r: 1.2 }, { m: '6月', r: 2.4 }, { m: '7月', r: 3.9 },
-    { m: '8月', r: 4.7 }, { m: '9月', r: 6.1 }, { m: '10月', r: 8.0 }, { m: '11月', r: 9.6 },
-    { m: '12月', r: 11.2 }, { m: '1月', r: 12.9 }, { m: '2月', r: 14.0 }, { m: '3月', r: 15.4 },
-  ],
-  'raku-eco': [
-    { m: '4月', r: 0.7 }, { m: '5月', r: 1.8 }, { m: '6月', r: 3.7 }, { m: '7月', r: 5.4 },
-    { m: '8月', r: 6.8 }, { m: '9月', r: 8.6 }, { m: '10月', r: 10.9 }, { m: '11月', r: 13.2 },
-    { m: '12月', r: 15.0 }, { m: '1月', r: 17.6 }, { m: '2月', r: 19.9 }, { m: '3月', r: 22.1 },
-  ],
-}
 
 const LoanSimulatorModal = ({ isOpen, onClose }) => {
   if (!isOpen) return null
@@ -423,26 +386,28 @@ export default function HomePage({ openRiskModal }) {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
             {FUND_RANKING.map((fund, i) => (
-              <button
+              <div
                 key={fund.id}
-                onClick={() => setSelectedFundId((prev) => (prev === fund.id ? '' : fund.id))}
-                className={`bg-white dark:bg-slate-800 rounded-xl border p-3 text-left hover:bg-slate-50 dark:hover:bg-slate-700/60 transition ${
+                className={`bg-white dark:bg-slate-800 rounded-xl border p-3 text-left hover:bg-slate-50 dark:hover:bg-slate-700/60 transition flex flex-col ${
                   selectedFundId === fund.id
                     ? 'border-blue-400 dark:border-blue-500 ring-2 ring-blue-200/70 dark:ring-blue-900/40'
                     : 'border-slate-100 dark:border-slate-700'
                 }`}
               >
-                <div className="flex items-start gap-2">
+                <div className="flex items-start gap-2 min-h-[56px]">
                   <span className={`text-sm font-black ${
                     i === 0 ? 'text-yellow-500' : i === 1 ? 'text-slate-400' : i === 2 ? 'text-orange-500' : 'text-slate-500'
                   }`}>
                     {i + 1}
                   </span>
-                  <div className="min-w-0 flex-1">
-                    <h3 className="font-bold text-slate-800 dark:text-slate-200 text-xs leading-snug line-clamp-2">
+                  <div className="min-w-0 flex-1 flex flex-col min-h-[56px]">
+                    <button
+                      onClick={() => navigate(`/funds/${fund.id}`)}
+                      className="font-bold text-slate-800 dark:text-slate-200 text-xs leading-snug line-clamp-2 hover:text-blue-600 dark:hover:text-blue-300 text-left"
+                    >
                       {fund.name}
-                    </h3>
-                    <div className="flex items-center justify-between mt-1 text-[10px]">
+                    </button>
+                    <div className="flex items-center justify-between mt-auto pt-1 text-[10px]">
                       <span className="bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 px-1.5 py-0.5 rounded">
                     {fund.cat}
                   </span>
@@ -450,44 +415,43 @@ export default function HomePage({ openRiskModal }) {
                     </div>
                   </div>
                 </div>
-              </button>
+                <button
+                  onClick={() => setSelectedFundId((prev) => (prev === fund.id ? '' : fund.id))}
+                  className="mt-auto pt-2 w-full flex items-center justify-end gap-1 text-[11px] font-bold text-slate-500 hover:text-orange-500"
+                >
+                  キー情報
+                  <ChevronDown
+                    size={14}
+                    className={`transition-transform ${selectedFundId === fund.id ? 'rotate-180' : ''}`}
+                  />
+                </button>
+                {selectedFundId === fund.id && (
+                  <div className="mt-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/70 p-2.5 text-[10px] space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500">1年収益率</span>
+                      <span className="font-black text-red-500">{fund.ret}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500">リスク目安</span>
+                      <span className="font-black text-slate-700 dark:text-slate-200">{fund.risk}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500">信託報酬</span>
+                      <span className="font-black text-slate-700 dark:text-slate-200">{fund.expense}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500">純資産総額</span>
+                      <span className="font-black text-slate-700 dark:text-slate-200">{fund.aum}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500">分配方針</span>
+                      <span className="font-black text-slate-700 dark:text-slate-200">{fund.dividend}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
             ))}
           </div>
-          {selectedFundId ? (
-            <div className="mt-5 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-4">
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-sm font-black text-slate-800 dark:text-slate-200">
-                  {(FUND_RANKING.find((f) => f.id === selectedFundId)?.name || '選択中ファンド')} - 1年収益推移
-                </p>
-                <div className="flex items-center gap-3">
-                  <span className="text-[11px] text-slate-400">単位: %</span>
-                  <button
-                    onClick={() => navigate(`/funds/${selectedFundId}`)}
-                    className="text-[11px] font-bold text-blue-600 hover:text-blue-500 dark:text-blue-300 dark:hover:text-blue-200 inline-flex items-center gap-1"
-                  >
-                    詳細を見る <ChevronRight size={12} />
-                  </button>
-                </div>
-              </div>
-              <div className="h-44">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={FUND_TREND[selectedFundId] || []} margin={{ top: 8, right: 10, left: 0, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="fundTrendFill" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.35} />
-                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.02} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                    <XAxis dataKey="m" tick={{ fontSize: 11, fill: '#64748b' }} />
-                    <YAxis tick={{ fontSize: 11, fill: '#64748b' }} />
-                    <Tooltip formatter={(v) => [`${Number(v).toFixed(1)}%`, '累積収益']} />
-                    <Area type="monotone" dataKey="r" stroke="#3b82f6" strokeWidth={2} fill="url(#fundTrendFill)" />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          ) : null}
         </div>
       </section>
 

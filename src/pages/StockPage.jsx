@@ -1,18 +1,20 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import {
-  Search, Star, Plus, Layout,
+  Search, Star, Plus,
   TrendingUp, TrendingDown, Clock, Info,
-  ChevronDown, Wallet, ArrowRight, ShieldCheck, ExternalLink,
+  ChevronDown, Wallet, ExternalLink,
 } from 'lucide-react'
 import {
-  ComposedChart, Area, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
+  ComposedChart, BarChart, Area, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, ErrorBar, Cell,
 } from 'recharts'
 import { supabase } from '../lib/supabase'
 import { MOCK_STOCKS, REGION_BY_SYMBOL } from '../data/mockStocks'
-import { calculateRequiredMonthlyContribution } from '../simulators/engine/goalEngine'
-import { calculateTotalCost } from '../simulators/engine/costEngine'
-import { saveSimulatorRun } from '../services/simulatorResultService'
 import { LEGAL_NOTICE_TEMPLATES } from '../constants/legalNoticeTemplates'
+import AdBanner from '../components/AdBanner'
+import AdSidebar from '../components/AdSidebar'
+import { useNavigate } from 'react-router-dom'
+
+const STOCK_WATCHLIST_STORAGE_KEY = 'mm_stock_watchlist_v1'
 
 const TIMEFRAMES = ['1D', '1W', '1M', '3M', '1Y', '5Y']
 
@@ -29,7 +31,26 @@ const PLATFORM_PARTNERS = [
   { id: 'monex', name: 'マネックス証券', fee: '55円~', points: 'マネックスP', note: '米国株・分析ツールが強み', url: 'https://www.monex.co.jp', domesticFeePerTrade: 55, fxSpreadBps: 30, trustFeeAnnualPct: 0.24 },
 ]
 
-const generateChartData = (points, startPrice, volatility) => {
+const EARNINGS_CALENDAR_MOCK = {
+  US: [
+    { id: 'us-1', symbol: 'NVDA', company: 'NVIDIA', when: 'Tue 08:30 ET', phase: 'BMO' },
+    { id: 'us-2', symbol: 'AAPL', company: 'Apple', when: 'Wed 16:05 ET', phase: 'AMC' },
+    { id: 'us-3', symbol: 'MSFT', company: 'Microsoft', when: 'Thu 16:10 ET', phase: 'AMC' },
+  ],
+  JP: [
+    { id: 'jp-1', symbol: '7203', company: 'トヨタ自動車', when: '火 15:00 JST', phase: '引け後' },
+    { id: 'jp-2', symbol: '6758', company: 'ソニーG', when: '水 15:00 JST', phase: '引け後' },
+    { id: 'jp-3', symbol: '8035', company: '東京エレクトロン', when: '木 15:00 JST', phase: '引け後' },
+  ],
+  UK: [
+    { id: 'uk-1', symbol: 'HSBC', company: 'HSBC', when: 'Wed 07:00 GMT', phase: 'Before Open' },
+  ],
+  EU: [
+    { id: 'eu-1', symbol: 'ASML', company: 'ASML', when: 'Thu 07:00 CET', phase: 'Before Open' },
+  ],
+}
+
+const generateChartData = (points, startPrice, volatility, timeframe = '1M') => {
   const data = []
   let currentPrice = startPrice
 
@@ -42,7 +63,7 @@ const generateChartData = (points, startPrice, volatility) => {
     date.setDate(date.getDate() - (points - i))
     const hh = 9 + Math.floor(i / 12)
     const mm = String((i % 12) * 5).padStart(2, '0')
-    const label = points <= 90 ? `${hh}:${mm}` : `${date.getMonth() + 1}/${date.getDate()}`
+    const label = timeframe === '1D' ? `${hh}:${mm}` : `${date.getMonth() + 1}/${date.getDate()}`
 
     data.push({
       time: label,
@@ -56,7 +77,12 @@ const generateChartData = (points, startPrice, volatility) => {
   return data
 }
 
-const currencyByRegion = (region) => (region === 'UK' ? 'GBP' : region === 'EU' ? 'EUR' : 'USD')
+const currencyByRegion = (region) => {
+  if (region === 'UK') return 'GBP'
+  if (region === 'EU') return 'EUR'
+  if (region === 'JP') return 'JPY'
+  return 'USD'
+}
 
 const formatCurrency = (value, region) =>
   new Intl.NumberFormat('en-US', {
@@ -80,10 +106,28 @@ const formatDailyVolume = (value) => (
   Number.isFinite(Number(value)) ? Number(value).toLocaleString('en-US') : '--'
 )
 
+const calcMovingAverage = (rows, windowSize) => {
+  const result = new Array(rows.length).fill(null)
+  let rolling = 0
+  for (let i = 0; i < rows.length; i += 1) {
+    rolling += Number(rows[i]?.close || 0)
+    if (i >= windowSize) {
+      rolling -= Number(rows[i - windowSize]?.close || 0)
+    }
+    if (i >= windowSize - 1) {
+      result[i] = Number((rolling / windowSize).toFixed(2))
+    }
+  }
+  return result
+}
+
 const inferLiveRegion = (code, exchange) => {
   if (REGION_BY_SYMBOL[code]) return REGION_BY_SYMBOL[code]
+  if (/^\d{4}$/.test(code || '')) return 'JP'
+  if (/\.(XTKS|XJPX|TSE|JP)$/i.test(code || '')) return 'JP'
   if (/\.(L|LN)$/i.test(code)) return 'UK'
   if (/\.(PA|AS|DE|MI|MC|SW|BR|LS|ST|HE)$/i.test(code)) return 'EU'
+  if (/tokyo|jpx|xtks|xjpx|tse|japan/i.test(exchange || '')) return 'JP'
   if (/london|lse/i.test(exchange || '')) return 'UK'
   if (/euronext|xetra|frankfurt|paris|amsterdam|milan|madrid|europe/i.test(exchange || '')) return 'EU'
   return 'US'
@@ -115,32 +159,53 @@ const InfoRow = ({ label, val }) => (
 )
 
 export default function StockPage() {
+  const navigate = useNavigate()
   const [selectedRegion, setSelectedRegion] = useState('US')
   const [searchQuery, setSearchQuery] = useState('')
   const [timeframe, setTimeframe] = useState('1M')
   const [selectedStock, setSelectedStock] = useState(null)
   const [chartData, setChartData] = useState([])
-  const [watchlist, setWatchlist] = useState(['AAPL', 'NVDA'])
+  const [watchlist, setWatchlist] = useState(() => {
+    try {
+      const raw = window.localStorage.getItem(STOCK_WATCHLIST_STORAGE_KEY)
+      const parsed = raw ? JSON.parse(raw) : []
+      return Array.isArray(parsed) && parsed.length > 0 ? parsed : ['AAPL', 'NVDA']
+    } catch {
+      return ['AAPL', 'NVDA']
+    }
+  })
   const [liveStocks, setLiveStocks] = useState({ US: [] })
   const [marketLoading, setMarketLoading] = useState(true)
   const [marketError, setMarketError] = useState('')
   const [usingMockData, setUsingMockData] = useState(true)
-  const [goalTarget, setGoalTarget] = useState(3000)
-  const [goalYears, setGoalYears] = useState(10)
-  const [goalCurrent, setGoalCurrent] = useState(300)
-  const [goalRiskProfile, setGoalRiskProfile] = useState('balanced')
+  const [chartMode, setChartMode] = useState('candle')
+  const [chartExpanded, setChartExpanded] = useState(false)
+  const [xWindowSize, setXWindowSize] = useState(0)
+  const [xWindowStart, setXWindowStart] = useState(0)
+  const [isPanning, setIsPanning] = useState(false)
+  const [simMode, setSimMode] = useState('growth')
+  const [simMonthlyYen, setSimMonthlyYen] = useState(30000)
+  const [simYears, setSimYears] = useState(5)
+  const [simExpectedReturn, setSimExpectedReturn] = useState(6)
   const [costBrokerId, setCostBrokerId] = useState('sbi')
-  const [costInitialYen, setCostInitialYen] = useState(500000)
-  const [costMonthlyYen, setCostMonthlyYen] = useState(50000)
-  const [costYears, setCostYears] = useState(1)
   const [costTradesPerMonth, setCostTradesPerMonth] = useState(2)
   const [costFxRatio, setCostFxRatio] = useState(60)
-  const [simSaveStatus, setSimSaveStatus] = useState('')
+  const [threeMonthRateBySymbol, setThreeMonthRateBySymbol] = useState({})
+  const chartInteractionRef = useRef(null)
+  const panRef = useRef({
+    active: false,
+    startClientX: 0,
+    startWindowStart: 0,
+    lastClientX: 0,
+    lastTs: 0,
+    velocityPointsPerMs: 0,
+  })
+  const inertiaRafRef = useRef(0)
 
-  const mergeWithMockUniverse = (liveUs) => {
-    const liveByCode = new Map(liveUs.map((s) => [s.code, s]))
-    const merged = [...liveUs]
-    for (const m of MOCK_STOCKS.US) {
+  const mergeWithMockUniverse = (liveRows, mockRows) => {
+    const liveByCode = new Map(liveRows.map((s) => [s.code, s]))
+    const merged = [...liveRows]
+    for (const m of mockRows) {
       if (!liveByCode.has(m.code)) merged.push(m)
     }
     return merged
@@ -159,7 +224,7 @@ export default function StockPage() {
 
         if (!latestRows || latestRows.length === 0) {
           setUsingMockData(true)
-          setLiveStocks({ US: [...MOCK_STOCKS.US] })
+          setLiveStocks({ US: [...MOCK_STOCKS.US, ...MOCK_STOCKS.JP] })
           setSelectedStock(MOCK_STOCKS.US[0])
           setMarketError('実データがありません。モックデータを表示します。')
           return
@@ -200,23 +265,66 @@ export default function StockPage() {
           })
           .filter(Boolean)
 
-        const usLike = mapped.filter((s) => !(/\.(XTKS|XJPX|TSE|JP)$/i.test(s.code) || /^\d{4}/.test(s.code)))
-        if (usLike.length === 0) {
+        const jpLike = mapped.filter((s) => s.region === 'JP')
+        const nonJp = mapped.filter((s) => s.region !== 'JP')
+        if (mapped.length === 0) {
           setUsingMockData(true)
-          setLiveStocks({ US: [...MOCK_STOCKS.US] })
+          setLiveStocks({ US: [...MOCK_STOCKS.US, ...MOCK_STOCKS.JP] })
           setSelectedStock(MOCK_STOCKS.US[0])
           setMarketError('取得データが空のため、モックデータを表示します。')
           return
         }
 
-        const merged = mergeWithMockUniverse(usLike)
+        const mergedGlobal = mergeWithMockUniverse(nonJp, MOCK_STOCKS.US)
+        const mergedJp = mergeWithMockUniverse(jpLike, MOCK_STOCKS.JP)
+        const merged = [...mergedGlobal, ...mergedJp]
+        const latestBySymbol = new Map(mapped.map((row) => [row.code, Number(row.price || 0)]))
+        const symbolList = [...latestBySymbol.keys()]
+        let threeMonthMap = {}
+        try {
+          const cutoff = new Date()
+          cutoff.setDate(cutoff.getDate() - 100)
+          const cutoffStr = cutoff.toISOString().slice(0, 10)
+          const { data: priceRows, error: priceErr } = await supabase
+            .from('stock_prices')
+            .select('symbol,trade_date,close')
+            .in('symbol', symbolList)
+            .gte('trade_date', cutoffStr)
+            .order('trade_date', { ascending: true })
+            .limit(20000)
+          if (priceErr) throw priceErr
+          const firstCloseBySymbol = {}
+          ;(priceRows || []).forEach((row) => {
+            if (!row?.symbol || firstCloseBySymbol[row.symbol] != null) return
+            const close = Number(row.close)
+            if (Number.isFinite(close) && close > 0) firstCloseBySymbol[row.symbol] = close
+          })
+          threeMonthMap = Object.fromEntries(
+            symbolList.map((symbol) => {
+              const firstClose = Number(firstCloseBySymbol[symbol])
+              const latestClose = Number(latestBySymbol.get(symbol))
+              if (!Number.isFinite(firstClose) || !Number.isFinite(latestClose) || firstClose <= 0) {
+                return [symbol, null]
+              }
+              return [symbol, ((latestClose - firstClose) / firstClose) * 100]
+            })
+          )
+        } catch {
+          threeMonthMap = {}
+        }
+        setThreeMonthRateBySymbol(threeMonthMap)
         setLiveStocks({ US: merged })
-        setUsingMockData(merged.length > usLike.length)
-        setSelectedStock(usLike[0] || merged[0] || MOCK_STOCKS.US[0])
+        setUsingMockData(merged.length > mapped.length)
+        setSelectedStock(
+          merged.find((s) => s.region === selectedRegion)
+          || merged[0]
+          || MOCK_STOCKS.US[0]
+        )
       } catch (err) {
         setUsingMockData(true)
-        setLiveStocks({ US: [...MOCK_STOCKS.US] })
+        setLiveStocks({ US: [...MOCK_STOCKS.US, ...MOCK_STOCKS.JP] })
         setSelectedStock(MOCK_STOCKS.US[0])
+        setThreeMonthRateBySymbol({})
         setMarketError((err.message || 'データの読み込みに失敗しました') + '（モックデータ表示中）')
       } finally {
         setMarketLoading(false)
@@ -242,10 +350,24 @@ export default function StockPage() {
 
   useEffect(() => {
     if (!selectedStock) return
-    const pointsByTf = { '1D': 78, '1W': 30, '1M': 90, '3M': 120, '1Y': 180, '5Y': 260 }
+    // Keep medium/long ranges less crowded so each candle remains readable.
+    const pointsByTf = { '1D': 78, '1W': 28, '1M': 44, '3M': 66, '1Y': 110, '5Y': 160 }
     const points = pointsByTf[timeframe] || 90
     const vol = Math.max(selectedStock.price * 0.02, 0.5)
-    setChartData(generateChartData(points, selectedStock.price * 0.9, vol))
+    const generated = generateChartData(points, selectedStock.price * 0.9, vol, timeframe).map((row) => {
+      const close = Number(row.price || 0)
+      const open = Number(row.open || close)
+      const high = Math.max(Number(row.high || close), open, close)
+      const low = Math.min(Number(row.low || close), open, close)
+      return {
+        ...row,
+        close,
+        open,
+        high,
+        low,
+      }
+    })
+    setChartData(generated)
   }, [timeframe, selectedStock])
 
   const displayedStock = filteredStocks.find((s) => s.id === selectedStock?.id) || filteredStocks[0] || selectedStock
@@ -256,80 +378,306 @@ export default function StockPage() {
       && Number.isFinite(Number(displayedStock?.low))
       && Number.isFinite(Number(displayedStock?.volume))
   )
-  const chartColor = isUp ? '#ef4444' : '#3b82f6'
-  const requiredMonthlyYen = calculateRequiredMonthlyContribution({
-    targetAmount: goalTarget * 10000,
-    currentAmount: goalCurrent * 10000,
-    years: goalYears,
-    riskProfile: goalRiskProfile,
-  })
-  const selectedBroker = PLATFORM_PARTNERS.find((p) => p.id === costBrokerId) || PLATFORM_PARTNERS[0]
-  const costSummary = useMemo(() => {
-    return calculateTotalCost({
-      broker: selectedBroker,
-      brokers: PLATFORM_PARTNERS,
-      initialYen: costInitialYen,
-      monthlyYen: costMonthlyYen,
-      years: costYears,
-      tradesPerMonth: costTradesPerMonth,
-      fxRatio: costFxRatio,
+  const chartColor = isUp ? '#ef4444' : '#16a34a'
+  const earningsRows = useMemo(
+    () => EARNINGS_CALENDAR_MOCK[selectedRegion] || [],
+    [selectedRegion]
+  )
+  const maWindows = useMemo(() => {
+    const len = Math.max(1, chartData.length)
+    const presets = {
+      '1D': [8, 20],
+      '1W': [8, 20],
+      '1M': [12, 26],
+      '3M': [20, 40],
+      '1Y': [50, 120],
+      '5Y': [50, 200],
+    }
+    const base = presets[timeframe] || [20, 60]
+    const shortWindow = Math.max(3, Math.min(base[0], len))
+    const longWindow = Math.max(shortWindow + 1, Math.min(base[1], len))
+    return { shortWindow, longWindow }
+  }, [timeframe, chartData.length])
+  const chartSeries = useMemo(() => {
+    if (!Array.isArray(chartData) || chartData.length === 0) return []
+    const maShort = calcMovingAverage(chartData, maWindows.shortWindow)
+    const maLong = calcMovingAverage(chartData, maWindows.longWindow)
+    return chartData.map((row, idx) => {
+      const close = Number(row.close || row.price || 0)
+      const prevClose = idx > 0
+        ? Number(chartData[idx - 1]?.close || chartData[idx - 1]?.price || close)
+        : Number(row.open || close)
+      const open = Number.isFinite(prevClose) ? prevClose : close
+      const rawHigh = Number(row.high || Math.max(open, close))
+      const rawLow = Number(row.low || Math.min(open, close))
+      const high = Math.max(rawHigh, open, close)
+      const low = Math.min(rawLow, open, close)
+      const bodyBase = Math.min(open, close)
+      const minBody = Math.max(0.45, Math.abs(close) * 0.0032)
+      const body = Math.max(minBody, Math.abs(close - open))
+      return {
+        ...row,
+        open,
+        close,
+        high,
+        low,
+        candleBase: bodyBase,
+        candleBody: body,
+        wickErrorClose: [Math.max(0, close - low), Math.max(0, high - close)],
+        wickErrorUp: close >= open ? [Math.max(0, close - low), Math.max(0, high - close)] : [0, 0],
+        wickErrorDown: close < open ? [Math.max(0, close - low), Math.max(0, high - close)] : [0, 0],
+        isUpCandle: close >= open,
+        maShort: maShort[idx],
+        maLong: maLong[idx],
+      }
     })
-  }, [selectedBroker, costYears, costInitialYen, costMonthlyYen, costTradesPerMonth, costFxRatio])
+  }, [chartData, maWindows])
+  const visibleChartSeries = useMemo(() => {
+    if (!Array.isArray(chartSeries) || chartSeries.length === 0) return []
+    if (!Number.isFinite(xWindowSize) || xWindowSize <= 0 || xWindowSize >= chartSeries.length) {
+      return chartSeries
+    }
+    const safeStart = Math.max(0, Math.min(xWindowStart, chartSeries.length - xWindowSize))
+    return chartSeries.slice(safeStart, safeStart + xWindowSize)
+  }, [chartSeries, xWindowSize, xWindowStart])
+  const xWindowMaxStart = useMemo(() => {
+    if (!Array.isArray(chartSeries) || chartSeries.length === 0) return 0
+    const currentSize = xWindowSize > 0 ? xWindowSize : chartSeries.length
+    return Math.max(0, chartSeries.length - currentSize)
+  }, [chartSeries, xWindowSize])
+  useEffect(() => {
+    // Period tab should always start with full-range view.
+    setXWindowSize(0)
+    setXWindowStart(0)
+  }, [timeframe, selectedStock?.id, chartSeries.length])
+  const handleChartWheel = (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const total = chartSeries.length
+    if (total <= 0) return
+    const currentSize = xWindowSize > 0 ? xWindowSize : total
+    const minWindow = timeframe === '1D' ? Math.min(total, 24) : Math.min(total, 14)
+    const zoomIn = e.deltaY < 0
+    const nextSize = zoomIn
+      ? Math.max(minWindow, Math.floor(currentSize * 0.85))
+      : Math.min(total, Math.ceil(currentSize * 1.15))
+    if (nextSize === currentSize) return
+
+    const rect = e.currentTarget.getBoundingClientRect()
+    const ratioRaw = (e.clientX - rect.left) / Math.max(1, rect.width)
+    const ratio = Math.max(0, Math.min(1, ratioRaw))
+    const currentStart = xWindowSize > 0 ? xWindowStart : 0
+    const anchorIndex = currentStart + Math.round(currentSize * ratio)
+    const maxStart = Math.max(0, total - nextSize)
+    const nextStart = Math.max(0, Math.min(maxStart, Math.round(anchorIndex - (nextSize * ratio))))
+
+    if (nextSize >= total) {
+      setXWindowSize(0)
+      setXWindowStart(0)
+    } else {
+      setXWindowSize(nextSize)
+      setXWindowStart(nextStart)
+    }
+  }
+  const handlePanStart = (e) => {
+    if (xWindowSize <= 0 || xWindowSize >= chartSeries.length) return
+    if (inertiaRafRef.current) {
+      cancelAnimationFrame(inertiaRafRef.current)
+      inertiaRafRef.current = 0
+    }
+    const now = performance.now()
+    panRef.current = {
+      active: true,
+      startClientX: e.clientX,
+      startWindowStart: xWindowStart,
+      lastClientX: e.clientX,
+      lastTs: now,
+      velocityPointsPerMs: 0,
+    }
+    setIsPanning(true)
+  }
+  const handlePanMove = (e) => {
+    if (!panRef.current.active) return
+    const container = chartInteractionRef.current
+    if (!container) return
+    const width = Math.max(1, container.clientWidth)
+    const currentSize = Math.max(1, xWindowSize)
+    const deltaX = e.clientX - panRef.current.startClientX
+    const deltaPoints = Math.round((deltaX / width) * currentSize)
+    const nextStart = Math.max(0, Math.min(xWindowMaxStart, panRef.current.startWindowStart - deltaPoints))
+    setXWindowStart(nextStart)
+
+    const now = performance.now()
+    const dt = Math.max(1, now - panRef.current.lastTs)
+    const moveDeltaX = e.clientX - panRef.current.lastClientX
+    const moveDeltaPoints = -((moveDeltaX / width) * currentSize)
+    panRef.current.velocityPointsPerMs = moveDeltaPoints / dt
+    panRef.current.lastClientX = e.clientX
+    panRef.current.lastTs = now
+  }
+  const handlePanEnd = () => {
+    if (!panRef.current.active) return
+    panRef.current.active = false
+    setIsPanning(false)
+
+    if (xWindowSize <= 0 || xWindowSize >= chartSeries.length) return
+    let velocity = panRef.current.velocityPointsPerMs
+    if (!Number.isFinite(velocity) || Math.abs(velocity) < 0.001) return
+
+    let lastTs = performance.now()
+    const step = (ts) => {
+      const dt = Math.max(1, ts - lastTs)
+      lastTs = ts
+      velocity *= 0.93
+      if (Math.abs(velocity) < 0.001) {
+        inertiaRafRef.current = 0
+        return
+      }
+      setXWindowStart((prev) => {
+        const next = Math.max(0, Math.min(xWindowMaxStart, prev + velocity * dt))
+        if (next === 0 || next === xWindowMaxStart) {
+          velocity = 0
+        }
+        return next
+      })
+      inertiaRafRef.current = requestAnimationFrame(step)
+    }
+    inertiaRafRef.current = requestAnimationFrame(step)
+  }
+  useEffect(() => {
+    window.addEventListener('mousemove', handlePanMove)
+    window.addEventListener('mouseup', handlePanEnd)
+    return () => {
+      window.removeEventListener('mousemove', handlePanMove)
+      window.removeEventListener('mouseup', handlePanEnd)
+    }
+  })
+  useEffect(() => {
+    const node = chartInteractionRef.current
+    if (!node) return undefined
+    const wheelListener = (ev) => {
+      ev.preventDefault()
+    }
+    node.addEventListener('wheel', wheelListener, { passive: false })
+    return () => {
+      node.removeEventListener('wheel', wheelListener)
+    }
+  }, [])
+  useEffect(() => () => {
+    if (inertiaRafRef.current) {
+      cancelAnimationFrame(inertiaRafRef.current)
+      inertiaRafRef.current = 0
+    }
+  }, [])
+  const chartPriceDomain = useMemo(() => {
+    if (!visibleChartSeries.length) return ['auto', 'auto']
+    let low = Number.POSITIVE_INFINITY
+    let high = Number.NEGATIVE_INFINITY
+    visibleChartSeries.forEach((row) => {
+      const rowLow = Number(row.low)
+      const rowHigh = Number(row.high)
+      if (Number.isFinite(rowLow)) low = Math.min(low, rowLow)
+      if (Number.isFinite(rowHigh)) high = Math.max(high, rowHigh)
+    })
+    if (!Number.isFinite(low) || !Number.isFinite(high)) return ['auto', 'auto']
+    const range = Math.max(1, high - low)
+    const pad = Math.max(0.5, range * 0.2)
+    return [Number((low - pad).toFixed(2)), Number((high + pad).toFixed(2))]
+  }, [visibleChartSeries])
+  const candleBarSize = useMemo(() => {
+    const n = visibleChartSeries.length
+    if (n <= 24) return 14
+    if (n <= 40) return 12
+    if (n <= 70) return 10
+    if (n <= 110) return 8
+    return 6
+  }, [visibleChartSeries.length])
+  const chartHighLow = useMemo(() => {
+    if (!visibleChartSeries.length) return { high: null, low: null }
+    let high = Number.NEGATIVE_INFINITY
+    let low = Number.POSITIVE_INFINITY
+    visibleChartSeries.forEach((row) => {
+      const rowHigh = Number(row.high)
+      const rowLow = Number(row.low)
+      if (Number.isFinite(rowHigh)) high = Math.max(high, rowHigh)
+      if (Number.isFinite(rowLow)) low = Math.min(low, rowLow)
+    })
+    return {
+      high: Number.isFinite(high) ? high : null,
+      low: Number.isFinite(low) ? low : null,
+    }
+  }, [visibleChartSeries])
+  const marketBreadth = useMemo(() => {
+    const rising = filteredStocks.filter((s) => Number(s.rate) > 0).length
+    const falling = filteredStocks.filter((s) => Number(s.rate) < 0).length
+    const avgMove = filteredStocks.length
+      ? filteredStocks.reduce((sum, s) => sum + Number(s.rate || 0), 0) / filteredStocks.length
+      : 0
+    return { rising, falling, avgMove }
+  }, [filteredStocks])
+  const topPerformers = useMemo(
+    () => [...filteredStocks].sort((a, b) => Number(b.rate || 0) - Number(a.rate || 0)).slice(0, 5),
+    [filteredStocks]
+  )
+  const topDecliners = useMemo(
+    () => [...filteredStocks].sort((a, b) => Number(a.rate || 0) - Number(b.rate || 0)).slice(0, 5),
+    [filteredStocks]
+  )
+  const threeMonthStats = useMemo(() => {
+    const rates = filteredStocks
+      .map((s) => Number(threeMonthRateBySymbol[s.code]))
+      .filter((v) => Number.isFinite(v))
+    const up20 = rates.filter((v) => v >= 20).length
+    const down20 = rates.filter((v) => v <= -20).length
+    return { up20, down20, covered: rates.length }
+  }, [filteredStocks, threeMonthRateBySymbol])
+  const miniSimulator = useMemo(() => {
+    const months = Math.max(1, simYears * 12)
+    const monthlyRate = (Math.max(-10, Math.min(30, simExpectedReturn)) / 100) / 12
+    let futureValue = 0
+    for (let i = 0; i < months; i += 1) {
+      futureValue = (futureValue + simMonthlyYen) * (1 + monthlyRate)
+    }
+    const invested = simMonthlyYen * months
+    const gain = futureValue - invested
+    return {
+      invested: Math.round(invested),
+      futureValue: Math.round(futureValue),
+      gain: Math.round(gain),
+    }
+  }, [simMonthlyYen, simYears, simExpectedReturn])
+  const miniCostSimulator = useMemo(() => {
+    const months = Math.max(1, simYears * 12)
+    const invested = simMonthlyYen * months
+    const broker = PLATFORM_PARTNERS.find((p) => p.id === costBrokerId) || PLATFORM_PARTNERS[0]
+    const domesticFee = Number(broker.domesticFeePerTrade || 0) * costTradesPerMonth * months
+    const fxBase = invested * (Math.max(0, Math.min(100, costFxRatio)) / 100)
+    const fxCost = fxBase * (Number(broker.fxSpreadBps || 0) / 10000)
+    const trustFee = invested * (Number(broker.trustFeeAnnualPct || 0) / 100) * simYears * 0.55
+    const totalCost = domesticFee + fxCost + trustFee
+    return {
+      broker,
+      invested: Math.round(invested),
+      domesticFee: Math.round(domesticFee),
+      fxCost: Math.round(fxCost),
+      trustFee: Math.round(trustFee),
+      totalCost: Math.round(totalCost),
+      annualCost: Math.round(totalCost / Math.max(1, simYears)),
+      costRatePct: invested > 0 ? (totalCost / invested) * 100 : 0,
+    }
+  }, [simYears, simMonthlyYen, costBrokerId, costTradesPerMonth, costFxRatio])
 
   const toggleWatch = (id) => {
     if (!id) return
     setWatchlist((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
   }
-
-  const handleSaveGoalSimulation = async () => {
-    setSimSaveStatus('保存中...')
+  useEffect(() => {
     try {
-      const result = await saveSimulatorRun({
-        page: 'stocks',
-        simulatorType: 'goal_planner',
-        inputPayload: {
-          goalTarget,
-          goalYears,
-          goalCurrent,
-          goalRiskProfile,
-          selectedStock: displayedStock?.code || null,
-        },
-        outputPayload: {
-          requiredMonthlyYen: Math.max(0, Math.round(requiredMonthlyYen)),
-        },
-      })
-      setSimSaveStatus(result.saved ? 'シミュレーションを保存しました' : 'ログイン後に保存できます')
+      window.localStorage.setItem(STOCK_WATCHLIST_STORAGE_KEY, JSON.stringify(watchlist))
     } catch {
-      setSimSaveStatus('保存に失敗しました')
+      // ignore storage failures
     }
-  }
-
-  const handleSaveCostSimulation = async () => {
-    setSimSaveStatus('保存中...')
-    try {
-      const result = await saveSimulatorRun({
-        page: 'stocks',
-        simulatorType: 'total_cost',
-        inputPayload: {
-          broker: selectedBroker?.id || null,
-          costInitialYen,
-          costMonthlyYen,
-          costYears,
-          costTradesPerMonth,
-          costFxRatio,
-        },
-        outputPayload: {
-          totalInvested: Math.round(costSummary.totalInvested),
-          totalCost: Math.round(costSummary.totalCost),
-          annualizedCost: Math.round(costSummary.totalCost / Math.max(costYears, 1)),
-          savingsVsAvg: Math.round(costSummary.savingsVsAvg),
-        },
-      })
-      setSimSaveStatus(result.saved ? 'シミュレーションを保存しました' : 'ログイン後に保存できます')
-    } catch {
-      setSimSaveStatus('保存に失敗しました')
-    }
-  }
+  }, [watchlist])
 
   const CustomTooltip = ({ active, payload }) => {
     if (active && payload && payload.length) {
@@ -337,7 +685,12 @@ export default function StockPage() {
       return (
         <div className="bg-white/95 dark:bg-slate-900/95 text-slate-800 dark:text-white p-3 rounded-xl text-xs shadow-xl border border-slate-200 dark:border-slate-700 backdrop-blur-sm">
           <p className="font-bold text-slate-500 dark:text-slate-400 mb-1">{d.time}</p>
-          <p className="font-mono">Price: <span className="font-bold">{formatCurrency(d.price, displayedStock?.region || 'US')}</span></p>
+          <p className="font-mono">Open: <span className="font-bold">{formatCurrency(d.open, displayedStock?.region || 'US')}</span></p>
+          <p className="font-mono">High: <span className="font-bold">{formatCurrency(d.high, displayedStock?.region || 'US')}</span></p>
+          <p className="font-mono">Low: <span className="font-bold">{formatCurrency(d.low, displayedStock?.region || 'US')}</span></p>
+          <p className="font-mono">Close: <span className="font-bold">{formatCurrency(d.close, displayedStock?.region || 'US')}</span></p>
+          <p className="font-mono">MA{maWindows.shortWindow}: <span className="font-bold">{d.maShort ? formatCurrency(d.maShort, displayedStock?.region || 'US') : '--'}</span></p>
+          <p className="font-mono">MA{maWindows.longWindow}: <span className="font-bold">{d.maLong ? formatCurrency(d.maLong, displayedStock?.region || 'US') : '--'}</span></p>
           <p className="font-mono">Vol: <span className="text-slate-500 dark:text-slate-400">{formatCompact(d.volume)}</span></p>
         </div>
       )
@@ -347,7 +700,7 @@ export default function StockPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-[#0F172A] text-slate-900 dark:text-white font-sans pb-20">
-      <div className="max-w-7xl mx-auto px-4 pt-4">
+      <div className="max-w-[1400px] mx-auto px-4 pt-4">
         <div className="bg-slate-900 dark:bg-black text-white rounded-2xl border border-slate-700 shadow-md overflow-hidden relative">
           <div className="py-3 overflow-hidden whitespace-nowrap">
             <div className="inline-flex animate-ticker items-center gap-10 pl-4 pr-16 min-w-max">
@@ -367,11 +720,12 @@ export default function StockPage() {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto p-4 lg:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <div className="max-w-[1400px] mx-auto p-4 lg:p-6 grid grid-cols-1 lg:grid-cols-12 gap-4">
         <div className="lg:col-span-3 space-y-4">
           <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
             {[
               { id: 'US', label: '🇺🇸 米国' },
+              { id: 'JP', label: '🇯🇵 日本' },
               { id: 'UK', label: '🇬🇧 英国' },
               { id: 'EU', label: '🇪🇺 欧州' },
             ].map((r) => (
@@ -406,7 +760,7 @@ export default function StockPage() {
               <span className="text-xs font-bold text-slate-600 dark:text-slate-400">Watchlist</span>
               <SettingsBtn />
             </div>
-            <div className="divide-y divide-slate-100 dark:divide-white/5 max-h-[620px] overflow-y-auto">
+            <div className="divide-y divide-slate-100 dark:divide-white/5 max-h-[540px] overflow-y-auto">
               {filteredStocks.map((stock) => (
                 <div
                   key={stock.id}
@@ -435,9 +789,189 @@ export default function StockPage() {
               )}
             </div>
           </div>
+          <div className="grid grid-cols-1 gap-3">
+            <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3">
+              <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-2">Top 5 performers</p>
+              <div className="space-y-1.5">
+                {topPerformers.map((stock) => (
+                  <button
+                    key={`top-${stock.id}`}
+                    onClick={() => setSelectedStock(stock)}
+                    className="w-full flex items-center justify-between rounded-lg px-2 py-1.5 hover:bg-slate-50 dark:hover:bg-slate-800 text-left"
+                  >
+                    <span className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">{stock.code}</span>
+                    <span className="text-xs font-black text-red-500">+{Math.max(0, Number(stock.rate || 0)).toFixed(2)}%</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3">
+              <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-2">Top 5 decliners</p>
+              <div className="space-y-1.5">
+                {topDecliners.map((stock) => (
+                  <button
+                    key={`down-${stock.id}`}
+                    onClick={() => setSelectedStock(stock)}
+                    className="w-full flex items-center justify-between rounded-lg px-2 py-1.5 hover:bg-slate-50 dark:hover:bg-slate-800 text-left"
+                  >
+                    <span className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">{stock.code}</span>
+                    <span className="text-xs font-black text-blue-500">{Number(stock.rate || 0).toFixed(2)}%</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+            <AdBanner variant="compact" />
+            <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400">Mini Simulator</p>
+                <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+                  <button
+                    onClick={() => setSimMode('growth')}
+                    className={`px-2 py-1 text-[10px] font-bold ${simMode === 'growth' ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900' : 'bg-white dark:bg-slate-800 text-slate-500'}`}
+                  >
+                    積立
+                  </button>
+                  <button
+                    onClick={() => setSimMode('cost')}
+                    className={`px-2 py-1 text-[10px] font-bold ${simMode === 'cost' ? 'bg-orange-500 text-white' : 'bg-white dark:bg-slate-800 text-slate-500'}`}
+                  >
+                    コスト
+                  </button>
+                </div>
+              </div>
+              <div className="space-y-3">
+                <div>
+                  <p className="text-[10px] font-bold text-slate-500 mb-1">毎月積立: ¥{simMonthlyYen.toLocaleString()}</p>
+                  <input
+                    type="range"
+                    min={5000}
+                    max={200000}
+                    step={5000}
+                    value={simMonthlyYen}
+                    onChange={(e) => setSimMonthlyYen(Number(e.target.value))}
+                    className="w-full accent-orange-500"
+                  />
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold text-slate-500 mb-1">期間: {simYears}年</p>
+                  <input
+                    type="range"
+                    min={1}
+                    max={20}
+                    step={1}
+                    value={simYears}
+                    onChange={(e) => setSimYears(Number(e.target.value))}
+                    className="w-full accent-orange-500"
+                  />
+                </div>
+                {simMode === 'growth' ? (
+                  <>
+                    <div>
+                      <p className="text-[10px] font-bold text-slate-500 mb-1">想定年率: {simExpectedReturn}%</p>
+                      <input
+                        type="range"
+                        min={-5}
+                        max={20}
+                        step={0.5}
+                        value={simExpectedReturn}
+                        onChange={(e) => setSimExpectedReturn(Number(e.target.value))}
+                        className="w-full accent-orange-500"
+                      />
+                    </div>
+                    <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 p-3">
+                      <p className="text-[10px] font-bold text-slate-500">積立元本</p>
+                      <p className="text-sm font-black text-slate-900 dark:text-white">¥{miniSimulator.invested.toLocaleString()}</p>
+                      <p className="text-[10px] font-bold text-slate-500 mt-1.5">将来評価額</p>
+                      <p className="text-sm font-black text-slate-900 dark:text-white">¥{miniSimulator.futureValue.toLocaleString()}</p>
+                      <p className="text-[10px] font-bold text-slate-500 mt-1.5">損益</p>
+                      <p className={`text-sm font-black ${miniSimulator.gain >= 0 ? 'text-red-500' : 'text-green-600'}`}>
+                        {miniSimulator.gain >= 0 ? '+' : ''}¥{miniSimulator.gain.toLocaleString()}
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <p className="text-[10px] font-bold text-slate-500 mb-1">証券会社</p>
+                      <div className="flex gap-1.5 flex-wrap">
+                        {PLATFORM_PARTNERS.map((p) => (
+                          <button
+                            key={`sim-broker-${p.id}`}
+                            onClick={() => setCostBrokerId(p.id)}
+                            className={`px-2 py-1 rounded-md text-[10px] font-bold border ${costBrokerId === p.id ? 'bg-slate-900 text-white dark:bg-orange-500 border-transparent' : 'bg-white dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700'}`}
+                          >
+                            {p.name}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold text-slate-500 mb-1">月間取引回数: {costTradesPerMonth}回</p>
+                      <input
+                        type="range"
+                        min={1}
+                        max={12}
+                        step={1}
+                        value={costTradesPerMonth}
+                        onChange={(e) => setCostTradesPerMonth(Number(e.target.value))}
+                        className="w-full accent-orange-500"
+                      />
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold text-slate-500 mb-1">外貨建比率: {costFxRatio}%</p>
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        step={5}
+                        value={costFxRatio}
+                        onChange={(e) => setCostFxRatio(Number(e.target.value))}
+                        className="w-full accent-orange-500"
+                      />
+                    </div>
+                    <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 p-3">
+                      <p className="text-[10px] font-bold text-slate-500">総コスト（{miniCostSimulator.broker.name}）</p>
+                      <p className="text-sm font-black text-slate-900 dark:text-white">¥{miniCostSimulator.totalCost.toLocaleString()}</p>
+                      <p className="text-[10px] font-bold text-slate-500 mt-1.5">年換算コスト</p>
+                      <p className="text-sm font-black text-slate-900 dark:text-white">¥{miniCostSimulator.annualCost.toLocaleString()}</p>
+                      <p className="text-[10px] font-bold text-slate-500 mt-1.5">総投資額 대비</p>
+                      <p className="text-sm font-black text-orange-500">{miniCostSimulator.costRatePct.toFixed(2)}%</p>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="lg:hidden">
+            <AdBanner variant="horizontal" />
+          </div>
         </div>
 
-        <div className="lg:col-span-9 space-y-6">
+        <div className="lg:col-span-6 space-y-4">
+          <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 shadow-sm">
+            <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">
+              Today Insight
+            </p>
+            <p className="text-sm font-bold text-slate-800 dark:text-slate-200">
+              {displayedStock
+                ? `${displayedStock.code}は${Math.abs(displayedStock.rate).toFixed(2)}% ${displayedStock.rate >= 0 ? '上昇' : '下落'}。価格推移・出来高・開示情報を合わせて、タイミングを分散して判断しましょう。`
+                : '銘柄データを確認中です。'}
+            </p>
+            <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2">
+                <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400">3ヶ月 +20%</p>
+                <p className="text-sm font-black text-red-500">{threeMonthStats.up20}</p>
+              </div>
+              <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2">
+                <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400">3ヶ月 -20%</p>
+                <p className="text-sm font-black text-blue-500">{threeMonthStats.down20}</p>
+              </div>
+              <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2">
+                <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400">集計対象</p>
+                <p className="text-sm font-black text-slate-900 dark:text-white">{threeMonthStats.covered}</p>
+              </div>
+            </div>
+          </div>
           {marketLoading ? (
             <div className="space-y-6 animate-pulse">
               <div className="h-16 bg-slate-200 dark:bg-slate-800 rounded-2xl" />
@@ -474,8 +1008,8 @@ export default function StockPage() {
               </div>
 
               <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-lg overflow-hidden relative">
-                <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/70 backdrop-blur-sm">
-                  <div className="flex gap-1.5">
+                <div className="px-4 py-2.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/70 backdrop-blur-sm space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     {TIMEFRAMES.map((tf) => (
                       <button
                         key={tf}
@@ -489,12 +1023,34 @@ export default function StockPage() {
                         {tf}
                       </button>
                     ))}
-                  </div>
-                  <div className="flex items-center gap-2 text-[11px] font-bold text-slate-500 dark:text-slate-400">
-                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                    {[
+                      { id: 'candle', label: 'Candles' },
+                      { id: 'line', label: 'Line' },
+                    ].map((mode) => (
+                      <button
+                        key={mode.id}
+                        onClick={() => setChartMode(mode.id)}
+                        className={`px-2.5 py-1 text-[11px] font-bold rounded-full transition ${
+                          chartMode === mode.id
+                            ? 'bg-orange-500 text-white'
+                            : 'text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700/50'
+                        }`}
+                      >
+                        {mode.label}
+                      </button>
+                    ))}
+                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[11px] font-bold text-slate-500 dark:text-slate-400">
                       <div className={`w-1.5 h-1.5 rounded-full ${usingMockData ? 'bg-amber-400' : 'bg-emerald-400'}`} />
                       {usingMockData ? 'Mock Blend' : 'Live'}
                     </span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                    <button
+                      onClick={() => setChartExpanded((v) => !v)}
+                      className="px-2.5 py-1 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700"
+                    >
+                      {chartExpanded ? '標準表示' : 'チャート拡大'}
+                    </button>
                   </div>
                 </div>
 
@@ -512,47 +1068,132 @@ export default function StockPage() {
                   </p>
                 </div>
 
-                <div className="h-[380px] w-full bg-gradient-to-b from-white to-slate-50 dark:from-[#0B1221] dark:to-[#0F172A] relative">
+                <div className={`${chartExpanded ? 'h-[620px]' : 'h-[440px]'} w-full bg-gradient-to-b from-white to-slate-50 dark:from-[#0B1221] dark:to-[#0F172A] relative transition-all duration-300`}>
+                  <div
+                    ref={chartInteractionRef}
+                    onWheelCapture={handleChartWheel}
+                    onMouseDown={handlePanStart}
+                    className={`h-full w-full ${(xWindowSize > 0 && xWindowSize < chartSeries.length) ? (isPanning ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-default'} select-none`}
+                  >
+                  <div className="h-[76%] w-full">
                   <ResponsiveContainer width="100%" height="100%">
-                    <ComposedChart data={chartData} margin={{ top: 20, right: 8, left: 8, bottom: 0 }}>
+                    <ComposedChart syncId="stock-main" data={visibleChartSeries} margin={{ top: 16, right: 8, left: 8, bottom: 0 }}>
                       <defs>
                         <linearGradient id="colorPrice" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="5%" stopColor={chartColor} stopOpacity={0.25} />
                           <stop offset="95%" stopColor={chartColor} stopOpacity={0} />
                         </linearGradient>
                       </defs>
-                      <CartesianGrid strokeDasharray="2 4" vertical={false} stroke="#cbd5e1" />
-                      <XAxis dataKey="time" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} minTickGap={30} />
+                      <CartesianGrid strokeDasharray="2 4" vertical stroke="#e2e8f0" />
+                      <XAxis dataKey="time" hide />
                       <YAxis
                         yAxisId="left"
                         orientation="right"
-                        domain={['auto', 'auto']}
+                        domain={chartPriceDomain}
+                        allowDataOverflow
                         axisLine={false}
                         tickLine={false}
                         tick={{ fontSize: 10, fill: '#64748b' }}
-                        tickFormatter={(v) => formatCompact(v)}
+                        tickFormatter={(v) => Math.round(v)}
                         width={54}
                       />
-                      <YAxis yAxisId="right" orientation="left" hide />
                       <Tooltip content={<CustomTooltip />} cursor={{ stroke: '#94a3b8', strokeWidth: 1, strokeDasharray: '4 4' }} />
-                      <Bar yAxisId="right" dataKey="volume" fill="#94a3b8" opacity={0.18} barSize={3} />
-                      <Area yAxisId="left" type="monotone" dataKey="price" stroke={chartColor} strokeWidth={2.4} fill="url(#colorPrice)" activeDot={{ r: 4, strokeWidth: 0, fill: '#fff' }} />
-                      <Line yAxisId="left" type="monotone" dataKey="price" stroke={chartColor} strokeWidth={1.4} dot={false} opacity={0.9} />
-                      <ReferenceLine
-                        yAxisId="left"
-                        y={displayedStock.price * 0.99}
-                        stroke="#94a3b8"
-                        strokeDasharray="4 4"
-                        strokeOpacity={0.6}
-                        label={{ value: 'Prev', position: 'insideLeft', fill: '#94a3b8', fontSize: 10 }}
-                      />
+                      {chartMode === 'line' ? (
+                        <>
+                          <Area yAxisId="left" type="monotone" dataKey="close" stroke={chartColor} strokeWidth={2.4} fill="url(#colorPrice)" activeDot={{ r: 4, strokeWidth: 0, fill: '#fff' }} />
+                          <Line yAxisId="left" type="monotone" dataKey="close" stroke={chartColor} strokeWidth={1.4} dot={false} opacity={0.9} />
+                        </>
+                      ) : (
+                        <>
+                          <Line yAxisId="left" type="monotone" dataKey="close" stroke="transparent" dot={false} activeDot={false}>
+                            <ErrorBar dataKey="wickErrorUp" width={0} stroke="#ef4444" strokeWidth={1.4} />
+                          </Line>
+                          <Line yAxisId="left" type="monotone" dataKey="close" stroke="transparent" dot={false} activeDot={false}>
+                            <ErrorBar dataKey="wickErrorDown" width={0} stroke="#16a34a" strokeWidth={1.4} />
+                          </Line>
+                          <Bar yAxisId="left" dataKey="candleBase" stackId="candle" fill="transparent" barSize={candleBarSize} isAnimationActive={false} />
+                          <Bar yAxisId="left" dataKey="candleBody" stackId="candle" barSize={candleBarSize} isAnimationActive={false}>
+                            {visibleChartSeries.map((entry, idx) => (
+                              <Cell key={`candle-${idx}`} fill={entry.isUpCandle ? '#ef4444' : '#16a34a'} />
+                            ))}
+                          </Bar>
+                        </>
+                      )}
+                      <Line yAxisId="left" type="monotone" dataKey="maShort" stroke="#f59e0b" strokeWidth={1.8} dot={false} connectNulls />
+                      <Line yAxisId="left" type="monotone" dataKey="maLong" stroke="#a855f7" strokeWidth={1.8} dot={false} connectNulls />
+                      <ReferenceLine yAxisId="left" y={displayedStock.price * 0.99} stroke="#94a3b8" strokeDasharray="4 4" strokeOpacity={0.35} />
+                      {!hasDailyOhlcv && chartHighLow.high != null && (
+                        <ReferenceLine
+                          yAxisId="left"
+                          y={chartHighLow.high}
+                          stroke="#ef4444"
+                          strokeDasharray="3 3"
+                          strokeOpacity={0.45}
+                        />
+                      )}
+                      {!hasDailyOhlcv && chartHighLow.low != null && (
+                        <ReferenceLine
+                          yAxisId="left"
+                          y={chartHighLow.low}
+                          stroke="#16a34a"
+                          strokeDasharray="3 3"
+                          strokeOpacity={0.45}
+                        />
+                      )}
+                      {hasDailyOhlcv && Number.isFinite(Number(displayedStock?.high)) && (
+                        <ReferenceLine
+                          yAxisId="left"
+                          y={Number(displayedStock.high)}
+                          stroke="#dc2626"
+                          strokeDasharray="6 3"
+                          strokeOpacity={0.45}
+                        />
+                      )}
+                      {hasDailyOhlcv && Number.isFinite(Number(displayedStock?.low)) && (
+                        <ReferenceLine
+                          yAxisId="left"
+                          y={Number(displayedStock.low)}
+                          stroke="#16a34a"
+                          strokeDasharray="6 3"
+                          strokeOpacity={0.45}
+                        />
+                      )}
                     </ComposedChart>
                   </ResponsiveContainer>
+                  </div>
+                  <div className="h-[24%] w-full border-t border-slate-200 dark:border-slate-800">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart syncId="stock-main" data={visibleChartSeries} margin={{ top: 6, right: 8, left: 8, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="2 4" vertical stroke="#e2e8f0" />
+                        <XAxis dataKey="time" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} minTickGap={18} />
+                        <YAxis
+                          orientation="right"
+                          axisLine={false}
+                          tickLine={false}
+                          tick={{ fontSize: 10, fill: '#64748b' }}
+                          tickFormatter={(v) => formatCompact(v)}
+                          width={54}
+                        />
+                        <Bar dataKey="volume" opacity={0.28} barSize={6}>
+                          {visibleChartSeries.map((entry, idx) => (
+                            <Cell key={`vol-${idx}`} fill={entry.isUpCandle ? '#ef4444' : '#16a34a'} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                  </div>
                 </div>
                 <div className="px-4 py-2 border-t border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/40">
                   <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
-                    チャートは終値ベースの参考シミュレーションです。実際の約定価格とは異なる場合があります。
+                    チャートは日次データを可視化した参考表示です。実際の約定価格とは異なる場合があります。
                   </p>
+                  <div className="mt-1 flex items-center gap-3 text-[10px] font-bold">
+                    <span className="inline-flex items-center gap-1 text-slate-500 dark:text-slate-400"><span className="w-2 h-2 rounded-full bg-red-500" /> 陽線 (Close {'>'}= Open)</span>
+                    <span className="inline-flex items-center gap-1 text-slate-500 dark:text-slate-400"><span className="w-2 h-2 rounded-full bg-green-600" /> 陰線 (Close {'<'} Open)</span>
+                    <span className="inline-flex items-center gap-1 text-slate-500 dark:text-slate-400"><span className="w-2 h-[2px] bg-amber-500" /> MA{maWindows.shortWindow}</span>
+                    <span className="inline-flex items-center gap-1 text-slate-500 dark:text-slate-400"><span className="w-2 h-[2px] bg-violet-500" /> MA{maWindows.longWindow}</span>
+                  </div>
                 </div>
               </div>
 
@@ -564,9 +1205,12 @@ export default function StockPage() {
                   <Plus size={20} className="text-orange-500 group-hover:scale-110 transition" />
                   {watchlist.includes(displayedStock.id) ? 'ウォッチ解除' : 'ウォッチリスト登録'}
                 </button>
-                <button className="py-3.5 bg-orange-600 hover:bg-orange-500 text-white text-sm font-bold rounded-2xl transition flex items-center justify-center gap-2 shadow-lg shadow-orange-500/20 group">
-                  <Layout size={20} className="group-hover:rotate-90 transition" />
-                  目標プランに追加
+                <button
+                  onClick={() => navigate('/mypage')}
+                  className="py-3.5 bg-orange-600 hover:bg-orange-500 text-white text-sm font-bold rounded-2xl transition flex items-center justify-center gap-2 shadow-lg shadow-orange-500/20 group"
+                >
+                  <Plus size={20} className="group-hover:scale-110 transition" />
+                  マイページへ
                 </button>
               </div>
 
@@ -598,171 +1242,7 @@ export default function StockPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="bg-gradient-to-br from-slate-900 to-slate-800 text-white p-6 rounded-3xl border border-slate-700 shadow-xl hover:shadow-2xl transition-all duration-300 hover:-translate-y-0.5">
-                  <h3 className="text-sm font-bold text-slate-200 mb-4 flex items-center gap-2">
-                    <ShieldCheck size={16} className="text-emerald-400" /> Goal Planner (Platform)
-                  </h3>
-                  <div className="space-y-4">
-                    <div>
-                      <label className="text-xs text-slate-400 font-bold block mb-2">目標金額（万円）</label>
-                      <input
-                        type="range"
-                        min={500}
-                        max={20000}
-                        step={100}
-                        value={goalTarget}
-                        onChange={(e) => setGoalTarget(Number(e.target.value))}
-                        className="w-full accent-orange-500"
-                      />
-                      <div className="text-right text-sm font-bold mt-1">¥{goalTarget.toLocaleString()}万</div>
-                    </div>
-                    <div>
-                      <label className="text-xs text-slate-400 font-bold block mb-2">現在の投資元本（万円）</label>
-                      <input
-                        type="range"
-                        min={0}
-                        max={10000}
-                        step={50}
-                        value={goalCurrent}
-                        onChange={(e) => setGoalCurrent(Number(e.target.value))}
-                        className="w-full accent-orange-500"
-                      />
-                      <div className="text-right text-sm font-bold mt-1">¥{goalCurrent.toLocaleString()}万</div>
-                    </div>
-                    <div>
-                      <label className="text-xs text-slate-400 font-bold block mb-2">目標期間（年）: {goalYears}年</label>
-                      <input
-                        type="range"
-                        min={1}
-                        max={20}
-                        step={1}
-                        value={goalYears}
-                        onChange={(e) => setGoalYears(Number(e.target.value))}
-                        className="w-full accent-orange-500"
-                      />
-                    </div>
-                    <div className="flex gap-2">
-                      {[
-                        { id: 'conservative', label: '安定' },
-                        { id: 'balanced', label: '標準' },
-                        { id: 'aggressive', label: '積極' },
-                      ].map((mode) => (
-                        <button
-                          key={mode.id}
-                          onClick={() => setGoalRiskProfile(mode.id)}
-                          className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition ${
-                            goalRiskProfile === mode.id
-                              ? 'bg-orange-500 border-orange-500 text-white'
-                              : 'bg-slate-800 border-slate-600 text-slate-300'
-                          }`}
-                        >
-                          {mode.label}
-                        </button>
-                      ))}
-                    </div>
-                    <div className="bg-white/10 rounded-xl p-4 border border-white/10">
-                      <p className="text-xs text-slate-300 mb-1">必要な毎月積立目安</p>
-                      <p className="text-2xl font-black text-orange-300">
-                        ¥{Math.max(0, Math.round(requiredMonthlyYen)).toLocaleString()}
-                        <span className="text-sm text-slate-300 font-bold ml-1">/ 月</span>
-                      </p>
-                      <p className="text-xs text-slate-300 mt-1">
-                        約 {(Math.max(0, requiredMonthlyYen) / 10000).toFixed(1)} 万円 / 月
-                      </p>
-                      <p className="text-[11px] text-slate-400 mt-2">
-                        参考値です。実際の成果は市場変動・コスト・税制により異なります。
-                      </p>
-                      <button
-                        onClick={handleSaveGoalSimulation}
-                        className="mt-3 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-white/20 hover:bg-white/30 border border-white/20"
-                      >
-                        この結果を保存
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-gradient-to-br from-white to-slate-50 dark:from-slate-900 dark:to-slate-800/80 p-6 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-0.5">
-                  <h3 className="text-sm font-bold text-slate-700 dark:text-slate-200 mb-4 flex items-center gap-2">
-                    <Wallet size={16} /> 実質体感コスト・シミュレーター (Total Cost)
-                  </h3>
-                  <div className="space-y-4">
-                    <div>
-                      <label className="text-xs text-slate-500 dark:text-slate-400 font-bold block mb-1.5">証券会社</label>
-                      <div className="flex gap-2 flex-wrap">
-                        {PLATFORM_PARTNERS.map((p) => (
-                          <button
-                            key={p.id}
-                            onClick={() => setCostBrokerId(p.id)}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition ${
-                              costBrokerId === p.id
-                                ? 'bg-slate-900 text-white border-slate-900 dark:bg-orange-500 dark:border-orange-500'
-                                : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
-                            }`}
-                          >
-                            {p.name}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <div>
-                      <label className="text-xs text-slate-500 dark:text-slate-400 font-bold block mb-1.5">初期投資額: ¥{costInitialYen.toLocaleString()}</label>
-                      <input type="range" min={100000} max={5000000} step={10000} value={costInitialYen} onChange={(e) => setCostInitialYen(Number(e.target.value))} className="w-full accent-orange-500" />
-                    </div>
-                    <div>
-                      <label className="text-xs text-slate-500 dark:text-slate-400 font-bold block mb-1.5">毎月積立: ¥{costMonthlyYen.toLocaleString()}</label>
-                      <input type="range" min={10000} max={300000} step={5000} value={costMonthlyYen} onChange={(e) => setCostMonthlyYen(Number(e.target.value))} className="w-full accent-orange-500" />
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="text-xs text-slate-500 dark:text-slate-400 font-bold block mb-1.5">保有期間: {costYears}年</label>
-                        <input type="range" min={1} max={10} step={1} value={costYears} onChange={(e) => setCostYears(Number(e.target.value))} className="w-full accent-orange-500" />
-                      </div>
-                      <div>
-                        <label className="text-xs text-slate-500 dark:text-slate-400 font-bold block mb-1.5">月間取引回数: {costTradesPerMonth}回</label>
-                        <input type="range" min={1} max={12} step={1} value={costTradesPerMonth} onChange={(e) => setCostTradesPerMonth(Number(e.target.value))} className="w-full accent-orange-500" />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="text-xs text-slate-500 dark:text-slate-400 font-bold block mb-1.5">外貨建比率: {costFxRatio}%</label>
-                      <input type="range" min={0} max={100} step={5} value={costFxRatio} onChange={(e) => setCostFxRatio(Number(e.target.value))} className="w-full accent-orange-500" />
-                    </div>
-
-                    <div className="bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 space-y-1.5">
-                      <p className="text-xs text-slate-500 dark:text-slate-400">総投資額（期間内）</p>
-                      <p className="text-sm font-bold text-slate-800 dark:text-slate-100">¥{Math.round(costSummary.totalInvested).toLocaleString()}</p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">内訳</p>
-                      <p className="text-xs font-bold text-slate-600 dark:text-slate-300">取引手数料: ¥{Math.round(costSummary.domesticFeeTotal).toLocaleString()}</p>
-                      <p className="text-xs font-bold text-slate-600 dark:text-slate-300">為替コスト: ¥{Math.round(costSummary.fxCostTotal).toLocaleString()}</p>
-                      <p className="text-xs font-bold text-slate-600 dark:text-slate-300">信託報酬(概算): ¥{Math.round(costSummary.trustFeeTotal).toLocaleString()}</p>
-                    </div>
-
-                    <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-700/30 rounded-xl p-4">
-                      <p className="text-xs text-orange-700 dark:text-orange-300 font-bold">1年換算の実質コスト目安</p>
-                      <p className="text-2xl font-black text-orange-600 dark:text-orange-300 mt-1">
-                        ¥{Math.round(costSummary.totalCost / Math.max(costYears, 1)).toLocaleString()}
-                      </p>
-                      <p className="text-xs mt-1 text-orange-700/80 dark:text-orange-300/80">
-                        他社平均比
-                        <span className={`font-black ml-1 ${costSummary.savingsVsAvg >= 0 ? 'text-emerald-600 dark:text-emerald-300' : 'text-rose-600 dark:text-rose-300'}`}>
-                          {costSummary.savingsVsAvg >= 0 ? '-' : '+'}¥{Math.abs(Math.round(costSummary.savingsVsAvg)).toLocaleString()}
-                        </span>
-                      </p>
-                    </div>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                      試算は概算です。実際は銘柄・注文方法・為替タイミング・キャンペーン条件等で変動します。
-                    </p>
-                    <button
-                      onClick={handleSaveCostSimulation}
-                      className="px-3 py-1.5 text-[11px] font-bold rounded-lg bg-slate-900 text-white dark:bg-orange-500 hover:opacity-90"
-                    >
-                      この結果を保存
-                    </button>
-                  </div>
-                </div>
-
-                <div className="bg-white dark:bg-slate-800/50 p-6 rounded-3xl border border-slate-200 dark:border-white/5 shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-0.5">
+              <div className="bg-white dark:bg-slate-800/50 p-6 rounded-3xl border border-slate-200 dark:border-white/5 shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-0.5">
                   <h3 className="text-sm font-bold text-slate-600 dark:text-slate-300 mb-4 flex items-center gap-2">
                     <Wallet size={16} /> 執行先比較（取引は外部）
                   </h3>
@@ -793,19 +1273,30 @@ export default function StockPage() {
                   <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-2 leading-relaxed">
                     {LEGAL_NOTICE_TEMPLATES.investment}
                   </p>
-                </div>
               </div>
 
               <div className="bg-white dark:bg-slate-800/50 p-6 rounded-3xl border border-slate-200 dark:border-white/5 shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-0.5">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300">Platform Insight</h3>
-                    <p className="text-xs text-slate-500 mt-1">価格だけでなく、あなたの目標達成への影響を可視化します。</p>
-                    {simSaveStatus ? <p className="text-[11px] text-slate-400 mt-1">{simSaveStatus}</p> : null}
+                    <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300">Market Pulse</h3>
+                    <p className="text-xs text-slate-500 mt-1">この地域の上昇/下落バランスと平均騰落率です。</p>
                   </div>
-                  <button className="inline-flex items-center gap-1 text-xs font-bold text-orange-500 hover:text-orange-400">
-                    詳細を見る <ArrowRight size={14} />
-                  </button>
+                </div>
+                <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2">
+                    <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400">上昇銘柄</p>
+                    <p className="text-sm font-black text-red-500">{marketBreadth.rising}</p>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2">
+                    <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400">下落銘柄</p>
+                    <p className="text-sm font-black text-blue-500">{marketBreadth.falling}</p>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2">
+                    <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400">平均騰落率</p>
+                    <p className="text-sm font-black text-slate-900 dark:text-white">
+                      {marketBreadth.avgMove >= 0 ? '+' : ''}{marketBreadth.avgMove.toFixed(2)}%
+                    </p>
+                  </div>
                 </div>
               </div>
             </>
@@ -828,6 +1319,43 @@ export default function StockPage() {
               </button>
             </div>
           )}
+        </div>
+        <div className="lg:col-span-3 space-y-4 lg:sticky lg:top-24 lg:self-start">
+          <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4">
+            <p className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-2">Earnings Call This Week</p>
+            <div className="space-y-2">
+              {earningsRows.length === 0 && (
+                <p className="text-xs text-slate-400">この地域の予定データは準備中です。</p>
+              )}
+              {earningsRows.map((row) => (
+                <div key={row.id} className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black text-slate-900 dark:text-slate-100">{row.symbol}</span>
+                    <span className="text-[10px] font-bold text-orange-500">{row.phase}</span>
+                  </div>
+                  <p className="text-[11px] font-bold text-slate-600 dark:text-slate-300">{row.company}</p>
+                  <p className="text-[10px] text-slate-400">{row.when}</p>
+                </div>
+              ))}
+            </div>
+            <p className="text-[10px] text-slate-400 mt-2">
+              ※ 現在は表示サンプルです。正式版は商用ライセンス連携後に自動更新します。
+            </p>
+          </div>
+          <div className="hidden lg:block">
+            <AdSidebar />
+          </div>
+          <div className="hidden lg:block">
+            <AdBanner variant="vertical" />
+          </div>
+          <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4">
+            <p className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-2">プラットフォーム活用ヒント</p>
+            <ul className="text-xs text-slate-600 dark:text-slate-300 space-y-2">
+              <li>・銘柄比較は価格と出来高をセットで確認</li>
+              <li>・同一セクターで上位/下位を並べて判断</li>
+              <li>・執行先比較で手数料・ポイント差をチェック</li>
+            </ul>
+          </div>
         </div>
       </div>
     </div>

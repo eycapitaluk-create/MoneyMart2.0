@@ -19,6 +19,8 @@ import {
 import { supabase } from '../lib/supabase'
 import { calculateRiskScore } from '../simulators/engine/riskEngine'
 import { LEGAL_NOTICE_TEMPLATES } from '../constants/legalNoticeTemplates'
+import AdBanner from '../components/AdBanner'
+import AdSidebar from '../components/AdSidebar'
 
 const detectCategory = (code, name) => {
   const n = name ? name.toLowerCase() : ''
@@ -375,6 +377,9 @@ export default function FundPage({ user, myWatchlist = [], toggleWatchlist: prop
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 animate-fadeIn bg-[#F9FAFB] dark:bg-slate-950 min-h-screen font-sans pb-28">
+      <div className="hidden 2xl:block fixed right-6 top-28 w-64 z-20">
+        <AdSidebar />
+      </div>
       <div className="mb-6">
         <h1 className="text-3xl font-black text-slate-900 dark:text-white">ファンド・インテリジェンス</h1>
         <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">資金フロー・リスク・一覧を一画面で確認</p>
@@ -385,6 +390,9 @@ export default function FundPage({ user, myWatchlist = [], toggleWatchlist: prop
         }`}>
           Data: {fundDataSource === 'live' ? 'LIVE' : fundDataSource === 'quick' ? 'QUICK' : 'FALLBACK'}
         </p>
+      </div>
+      <div className="mb-5 2xl:hidden">
+        <AdBanner variant="horizontal" />
       </div>
 
       <div className="mb-5 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-4">

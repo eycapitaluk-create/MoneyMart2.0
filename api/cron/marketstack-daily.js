@@ -160,7 +160,7 @@ const getJson = async (url, init) => {
   return json
 }
 
-const CONCURRENCY = 8 // MarketStack 5 req/sec, 8병렬로 처리 시간 단축
+const CONCURRENCY = 4 // MarketStack 5 req/sec 제한
 const fetchMarketstackRows = async (marketstackKey, symbols) => {
   const chunks = chunk(symbols, 20)
   const allRows = []
@@ -173,6 +173,7 @@ const fetchMarketstackRows = async (marketstackKey, symbols) => {
       allRows.push(...r.rows)
       endpointStats[r.endpoint] = (endpointStats[r.endpoint] || 0) + 1
     }
+    if (i + CONCURRENCY < chunks.length) await new Promise((r) => setTimeout(r, 1000))
   }
 
   return { rows: allRows, endpointStats, chunks: chunks.length }

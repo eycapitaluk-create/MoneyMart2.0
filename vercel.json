@@ -1,17 +1,44 @@
 {
+  "functions": {
+    "api/cron/marketstack-daily.js": {
+      "maxDuration": 300
+    },
+    "api/cron/marketstack-commodities.js": {
+      "maxDuration": 300
+    },
+    "api/**/*.js": {
+      "maxDuration": 120
+    }
+  },
   "crons": [
     {
       "path": "/api/cron/marketstack-daily",
-      "schedule": "0 6 1 * *"
+      "schedule": "0 21 * * *"
+    },
+    {
+      "path": "/api/cron/marketstack-commodities",
+      "schedule": "0 21 * * *"
+    },
+    {
+      "path": "/api/cron/market-news",
+      "schedule": "0 22 * * *"
+    },
+    {
+      "path": "/api/cron/ai-news",
+      "schedule": "10 22 * * *"
     }
   ],
-  "functions": {
-    "api/**/*.js": {
-      "maxDuration": 60
-    }
-  },
   "routes": [
-    { "handle": "filesystem" },
-    { "src": "/(.*)", "dest": "/index.html" }
+    {
+      "src": "/api/(.*)",
+      "dest": "/api/$1"
+    },
+    {
+      "handle": "filesystem"
+    },
+    {
+      "src": "/((?!api/|@|src/|node_modules/|assets/|vite\\.svg|favicon\\.ico).*)",
+      "dest": "/index.html"
+    }
   ]
 }

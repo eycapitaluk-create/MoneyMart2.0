@@ -1,12 +1,8 @@
 {
   "crons": [
     {
-      "path": "/api/cron/yahoo-daily",
-      "schedule": "30 21 * * 1-5"
-    },
-    {
-      "path": "/api/cron/yahoo-daily",
-      "schedule": "0 7 * * 1-5"
+      "path": "/api/cron/marketstack-daily",
+      "schedule": "0 6 * * 1-5"
     }
   ],
   "functions": {

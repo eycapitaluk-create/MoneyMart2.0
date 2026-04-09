@@ -3,9 +3,6 @@
     "api/cron/marketstack-daily.js": {
       "maxDuration": 300
     },
-    "api/cron/marketstack-commodities.js": {
-      "maxDuration": 300
-    },
     "api/**/*.js": {
       "maxDuration": 120
     },
@@ -17,18 +14,6 @@
     {
       "path": "/api/cron/marketstack-daily",
       "schedule": "0 21 * * *"
-    },
-    {
-      "path": "/api/cron/marketstack-commodities",
-      "schedule": "0 21 * * *"
-    },
-    {
-      "path": "/api/cron/market-news",
-      "schedule": "0 22 * * *"
-    },
-    {
-      "path": "/api/cron/ai-news",
-      "schedule": "10 22 * * *"
     },
     {
       "path": "/api/cron/ai-news-summarize",

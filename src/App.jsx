@@ -15,6 +15,7 @@ import AcademyPage from './pages/AcademyPage'
 import NewsPage from './pages/NewsPage'
 import PrimePage from './pages/PrimePage'
 import AdminPage from './pages/AdminPage'
+import AdminIpGuard from './components/AdminIpGuard'
 import Login from './pages/Login'
 import Signup from './pages/Signup'
 import MyPage from './pages/MyPage'
@@ -371,7 +372,9 @@ const App = () => {
           path="/admin"
           element={
             <RequireAdmin>
-              <AdminPage />
+              <AdminIpGuard>
+                <AdminPage />
+              </AdminIpGuard>
             </RequireAdmin>
           }
         />

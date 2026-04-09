@@ -7,10 +7,68 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-    <title>MoneyMart - 日本型ファインテック</title>
+
+    <!-- Primary SEO -->
+    <title>MoneyMart | 日本の個人投資家向け無料金融管理ツール</title>
+    <meta name="description" content="ETF比較（344本）・配当カレンダー（711銘柄）・ヒートマップ・Fear&Greed・家計簿・ローン管理・NISAシミュレーター・3Dポートフォリオ最適化。無料・登録不要で使える日本最大級の個人投資家向け金融プラットフォーム。" />
+    <meta name="keywords" content="ETF比較,NISA,投資信託,配当カレンダー,家計簿,ポートフォリオ,資産管理,日本株,米国株,MoneyMart" />
+    <link rel="canonical" href="https://moneymart.co.jp" />
+
+    <!-- OGP -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://moneymart.co.jp" />
+    <meta property="og:title" content="MoneyMart | 日本の個人投資家向け無料金融管理ツール" />
+    <meta property="og:description" content="ETF比較（344本）・配当カレンダー・ヒートマップ・家計簿・NISAシミュレーター。無料・登録不要。" />
+    <meta property="og:image" content="https://moneymart.co.jp/og-image.png" />
+    <meta property="og:locale" content="ja_JP" />
+    <meta property="og:site_name" content="MoneyMart" />
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:site" content="@moneymartjp" />
+    <meta name="twitter:title" content="MoneyMart | 日本の個人投資家向け無料金融管理ツール" />
+    <meta name="twitter:description" content="ETF比較（344本）・配当カレンダー・ヒートマップ・家計簿・NISAシミュレーター。無料・登録不要。" />
+    <meta name="twitter:image" content="https://moneymart.co.jp/og-image.png" />
+
+    <!-- JSON-LD Structured Data -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      "name": "MoneyMart",
+      "url": "https://moneymart.co.jp",
+      "description": "日本の個人投資家向け無料総合金融管理ツール。ETF比較、配当カレンダー、家計簿、NISAシミュレーターなど。",
+      "inLanguage": "ja",
+      "publisher": {
+        "@type": "Organization",
+        "name": "MoneyLab Ltd.",
+        "url": "https://moneymart.co.jp"
+      },
+      "potentialAction": {
+        "@type": "SearchAction",
+        "target": "https://moneymart.co.jp/funds?search={search_term_string}",
+        "query-input": "required name=search_term_string"
+      }
+    }
+    </script>
+
+    <!-- Google Search Console 소유권 인증 태그가 있으면 여기 추가 -->
+    <!-- <meta name="google-site-verification" content="YOUR_VERIFICATION_CODE" /> -->
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- Google봇용 기본 콘텐츠 (JS 미실행 환경) -->
+      <noscript>
+        <h1>MoneyMart - 日本の個人投資家向け無料金融管理ツール</h1>
+        <p>ETF比較（344本）・配当カレンダー（711銘柄）・ヒートマップ・Fear&amp;Greed・家計簿・ローン管理・NISAシミュレーター・3Dポートフォリオ最適化。無料・登録不要。</p>
+        <ul>
+          <li><a href="/funds">ETFファンド比較</a></li>
+          <li><a href="/market">マーケット情報</a></li>
+          <li><a href="/stocks">株式情報</a></li>
+          <li><a href="/news">AIニュース</a></li>
+        </ul>
+      </noscript>
+    </div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

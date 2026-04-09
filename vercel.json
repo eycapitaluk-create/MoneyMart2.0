@@ -1,13 +1,7 @@
 {
   "functions": {
-    "api/cron/marketstack-daily.js": {
-      "maxDuration": 300
-    },
     "api/**/*.js": {
-      "maxDuration": 120
-    },
-    "api/cron/ai-news-summarize.js": {
-      "maxDuration": 120
+      "maxDuration": 300
     }
   },
   "crons": [

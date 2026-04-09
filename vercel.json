@@ -8,6 +8,9 @@
     },
     "api/**/*.js": {
       "maxDuration": 120
+    },
+    "api/cron/ai-news-summarize.js": {
+      "maxDuration": 120
     }
   },
   "crons": [
@@ -26,6 +29,10 @@
     {
       "path": "/api/cron/ai-news",
       "schedule": "10 22 * * *"
+    },
+    {
+      "path": "/api/cron/ai-news-summarize",
+      "schedule": "0 */6 * * *"
     }
   ],
   "routes": [

@@ -12,6 +12,7 @@ import ProductPage from './pages/ProductPage'
 import ProductDetailPage from './pages/ProductDetailPage'
 import LoungePage from './pages/LoungePage'
 import AcademyPage from './pages/AcademyPage'
+import NewsPage from './pages/NewsPage'
 import PrimePage from './pages/PrimePage'
 import AdminPage from './pages/AdminPage'
 import Login from './pages/Login'
@@ -347,6 +348,7 @@ const App = () => {
         />
         <Route path="/lounge" element={<LoungePage bootUser={currentUserProfile} authReady={authReady} />} />
         <Route path="/academy" element={<AcademyPage />} />
+        <Route path="/news" element={<NewsPage />} />
         <Route path="/prime" element={<PrimePage />} />
         <Route
           path="/mypage"

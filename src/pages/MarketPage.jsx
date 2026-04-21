@@ -150,6 +150,29 @@ const COUNTRY_EVENT_META = {
 const WEEKDAY_JA = ['日', '月', '火', '水', '木', '金', '土']
 const DAILY_REFRESH_MS = 24 * 60 * 60 * 1000
 
+/** id から日付をパースし、今日以降のイベントのみ返す */
+const filterUpcomingEconomicEvents = (events) => {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  return events.filter((item) => {
+    const match = String(item.id || '').match(/^(\d{4})-(\d{2})-(\d{2})/)
+    if (match) {
+      const [, y, m, d] = match
+      const eventDate = new Date(parseInt(y, 10), parseInt(m, 10) - 1, parseInt(d, 10))
+      eventDate.setHours(0, 0, 0, 0)
+      return eventDate >= today
+    }
+    const monthMatch = String(item.id || '').match(/^(\d{4})-(\d{2})-/)
+    if (monthMatch) {
+      const [, y, m] = monthMatch
+      const lastDay = new Date(parseInt(y, 10), parseInt(m, 10), 0)
+      lastDay.setHours(0, 0, 0, 0)
+      return lastDay >= today
+    }
+    return true
+  })
+}
+
 const toTokyoDateLabel = (value) => {
   const date = new Date(value)
   if (!Number.isFinite(date.getTime())) return '--/--'
@@ -269,6 +292,7 @@ export default function MarketPage({ session = null }) {
   const [marketDataStatus, setMarketDataStatus] = useState('')
   const [newsState, setNewsState] = useState(() => getFallbackNewsData())
   const [weeklyEconomicEvents] = useState(CURATED_ECONOMIC_EVENTS)
+  const upcomingEconomicEvents = useMemo(() => filterUpcomingEconomicEvents(weeklyEconomicEvents), [weeklyEconomicEvents])
   const [jpThemeTiles, setJpThemeTiles] = useState([])
   const [showEconModal, setShowEconModal] = useState(false)
   const [selectedThemeId, setSelectedThemeId] = useState(MARKET_THEME_DEFINITIONS[0].id)
@@ -1057,7 +1081,7 @@ export default function MarketPage({ session = null }) {
                 <Calendar size={16} className="text-orange-500 shrink-0" />
                 <div className="text-left">
                   <p className="text-xs font-black text-slate-800 dark:text-white">今週の経済指標</p>
-                  <p className="text-[10px] text-slate-400 mt-0.5">{weeklyEconomicEvents.length}件 · クリックで一覧表示</p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">{upcomingEconomicEvents.length}件 · クリックで一覧表示</p>
                 </div>
               </div>
               <div className="flex items-center gap-1 text-[10px] font-bold text-orange-500 group-hover:gap-2 transition-all shrink-0">
@@ -1066,7 +1090,7 @@ export default function MarketPage({ session = null }) {
             </div>
             <div className="mt-3 border-t border-slate-100 dark:border-slate-700 pt-3">
               <div className="grid grid-cols-1 gap-2">
-                {weeklyEconomicEvents.slice(0, 2).map((item) => {
+                {upcomingEconomicEvents.slice(0, 2).map((item) => {
                   const meta = COUNTRY_EVENT_META[item.country] || { flag: '🌐', label: item.country || 'Global', dotClass: 'bg-slate-400' }
                   return (
                     <div
@@ -1130,7 +1154,7 @@ export default function MarketPage({ session = null }) {
                       <Calendar size={18} className="text-orange-500" />
                       <div>
                         <h2 className="text-sm font-black text-slate-900 dark:text-white">今週の経済指標</h2>
-                        <p className="text-[10px] text-slate-400 mt-0.5">{weeklyEconomicEvents.length}件のイベント</p>
+                        <p className="text-[10px] text-slate-400 mt-0.5">{upcomingEconomicEvents.length}件のイベント</p>
                       </div>
                     </div>
                     <button
@@ -1144,7 +1168,7 @@ export default function MarketPage({ session = null }) {
                   {/* イベントリスト */}
                   <div className="overflow-y-auto flex-1 px-5 py-4">
                     <div className="relative border-l-2 border-slate-100 dark:border-slate-700 ml-2 space-y-4 pl-5 py-1">
-                      {weeklyEconomicEvents.map((item) => {
+                      {upcomingEconomicEvents.map((item) => {
                         const meta = COUNTRY_EVENT_META[item.country] || { label: item.country, flag: '🌐', dotClass: 'bg-slate-400' }
                         return (
                           <div key={item.id} className="relative">

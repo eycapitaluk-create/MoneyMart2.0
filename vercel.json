@@ -1,17 +1,30 @@
 {
+  "functions": {
+    "api/**/*.js": {
+      "maxDuration": 300
+    }
+  },
   "crons": [
     {
       "path": "/api/cron/marketstack-daily",
       "schedule": "0 6 * * 1-5"
+    },
+    {
+      "path": "/api/cron/ai-news-summarize",
+      "schedule": "0 */6 * * *"
     }
   ],
-  "functions": {
-    "api/**/*.js": {
-      "maxDuration": 60
-    }
-  },
   "routes": [
-    { "handle": "filesystem" },
-    { "src": "/(.*)", "dest": "/index.html" }
+    {
+      "src": "/api/(.*)",
+      "dest": "/api/$1"
+    },
+    {
+      "handle": "filesystem"
+    },
+    {
+      "src": "/((?!api/|@|src/|node_modules/|assets/|vite\\.svg|favicon\\.ico).*)",
+      "dest": "/index.html"
+    }
   ]
 }

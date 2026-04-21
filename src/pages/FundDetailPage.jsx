@@ -1,359 +1,696 @@
-import { useMemo, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
+import { ArrowLeft, Heart, Loader2 } from 'lucide-react'
 import {
-  ArrowLeft, Download, Share2, Star,
-  TrendingUp, PieChart, Calendar, DollarSign
-} from 'lucide-react'
-import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart as RePieChart, Pie, Cell, Legend
+  LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  BarChart, Bar, ReferenceLine, ReferenceArea,
 } from 'recharts'
+import { supabase } from '../lib/supabase'
+import { ETF_LIST_FROM_XLSX, ETF_SYMBOLS_FROM_XLSX } from '../data/etfListFromXlsx'
+import { FUND_DESCRIPTIONS_BY_ISIN } from '../data/fundDescriptionsByIsin'
 
-const FUND_DETAILS = {
-  'emaxis-all': {
-    id: 'emaxis-all',
-    name: 'eMAXIS Slim 全世界株式 (オール・カントリー)',
-    provider: '三菱UFJ国際投信',
-    price: 24580,
-    change: '+125',
-    changePercent: '+0.51%',
-    assets: '2兆8000億円',
-    fee: '0.05775%',
-    risk: 4,
-    category: '全世界株式',
-    description: '日本を含む先進国および新興国の株式等に投資し、MSCIオール・カントリー・ワールド・インデックス(配当込み、円換算ベース)に連動する投資成果をめざします。',
-    portfolio: [
-      { name: '米国', value: 62 },
-      { name: '日本', value: 5.5 },
-      { name: '英国', value: 3.5 },
-      { name: 'その他先進国', value: 18 },
-      { name: '新興国', value: 11 },
-    ],
-  },
-  'emaxis-sp500': {
-    id: 'emaxis-sp500',
-    name: 'eMAXIS Slim 米国株式 (S&P500)',
-    provider: '三菱UFJ国際投信',
-    price: 28900,
-    change: '+168',
-    changePercent: '+0.58%',
-    assets: '1兆5000億円',
-    fee: '0.09372%',
-    risk: 5,
-    category: '米国株式',
-    description: '米国の大型株を中心とした指数連動を目指す低コストファンド。',
-    portfolio: [
-      { name: '米国', value: 96 },
-      { name: '現金等', value: 4 },
-    ],
-  },
-  'alliance-ab': {
-    id: 'alliance-ab',
-    name: 'アライアンス・バーンスタイン・米国成長株投信Ｄ',
-    provider: 'アライアンス・バーンスタイン',
-    price: 32500,
-    change: '+205',
-    changePercent: '+0.63%',
-    assets: '8000億円',
-    fee: '1.727%',
-    risk: 5,
-    category: '米国株式',
-    description: '米国成長株への集中投資により高い資本成長を目指します。',
-    portfolio: [
-      { name: '米国', value: 94 },
-      { name: '欧州', value: 3 },
-      { name: 'その他', value: 3 },
-    ],
-  },
-  'himuchi-plus': {
-    id: 'himuchi-plus',
-    name: 'ひふみプラス',
-    provider: 'レオス・キャピタルワークス',
-    price: 54000,
-    change: '-95',
-    changePercent: '-0.18%',
-    assets: '5000億円',
-    fee: '1.078%',
-    risk: 3,
-    category: '国内株式',
-    description: '日本株中心のアクティブ運用で中長期の成長を目指します。',
-    portfolio: [
-      { name: '日本', value: 82 },
-      { name: '現金等', value: 10 },
-      { name: '海外', value: 8 },
-    ],
-  },
-  'pictet-income': {
-    id: 'pictet-income',
-    name: 'ピクテ・グローバル・インカム株式ファンド',
-    provider: 'ピクテ投信',
-    price: 18200,
-    change: '+32',
-    changePercent: '+0.18%',
-    assets: '3000億円',
-    fee: '1.815%',
-    risk: 3,
-    category: '全世界株式',
-    description: '世界の高配当株へ分散投資し、インカム収益を重視するファンド。',
-    portfolio: [
-      { name: '米国', value: 41 },
-      { name: '欧州', value: 34 },
-      { name: 'アジア', value: 17 },
-      { name: 'その他', value: 8 },
-    ],
-  },
+const FUND_SYMBOL_SET = new Set(ETF_SYMBOLS_FROM_XLSX.map((s) => String(s || '').toUpperCase()))
+import { trackAnalyticsEvent } from '../lib/analytics'
+import { normalizeFundDisplayName } from '../lib/fundDisplayUtils'
+import { findBaseCloseByCalendarOffset } from '../lib/calendarDateUtils'
+import {
+  buildSplitAdjustedCloses,
+  chartDownsampleIndices,
+  resolveSpotCloseAndSessionChange,
+  skipEodSplitHeuristicForSymbol,
+} from '../lib/fundAdjustedCloses'
+import { dedupeStockDailyPricesByTradeDate } from '../lib/stockDailyHistory'
+import { signedReturnTextClassStrong } from '../lib/marketDirectionColors'
+
+const ETF_META_MAP = new Map(ETF_LIST_FROM_XLSX.map((item) => [item.symbol, item]))
+const FUND_DETAIL_CACHE_TTL_MS = 1000 * 60 * 5
+const fundDetailMemoryCache = new Map()
+const getFundDetailCacheKey = (symbol) => `mm_fund_detail_cache:v6:${String(symbol || '').toUpperCase()}`
+const readFundDetailCache = (symbol) => {
+  const key = getFundDetailCacheKey(symbol)
+  const now = Date.now()
+  const inMemory = fundDetailMemoryCache.get(key)
+  if (inMemory && (now - Number(inMemory.cachedAt || 0)) < FUND_DETAIL_CACHE_TTL_MS) {
+    return inMemory.payload
+  }
+  try {
+    if (typeof window === 'undefined') return null
+    const raw = window.sessionStorage.getItem(key)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (!parsed || (now - Number(parsed.cachedAt || 0)) >= FUND_DETAIL_CACHE_TTL_MS) return null
+    fundDetailMemoryCache.set(key, parsed)
+    return parsed.payload || null
+  } catch {
+    return null
+  }
+}
+const writeFundDetailCache = (symbol, payload) => {
+  const key = getFundDetailCacheKey(symbol)
+  const record = { cachedAt: Date.now(), payload }
+  fundDetailMemoryCache.set(key, record)
+  try {
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.setItem(key, JSON.stringify(record))
+    }
+  } catch {
+    // ignore storage errors
+  }
 }
 
-const FUND_ID_ALIAS = {
-  '1': 'emaxis-all',
-  '2': 'emaxis-sp500',
-  '3': 'alliance-ab',
-  '4': 'himuchi-plus',
-  '5': 'pictet-income',
-  'maxis-nikkei': 'emaxis-sp500',
-  'nikko-emerging': 'emaxis-all',
-  'daiwa-reit': 'himuchi-plus',
-  'muji-balance': 'pictet-income',
-  'raku-eco': 'emaxis-all',
+const fmtPct = (v) => {
+  if (v === null || v === undefined || v === '') return '-'
+  const n = Number(v)
+  if (!Number.isFinite(n)) return '-'
+  return `${n > 0 ? '+' : ''}${n.toFixed(1)}%`
+}
+const formatMonthDay = (isoDate) => {
+  const [year, month, day] = String(isoDate || '').split('-')
+  if (!year || !month || !day) return String(isoDate || '')
+  return `${Number(month)}/${Number(day)}`
+}
+const fmtNum = (v) => (Number.isFinite(Number(v)) ? Number(v).toLocaleString() : '-')
+const fmtPrice = (v) => (Number.isFinite(Number(v)) ? `¥${Number(v).toLocaleString()}` : '-')
+const formatTrustFee = (value) => {
+  const n = Number(value)
+  if (!Number.isFinite(n)) return '-'
+  return `${n.toFixed(2)}%`
 }
 
-const CHART_DATA_1Y = [
-  { date: '2023-01', value: 10000 },
-  { date: '2023-03', value: 10500 },
-  { date: '2023-05', value: 11200 },
-  { date: '2023-07', value: 11800 },
-  { date: '2023-09', value: 11500 },
-  { date: '2023-11', value: 12100 },
-  { date: '2024-01', value: 12450 },
-]
+/** xlsx の aum_oku_yen（億円単位の数値）を表示用に整形。1兆円=1万億円換算で兆表記 */
+const formatAumOkuYen = (oku) => {
+  const v = Number(oku)
+  if (!Number.isFinite(v) || v <= 0) return null
+  if (v >= 10000) return `${(v / 10000).toFixed(2)}兆円`
+  return `${v.toLocaleString('ja-JP', { maximumFractionDigits: 1 })}億円`
+}
 
-const COLORS = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6']
+const calculateRealizedVolatility = (closes = []) => {
+  const normalized = closes.map((v) => Number(v)).filter((v) => Number.isFinite(v) && v > 0)
+  if (normalized.length < 3) return null
+  const dailyReturns = []
+  for (let i = 1; i < normalized.length; i += 1) {
+    dailyReturns.push((normalized[i] - normalized[i - 1]) / normalized[i - 1])
+  }
+  if (dailyReturns.length < 2) return null
+  const mean = dailyReturns.reduce((acc, cur) => acc + cur, 0) / dailyReturns.length
+  const variance = dailyReturns.reduce((acc, cur) => acc + ((cur - mean) ** 2), 0) / (dailyReturns.length - 1)
+  return Math.sqrt(variance) * Math.sqrt(252) * 100
+}
+
+const RSI_PERIOD = 14
+const calculateRSI = (closes = [], period = RSI_PERIOD) => {
+  const arr = (Array.isArray(closes) ? closes : []).map((v) => Number(v)).filter((v) => Number.isFinite(v) && v > 0)
+  if (arr.length < period + 1) return []
+  const rsi = []
+  for (let i = 0; i < arr.length; i += 1) {
+    if (i < period) {
+      rsi.push(null)
+      continue
+    }
+    let sumGain = 0
+    let sumLoss = 0
+    for (let j = i - period + 1; j <= i; j += 1) {
+      const delta = arr[j] - arr[j - 1]
+      if (delta > 0) sumGain += delta
+      else if (delta < 0) sumLoss += Math.abs(delta)
+    }
+    const avgGain = sumGain / period
+    const avgLoss = sumLoss / period
+    if (avgLoss === 0) {
+      rsi.push(100)
+      continue
+    }
+    const rs = avgGain / avgLoss
+    rsi.push(100 - 100 / (1 + rs))
+  }
+  return rsi
+}
+
+const classifyFundTheme = (name = '') => {
+  const n = String(name || '').toUpperCase()
+  if (n.includes('NASDAQ')) return '米国ハイテク株'
+  if (n.includes('S&P 500') || n.includes('S&P500')) return '米国大型株'
+  if (n.includes('ダウ') || n.includes('DOW')) return '米国主要株'
+  if (n.includes('TOPIX')) return '日本株（TOPIX）'
+  if (n.includes('日経２２５') || n.includes('日経225') || n.includes('NIKKEI')) return '日本株（日経平均）'
+  if (n.includes('JPX日経') || n.includes('JPX')) return '日本株（JPX指数）'
+  if (n.includes('Ｊリート') || n.includes('J-REIT') || n.includes('REIT')) return '不動産投資信託（REIT）'
+  if (n.includes('米国債') || n.includes('国債') || n.includes('社債') || n.includes('BOND')) return '債券'
+  if (n.includes('全世界') || n.includes('オール・カントリー') || n.includes('ACWI') || n.includes('KOKUSAI')) return '全世界株式'
+  if (n.includes('新興国') || n.includes('EMERGING')) return '新興国株式'
+  if (n.includes('金') || n.includes('GOLD')) return '金'
+  if (n.includes('銀') || n.includes('SILVER')) return '銀'
+  if (n.includes('プラチナ') || n.includes('PLATINUM')) return 'プラチナ'
+  if (n.includes('原油') || n.includes('CRUDE') || n.includes('WTI')) return '原油'
+  if (n.includes('半導体')) return '半導体関連株'
+  if (n.includes('高配当') || n.includes('DIVIDEND')) return '高配当株'
+  return '主要株価指数'
+}
+
+const buildGeneratedDescription = (symbol, fundName) => {
+  const name = String(fundName || '')
+  const upper = name.toUpperCase()
+  const theme = classifyFundTheme(name)
+  const isLeveraged = /レバレッジ|ブル2倍|ブル２倍|2倍|2X|LEVERAGED/.test(name) || /^(1570|1579|1568|2036)\.T$/.test(symbol)
+  const isInverse = /インバース|ベア|ダブルインバース|INVERSE/.test(name)
+  const isEtN = /ETN|NEXT NOTES/.test(upper)
+  const isHedged = /ヘッジ|Ｈ有|\(H\)|\(Ｈ\)|Hあり|H有/.test(name)
+
+  if (isLeveraged) {
+    return `${theme}の値動きに対して概ね2倍程度の値動きを目指すレバレッジ型の${isEtN ? '上場投資商品（ETN）' : 'ETF'}です。短期的には上昇局面で効果が出やすい一方、下落局面やボラティリティ上昇時の値動きには注意が必要です。`
+  }
+  if (isInverse) {
+    return `${theme}の逆方向の値動きを目指すインバース型ETFです。相場下落時のヘッジ用途で使われる一方、長期保有では乖離が生じる可能性があります。`
+  }
+  if (theme === '金' || theme === '銀' || theme === 'プラチナ' || theme === '原油') {
+    return `${theme}価格への連動を目指す${isEtN ? 'ETN' : 'ETF'}です。株式とは異なる値動き特性を持つため、分散投資やインフレ局面の補完として活用されることがあります。`
+  }
+  if (theme === '債券') {
+    return `${theme}指数に連動するETFです。${isHedged ? '為替ヘッジありの設計で、' : ''}株式ETFと比べて値動きが相対的に穏やかな傾向があり、ポートフォリオの安定化に用いられます。`
+  }
+  return `${theme}指数への連動を目指す${isEtN ? '上場投資商品（ETN）' : 'ETF'}です。${isHedged ? '為替ヘッジを活用し、為替変動の影響を抑える設計です。' : '市場全体の値動きを低コストで取り込みやすい設計です。'}`
+}
+
+const normalizeDescriptionTypography = (text = '') => {
+  const halfWidth = String(text || '')
+    // Convert full-width ASCII variants to half-width (e.g. ＴＯＰＩＸ -> TOPIX).
+    .replace(/[！-～]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0))
+    .replace(/\u3000/g, ' ')
+  return halfWidth
+    // Normalize TOPIX sector index notation (TOPIXー17 -> TOPIX-17).
+    .replace(/([A-Za-z])ー(?=\d)/g, '$1-')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+}
+
+const getFundDescription = (symbol, isin, fundName) => {
+  const symbolKey = String(symbol || '').toUpperCase()
+  const isinKey = String(isin || '').trim().toUpperCase()
+  if (isinKey && FUND_DESCRIPTIONS_BY_ISIN[isinKey]) {
+    return normalizeDescriptionTypography(FUND_DESCRIPTIONS_BY_ISIN[isinKey])
+  }
+  return normalizeDescriptionTypography(buildGeneratedDescription(symbolKey, fundName))
+}
 
 export default function FundDetailPage({ myWatchlist = [], toggleWatchlist }) {
   const { id } = useParams()
   const navigate = useNavigate()
-  const [amount, setAmount] = useState(10000)
-  const [period, setPeriod] = useState(10)
-  const fundId = FUND_ID_ALIAS[id] || id || 'emaxis-all'
-  const selectedFund = useMemo(() => FUND_DETAILS[fundId] || FUND_DETAILS['emaxis-all'], [fundId])
-  const feeDisplay = useMemo(() => {
-    const numeric = Number.parseFloat(String(selectedFund.fee || '').replace('%', ''))
-    if (!Number.isFinite(numeric)) return selectedFund.fee || '-'
-    return `${numeric.toFixed(3)}%`
-  }, [selectedFund.fee])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [detail, setDetail] = useState(null)
+  const [chartTimeline, setChartTimeline] = useState('YTD')
 
-  const futureValue = Math.floor(amount * Math.pow(1.07, period))
-  const profit = futureValue - amount
-  const isWatchlisted = Array.isArray(myWatchlist) && myWatchlist.includes(selectedFund.id)
+  const symbol = useMemo(() => String(id || '').trim().toUpperCase(), [id])
+  const isWatchlisted = Array.isArray(myWatchlist) && myWatchlist.includes(symbol)
 
-  return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 pb-24 font-sans">
-      {/* 1. 上部ナビゲーション */}
-      <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 sticky top-16 z-20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
-          <button onClick={() => navigate(-1)} className="p-2 -ml-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800">
-            <ArrowLeft className="text-slate-600 dark:text-slate-400" size={24} />
-          </button>
-          <div className="flex gap-2">
-            <button className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-blue-500 transition">
-              <Share2 size={20} />
-            </button>
-            <button className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-yellow-500 transition">
-              <Star size={20} />
-            </button>
-          </div>
+  useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [symbol])
+
+  useEffect(() => {
+    if (!symbol) return
+    trackAnalyticsEvent('fund_detail_view', {
+      product_type: 'fund',
+      product_id: symbol,
+      source: 'fund_detail_page',
+    })
+  }, [symbol])
+
+  useEffect(() => {
+    let cancelled = false
+    const run = async () => {
+      if (!symbol) return
+      if (!FUND_SYMBOL_SET.has(symbol)) {
+        navigate('/funds', { replace: true })
+        return
+      }
+      const cached = readFundDetailCache(symbol)
+      if (cached) {
+        setDetail(cached)
+        setLoading(false)
+      } else {
+        setDetail(null)
+        setLoading(true)
+      }
+      setError('')
+      try {
+        const cutoff = new Date()
+        cutoff.setFullYear(cutoff.getFullYear() - 1)
+        const cutoffStr = cutoff.toISOString().slice(0, 10)
+
+        const [
+          { data: latestRows, error: latestErr },
+          { data: symbolRows, error: symbolErr },
+          { data: historyRows, error: historyErr },
+          { data: jpAumRows, error: jpAumErr },
+        ] = await Promise.all([
+          supabase.from('v_stock_latest').select('symbol,trade_date,open,high,low,close,volume').eq('symbol', symbol).limit(1),
+          supabase.from('stock_symbols').select('symbol,name,exchange,trust_fee,nisa_category').eq('symbol', symbol).limit(1),
+          supabase
+            .from('stock_daily_prices')
+            .select('symbol,trade_date,open,high,low,close,volume,source,fetched_at')
+            .eq('symbol', symbol)
+            .gte('trade_date', cutoffStr)
+            .order('trade_date', { ascending: true })
+            .limit(800),
+          supabase
+            .from('stock_daily_prices')
+            .select('trade_date, raw')
+            .eq('symbol', symbol)
+            .eq('source', 'jp_etf_csv')
+            .order('trade_date', { ascending: false })
+            .limit(1),
+        ])
+        if (latestErr) throw latestErr
+        if (symbolErr) throw symbolErr
+        if (historyErr) throw historyErr
+        if (jpAumErr) throw jpAumErr
+
+        const latest = (latestRows || [])[0]
+        if (!latest) {
+          setDetail(null)
+          setError('この銘柄の最新データがありません。')
+          return
+        }
+        const profile = (symbolRows || [])[0] || {}
+        const xlsxMeta = ETF_META_MAP.get(symbol)
+        const history = dedupeStockDailyPricesByTradeDate(historyRows || [])
+        const trustFeeValue = Number.isFinite(Number(profile.trust_fee)) ? Number(profile.trust_fee) : Number(xlsxMeta?.trustFee)
+        const normalizedNisaCategory = String(profile.nisa_category || xlsxMeta?.nisaCategory || '').trim() || '-'
+        const adjustedClosesRaw = buildSplitAdjustedCloses(history, {
+          skipSplitHeuristic: skipEodSplitHeuristicForSymbol(symbol),
+        })
+        const closes = adjustedClosesRaw.filter((v) => Number.isFinite(v) && v > 0)
+        const volumes = history.map((r) => Number(r.volume)).filter((v) => Number.isFinite(v) && v >= 0)
+        const {
+          close,
+          sessionDod,
+          latestAhead: latestIsAheadOfHistory,
+          latestDate,
+          latestCloseNum,
+        } = resolveSpotCloseAndSessionChange(history, adjustedClosesRaw, latest)
+        const open = Number(latest.open || 0)
+        const oneYearBaseClose = findBaseCloseByCalendarOffset(history, { years: 1 }, adjustedClosesRaw)
+        const firstTradeDateRaw = history[0]?.trade_date
+        const latestTradeDateRaw = history[Math.max(0, history.length - 1)]?.trade_date
+        const firstTradeDate = firstTradeDateRaw ? new Date(firstTradeDateRaw) : null
+        const latestTradeDate = latestTradeDateRaw ? new Date(latestTradeDateRaw) : null
+        const historySpanDays = (
+          firstTradeDate
+          && latestTradeDate
+          && Number.isFinite(firstTradeDate.getTime())
+          && Number.isFinite(latestTradeDate.getTime())
+        )
+          ? Math.floor((latestTradeDate.getTime() - firstTradeDate.getTime()) / (1000 * 60 * 60 * 24))
+          : 0
+        const hasReliableOneYearHistory = closes.length >= 2 && historySpanDays >= 330
+        const return1y = hasReliableOneYearHistory && oneYearBaseClose != null && oneYearBaseClose > 0 ? ((close - oneYearBaseClose) / oneYearBaseClose) * 100 : null
+        const vol = calculateRealizedVolatility(closes)
+        const sharpe = (Number.isFinite(return1y) && Number.isFinite(vol) && vol > 0) ? (return1y / vol) : null
+        const avgVol30 = volumes.length > 0
+          ? volumes.slice(-30).reduce((acc, cur) => acc + cur, 0) / Math.min(30, volumes.length)
+          : Number(latest.volume || 0)
+        const yearStartStr = `${new Date().getFullYear()}-01-01`
+        const ytdFirstIdx = history.findIndex((r) => String(r?.trade_date || '') >= yearStartStr)
+        const ytdBaseClose = ytdFirstIdx >= 0 ? Number(adjustedClosesRaw[ytdFirstIdx] ?? history[ytdFirstIdx]?.close ?? 0) : null
+        const returnYTD = (ytdBaseClose != null && ytdBaseClose > 0 && close > 0)
+          ? ((close - ytdBaseClose) / ytdBaseClose) * 100
+          : null
+        const change = Number.isFinite(sessionDod.change) ? sessionDod.change : null
+        const changePct = Number.isFinite(sessionDod.changePct) ? sessionDod.changePct : null
+
+        let aumOkuYen = null
+        const jpAumRow = (jpAumRows || [])[0]
+        const rawAum = jpAumRow?.raw
+        if (rawAum && typeof rawAum === 'object' && Number.isFinite(Number(rawAum.aum_oku_yen)) && Number(rawAum.aum_oku_yen) > 0) {
+          aumOkuYen = Number(rawAum.aum_oku_yen)
+        } else if (typeof rawAum === 'string') {
+          try {
+            const parsed = JSON.parse(rawAum)
+            if (parsed && Number.isFinite(Number(parsed.aum_oku_yen)) && Number(parsed.aum_oku_yen) > 0) {
+              aumOkuYen = Number(parsed.aum_oku_yen)
+            }
+          } catch { /* ignore */ }
+        }
+
+        const rsiValues = calculateRSI(adjustedClosesRaw)
+        const chartData = chartDownsampleIndices(history.length, 70)
+          .map((idx) => {
+            const row = history[idx]
+            return {
+              date: formatMonthDay(row.trade_date),
+              isoDate: String(row.trade_date || ''),
+              close: Number(adjustedClosesRaw[idx] || row.close || 0),
+              volume: Number(row.volume || 0),
+              rsi: Number.isFinite(rsiValues[idx]) ? Number(rsiValues[idx].toFixed(1)) : null,
+            }
+          })
+        if (
+          latestIsAheadOfHistory
+          && Number.isFinite(latestCloseNum)
+          && latestCloseNum > 0
+          && latestDate
+        ) {
+          chartData.push({
+            date: formatMonthDay(latestDate),
+            isoDate: latestDate,
+            close: latestCloseNum,
+            volume: Number(latest.volume || 0),
+            rsi: null,
+          })
+        }
+
+        /** 出来高は「高出来高の日」が間引きで落ちると誤解を招くため、価格/RSI とは別に全日（取得範囲内）を保持 */
+        const volumeChartData = history.map((row) => ({
+          date: formatMonthDay(row.trade_date),
+          isoDate: String(row.trade_date || ''),
+          volume: Number(row.volume || 0),
+        }))
+        if (latestIsAheadOfHistory && latestDate) {
+          volumeChartData.push({
+            date: formatMonthDay(latestDate),
+            isoDate: latestDate,
+            volume: Number(latest.volume || 0),
+          })
+        }
+
+        const nextDetail = {
+          symbol,
+          isin: xlsxMeta?.isin || '-',
+          jpName: normalizeFundDisplayName(xlsxMeta?.jpName || profile.name || symbol),
+          exchange: profile.exchange || '-',
+          tradeDate: latest.trade_date || '',
+          close,
+          open,
+          high: Number(latest.high || 0),
+          low: Number(latest.low || 0),
+          volume: Number(latest.volume || 0),
+          change,
+          changePct,
+          return1y,
+          volatility: vol,
+          sharpe,
+          trustFee: Number.isFinite(trustFeeValue) ? trustFeeValue : null,
+          nisaCategory: normalizedNisaCategory,
+          avgVol30,
+          returnYTD: Number.isFinite(returnYTD) ? Number(returnYTD) : null,
+          aumOkuYen,
+          chartData,
+          volumeChartData,
+        }
+        if (cancelled) return
+        setDetail(nextDetail)
+        writeFundDetailCache(symbol, nextDetail)
+      } catch (e) {
+        if (!cancelled) {
+          setError(e.message || '読み込みに失敗しました。')
+          setDetail(null)
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    run()
+    return () => { cancelled = true }
+  }, [symbol])
+
+  const visibleChartData = useMemo(() => {
+    const rows = Array.isArray(detail?.chartData) ? detail.chartData : []
+    if (rows.length === 0) return []
+    if (chartTimeline === '1Y') return rows
+    const lastIso = rows[rows.length - 1]?.isoDate
+    const lastDate = lastIso ? new Date(lastIso) : null
+    if (!lastDate || Number.isNaN(lastDate.getTime())) return rows
+    if (chartTimeline === 'YTD') {
+      const yearStart = new Date(lastDate.getFullYear(), 0, 1)
+      return rows.filter((row) => {
+        const d = row?.isoDate ? new Date(row.isoDate) : null
+        return d && !Number.isNaN(d.getTime()) ? d >= yearStart : true
+      })
+    }
+    const days = chartTimeline === '3M' ? 92 : 31
+    const cutoff = new Date(lastDate)
+    cutoff.setDate(cutoff.getDate() - days)
+    return rows.filter((row) => {
+      const d = row?.isoDate ? new Date(row.isoDate) : null
+      return d && !Number.isNaN(d.getTime()) ? d >= cutoff : true
+    })
+  }, [detail?.chartData, chartTimeline])
+  const visibleVolumeChartData = useMemo(() => {
+    const full = Array.isArray(detail?.volumeChartData) ? detail.volumeChartData : []
+    const fallback = Array.isArray(detail?.chartData) ? detail.chartData : []
+    const baseRows = full.length > 0 ? full : fallback
+    if (baseRows.length === 0) return []
+    let rows = baseRows
+    if (chartTimeline !== '1Y') {
+      const lastIso = rows[rows.length - 1]?.isoDate
+      const lastDate = lastIso ? new Date(lastIso) : null
+      if (lastDate && !Number.isNaN(lastDate.getTime())) {
+        if (chartTimeline === 'YTD') {
+          const yearStart = new Date(lastDate.getFullYear(), 0, 1)
+          rows = rows.filter((row) => {
+            const d = row?.isoDate ? new Date(row.isoDate) : null
+            return d && !Number.isNaN(d.getTime()) ? d >= yearStart : true
+          })
+        } else {
+          const days = chartTimeline === '3M' ? 92 : 31
+          const cutoff = new Date(lastDate)
+          cutoff.setDate(cutoff.getDate() - days)
+          rows = rows.filter((row) => {
+            const d = row?.isoDate ? new Date(row.isoDate) : null
+            return d && !Number.isNaN(d.getTime()) ? d >= cutoff : true
+          })
+        }
+      }
+    }
+    const nonZero = rows.filter((row) => Number(row?.volume || 0) > 0)
+    return nonZero.length > 0 ? nonZero : rows
+  }, [detail?.volumeChartData, detail?.chartData, chartTimeline])
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
+        <Loader2 className="w-10 h-10 text-orange-500 animate-spin" />
+      </div>
+    )
+  }
+
+  if (!detail) {
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 p-6">
+        <button onClick={() => navigate(-1)} className="mb-4 inline-flex items-center gap-2 text-sm font-bold text-slate-600 dark:text-slate-300">
+          <ArrowLeft size={16} /> 戻る
+        </button>
+        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 text-sm text-rose-500">
+          {error || 'データがありません。'}
         </div>
       </div>
+    )
+  }
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* 2. ファンド基本情報カード */}
-        <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 md:p-8 shadow-sm border border-slate-200 dark:border-slate-800 mb-8">
-          <div className="flex flex-col md:flex-row md:items-start justify-between gap-6 mb-8">
+  return (
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 pb-20 font-sans">
+      <div className="max-w-7xl mx-auto px-4 py-6">
+        <div className="flex items-center justify-between mb-4">
+          <button onClick={() => navigate(-1)} className="inline-flex items-center gap-2 text-sm font-bold text-slate-600 dark:text-slate-300">
+            <ArrowLeft size={16} /> 戻る
+          </button>
+          <button
+            onClick={() => toggleWatchlist?.(detail.symbol, { name: detail.jpName, change: Number(detail.return1y || 0) })}
+            className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold border ${
+              isWatchlisted
+                ? 'bg-rose-50 text-rose-600 border-rose-200 dark:bg-rose-900/20 dark:text-rose-300 dark:border-rose-900/40'
+                : 'bg-white text-slate-700 border-slate-200 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-700'
+            }`}
+          >
+            <Heart size={14} fill={isWatchlisted ? 'currentColor' : 'none'} />
+            {isWatchlisted ? 'ウォッチ中' : 'ウォッチ追加'}
+            </button>
+      </div>
+
+        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 mb-5">
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_minmax(420px,45%)] gap-4 items-stretch">
             <div>
-              <span className="inline-block px-3 py-1 rounded-full bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300 text-xs font-bold mb-3">
-                {selectedFund.category}
-              </span>
-              <h1 className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white leading-tight mb-2">
-                {selectedFund.name}
-              </h1>
-              <p className="text-slate-500 font-medium">{selectedFund.provider}</p>
-            </div>
-            <div className="text-right">
-              <p className="text-sm text-slate-400 font-bold mb-1">基準価額 (昨日比)</p>
-              <div className="flex items-end justify-end gap-3">
-                <span className="text-4xl font-black text-slate-900 dark:text-white">
-                  ¥{selectedFund.price.toLocaleString()}
-                </span>
-                <span className="text-lg font-bold text-red-500 mb-1">
-                  {selectedFund.change} ({selectedFund.changePercent})
-                </span>
+              <p className="text-xs font-bold text-slate-500">{detail.symbol} · {detail.isin}</p>
+              <div className="flex flex-wrap items-center gap-2 mt-1">
+                <h1 className="text-2xl font-black text-slate-900 dark:text-white">{detail.jpName}</h1>
+              </div>
+              <p className="text-xs text-slate-500 mt-1">取引所: {detail.exchange} / 日次データ基準: {detail.tradeDate || '-'}</p>
+              <div className="mt-4 flex items-end gap-3 flex-wrap">
+                <p className="text-3xl font-black text-slate-900 dark:text-white">{fmtPrice(detail.close)}</p>
+                <div>
+                  <p className="text-[10px] font-bold text-slate-500 mb-0.5">前営業日終値比（前日比）</p>
+                  <p className={`text-sm font-bold ${signedReturnTextClassStrong(Number(detail.changePct || 0))}`}>
+                    {Number.isFinite(detail.change) ? `${detail.change >= 0 ? '+' : ''}${detail.change.toFixed(2)}` : '-'} ({fmtPct(detail.changePct)})
+                  </p>
+                </div>
               </div>
             </div>
-          </div>
-
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-slate-50 dark:bg-slate-800 rounded-2xl p-6">
-            <div>
-              <p className="text-xs text-slate-400 font-bold mb-1">純資産総額</p>
-              <p className="font-bold text-slate-900 dark:text-white">{selectedFund.assets}</p>
-            </div>
-            <div>
-              <p className="text-xs text-slate-400 font-bold mb-1">信託報酬 (税込)</p>
-              <p className="font-bold text-slate-900 dark:text-white">{feeDisplay}</p>
-            </div>
-            <div>
-              <p className="text-xs text-slate-400 font-bold mb-1">リスク等級</p>
-              <div className="flex gap-1">
-                {[1, 2, 3, 4, 5].map((i) => (
-                  <div
-                    key={i}
-                    className={`w-2 h-4 rounded-sm ${i <= selectedFund.risk ? 'bg-orange-500' : 'bg-slate-300 dark:bg-slate-600'}`}
-                  />
-                ))}
-              </div>
-            </div>
-            <div>
-              <p className="text-xs text-slate-400 font-bold mb-1">NISA対象</p>
-              <p className="font-bold text-green-500 flex items-center gap-1">
-                <Calendar size={14} /> 成長枠・つみたて
+            <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-4 py-3 h-full flex flex-col justify-center">
+              <p className="text-xs font-bold text-slate-500 mb-1">ファンド説明</p>
+              <p className="text-sm md:text-base leading-relaxed text-slate-700 dark:text-slate-200 break-words whitespace-pre-line">
+                {getFundDescription(detail.symbol, detail.isin, detail.jpName)}
               </p>
             </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* 3. チャート & ポートフォリオ */}
-          <div className="lg:col-span-2 space-y-8">
-            {/* 基準価額チャート */}
-            <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800">
-              <h3 className="font-bold text-lg mb-6 text-slate-900 dark:text-white flex items-center gap-2">
-                <TrendingUp className="text-orange-500" /> 基準価額チャート (1年)
-              </h3>
-              <div className="h-[300px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={CHART_DATA_1Y}>
-                    <defs>
-                      <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.2} />
-                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" className="dark:stroke-slate-700" />
-                    <XAxis dataKey="date" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
-                    <YAxis domain={['auto', 'auto']} hide />
-                    <Tooltip />
-                    <Area type="monotone" dataKey="value" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorValue)" />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
+        <div className="grid grid-cols-2 gap-3 mb-5 md:grid-cols-3 lg:grid-cols-7">
+          <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3">
+            <p className="text-[11px] text-slate-500 font-bold">1年リターン</p>
+            <p className="text-lg font-black text-slate-900 dark:text-white">
+              {Number.isFinite(Number(detail.return1y))
+                ? fmtPct(detail.return1y)
+                : (Number.isFinite(Number(detail.returnYTD))
+                  ? `YTD ${detail.returnYTD >= 0 ? '+' : ''}${Number(detail.returnYTD).toFixed(1)}%`
+                  : '-')}
+            </p>
+          </div>
+          <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3">
+            <p className="text-[11px] text-slate-500 font-bold">変動性</p>
+            <p className="text-lg font-black text-slate-900 dark:text-white">{Number.isFinite(detail.volatility) ? `${detail.volatility.toFixed(1)}%` : '-'}</p>
+          </div>
+          <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3">
+            <p className="text-[11px] text-slate-500 font-bold">シャープレシオ</p>
+            <p className="text-lg font-black text-slate-900 dark:text-white">{Number.isFinite(detail.sharpe) ? detail.sharpe.toFixed(2) : '-'}</p>
+          </div>
+          <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3">
+            <p className="text-[11px] text-slate-500 font-bold">信託報酬</p>
+            <p className="text-lg font-black text-slate-900 dark:text-white">{formatTrustFee(detail.trustFee)}</p>
+          </div>
+          <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3">
+            <p className="text-[11px] text-slate-500 font-bold">NISA区分</p>
+            <p className="text-sm font-black text-slate-900 dark:text-white leading-snug">
+              {detail.nisaCategory && detail.nisaCategory !== '-' ? (
+                <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-bold ${
+                  detail.nisaCategory.includes('つみたて')
+                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
+                    : (detail.nisaCategory.includes('対象外')
+                      ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300'
+                      : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300')
+                }`}>
+                  {detail.nisaCategory}
+                </span>
+              ) : '-'}
+            </p>
+          </div>
+          <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3">
+            <p className="text-[11px] text-slate-500 font-bold">平均出来高(30日)</p>
+            <p className="text-lg font-black text-slate-900 dark:text-white">
+              {Number(detail.avgVol30) > 0 ? `${fmtNum(Math.round(detail.avgVol30))}株` : '-'}
+            </p>
+          </div>
+          <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3">
+            <p className="text-[11px] text-slate-500 font-bold">純資産総額</p>
+            <p className="text-lg font-black leading-tight text-slate-900 dark:text-white" title="億円ベース。1兆円以上は兆表記。">
+              {formatAumOkuYen(detail.aumOkuYen) ?? '-'}
+            </p>
+          </div>
             </div>
 
-            {/* ポートフォリオ構成 (円グラフ) */}
-            <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800">
-              <h3 className="font-bold text-lg mb-6 text-slate-900 dark:text-white flex items-center gap-2">
-                <PieChart className="text-purple-500" /> 投資先の国・地域
-              </h3>
-              <div className="flex flex-col md:flex-row items-center justify-around h-[300px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <RePieChart>
-                    <Pie
-                      data={selectedFund.portfolio}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={60}
-                      outerRadius={100}
-                      paddingAngle={5}
-                      dataKey="value"
-                    >
-                      {selectedFund.portfolio.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                    <Legend layout="vertical" verticalAlign="middle" align="right" />
-                  </RePieChart>
+        <div className="mb-3 flex items-center gap-2">
+          {['1M', '3M', 'YTD', '1Y'].map((range) => (
+            <button
+              key={range}
+              onClick={() => setChartTimeline(range)}
+              className={`px-2.5 py-1.5 rounded-full text-xs font-bold border ${
+                chartTimeline === range
+                  ? 'bg-slate-900 text-white border-slate-900 dark:bg-orange-500 dark:border-orange-500'
+                  : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+              }`}
+            >
+              {range}
+            </button>
+          ))}
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4">
+            <h3 className="text-sm font-black text-slate-900 dark:text-white mb-3">価格推移 ({chartTimeline})</h3>
+            <div className="h-[240px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={visibleChartData}>
+                  <defs>
+                    <linearGradient id="priceGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#2563eb" stopOpacity={0.35} />
+                      <stop offset="100%" stopColor="#2563eb" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                  <XAxis dataKey="date" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <YAxis domain={['auto', 'auto']} tick={{ fontSize: 10 }} width={42} tickFormatter={(v) => v >= 1000 ? `${(v/1000).toFixed(1)}k` : v} />
+                  <Tooltip
+                    content={({ active, payload }) => {
+                      if (!active || !payload?.length) return null
+                      const p = payload[0].payload
+                      const ymd = p?.isoDate || p?.date || ''
+                      const c = p?.close
+                      return (
+                        <div className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs shadow-md dark:border-slate-600 dark:bg-slate-900">
+                          <div className="font-bold text-slate-700 dark:text-slate-200">{ymd}</div>
+                          <div className="text-slate-900 dark:text-slate-100">
+                            close: {Number.isFinite(Number(c)) ? `¥${Number(c).toLocaleString()}` : '-'}
+                          </div>
+                        </div>
+                      )
+                    }}
+                  />
+                  <Area type="monotone" dataKey="close" stroke="#2563eb" strokeWidth={2.2} fill="url(#priceGradient)" />
+                </AreaChart>
                 </ResponsiveContainer>
-              </div>
-            </div>
-
-            {/* 目論見書ダウンロード */}
-            <div className="bg-slate-100 dark:bg-slate-800 rounded-2xl p-6 flex items-center justify-between">
-              <div>
-                <h4 className="font-bold text-slate-900 dark:text-white">目論見書 (PDF)</h4>
-                <p className="text-xs text-slate-500">投資信託の詳しい情報が記載されています。</p>
-              </div>
-              <button className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-700 text-slate-700 dark:text-white rounded-lg font-bold shadow-sm hover:bg-slate-50 dark:hover:bg-slate-600 transition">
-                <Download size={16} /> ダウンロード
-              </button>
             </div>
           </div>
 
-          {/* 4. シミュレーション & アクション (Sticky) */}
-          <div className="space-y-6">
-            <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl shadow-xl border border-slate-200 dark:border-slate-800 sticky top-24">
-              <h3 className="font-bold text-lg mb-4 text-slate-900 dark:text-white flex items-center gap-2">
-                <DollarSign className="text-green-500" /> 積立シミュレーション
-              </h3>
+          <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4">
+            <h3 className="text-sm font-black text-slate-900 dark:text-white mb-3">出来高推移 ({chartTimeline})</h3>
+            <div className="h-[240px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={visibleVolumeChartData}>
+                  <defs>
+                    <linearGradient id="volumeGradient" x1="0" y1="1" x2="0" y2="0">
+                      <stop offset="0%" stopColor="#64748b" stopOpacity={0.4} />
+                      <stop offset="100%" stopColor="#64748b" stopOpacity={0.9} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                  <XAxis dataKey="date" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 10 }} width={42} tickFormatter={(v) => v >= 10000 ? `${(v/10000).toFixed(0)}万` : v} />
+                  <Tooltip formatter={(v) => `${Math.round(Number(v) || 0).toLocaleString()}株`} />
+                  <Bar dataKey="volume" fill="url(#volumeGradient)" radius={[2,2,0,0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
 
-              <div className="space-y-4 mb-6">
-                <div>
-                  <label className="text-xs font-bold text-slate-500 block mb-1">毎月の積立額</label>
-                  <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800 p-3 rounded-xl">
-                    <input
-                      type="number"
-                      value={amount}
-                      onChange={(e) => setAmount(Number(e.target.value))}
-                      className="bg-transparent font-bold text-lg w-full outline-none text-slate-900 dark:text-white"
-                    />
-                    <span className="text-sm font-bold text-slate-400">円</span>
-                  </div>
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-slate-500 block mb-1">積立期間: {period}年</label>
-                  <input
-                    type="range"
-                    min="1"
-                    max="30"
-                    value={period}
-                    onChange={(e) => setPeriod(Number(e.target.value))}
-                    className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-orange-500"
-                  />
-                </div>
-              </div>
-
-              <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl p-6 text-white mb-6 relative overflow-hidden">
-                <div className="relative z-10">
-                  <p className="text-sm text-slate-400 mb-1">{period}年後の予想資産額</p>
-                  <p className="text-3xl font-black text-orange-400">
-                    ¥{futureValue.toLocaleString()}
-                  </p>
-                  <p className="text-xs text-green-400 mt-2 font-bold">
-                    +¥{profit.toLocaleString()} (利益)
-                  </p>
-                </div>
-                <div className="absolute right-0 bottom-0 w-24 h-24 bg-orange-500/20 rounded-full blur-2xl" />
-              </div>
-
-              <div className="rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-4 py-3">
-                <p className="text-xs font-medium text-slate-500 dark:text-slate-300">
-                  MoneyMartでは売買注文は行わず、比較・分析情報のみ提供しています。
-                </p>
-              </div>
-              <button
-                onClick={() => toggleWatchlist?.(selectedFund.id, { name: selectedFund.name, change: Number.parseFloat(selectedFund.change) || 0 })}
-                className={`w-full mt-3 py-3 font-bold rounded-xl transition ${
-                  isWatchlisted
-                    ? 'bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-300 border border-rose-200 dark:border-rose-900/40 hover:bg-rose-100 dark:hover:bg-rose-900/30'
-                    : 'bg-orange-500 hover:bg-orange-600 text-white'
-                }`}
-              >
-                {isWatchlisted ? 'マイページから削除' : 'マイページに追加'}
-              </button>
-              <button
-                onClick={() => navigate('/funds')}
-                className="w-full mt-3 py-3 bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-white font-bold rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 transition"
-              >
-                ファンド一覧へ戻る
-              </button>
+          <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4">
+            <h3 className="text-sm font-black text-slate-900 dark:text-white mb-2">RSI (14日)</h3>
+            <div className="flex flex-wrap gap-x-2 gap-y-1 mb-2 text-[10px]">
+              <span className="text-rose-600 dark:text-rose-400 font-bold">70以上過買い:</span>
+              <span className="text-slate-600 dark:text-slate-400">調整の可能性</span>
+              <span className="text-slate-400 dark:text-slate-500">|</span>
+              <span className="text-emerald-600 dark:text-emerald-400 font-bold">30以下過売り:</span>
+              <span className="text-slate-600 dark:text-slate-400">反発の可能性</span>
+            </div>
+            <div className="h-[240px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={visibleChartData}>
+                <defs>
+                  <linearGradient id="rsiGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#8b5cf6" stopOpacity={0.3} />
+                    <stop offset="100%" stopColor="#8b5cf6" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                <XAxis dataKey="date" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                <YAxis domain={[0, 100]} tick={{ fontSize: 10 }} width={28} />
+                <Tooltip formatter={(v) => (Number.isFinite(Number(v)) ? `${Number(v).toFixed(1)}` : '-')} />
+                <ReferenceArea y1={70} y2={100} fill="#ef4444" fillOpacity={0.08} />
+                <ReferenceArea y1={0} y2={30} fill="#22c55e" fillOpacity={0.08} />
+                <ReferenceLine y={70} stroke="#ef4444" strokeDasharray="3 3" />
+                <ReferenceLine y={30} stroke="#22c55e" strokeDasharray="3 3" />
+                <Area type="monotone" dataKey="rsi" stroke="#8b5cf6" strokeWidth={2} fill="url(#rsiGradient)" connectNulls />
+              </AreaChart>
+            </ResponsiveContainer>
             </div>
           </div>
         </div>

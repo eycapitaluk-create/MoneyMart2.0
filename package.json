@@ -6,16 +6,50 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:prerender": "vite build && node scripts/prerender-spa.mjs",
+    "check:vercel-routes": "node scripts/check-vercel-routes.mjs",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "backfill:csv": "node scripts/backfill-from-final-csv.mjs",
+    "backfill:csv:dry": "node scripts/backfill-from-final-csv.mjs --dry-run",
+    "add-date:csv": "node scripts/add-single-date-from-csv.mjs",
+    "backfill:names": "node scripts/backfill-stock-names-from-marketstack.mjs",
+    "backfill:names:dry": "node scripts/backfill-stock-names-from-marketstack.mjs --dry-run",
+    "backfill:names:local": "node scripts/backfill-stock-names-from-local.mjs",
+    "import:profiles": "node scripts/import-stock-symbol-profiles.mjs",
+    "ingest:commodities": "node scripts/ingest-marketstack-commodities.mjs",
+    "import:jp-etf-xlsx": "node scripts/import-jp-etf-xlsx.mjs",
+    "generate:dividend-detail": "node scripts/generate-dividend-calendar-detail.mjs",
+    "normalize:dividend-detail": "node scripts/normalize-dividend-calendar-detail-json.mjs",
+    "patch:stock-symbols-meta": "node scripts/patch-stock-symbols-metadata.mjs",
+    "check:marketstack": "node scripts/check-marketstack-status.mjs",
+    "cron:jp-etf-range": "node scripts/run-jp-etf-eod-range.mjs",
+    "backfill:stock-range": "node scripts/backfill-stock-eod-range.mjs",
+    "import:jp-long-csv": "node scripts/import-jp-prices-long-csv.mjs",
+    "import:jp-long-csv:dry": "node scripts/import-jp-prices-long-csv.mjs --dry-run",
+    "internal:claude": "node scripts/internal-claude.mjs",
+    "gh:triage:ci": "node scripts/gh-ai-triage.mjs ci",
+    "gh:triage:cron": "node scripts/gh-ai-triage.mjs cron"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.82.0",
+    "@aws-sdk/client-textract": "^3.993.0",
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.5.0",
     "@supabase/supabase-js": "^2.95.3",
+    "dompurify": "^3.3.3",
+    "google-auth-library": "^10.5.0",
+    "heic2any": "^0.0.4",
     "lucide-react": "^0.563.0",
+    "plotly.js-dist-min": "^3.4.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "react-helmet-async": "^3.0.0",
     "react-router-dom": "^7.13.0",
-    "recharts": "^3.7.0"
+    "recharts": "^3.7.0",
+    "stripe": "^17.7.0",
+    "tesseract.js": "^7.0.0",
+    "three": "^0.183.2"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
@@ -30,6 +64,7 @@
     "playwright": "^1.58.2",
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.19",
-    "vite": "^7.3.1"
+    "vite": "^7.3.1",
+    "xlsx": "^0.18.5"
   }
 }

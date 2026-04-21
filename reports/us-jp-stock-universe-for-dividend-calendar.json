@@ -1,0 +1,1822 @@
+[
+  {
+    "region": "JP",
+    "symbol": "1605.T",
+    "name": "INPEX",
+    "index_tag": "NIKKEI225",
+    "sector": "エネルギー"
+  },
+  {
+    "region": "JP",
+    "symbol": "1801.T",
+    "name": "大成建設",
+    "index_tag": "NIKKEI225",
+    "sector": "資本財・産業"
+  },
+  {
+    "region": "JP",
+    "symbol": "1802.T",
+    "name": "大林組",
+    "index_tag": "NIKKEI225",
+    "sector": "資本財・産業"
+  },
+  {
+    "region": "JP",
+    "symbol": "1803.T",
+    "name": "清水建設",
+    "index_tag": "NIKKEI225",
+    "sector": "資本財・産業"
+  },
+  {
+    "region": "JP",
+    "symbol": "1925.T",
+    "name": "大和ハウス工業",
+    "index_tag": "NIKKEI225",
+    "sector": "資本財・産業"
+  },
+  {
+    "region": "JP",
+    "symbol": "1928.T",
+    "name": "積水ハウス",
+    "index_tag": "NIKKEI225",
+    "sector": "資本財・産業"
+  },
+  {
+    "region": "JP",
+    "symbol": "2413.T",
+    "name": "エムスリー",
+    "index_tag": "NIKKEI225",
+    "sector": "専門サービス"
+  },
+  {
+    "region": "JP",
+    "symbol": "2502.T",
+    "name": "アサヒグループ",
+    "index_tag": "NIKKEI225",
+    "sector": "生活必需品"
+  },
+  {
+    "region": "JP",
+    "symbol": "2503.T",
+    "name": "キリンホールディングス",
+    "index_tag": "NIKKEI225",
+    "sector": "生活必需品"
+  },
+  {
+    "region": "JP",
+    "symbol": "2802.T",
+    "name": "味の素",
+    "index_tag": "NIKKEI225",
+    "sector": "生活必需品"
+  },
+  {
+    "region": "JP",
+    "symbol": "3382.T",
+    "name": "セブン&アイ",
+    "index_tag": "NIKKEI225",
+    "sector": "一般消費財"
+  },
+  {
+    "region": "JP",
+    "symbol": "3407.T",
+    "name": "旭化成",
+    "index_tag": "NIKKEI225",
+    "sector": "素材"
+  },
+  {
+    "region": "JP",
+    "symbol": "4005.T",
+    "name": "住友化学",
+    "index_tag": "NIKKEI225",
+    "sector": "素材"
+  },
+  {
+    "region": "JP",
+    "symbol": "4063.T",
+    "name": "信越化学工業",
+    "index_tag": "NIKKEI225",
+    "sector": "素材"
+  },
+  {
+    "region": "JP",
+    "symbol": "4188.T",
+    "name": "三菱ケミカル",
+    "index_tag": "NIKKEI225",
+    "sector": "素材"
+  },
+  {
+    "region": "JP",
+    "symbol": "4324.T",
+    "name": "電通グループ",
+    "index_tag": "NIKKEI225",
+    "sector": "専門サービス"
+  },
+  {
+    "region": "JP",
+    "symbol": "4452.T",
+    "name": "花王",
+    "index_tag": "NIKKEI225",
+    "sector": "素材"
+  },
+  {
+    "region": "JP",
+    "symbol": "4502.T",
+    "name": "武田薬品工業",
+    "index_tag": "NIKKEI225",
+    "sector": "ヘルスケア"
+  },
+  {
+    "region": "JP",
+    "symbol": "4503.T",
+    "name": "アステラス製薬",
+    "index_tag": "NIKKEI225",
+    "sector": "ヘルスケア"
+  },
+  {
+    "region": "JP",
+    "symbol": "4519.T",
+    "name": "中外製薬",
+    "index_tag": "NIKKEI225",
+    "sector": "ヘルスケア"
+  },
+  {
+    "region": "JP",
+    "symbol": "4523.T",
+    "name": "エーザイ",
+    "index_tag": "NIKKEI225",
+    "sector": "ヘルスケア"
+  },
+  {
+    "region": "JP",
+    "symbol": "4543.T",
+    "name": "テルモ",
+    "index_tag": "NIKKEI225",
+    "sector": "ヘルスケア"
+  },
+  {
+    "region": "JP",
+    "symbol": "4568.T",
+    "name": "第一三共",
+    "index_tag": "NIKKEI225",
+    "sector": "ヘルスケア"
+  },
+  {
+    "region": "JP",
+    "symbol": "4661.T",
+    "name": "オリエンタルランド",
+    "index_tag": "NIKKEI225",
+    "sector": "専門サービス"
+  },
+  {
+    "region": "JP",
+    "symbol": "4704.T",
+    "name": "トレンドマイクロ",
+    "index_tag": "NIKKEI225",
+    "sector": "コミュニケーション"
+  },
+  {
+    "region": "JP",
+    "symbol": "4901.T",
+    "name": "富士フイルム",
+    "index_tag": "NIKKEI225",
+    "sector": "素材"
+  },
+  {
+    "region": "JP",
+    "symbol": "4911.T",
+    "name": "資生堂",
+    "index_tag": "NIKKEI225",
+    "sector": "素材"
+  },
+  {
+    "region": "JP",
+    "symbol": "5020.T",
+    "name": "ENEOS",
+    "index_tag": "NIKKEI225",
+    "sector": "エネルギー"
+  },
+  {
+    "region": "JP",
+    "symbol": "5108.T",
+    "name": "ブリヂストン",
+    "index_tag": "NIKKEI225",
+    "sector": "生活必需品"
+  },
+  {
+    "region": "JP",
+    "symbol": "5401.T",
+    "name": "日本製鉄",
+    "index_tag": "NIKKEI225",
+    "sector": "素材"
+  },
+  {
+    "region": "JP",
+    "symbol": "5713.T",
+    "name": "住友金属鉱山",
+    "index_tag": "NIKKEI225",
+    "sector": "素材"
+  },
+  {
+    "region": "JP",
+    "symbol": "5802.T",
+    "name": "住友電気工業",
+    "index_tag": "NIKKEI225",
+    "sector": "素材"
+  },
+  {
+    "region": "JP",
+    "symbol": "6098.T",
+    "name": "リクルート",
+    "index_tag": "NIKKEI225",
+    "sector": "専門サービス"
+  },
+  {
+    "region": "JP",
+    "symbol": "6146.T",
+    "name": "ディスコ",
+    "index_tag": "NIKKEI225",
+    "sector": "資本財・産業"
+  },
+  {
+    "region": "JP",
+    "symbol": "6273.T",
+    "name": "SMC",
+    "index_tag": "NIKKEI225",
+    "sector": "資本財・産業"
+  },
+  {
+    "region": "JP",
+    "symbol": "6301.T",
+    "name": "小松製作所",
+    "index_tag": "NIKKEI225",
+    "sector": "資本財・産業"
+  },
+  {
+    "region": "JP",
+    "symbol": "6326.T",
+    "name": "クボタ",
+    "index_tag": "NIKKEI225",
+    "sector": "資本財・産業"
+  },
+  {
+    "region": "JP",
+    "symbol": "6367.T",
+    "name": "ダイキン工業",
+    "index_tag": "NIKKEI225",
+    "sector": "資本財・産業"
+  },
+  {
+    "region": "JP",
+    "symbol": "6471.T",
+    "name": "日本精工",
+    "index_tag": "NIKKEI225",
+    "sector": "資本財・産業"
+  },
+  {
+    "region": "JP",
+    "symbol": "6501.T",
+    "name": "日立製作所",
+    "index_tag": "NIKKEI225",
+    "sector": "テクノロジー"
+  },
+  {
+    "region": "JP",
+    "symbol": "6503.T",
+    "name": "三菱電機",
+    "index_tag": "NIKKEI225",
+    "sector": "テクノロジー"
+  },
+  {
+    "region": "JP",
+    "symbol": "6506.T",
+    "name": "安川電機",
+    "index_tag": "NIKKEI225",
+    "sector": "テクノロジー"
+  },
+  {
+    "region": "JP",
+    "symbol": "6594.T",
+    "name": "ニデック",
+    "index_tag": "NIKKEI225",
+    "sector": "テクノロジー"
+  },
+  {
+    "region": "JP",
+    "symbol": "6701.T",
+    "name": "日本電気",
+    "index_tag": "NIKKEI225",
+    "sector": "テクノロジー"
+  },
+  {
+    "region": "JP",
+    "symbol": "6702.T",
+    "name": "富士通",
+    "index_tag": "NIKKEI225",
+    "sector": "テクノロジー"
+  },
+  {
+    "region": "JP",
+    "symbol": "6723.T",
+    "name": "ルネサスエレクトロニクス",
+    "index_tag": "NIKKEI225",
+    "sector": "テクノロジー"
+  },
+  {
+    "region": "JP",
+    "symbol": "6758.T",
+    "name": "ソニーグループ",
+    "index_tag": "NIKKEI225",
+    "sector": "テクノロジー"
+  },
+  {
+    "region": "JP",
+    "symbol": "6762.T",
+    "name": "TDK",
+    "index_tag": "NIKKEI225",
+    "sector": "テクノロジー"
+  },
+  {
+    "region": "JP",
+    "symbol": "6857.T",
+    "name": "アドバンテスト",
+    "index_tag": "NIKKEI225",
+    "sector": "テクノロジー"
+  },
+  {
+    "region": "JP",
+    "symbol": "6861.T",
+    "name": "キーエンス",
+    "index_tag": "NIKKEI225",
+    "sector": "テクノロジー"
+  },
+  {
+    "region": "JP",
+    "symbol": "6902.T",
+    "name": "デンソー",
+    "index_tag": "NIKKEI225",
+    "sector": "一般消費財"
+  },
+  {
+    "region": "JP",
+    "symbol": "6954.T",
+    "name": "ファナック",
+    "index_tag": "NIKKEI225",
+    "sector": "テクノロジー"
+  },
+  {
+    "region": "JP",
+    "symbol": "6981.T",
+    "name": "村田製作所",
+    "index_tag": "NIKKEI225",
+    "sector": "テクノロジー"
+  },
+  {
+    "region": "JP",
+    "symbol": "7011.T",
+    "name": "三菱重工業",
+    "index_tag": "NIKKEI225",
+    "sector": "資本財・産業"
+  },
+  {
+    "region": "JP",
+    "symbol": "7012.T",
+    "name": "川崎重工業",
+    "index_tag": "NIKKEI225",
+    "sector": "一般消費財"
+  },
+  {
+    "region": "JP",
+    "symbol": "7201.T",
+    "name": "日産自動車",
+    "index_tag": "NIKKEI225",
+    "sector": "一般消費財"
+  },
+  {
+    "region": "JP",
+    "symbol": "7202.T",
+    "name": "いすゞ自動車",
+    "index_tag": "NIKKEI225",
+    "sector": "一般消費財"
+  },
+  {
+    "region": "JP",
+    "symbol": "7203.T",
+    "name": "トヨタ自動車",
+    "index_tag": "NIKKEI225",
+    "sector": "一般消費財"
+  },
+  {
+    "region": "JP",
+    "symbol": "7261.T",
+    "name": "マツダ",
+    "index_tag": "NIKKEI225",
+    "sector": "一般消費財"
+  },
+  {
+    "region": "JP",
+    "symbol": "7267.T",
+    "name": "本田技研工業",
+    "index_tag": "NIKKEI225",
+    "sector": "一般消費財"
+  },
+  {
+    "region": "JP",
+    "symbol": "7270.T",
+    "name": "SUBARU",
+    "index_tag": "NIKKEI225",
+    "sector": "一般消費財"
+  },
+  {
+    "region": "JP",
+    "symbol": "7733.T",
+    "name": "オリンパス",
+    "index_tag": "NIKKEI225",
+    "sector": "ヘルスケア"
+  },
+  {
+    "region": "JP",
+    "symbol": "7741.T",
+    "name": "HOYA",
+    "index_tag": "NIKKEI225",
+    "sector": "ヘルスケア"
+  },
+  {
+    "region": "JP",
+    "symbol": "7751.T",
+    "name": "キヤノン",
+    "index_tag": "NIKKEI225",
+    "sector": "テクノロジー"
+  },
+  {
+    "region": "JP",
+    "symbol": "8001.T",
+    "name": "伊藤忠商事",
+    "index_tag": "NIKKEI225",
+    "sector": "資本財・産業"
+  },
+  {
+    "region": "JP",
+    "symbol": "8015.T",
+    "name": "豊田通商",
+    "index_tag": "NIKKEI225",
+    "sector": "資本財・産業"
+  },
+  {
+    "region": "JP",
+    "symbol": "8031.T",
+    "name": "三井物産",
+    "index_tag": "NIKKEI225",
+    "sector": "資本財・産業"
+  },
+  {
+    "region": "JP",
+    "symbol": "8035.T",
+    "name": "東京エレクトロン",
+    "index_tag": "NIKKEI225",
+    "sector": "テクノロジー"
+  },
+  {
+    "region": "JP",
+    "symbol": "8051.T",
+    "name": "山善",
+    "index_tag": "NIKKEI225",
+    "sector": "資本財・産業"
+  },
+  {
+    "region": "JP",
+    "symbol": "8053.T",
+    "name": "住友商事",
+    "index_tag": "NIKKEI225",
+    "sector": "資本財・産業"
+  },
+  {
+    "region": "JP",
+    "symbol": "8058.T",
+    "name": "三菱商事",
+    "index_tag": "NIKKEI225",
+    "sector": "資本財・産業"
+  },
+  {
+    "region": "JP",
+    "symbol": "8267.T",
+    "name": "イオン",
+    "index_tag": "NIKKEI225",
+    "sector": "一般消費財"
+  },
+  {
+    "region": "JP",
+    "symbol": "8306.T",
+    "name": "三菱UFJフィナンシャル",
+    "index_tag": "NIKKEI225",
+    "sector": "金融"
+  },
+  {
+    "region": "JP",
+    "symbol": "8308.T",
+    "name": "りそなホールディングス",
+    "index_tag": "NIKKEI225",
+    "sector": "金融"
+  },
+  {
+    "region": "JP",
+    "symbol": "8316.T",
+    "name": "三井住友フィナンシャル",
+    "index_tag": "NIKKEI225",
+    "sector": "金融"
+  },
+  {
+    "region": "JP",
+    "symbol": "8411.T",
+    "name": "みずほフィナンシャル",
+    "index_tag": "NIKKEI225",
+    "sector": "金融"
+  },
+  {
+    "region": "JP",
+    "symbol": "8591.T",
+    "name": "オリックス",
+    "index_tag": "NIKKEI225",
+    "sector": "金融"
+  },
+  {
+    "region": "JP",
+    "symbol": "8604.T",
+    "name": "野村ホールディングス",
+    "index_tag": "NIKKEI225",
+    "sector": "金融"
+  },
+  {
+    "region": "JP",
+    "symbol": "8725.T",
+    "name": "MS&ADインシュアランス",
+    "index_tag": "NIKKEI225",
+    "sector": "金融"
+  },
+  {
+    "region": "JP",
+    "symbol": "8766.T",
+    "name": "東京海上ホールディングス",
+    "index_tag": "NIKKEI225",
+    "sector": "金融"
+  },
+  {
+    "region": "JP",
+    "symbol": "8801.T",
+    "name": "三井不動産",
+    "index_tag": "NIKKEI225",
+    "sector": "不動産"
+  },
+  {
+    "region": "JP",
+    "symbol": "8802.T",
+    "name": "三菱地所",
+    "index_tag": "NIKKEI225",
+    "sector": "不動産"
+  },
+  {
+    "region": "JP",
+    "symbol": "9005.T",
+    "name": "東急",
+    "index_tag": "NIKKEI225",
+    "sector": "資本財・産業"
+  },
+  {
+    "region": "JP",
+    "symbol": "9020.T",
+    "name": "東日本旅客鉄道",
+    "index_tag": "NIKKEI225",
+    "sector": "資本財・産業"
+  },
+  {
+    "region": "JP",
+    "symbol": "9021.T",
+    "name": "西日本旅客鉄道",
+    "index_tag": "NIKKEI225",
+    "sector": "資本財・産業"
+  },
+  {
+    "region": "JP",
+    "symbol": "9022.T",
+    "name": "東海旅客鉄道",
+    "index_tag": "NIKKEI225",
+    "sector": "資本財・産業"
+  },
+  {
+    "region": "JP",
+    "symbol": "9101.T",
+    "name": "日本郵船",
+    "index_tag": "NIKKEI225",
+    "sector": "資本財・産業"
+  },
+  {
+    "region": "JP",
+    "symbol": "9104.T",
+    "name": "商船三井",
+    "index_tag": "NIKKEI225",
+    "sector": "資本財・産業"
+  },
+  {
+    "region": "JP",
+    "symbol": "9201.T",
+    "name": "日本航空",
+    "index_tag": "NIKKEI225",
+    "sector": "資本財・産業"
+  },
+  {
+    "region": "JP",
+    "symbol": "9202.T",
+    "name": "ANAホールディングス",
+    "index_tag": "NIKKEI225",
+    "sector": "資本財・産業"
+  },
+  {
+    "region": "JP",
+    "symbol": "9432.T",
+    "name": "日本電信電話",
+    "index_tag": "NIKKEI225",
+    "sector": "コミュニケーション"
+  },
+  {
+    "region": "JP",
+    "symbol": "9433.T",
+    "name": "KDDI",
+    "index_tag": "NIKKEI225",
+    "sector": "コミュニケーション"
+  },
+  {
+    "region": "JP",
+    "symbol": "9502.T",
+    "name": "中部電力",
+    "index_tag": "NIKKEI225",
+    "sector": "公益事業"
+  },
+  {
+    "region": "JP",
+    "symbol": "9503.T",
+    "name": "関西電力",
+    "index_tag": "NIKKEI225",
+    "sector": "公益事業"
+  },
+  {
+    "region": "JP",
+    "symbol": "9531.T",
+    "name": "東京瓦斯",
+    "index_tag": "NIKKEI225",
+    "sector": "公益事業"
+  },
+  {
+    "region": "JP",
+    "symbol": "9532.T",
+    "name": "大阪瓦斯",
+    "index_tag": "NIKKEI225",
+    "sector": "公益事業"
+  },
+  {
+    "region": "JP",
+    "symbol": "9735.T",
+    "name": "セコム",
+    "index_tag": "NIKKEI225",
+    "sector": "専門サービス"
+  },
+  {
+    "region": "JP",
+    "symbol": "9983.T",
+    "name": "ファーストリテイリング",
+    "index_tag": "NIKKEI225",
+    "sector": "一般消費財"
+  },
+  {
+    "region": "JP",
+    "symbol": "9984.T",
+    "name": "ソフトバンクグループ",
+    "index_tag": "NIKKEI225",
+    "sector": "コミュニケーション"
+  },
+  {
+    "region": "US",
+    "symbol": "AAPL",
+    "name": "Apple Inc.",
+    "index_tag": "NASDAQ100",
+    "sector": "テクノロジー"
+  },
+  {
+    "region": "US",
+    "symbol": "ABBV",
+    "name": "AbbVie Inc.",
+    "index_tag": "SP500",
+    "sector": "ヘルスケア"
+  },
+  {
+    "region": "US",
+    "symbol": "ABT",
+    "name": "Abbott Laboratories",
+    "index_tag": "SP500",
+    "sector": "ヘルスケア"
+  },
+  {
+    "region": "US",
+    "symbol": "ADBE",
+    "name": "Adobe Inc.",
+    "index_tag": "NASDAQ100",
+    "sector": "テクノロジー"
+  },
+  {
+    "region": "US",
+    "symbol": "ADI",
+    "name": "Analog Devices Inc.",
+    "index_tag": "NASDAQ100",
+    "sector": "テクノロジー"
+  },
+  {
+    "region": "US",
+    "symbol": "ADP",
+    "name": "Automatic Data Processing",
+    "index_tag": "NASDAQ100",
+    "sector": "資本財・産業"
+  },
+  {
+    "region": "US",
+    "symbol": "ADSK",
+    "name": "Autodesk Inc.",
+    "index_tag": "NASDAQ100",
+    "sector": "テクノロジー"
+  },
+  {
+    "region": "US",
+    "symbol": "AEP",
+    "name": "American Electric Power",
+    "index_tag": "NASDAQ100",
+    "sector": "公益事業"
+  },
+  {
+    "region": "US",
+    "symbol": "ALGN",
+    "name": "Align Technology",
+    "index_tag": "NASDAQ100",
+    "sector": "ヘルスケア"
+  },
+  {
+    "region": "US",
+    "symbol": "ALNY",
+    "name": "Alnylam Pharma",
+    "index_tag": "NASDAQ100",
+    "sector": "ヘルスケア"
+  },
+  {
+    "region": "US",
+    "symbol": "AMAT",
+    "name": "Applied Materials Inc.",
+    "index_tag": "NASDAQ100",
+    "sector": "テクノロジー"
+  },
+  {
+    "region": "US",
+    "symbol": "AMD",
+    "name": "Advanced Micro Devices",
+    "index_tag": "NASDAQ100",
+    "sector": "テクノロジー"
+  },
+  {
+    "region": "US",
+    "symbol": "AMGN",
+    "name": "Amgen Inc.",
+    "index_tag": "NASDAQ100",
+    "sector": "ヘルスケア"
+  },
+  {
+    "region": "US",
+    "symbol": "AMT",
+    "name": "American Tower Corp.",
+    "index_tag": "SP500",
+    "sector": "不動産"
+  },
+  {
+    "region": "US",
+    "symbol": "AMZN",
+    "name": "Amazon.com Inc.",
+    "index_tag": "NASDAQ100",
+    "sector": "一般消費財"
+  },
+  {
+    "region": "US",
+    "symbol": "ASML",
+    "name": "ASML Holding N.V.",
+    "index_tag": "NASDAQ100",
+    "sector": "テクノロジー"
+  },
+  {
+    "region": "US",
+    "symbol": "AVGO",
+    "name": "Broadcom Inc.",
+    "index_tag": "NASDAQ100",
+    "sector": "テクノロジー"
+  },
+  {
+    "region": "US",
+    "symbol": "AXP",
+    "name": "American Express",
+    "index_tag": "SP500",
+    "sector": "金融"
+  },
+  {
+    "region": "US",
+    "symbol": "AZN",
+    "name": "AstraZeneca PLC",
+    "index_tag": "NASDAQ100",
+    "sector": "ヘルスケア"
+  },
+  {
+    "region": "US",
+    "symbol": "BA",
+    "name": "Boeing Company",
+    "index_tag": "SP500",
+    "sector": "資本財・産業"
+  },
+  {
+    "region": "US",
+    "symbol": "BAC",
+    "name": "Bank of America",
+    "index_tag": "SP500",
+    "sector": "金融"
+  },
+  {
+    "region": "US",
+    "symbol": "BIIB",
+    "name": "Biogen Inc.",
+    "index_tag": "NASDAQ100",
+    "sector": "ヘルスケア"
+  },
+  {
+    "region": "US",
+    "symbol": "BKNG",
+    "name": "Booking Holdings Inc.",
+    "index_tag": "NASDAQ100",
+    "sector": "一般消費財"
+  },
+  {
+    "region": "US",
+    "symbol": "BKR",
+    "name": "Baker Hughes Company",
+    "index_tag": "NASDAQ100",
+    "sector": "エネルギー"
+  },
+  {
+    "region": "US",
+    "symbol": "BLK",
+    "name": "BlackRock Inc.",
+    "index_tag": "SP500",
+    "sector": "金融"
+  },
+  {
+    "region": "US",
+    "symbol": "BRK.B",
+    "name": "Berkshire Hathaway B",
+    "index_tag": "SP500",
+    "sector": "金融"
+  },
+  {
+    "region": "US",
+    "symbol": "BSX",
+    "name": "Boston Scientific Corp.",
+    "index_tag": "SP500",
+    "sector": "ヘルスケア"
+  },
+  {
+    "region": "US",
+    "symbol": "C",
+    "name": "Citigroup Inc.",
+    "index_tag": "SP500",
+    "sector": "金融"
+  },
+  {
+    "region": "US",
+    "symbol": "CAT",
+    "name": "Caterpillar Inc.",
+    "index_tag": "SP500",
+    "sector": "資本財・産業"
+  },
+  {
+    "region": "US",
+    "symbol": "CB",
+    "name": "Chubb Limited",
+    "index_tag": "SP500",
+    "sector": "金融"
+  },
+  {
+    "region": "US",
+    "symbol": "CDNS",
+    "name": "Cadence Design Systems",
+    "index_tag": "NASDAQ100",
+    "sector": "テクノロジー"
+  },
+  {
+    "region": "US",
+    "symbol": "CEG",
+    "name": "Constellation Energy",
+    "index_tag": "NASDAQ100",
+    "sector": "公益事業"
+  },
+  {
+    "region": "US",
+    "symbol": "CHTR",
+    "name": "Charter Communications",
+    "index_tag": "NASDAQ100",
+    "sector": "コミュニケーション"
+  },
+  {
+    "region": "US",
+    "symbol": "CI",
+    "name": "Cigna Group",
+    "index_tag": "SP500",
+    "sector": "ヘルスケア"
+  },
+  {
+    "region": "US",
+    "symbol": "CME",
+    "name": "CME Group Inc.",
+    "index_tag": "SP500",
+    "sector": "金融"
+  },
+  {
+    "region": "US",
+    "symbol": "COP",
+    "name": "ConocoPhillips",
+    "index_tag": "SP500",
+    "sector": "エネルギー"
+  },
+  {
+    "region": "US",
+    "symbol": "COST",
+    "name": "Costco Wholesale",
+    "index_tag": "NASDAQ100",
+    "sector": "生活必需品"
+  },
+  {
+    "region": "US",
+    "symbol": "CPRT",
+    "name": "Copart Inc.",
+    "index_tag": "NASDAQ100",
+    "sector": "資本財・産業"
+  },
+  {
+    "region": "US",
+    "symbol": "CRM",
+    "name": "Salesforce Inc.",
+    "index_tag": "SP500",
+    "sector": "テクノロジー"
+  },
+  {
+    "region": "US",
+    "symbol": "CSCO",
+    "name": "Cisco Systems Inc.",
+    "index_tag": "NASDAQ100",
+    "sector": "テクノロジー"
+  },
+  {
+    "region": "US",
+    "symbol": "CSX",
+    "name": "CSX Corporation",
+    "index_tag": "NASDAQ100",
+    "sector": "資本財・産業"
+  },
+  {
+    "region": "US",
+    "symbol": "CTAS",
+    "name": "Cintas Corporation",
+    "index_tag": "NASDAQ100",
+    "sector": "資本財・産業"
+  },
+  {
+    "region": "US",
+    "symbol": "CVX",
+    "name": "Chevron Corporation",
+    "index_tag": "SP500",
+    "sector": "エネルギー"
+  },
+  {
+    "region": "US",
+    "symbol": "DASH",
+    "name": "DoorDash Inc.",
+    "index_tag": "NASDAQ100",
+    "sector": "一般消費財"
+  },
+  {
+    "region": "US",
+    "symbol": "DDOG",
+    "name": "Datadog Inc.",
+    "index_tag": "NASDAQ100",
+    "sector": "テクノロジー"
+  },
+  {
+    "region": "US",
+    "symbol": "DE",
+    "name": "Deere & Company",
+    "index_tag": "SP500",
+    "sector": "資本財・産業"
+  },
+  {
+    "region": "US",
+    "symbol": "DHR",
+    "name": "Danaher Corporation",
+    "index_tag": "SP500",
+    "sector": "ヘルスケア"
+  },
+  {
+    "region": "US",
+    "symbol": "DIS",
+    "name": "Walt Disney Company",
+    "index_tag": "SP500",
+    "sector": "コミュニケーション"
+  },
+  {
+    "region": "US",
+    "symbol": "DLTR",
+    "name": "Dollar Tree Inc.",
+    "index_tag": "NASDAQ100",
+    "sector": "一般消費財"
+  },
+  {
+    "region": "US",
+    "symbol": "DXCM",
+    "name": "DexCom Inc.",
+    "index_tag": "NASDAQ100",
+    "sector": "ヘルスケア"
+  },
+  {
+    "region": "US",
+    "symbol": "EBAY",
+    "name": "eBay Inc.",
+    "index_tag": "NASDAQ100",
+    "sector": "一般消費財"
+  },
+  {
+    "region": "US",
+    "symbol": "ELV",
+    "name": "Elevance Health Inc.",
+    "index_tag": "SP500",
+    "sector": "ヘルスケア"
+  },
+  {
+    "region": "US",
+    "symbol": "ENPH",
+    "name": "Enphase Energy Inc.",
+    "index_tag": "NASDAQ100",
+    "sector": "テクノロジー"
+  },
+  {
+    "region": "US",
+    "symbol": "EOG",
+    "name": "EOG Resources Inc.",
+    "index_tag": "SP500",
+    "sector": "エネルギー"
+  },
+  {
+    "region": "US",
+    "symbol": "EQIX",
+    "name": "Equinix Inc.",
+    "index_tag": "SP500",
+    "sector": "不動産"
+  },
+  {
+    "region": "US",
+    "symbol": "EXC",
+    "name": "Exelon Corporation",
+    "index_tag": "NASDAQ100",
+    "sector": "公益事業"
+  },
+  {
+    "region": "US",
+    "symbol": "EXPE",
+    "name": "Expedia Group Inc.",
+    "index_tag": "NASDAQ100",
+    "sector": "一般消費財"
+  },
+  {
+    "region": "US",
+    "symbol": "FAST",
+    "name": "Fastenal Company",
+    "index_tag": "NASDAQ100",
+    "sector": "資本財・産業"
+  },
+  {
+    "region": "US",
+    "symbol": "FTNT",
+    "name": "Fortinet Inc.",
+    "index_tag": "NASDAQ100",
+    "sector": "テクノロジー"
+  },
+  {
+    "region": "US",
+    "symbol": "GE",
+    "name": "General Electric",
+    "index_tag": "SP500",
+    "sector": "資本財・産業"
+  },
+  {
+    "region": "US",
+    "symbol": "GEHC",
+    "name": "GE HealthCare",
+    "index_tag": "NASDAQ100",
+    "sector": "ヘルスケア"
+  },
+  {
+    "region": "US",
+    "symbol": "GFS",
+    "name": "GlobalFoundries Inc.",
+    "index_tag": "NASDAQ100",
+    "sector": "テクノロジー"
+  },
+  {
+    "region": "US",
+    "symbol": "GILD",
+    "name": "Gilead Sciences Inc.",
+    "index_tag": "NASDAQ100",
+    "sector": "ヘルスケア"
+  },
+  {
+    "region": "US",
+    "symbol": "GOOG",
+    "name": "Alphabet Inc. (Class C)",
+    "index_tag": "NASDAQ100",
+    "sector": "コミュニケーション"
+  },
+  {
+    "region": "US",
+    "symbol": "GOOGL",
+    "name": "Alphabet Inc. (Class A)",
+    "index_tag": "NASDAQ100",
+    "sector": "コミュニケーション"
+  },
+  {
+    "region": "US",
+    "symbol": "GS",
+    "name": "Goldman Sachs Group",
+    "index_tag": "SP500",
+    "sector": "金融"
+  },
+  {
+    "region": "US",
+    "symbol": "HD",
+    "name": "Home Depot Inc.",
+    "index_tag": "SP500",
+    "sector": "一般消費財"
+  },
+  {
+    "region": "US",
+    "symbol": "HON",
+    "name": "Honeywell International",
+    "index_tag": "NASDAQ100",
+    "sector": "資本財・産業"
+  },
+  {
+    "region": "US",
+    "symbol": "IBM",
+    "name": "IBM Corporation",
+    "index_tag": "SP500",
+    "sector": "テクノロジー"
+  },
+  {
+    "region": "US",
+    "symbol": "ICE",
+    "name": "Intercontinental Exchange",
+    "index_tag": "SP500",
+    "sector": "金融"
+  },
+  {
+    "region": "US",
+    "symbol": "IDXX",
+    "name": "IDEXX Laboratories",
+    "index_tag": "NASDAQ100",
+    "sector": "ヘルスケア"
+  },
+  {
+    "region": "US",
+    "symbol": "ILMN",
+    "name": "Illumina Inc.",
+    "index_tag": "NASDAQ100",
+    "sector": "ヘルスケア"
+  },
+  {
+    "region": "US",
+    "symbol": "INTC",
+    "name": "Intel Corporation",
+    "index_tag": "SP500",
+    "sector": "テクノロジー"
+  },
+  {
+    "region": "US",
+    "symbol": "INTU",
+    "name": "Intuit Inc.",
+    "index_tag": "NASDAQ100",
+    "sector": "テクノロジー"
+  },
+  {
+    "region": "US",
+    "symbol": "ISRG",
+    "name": "Intuitive Surgical",
+    "index_tag": "NASDAQ100",
+    "sector": "ヘルスケア"
+  },
+  {
+    "region": "US",
+    "symbol": "JD",
+    "name": "JD.com Inc.",
+    "index_tag": "NASDAQ100",
+    "sector": "一般消費財"
+  },
+  {
+    "region": "US",
+    "symbol": "JNJ",
+    "name": "Johnson & Johnson",
+    "index_tag": "SP500",
+    "sector": "ヘルスケア"
+  },
+  {
+    "region": "US",
+    "symbol": "JPM",
+    "name": "JPMorgan Chase & Co.",
+    "index_tag": "SP500",
+    "sector": "金融"
+  },
+  {
+    "region": "US",
+    "symbol": "KDP",
+    "name": "Keurig Dr Pepper Inc.",
+    "index_tag": "NASDAQ100",
+    "sector": "生活必需品"
+  },
+  {
+    "region": "US",
+    "symbol": "KHC",
+    "name": "The Kraft Heinz Company",
+    "index_tag": "NASDAQ100",
+    "sector": "生活必需品"
+  },
+  {
+    "region": "US",
+    "symbol": "KLAC",
+    "name": "KLA Corporation",
+    "index_tag": "NASDAQ100",
+    "sector": "テクノロジー"
+  },
+  {
+    "region": "US",
+    "symbol": "KO",
+    "name": "Coca-Cola Company",
+    "index_tag": "SP500",
+    "sector": "生活必需品"
+  },
+  {
+    "region": "US",
+    "symbol": "LCID",
+    "name": "Lucid Group Inc.",
+    "index_tag": "NASDAQ100",
+    "sector": "一般消費財"
+  },
+  {
+    "region": "US",
+    "symbol": "LIN",
+    "name": "Linde plc",
+    "index_tag": "NASDAQ100",
+    "sector": "素材"
+  },
+  {
+    "region": "US",
+    "symbol": "LLY",
+    "name": "Eli Lilly and Company",
+    "index_tag": "SP500",
+    "sector": "ヘルスケア"
+  },
+  {
+    "region": "US",
+    "symbol": "LMT",
+    "name": "Lockheed Martin Corp.",
+    "index_tag": "SP500",
+    "sector": "資本財・産業"
+  },
+  {
+    "region": "US",
+    "symbol": "LRCX",
+    "name": "Lam Research Corp",
+    "index_tag": "NASDAQ100",
+    "sector": "テクノロジー"
+  },
+  {
+    "region": "US",
+    "symbol": "LULU",
+    "name": "Lululemon Athletica",
+    "index_tag": "NASDAQ100",
+    "sector": "一般消費財"
+  },
+  {
+    "region": "US",
+    "symbol": "MA",
+    "name": "Mastercard Inc.",
+    "index_tag": "SP500",
+    "sector": "金融"
+  },
+  {
+    "region": "US",
+    "symbol": "MAR",
+    "name": "Marriott International",
+    "index_tag": "NASDAQ100",
+    "sector": "一般消費財"
+  },
+  {
+    "region": "US",
+    "symbol": "MCD",
+    "name": "McDonald's Corp",
+    "index_tag": "SP500",
+    "sector": "一般消費財"
+  },
+  {
+    "region": "US",
+    "symbol": "MCHP",
+    "name": "Microchip Technology",
+    "index_tag": "NASDAQ100",
+    "sector": "テクノロジー"
+  },
+  {
+    "region": "US",
+    "symbol": "MDB",
+    "name": "MongoDB Inc.",
+    "index_tag": "NASDAQ100",
+    "sector": "テクノロジー"
+  },
+  {
+    "region": "US",
+    "symbol": "MDLZ",
+    "name": "Mondelez International",
+    "index_tag": "NASDAQ100",
+    "sector": "生活必需品"
+  },
+  {
+    "region": "US",
+    "symbol": "MELI",
+    "name": "MercadoLibre Inc.",
+    "index_tag": "NASDAQ100",
+    "sector": "一般消費財"
+  },
+  {
+    "region": "US",
+    "symbol": "META",
+    "name": "Meta Platforms Inc.",
+    "index_tag": "NASDAQ100",
+    "sector": "コミュニケーション"
+  },
+  {
+    "region": "US",
+    "symbol": "MMC",
+    "name": "Marsh & McLennan",
+    "index_tag": "SP500",
+    "sector": "金融"
+  },
+  {
+    "region": "US",
+    "symbol": "MNST",
+    "name": "Monster Beverage",
+    "index_tag": "NASDAQ100",
+    "sector": "生活必需品"
+  },
+  {
+    "region": "US",
+    "symbol": "MO",
+    "name": "Altria Group Inc.",
+    "index_tag": "SP500",
+    "sector": "生活必需品"
+  },
+  {
+    "region": "US",
+    "symbol": "MRK",
+    "name": "Merck & Co.",
+    "index_tag": "SP500",
+    "sector": "ヘルスケア"
+  },
+  {
+    "region": "US",
+    "symbol": "MRVL",
+    "name": "Marvell Technology",
+    "index_tag": "NASDAQ100",
+    "sector": "テクノロジー"
+  },
+  {
+    "region": "US",
+    "symbol": "MS",
+    "name": "Morgan Stanley",
+    "index_tag": "SP500",
+    "sector": "金融"
+  },
+  {
+    "region": "US",
+    "symbol": "MSFT",
+    "name": "Microsoft Corporation",
+    "index_tag": "NASDAQ100",
+    "sector": "テクノロジー"
+  },
+  {
+    "region": "US",
+    "symbol": "MU",
+    "name": "Micron Technology Inc.",
+    "index_tag": "NASDAQ100",
+    "sector": "テクノロジー"
+  },
+  {
+    "region": "US",
+    "symbol": "NEE",
+    "name": "NextEra Energy Inc.",
+    "index_tag": "SP500",
+    "sector": "公益事業"
+  },
+  {
+    "region": "US",
+    "symbol": "NFLX",
+    "name": "Netflix Inc.",
+    "index_tag": "NASDAQ100",
+    "sector": "コミュニケーション"
+  },
+  {
+    "region": "US",
+    "symbol": "NVDA",
+    "name": "NVIDIA Corporation",
+    "index_tag": "NASDAQ100",
+    "sector": "テクノロジー"
+  },
+  {
+    "region": "US",
+    "symbol": "NXPI",
+    "name": "NXP Semiconductors",
+    "index_tag": "NASDAQ100",
+    "sector": "テクノロジー"
+  },
+  {
+    "region": "US",
+    "symbol": "ODFL",
+    "name": "Old Dominion Freight",
+    "index_tag": "NASDAQ100",
+    "sector": "資本財・産業"
+  },
+  {
+    "region": "US",
+    "symbol": "OKTA",
+    "name": "Okta Inc.",
+    "index_tag": "NASDAQ100",
+    "sector": "テクノロジー"
+  },
+  {
+    "region": "US",
+    "symbol": "ON",
+    "name": "ON Semiconductor",
+    "index_tag": "NASDAQ100",
+    "sector": "テクノロジー"
+  },
+  {
+    "region": "US",
+    "symbol": "ORCL",
+    "name": "Oracle Corporation",
+    "index_tag": "SP500",
+    "sector": "テクノロジー"
+  },
+  {
+    "region": "US",
+    "symbol": "ORLY",
+    "name": "O'Reilly Automotive",
+    "index_tag": "NASDAQ100",
+    "sector": "一般消費財"
+  },
+  {
+    "region": "US",
+    "symbol": "PANW",
+    "name": "Palo Alto Networks",
+    "index_tag": "NASDAQ100",
+    "sector": "テクノロジー"
+  },
+  {
+    "region": "US",
+    "symbol": "PAYX",
+    "name": "Paychex Inc.",
+    "index_tag": "NASDAQ100",
+    "sector": "資本財・産業"
+  },
+  {
+    "region": "US",
+    "symbol": "PCAR",
+    "name": "PACCAR Inc.",
+    "index_tag": "NASDAQ100",
+    "sector": "資本財・産業"
+  },
+  {
+    "region": "US",
+    "symbol": "PDD",
+    "name": "PDD Holdings Inc.",
+    "index_tag": "NASDAQ100",
+    "sector": "一般消費財"
+  },
+  {
+    "region": "US",
+    "symbol": "PEP",
+    "name": "PepsiCo Inc.",
+    "index_tag": "NASDAQ100",
+    "sector": "生活必需品"
+  },
+  {
+    "region": "US",
+    "symbol": "PG",
+    "name": "Procter & Gamble",
+    "index_tag": "SP500",
+    "sector": "生活必需品"
+  },
+  {
+    "region": "US",
+    "symbol": "PGR",
+    "name": "Progressive Corp.",
+    "index_tag": "SP500",
+    "sector": "金融"
+  },
+  {
+    "region": "US",
+    "symbol": "PLD",
+    "name": "Prologis Inc.",
+    "index_tag": "SP500",
+    "sector": "不動産"
+  },
+  {
+    "region": "US",
+    "symbol": "PM",
+    "name": "Philip Morris Int.",
+    "index_tag": "SP500",
+    "sector": "生活必需品"
+  },
+  {
+    "region": "US",
+    "symbol": "PYPL",
+    "name": "PayPal Holdings Inc.",
+    "index_tag": "NASDAQ100",
+    "sector": "金融"
+  },
+  {
+    "region": "US",
+    "symbol": "QCOM",
+    "name": "Qualcomm Inc.",
+    "index_tag": "NASDAQ100",
+    "sector": "テクノロジー"
+  },
+  {
+    "region": "US",
+    "symbol": "REGN",
+    "name": "Regeneron Pharma",
+    "index_tag": "NASDAQ100",
+    "sector": "ヘルスケア"
+  },
+  {
+    "region": "US",
+    "symbol": "ROP",
+    "name": "Roper Technologies",
+    "index_tag": "NASDAQ100",
+    "sector": "テクノロジー"
+  },
+  {
+    "region": "US",
+    "symbol": "ROST",
+    "name": "Ross Stores Inc.",
+    "index_tag": "NASDAQ100",
+    "sector": "一般消費財"
+  },
+  {
+    "region": "US",
+    "symbol": "RTX",
+    "name": "Raytheon Technologies",
+    "index_tag": "SP500",
+    "sector": "資本財・産業"
+  },
+  {
+    "region": "US",
+    "symbol": "SBUX",
+    "name": "Starbucks Corporation",
+    "index_tag": "NASDAQ100",
+    "sector": "一般消費財"
+  },
+  {
+    "region": "US",
+    "symbol": "SCHW",
+    "name": "Charles Schwab Corp.",
+    "index_tag": "SP500",
+    "sector": "金融"
+  },
+  {
+    "region": "US",
+    "symbol": "SHW",
+    "name": "Sherwin-Williams Co.",
+    "index_tag": "SP500",
+    "sector": "素材"
+  },
+  {
+    "region": "US",
+    "symbol": "SIRI",
+    "name": "Sirius XM Holdings",
+    "index_tag": "NASDAQ100",
+    "sector": "コミュニケーション"
+  },
+  {
+    "region": "US",
+    "symbol": "SLB",
+    "name": "Schlumberger Limited",
+    "index_tag": "SP500",
+    "sector": "エネルギー"
+  },
+  {
+    "region": "US",
+    "symbol": "SNPS",
+    "name": "Synopsys Inc.",
+    "index_tag": "NASDAQ100",
+    "sector": "テクノロジー"
+  },
+  {
+    "region": "US",
+    "symbol": "SPGI",
+    "name": "S&P Global Inc.",
+    "index_tag": "SP500",
+    "sector": "金融"
+  },
+  {
+    "region": "US",
+    "symbol": "SYK",
+    "name": "Stryker Corporation",
+    "index_tag": "SP500",
+    "sector": "ヘルスケア"
+  },
+  {
+    "region": "US",
+    "symbol": "SYY",
+    "name": "Sysco Corporation",
+    "index_tag": "SP500",
+    "sector": "生活必需品"
+  },
+  {
+    "region": "US",
+    "symbol": "T",
+    "name": "AT&T Inc.",
+    "index_tag": "SP500",
+    "sector": "コミュニケーション"
+  },
+  {
+    "region": "US",
+    "symbol": "TEAM",
+    "name": "Atlassian Corporation",
+    "index_tag": "NASDAQ100",
+    "sector": "テクノロジー"
+  },
+  {
+    "region": "US",
+    "symbol": "TJX",
+    "name": "TJX Companies Inc.",
+    "index_tag": "SP500",
+    "sector": "一般消費財"
+  },
+  {
+    "region": "US",
+    "symbol": "TMO",
+    "name": "Thermo Fisher Scientific",
+    "index_tag": "SP500",
+    "sector": "ヘルスケア"
+  },
+  {
+    "region": "US",
+    "symbol": "TMUS",
+    "name": "T-Mobile US Inc.",
+    "index_tag": "NASDAQ100",
+    "sector": "コミュニケーション"
+  },
+  {
+    "region": "US",
+    "symbol": "TSLA",
+    "name": "Tesla Inc.",
+    "index_tag": "NASDAQ100",
+    "sector": "一般消費財"
+  },
+  {
+    "region": "US",
+    "symbol": "TTD",
+    "name": "The Trade Desk Inc.",
+    "index_tag": "NASDAQ100",
+    "sector": "テクノロジー"
+  },
+  {
+    "region": "US",
+    "symbol": "TXN",
+    "name": "Texas Instruments",
+    "index_tag": "NASDAQ100",
+    "sector": "テクノロジー"
+  },
+  {
+    "region": "US",
+    "symbol": "UNH",
+    "name": "UnitedHealth Group",
+    "index_tag": "SP500",
+    "sector": "ヘルスケア"
+  },
+  {
+    "region": "US",
+    "symbol": "UNP",
+    "name": "Union Pacific Corporation",
+    "index_tag": "SP500",
+    "sector": "資本財・産業"
+  },
+  {
+    "region": "US",
+    "symbol": "UPS",
+    "name": "United Parcel Service",
+    "index_tag": "SP500",
+    "sector": "資本財・産業"
+  },
+  {
+    "region": "US",
+    "symbol": "V",
+    "name": "Visa Inc.",
+    "index_tag": "SP500",
+    "sector": "金融"
+  },
+  {
+    "region": "US",
+    "symbol": "VRSK",
+    "name": "Verisk Analytics",
+    "index_tag": "NASDAQ100",
+    "sector": "資本財・産業"
+  },
+  {
+    "region": "US",
+    "symbol": "VRTX",
+    "name": "Vertex Pharmaceuticals",
+    "index_tag": "NASDAQ100",
+    "sector": "ヘルスケア"
+  },
+  {
+    "region": "US",
+    "symbol": "VZ",
+    "name": "Verizon Communications",
+    "index_tag": "SP500",
+    "sector": "コミュニケーション"
+  },
+  {
+    "region": "US",
+    "symbol": "WBD",
+    "name": "Warner Bros. Discovery",
+    "index_tag": "NASDAQ100",
+    "sector": "コミュニケーション"
+  },
+  {
+    "region": "US",
+    "symbol": "WDAY",
+    "name": "Workday Inc.",
+    "index_tag": "NASDAQ100",
+    "sector": "テクノロジー"
+  },
+  {
+    "region": "US",
+    "symbol": "WFC",
+    "name": "Wells Fargo & Co.",
+    "index_tag": "SP500",
+    "sector": "金融"
+  },
+  {
+    "region": "US",
+    "symbol": "WM",
+    "name": "Waste Management Inc.",
+    "index_tag": "SP500",
+    "sector": "資本財・産業"
+  },
+  {
+    "region": "US",
+    "symbol": "WMT",
+    "name": "Walmart Inc.",
+    "index_tag": "SP500",
+    "sector": "生活必需品"
+  },
+  {
+    "region": "US",
+    "symbol": "XOM",
+    "name": "Exxon Mobil Corp",
+    "index_tag": "SP500",
+    "sector": "エネルギー"
+  },
+  {
+    "region": "US",
+    "symbol": "ZBRA",
+    "name": "Zebra Technologies",
+    "index_tag": "NASDAQ100",
+    "sector": "テクノロジー"
+  },
+  {
+    "region": "US",
+    "symbol": "ZS",
+    "name": "Zscaler Inc.",
+    "index_tag": "NASDAQ100",
+    "sector": "テクノロジー"
+  },
+  {
+    "region": "US",
+    "symbol": "ZTS",
+    "name": "Zoetis Inc.",
+    "index_tag": "SP500",
+    "sector": "ヘルスケア"
+  }
+]

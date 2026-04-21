@@ -2,6 +2,16 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Lounge / 共通 - カードホバー */
+@layer utilities {
+  .card-hover {
+    @apply transition-all duration-200;
+  }
+  .card-hover:hover {
+    @apply shadow-md;
+  }
+}
+
 /* 티커 애니메이션 - 왼쪽으로 흐르는 마퀴 */
 @keyframes ticker-scroll {
   0% { transform: translate3d(0, 0, 0); }
@@ -9,8 +19,53 @@
 }
 
 .animate-ticker {
-  animation: ticker-scroll 25s linear infinite;
+  animation: ticker-scroll 48s linear infinite;
   will-change: transform;
+}
+
+.animate-ticker-market {
+  animation: ticker-scroll 110s linear infinite;
+  will-change: transform;
+}
+
+.animate-ticker-stock {
+  animation: ticker-scroll 21s linear infinite;
+  will-change: transform;
+}
+
+/* 市場主要ニュース：スライド切替時のフェード */
+@keyframes market-major-slide-fade {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-market-major-slide {
+  animation: market-major-slide-fade 0.55s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-market-major-slide {
+    animation: none;
+  }
+}
+
+/* ナビ：サイト新着（インサイト／ニュース）ベルのリングフラッシュ */
+@keyframes mm-bell-site-ring {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.55);
+  }
+  50% {
+    box-shadow: 0 0 0 10px rgba(239, 68, 68, 0);
+  }
+}
+.mm-bell-site-pulse {
+  animation: mm-bell-site-ring 2.2s ease-out infinite;
 }
 
 @layer utilities {
@@ -21,4 +76,117 @@
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
   }
+}
+
+/* Sanitized rich-text bodies (insights admin → DOMPurify → public) */
+.insight-body-html {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+/* 記事側の Tailwind text-* より優先（管理画面で付けた 小/大・書体） */
+.insight-editorial .insight-body-html .insight-fs-sm {
+  font-size: 0.875rem !important;
+  line-height: 1.75 !important;
+}
+.insight-editorial .insight-body-html .insight-fs-lg {
+  font-size: 1.125rem !important;
+  line-height: 1.85 !important;
+}
+.insight-body-html .insight-fs-sm {
+  font-size: 0.875rem;
+  line-height: 1.75;
+}
+.insight-body-html .insight-fs-lg {
+  font-size: 1.125rem;
+  line-height: 1.85;
+}
+.insight-body-html .insight-ff-serif,
+.insight-editorial .insight-body-html .insight-ff-serif {
+  font-family: ui-serif, "Hiragino Mincho ProN", "Yu Mincho", serif !important;
+}
+.insight-body-html .insight-ff-mono,
+.insight-editorial .insight-body-html .insight-ff-mono {
+  font-family: "JetBrains Mono", ui-monospace, monospace !important;
+}
+.insight-body-html .insight-ff-sans,
+.insight-editorial .insight-body-html .insight-ff-sans {
+  font-family: inherit !important;
+}
+.insight-body-html img,
+.insight-editorial .insight-body-html img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.75rem;
+  margin: 0.75rem 0;
+}
+.insight-body-html hr.mm-insight-split {
+  border: none;
+  border-top: 2px dashed rgb(245 158 11);
+  margin: 14px 0;
+}
+.dark .insight-body-html hr.mm-insight-split {
+  border-top-color: rgb(217 119 6);
+}
+.insight-body-html ol {
+  list-style: decimal;
+  padding-left: 1.5rem;
+  margin: 0.65rem 0;
+}
+.insight-body-html ul {
+  list-style: disc;
+  padding-left: 1.5rem;
+  margin: 0.65rem 0;
+}
+.insight-body-html li {
+  margin: 0.35rem 0;
+}
+.insight-body-html p {
+  margin: 0 0 0.65rem 0;
+}
+.insight-body-html p:last-child {
+  margin-bottom: 0;
+}
+.insight-body-html a {
+  color: rgb(180 83 9);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.dark .insight-body-html a {
+  color: rgb(251 191 36);
+}
+.insight-body-html h2,
+.insight-body-html h3,
+.insight-body-html h4 {
+  font-weight: 700;
+  margin: 1rem 0 0.5rem;
+  line-height: 1.35;
+}
+
+/* Mobile-first touch slider for averaging-down calculator */
+.mm-touch-slider {
+  width: 100%;
+  height: 10px;
+  border-radius: 9999px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: linear-gradient(90deg, rgba(251, 146, 60, 0.35), rgba(251, 146, 60, 0.18));
+}
+.mm-touch-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 9999px;
+  background: #f97316;
+  border: 3px solid #ffffff;
+  box-shadow: 0 4px 12px rgba(249, 115, 22, 0.35);
+}
+.mm-touch-slider::-moz-range-thumb {
+  width: 24px;
+  height: 24px;
+  border-radius: 9999px;
+  background: #f97316;
+  border: 3px solid #ffffff;
+  box-shadow: 0 4px 12px rgba(249, 115, 22, 0.35);
 }

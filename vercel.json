@@ -1,23 +1,103 @@
 {
   "functions": {
-    "api/**/*.js": {
+    "api/cron/*.js": {
       "maxDuration": 300
+    },
+    "api/ssr/*.js": {
+      "maxDuration": 30
+    },
+    "api/*.js": {
+      "maxDuration": 120
     }
   },
   "crons": [
     {
-      "path": "/api/cron/marketstack-daily",
-      "schedule": "0 6 * * 1-5"
+      "path": "/api/cron/marketstack-daily?us_only=1",
+      "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/cron/marketstack-daily?jp_only=1&us_only=0",
+      "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/cron/marketstack-commodities",
+      "schedule": "0 22 * * *"
+    },
+    {
+      "path": "/api/cron/market-news",
+      "schedule": "5 22 * * *"
     },
     {
       "path": "/api/cron/ai-news-summarize",
       "schedule": "0 */6 * * *"
+    },
+    {
+      "path": "/api/cron/ai-news",
+      "schedule": "15 22 * * *"
+    },
+    {
+      "path": "/api/cron/company-news-brief",
+      "schedule": "45 22 * * *"
+    },
+    {
+      "path": "/api/cron/stock-ai-analysis",
+      "schedule": "30 8 * * *"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/(login|signup|forgot-password|reset-password|complete-profile)",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
+      "source": "/mypage(.*)",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
+      "source": "/admin(.*)",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
     }
   ],
   "routes": [
     {
+      "src": "^/sitemap\\.xml$",
+      "dest": "/api/sitemap"
+    },
+    {
+      "src": "^/funds/compare/?$",
+      "status": 308,
+      "headers": {
+        "Location": "/etf-compare"
+      }
+    },
+    {
       "src": "/api/(.*)",
       "dest": "/api/$1"
+    },
+    {
+      "src": "^/admin(?:/(.*))?$",
+      "has": [
+        {
+          "type": "cookie",
+          "key": "mm_admin_basic",
+          "value": "1"
+        }
+      ],
+      "dest": "/index.html"
+    },
+    {
+      "src": "^/admin/?$",
+      "dest": "/api/admin/basic-auth?next=/admin"
+    },
+    {
+      "src": "^/admin/(.*)$",
+      "dest": "/api/admin/basic-auth?next=/admin/$1"
     },
     {
       "handle": "filesystem"

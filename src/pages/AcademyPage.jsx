@@ -394,7 +394,7 @@ export default function AcademyPage() {
               特別講義動画が見放題になります。
             </p>
             <button
-              onClick={() => navigate('/prime')}
+              onClick={() => navigate('/mypage')}
               className="text-xs font-bold text-orange-600 dark:text-orange-400 hover:text-orange-700 dark:hover:text-orange-300 underline"
             >
               詳細を見る

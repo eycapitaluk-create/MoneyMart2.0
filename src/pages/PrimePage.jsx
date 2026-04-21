@@ -105,7 +105,7 @@ export default function PrimePage() {
           </h2>
           <div className="space-y-6">
             {[
-              { title: 'AI ポートフォリオ診断', desc: 'あなたの資産状況を24時間365日モニタリング。最適なリバランスを提案します。' },
+              { title: 'AI ポートフォリオ診断', desc: 'あなたの資産状況を24時間365日モニタリング。リバランス判断に必要な分析情報を可視化します。' },
               { title: '米国株 リアルタイム株価', desc: '15分の遅延なし。機関投資家と同じタイミングで市場の動きを把握できます。' },
               { title: '会員限定レポート', desc: '毎朝配信されるプロのアナリストによる市場分析レポートが読み放題。' },
             ].map((item, i) => (
@@ -136,6 +136,11 @@ export default function PrimePage() {
                 <span className="text-6xl font-black text-slate-900 dark:text-white tracking-tighter">
                   ¥{isYearly ? '9,800' : '980'}
                 </span>
+                {!isYearly && (
+                  <span className="text-2xl font-bold text-slate-400 dark:text-slate-500 line-through ml-2">
+                    ¥1,980
+                  </span>
+                )}
                 <span className="text-slate-400 dark:text-slate-300 font-bold text-lg">
                   / {isYearly ? '年' : '月'}
                 </span>
@@ -234,7 +239,7 @@ export default function PrimePage() {
                 { name: 'AI ポートフォリオ診断', free: false, prime: true },
                 { name: 'ウォッチリスト登録数', free: '10件', prime: '無制限' },
                 { name: '広告表示', free: 'あり', prime: 'なし' },
-                { name: 'カスタマーサポート', free: 'メール', prime: '優先チャット' },
+                { name: 'カスタマーサポート', free: 'メール', prime: 'メール' },
               ].map((row, i) => (
                 <tr key={i} className="hover:bg-slate-50/50 dark:hover:bg-slate-800 transition">
                   <td className="p-5 text-sm font-bold text-slate-700 dark:text-slate-200">{row.name}</td>

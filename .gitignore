@@ -26,3 +26,10 @@ dist-ssr
 *.sw?
 .vercel
 .env*.local
+.env.vercel
+.cursor/
+
+# Local scratch / agent temp
+.tmp_*
+.tmp_pydeps/
+*.bak

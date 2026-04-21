@@ -1,0 +1,1992 @@
+{
+  "summary": {
+    "generatedAt": "2026-03-07T06:28:34.837Z",
+    "cutoffDate": "2025-03-07",
+    "listedCount": 283,
+    "withEnoughHistoryCount": 283,
+    "missingCount": 0
+  },
+  "rows": [
+    {
+      "symbol": "2087.T",
+      "isin": "JP3050050008",
+      "jpName": "ＮＺＡＭ 上場投信 ＮＡＳＤＡＱ１００Ｈ",
+      "rows1y": 102,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2246.T",
+      "isin": "JP3049890001",
+      "jpName": "ＮＥＸＴ ＦＵＮＤＳ 仏国国債ＨありＥＴＦ",
+      "rows1y": 128,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "181A.T",
+      "isin": "JP3050380009",
+      "jpName": "ＭＡＸＩＳ米国国債１-３年上場投信(ＮＨ)",
+      "rows1y": 139,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2086.T",
+      "isin": "JP3050040009",
+      "jpName": "ＮＺＡＭ 上場投信 Ｓ＆Ｐ５００(Ｈあり)",
+      "rows1y": 144,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2245.T",
+      "isin": "JP3049880002",
+      "jpName": "ＮＥＸＴ ＦＵＮＤＳ ドイツ国債Ｈ有ＥＴＦ",
+      "rows1y": 166,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2526.T",
+      "isin": "JP3048850006",
+      "jpName": "ＮＺＡＭ　上場投信　ＪＰＸ日経４００",
+      "rows1y": 166,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2642.T",
+      "isin": "JP3049340007",
+      "jpName": "ＳＭＴ ＥＴＦカーボン･エフィシェント日株",
+      "rows1y": 167,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1480.T",
+      "isin": "JP3048230001",
+      "jpName": "野村企業価値分配指数連動型上場投信",
+      "rows1y": 168,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1498.T",
+      "isin": "JP3048600005",
+      "jpName": "Ｏｎｅ　ＥＴＦ　ＥＳＧ",
+      "rows1y": 168,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2567.T",
+      "isin": "JP3049080009",
+      "jpName": "上場投信 Ｓ&Ｐ/ＪＰＸカーボン・Ｅ指数",
+      "rows1y": 168,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1474.T",
+      "isin": "JP3048100006",
+      "jpName": "Ｏｎｅ　ＥＴＦ　ＪＰＸ日経４００",
+      "rows1y": 169,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1654.T",
+      "isin": "JP3048520005",
+      "jpName": "ＦＴＳＥ ＪＰＸ ＢｌｏｓｓｏｍＪａｐａｎ",
+      "rows1y": 169,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2527.T",
+      "isin": "JP3048860005",
+      "jpName": "上場投信　東証ＲＥＩＴ　Ｃｏｒｅ指数",
+      "rows1y": 169,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2643.T",
+      "isin": "JP3049350006",
+      "jpName": "ＭＳＣＩジャパンカントリー指数(セレクト)",
+      "rows1y": 169,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2841.T",
+      "isin": "JP3049470002",
+      "jpName": "ｉＦｒｅｅＥＴＦ ＮＡＳＤＡＱ１００Ｈ",
+      "rows1y": 169,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1369.T",
+      "isin": "JP3047890003",
+      "jpName": "Ｏｎｅ　ＥＴＦ　日経２２５",
+      "rows1y": 170,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1484.T",
+      "isin": "JP3048270007",
+      "jpName": "Ｏｎｅ　ＥＴＦ　JPX/S&P設備･人材投資指数",
+      "rows1y": 170,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1485.T",
+      "isin": "JP3048280006",
+      "jpName": "ＭＡＸＩＳ ＪＰＮ 設備人材２００上場投信",
+      "rows1y": 170,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1625.T",
+      "isin": "JP3046640003",
+      "jpName": "ＮＥＸＴ ＦＵＮＤＳ 電機・精密",
+      "rows1y": 170,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1653.T",
+      "isin": "JP3048510006",
+      "jpName": "ｉＦｒｅｅＥＴＦ ＭＳＣＩジャパンＥＳＧ",
+      "rows1y": 170,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2560.T",
+      "isin": "JP3049010006",
+      "jpName": "ＭＡＸＩＳカーボン･エフィシェント日本株",
+      "rows1y": 170,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2647.T",
+      "isin": "JP3049390002",
+      "jpName": "ＮＥＸＴ ＦＵＮＤＳ 米国国債ＨなしＥＴＦ",
+      "rows1y": 170,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1328.T",
+      "isin": "JP3046490003",
+      "jpName": "ＮＥＸＴ ＦＵＮＤＳ 金価格連動型上場投信",
+      "rows1y": 171,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1479.T",
+      "isin": "JP3048220002",
+      "jpName": "ｉＦｒｅｅＥＴＦ ＭＳＣＩ日本株人材設備",
+      "rows1y": 171,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1483.T",
+      "isin": "JP3048260008",
+      "jpName": "ｉＳ ＪＰＸ／Ｓ＆Ｐ 設備･人材投資 ＥＴＦ",
+      "rows1y": 171,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1595.T",
+      "isin": "JP3047700004",
+      "jpName": "ＮＺＡＭ 上場投信 東証ＲＥＩＴ指数",
+      "rows1y": 171,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1617.T",
+      "isin": "JP3046560003",
+      "jpName": "ＮＥＸＴ ＦＵＮＤＳ 食品",
+      "rows1y": 171,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1627.T",
+      "isin": "JP3046660001",
+      "jpName": "ＮＥＸＴ ＦＵＮＤＳ 電力・ガス",
+      "rows1y": 171,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1652.T",
+      "isin": "JP3048500007",
+      "jpName": "ｉＦｒｅｅＥＴＦ ＭＳＣＩ日本株女性活躍",
+      "rows1y": 171,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2524.T",
+      "isin": "JP3048830008",
+      "jpName": "ＮＺＡＭ　上場投信　ＴＯＰＩＸ",
+      "rows1y": 171,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2559.T",
+      "isin": "JP3048990000",
+      "jpName": "ＭＡＸＩＳ全世界株式(オール･カントリー)",
+      "rows1y": 171,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1397.T",
+      "isin": "JP3047920008",
+      "jpName": "ＳＭＤＡＭ 日経２２５上場投信",
+      "rows1y": 172,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1585.T",
+      "isin": "JP3047620004",
+      "jpName": "ｉＦｒｅｅＥＴＦ ＴＯＰＩＸ Ｅｘ－Ｆｉｎ",
+      "rows1y": 172,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1618.T",
+      "isin": "JP3046570002",
+      "jpName": "ＮＥＸＴ ＦＵＮＤＳ エネルギー資源",
+      "rows1y": 172,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1660.T",
+      "isin": "JP3048580009",
+      "jpName": "ＭＡＸＩＳ高利回りＪリート上場投信",
+      "rows1y": 172,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1678.T",
+      "isin": "JP3047100007",
+      "jpName": "インド株式指数連動型上場投信",
+      "rows1y": 172,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2523.T",
+      "isin": "JP3048800001",
+      "jpName": "ＭＡＸＩＳトピックス（除く金融）上場投信",
+      "rows1y": 172,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2530.T",
+      "isin": "JP3048900009",
+      "jpName": "ＭＡＸＩＳ上海１８０Ａ株上場投信",
+      "rows1y": 172,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2630.T",
+      "isin": "JP3049180007",
+      "jpName": "ＭＡＸＩＳ米国株式(Ｓ＆Ｐ５００)上場(Ｈ)",
+      "rows1y": 172,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2631.T",
+      "isin": "JP3049190006",
+      "jpName": "ＭＡＸＩＳナスダック１００上場投信",
+      "rows1y": 172,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2839.T",
+      "isin": "JP3049440005",
+      "jpName": "ＭＡＸＩＳ米国債７-１０年上場投信(Ｈ)",
+      "rows1y": 172,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2843.T",
+      "isin": "JP3049490000",
+      "jpName": "上場インデックスＦ豪州国債（為替Ｈあり）",
+      "rows1y": 172,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2853.T",
+      "isin": "JP3049600004",
+      "jpName": "ｉＳ気候リスク調整世界国債ＥＴＦ(除日Ｈ)",
+      "rows1y": 172,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1309.T",
+      "isin": "JP3046510008",
+      "jpName": "中国株上証５０連動型上場投信",
+      "rows1y": 173,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1348.T",
+      "isin": "JP3047060003",
+      "jpName": "ＭＡＸＩＳ トピックス上場投信",
+      "rows1y": 173,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1541.T",
+      "isin": "JP3047200005",
+      "jpName": "上場インデックスファンド白金（プラチナ）先物",
+      "rows1y": 173,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1546.T",
+      "isin": "JP3047250000",
+      "jpName": "ダウ工業株３０種平均(Ｈ無)連動型上場投信",
+      "rows1y": 173,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1547.T",
+      "isin": "JP3047260009",
+      "jpName": "上場インデックスＦ米国株式(Ｓ＆Ｐ５００)",
+      "rows1y": 173,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1550.T",
+      "isin": "JP3047290006",
+      "jpName": "ＭＡＸＩＳ 海外株式(ＭＳＣＩ)上場投信",
+      "rows1y": 173,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1555.T",
+      "isin": "JP3047340009",
+      "jpName": "上場 豪州リート（S&P/ASX200 A-REIT）",
+      "rows1y": 173,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1572.T",
+      "isin": "JP3047520006",
+      "jpName": "中国Ｈ株ブル２倍上場投信",
+      "rows1y": 173,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1586.T",
+      "isin": "JP3047630003",
+      "jpName": "上場インデＴＯＰＩＸ Ｅｘ－Ｆｉｎａ",
+      "rows1y": 173,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1597.T",
+      "isin": "JP3047720002",
+      "jpName": "ＭＡＸＩＳ　Ｊリート上場投信",
+      "rows1y": 173,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1677.T",
+      "isin": "JP3047090000",
+      "jpName": "上場インデックスＦ海外債券(ＷＧＢＩ)毎月",
+      "rows1y": 173,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1679.T",
+      "isin": "JP3047110006",
+      "jpName": "ＮＹダウ･ジョーンズ･インデックス上場投信",
+      "rows1y": 173,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2241.T",
+      "isin": "JP3049840006",
+      "jpName": "ＭＡＸＩＳ ＮＹダウ上場投信",
+      "rows1y": 173,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2242.T",
+      "isin": "JP3049850005",
+      "jpName": "ＭＡＸＩＳ ＮＹダウ上場投信(ヘッジあり)",
+      "rows1y": 173,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2511.T",
+      "isin": "JP3048620003",
+      "jpName": "外債FTSE世界国債インデ(除く日本Ｈ無)",
+      "rows1y": 173,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2516.T",
+      "isin": "JP3048700003",
+      "jpName": "東証グロース２５０ＥＴＦ",
+      "rows1y": 173,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2556.T",
+      "isin": "JP3048950004",
+      "jpName": "Ｏｎｅ　ＥＴＦ　東証ＲＥＩＴ指数",
+      "rows1y": 173,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2558.T",
+      "isin": "JP3048980001",
+      "jpName": "ＭＡＸＩＳ米国株式(Ｓ＆Ｐ５００)上場投信",
+      "rows1y": 173,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2621.T",
+      "isin": "JP3049130002",
+      "jpName": "ｉＳ　米国債２０年超 ＥＴＦ(Ｈ)",
+      "rows1y": 173,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2623.T",
+      "isin": "JP3049150000",
+      "jpName": "ｉＳ　ユーロ建て投資適格社債 ＥＴＦ(Ｈ)",
+      "rows1y": 173,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2628.T",
+      "isin": "JP3049230000",
+      "jpName": "ｉＦＥＴＦ 中国科創板５０(ＳＴＡＲ５０)",
+      "rows1y": 173,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2649.T",
+      "isin": "JP3049450004",
+      "jpName": "ｉＳ 米政機関ジニーメイＭＢＳ ＥＴＦ(Ｈ)",
+      "rows1y": 173,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2838.T",
+      "isin": "JP3049430006",
+      "jpName": "ＭＡＸＩＳ米国債７-１０年上場投信(ＮＨ)",
+      "rows1y": 173,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1305.T",
+      "isin": "JP3027620008",
+      "jpName": "ｉＦｒｅｅＥＴＦ ＴＯＰＩＸ(年１回決算)",
+      "rows1y": 174,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1306.T",
+      "isin": "JP3027630007",
+      "jpName": "ＴＯＰＩＸ連動型上場投信",
+      "rows1y": 174,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1319.T",
+      "isin": "JP3013190008",
+      "jpName": "日経３００株価指数連動型上場投信",
+      "rows1y": 174,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1322.T",
+      "isin": "JP3046760009",
+      "jpName": "上場インデックス中国Ａ株Ｅ ＣＳＩ３００",
+      "rows1y": 174,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1329.T",
+      "isin": "JP3027710007",
+      "jpName": "ｉシェアーズ コア 日経２２５ ETF",
+      "rows1y": 174,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1346.T",
+      "isin": "JP3047040005",
+      "jpName": "ＭＡＸＩＳ 日経２２５上場投信",
+      "rows1y": 174,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1398.T",
+      "isin": "JP3047930007",
+      "jpName": "ＳＭＤＡＭ 東証ＲＥＩＴ指数上場投信",
+      "rows1y": 174,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1399.T",
+      "isin": "JP3048170009",
+      "jpName": "上場ＭＳＣＩ日本株高配当低ボラティリティ",
+      "rows1y": 174,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1481.T",
+      "isin": "JP3048240000",
+      "jpName": "上場インデックスファンド日本経済貢献株",
+      "rows1y": 174,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1482.T",
+      "isin": "JP3048250009",
+      "jpName": "ｉＳ・コア 米国債７-１０年ＥＴＦ(Ｈ有)",
+      "rows1y": 174,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1486.T",
+      "isin": "JP3048330009",
+      "jpName": "上場インデックスＦ米国債券(為替ヘッジ無)",
+      "rows1y": 174,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1489.T",
+      "isin": "JP3048390003",
+      "jpName": "日経平均高配当株５０指数連動型上場投信",
+      "rows1y": 174,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1493.T",
+      "isin": "JP3048430007",
+      "jpName": "Ｏｎｅ　ＥＴＦ　ＪＰＸ日経中小型",
+      "rows1y": 174,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1494.T",
+      "isin": "JP3048440006",
+      "jpName": "Ｏｎｅ　ＥＴＦ　高配当日本株",
+      "rows1y": 174,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1497.T",
+      "isin": "JP3048470003",
+      "jpName": "ｉＳ 米ドル建ハイイールド社債ＥＴＦ Ｈ有",
+      "rows1y": 174,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1499.T",
+      "isin": "JP3048670008",
+      "jpName": "ＭＡＸＩＳ日本株高配当７０Ｍニュートラル",
+      "rows1y": 174,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1545.T",
+      "isin": "JP3047240001",
+      "jpName": "ＮＡＳＤＡＱ－１００(Ｈ無)連動型上場投信",
+      "rows1y": 174,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1551.T",
+      "isin": "JP3047300003",
+      "jpName": "東証スタンダードＴＯＰ２０ＥＴＦ",
+      "rows1y": 174,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1592.T",
+      "isin": "JP3047680008",
+      "jpName": "上場ＪＰＸ日経インデックス４００",
+      "rows1y": 174,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1593.T",
+      "isin": "JP3047690007",
+      "jpName": "ＭＡＸＩＳ ＪＰＸ日経インデ４００上場",
+      "rows1y": 174,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1599.T",
+      "isin": "JP3047740000",
+      "jpName": "ｉＦｒｅｅＥＴＦ ＪＰＸ日経４００",
+      "rows1y": 174,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1622.T",
+      "isin": "JP3046610006",
+      "jpName": "ＮＥＸＴ ＦＵＮＤＳ 自動車・輸送機",
+      "rows1y": 174,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1623.T",
+      "isin": "JP3046620005",
+      "jpName": "ＮＥＸＴ ＦＵＮＤＳ 鉄鋼・非鉄",
+      "rows1y": 174,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1633.T",
+      "isin": "JP3046720003",
+      "jpName": "ＮＥＸＴ ＦＵＮＤＳ 不動産",
+      "rows1y": 174,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1659.T",
+      "isin": "JP3048570000",
+      "jpName": "ｉＳ　米国リート　ＥＴＦ",
+      "rows1y": 174,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1699.T",
+      "isin": "JP3047180009",
+      "jpName": "ＮＯＭＵＲＡ原油インデ連動型上場投信",
+      "rows1y": 174,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2517.T",
+      "isin": "JP3048710002",
+      "jpName": "ＭＡＸＩＳ Ｊリート・コア上場投信",
+      "rows1y": 174,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2518.T",
+      "isin": "JP3048720001",
+      "jpName": "ＭＳＣＩ日本株女性活躍指数（セレクト）",
+      "rows1y": 174,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2521.T",
+      "isin": "JP3048760007",
+      "jpName": "上場インデックスＦ米国株式Ｓ＆Ｐ５００Ｈ",
+      "rows1y": 174,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2528.T",
+      "isin": "JP3048870004",
+      "jpName": "ｉＦｒｅｅＥＴＦ 東証ＲＥＩＴ Ｃｏｒｅ",
+      "rows1y": 174,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2557.T",
+      "isin": "JP3048970002",
+      "jpName": "ＳＭＤＡＭ　トピックス上場投信",
+      "rows1y": 174,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2566.T",
+      "isin": "JP3049070000",
+      "jpName": "上場インデックスファンド日経ＥＳＧリート",
+      "rows1y": 174,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2568.T",
+      "isin": "JP3049090008",
+      "jpName": "上場インデＦ米株(ＮＡＳＤＡＱ１００)ＮＨ",
+      "rows1y": 174,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2569.T",
+      "isin": "JP3049100005",
+      "jpName": "上場インデＦ米株(ＮＡＳＤＡＱ１００)Ｈ",
+      "rows1y": 174,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2624.T",
+      "isin": "JP3049160009",
+      "jpName": "ｉＦｒｅｅＥＴＦ 日経２２５(年４回決算)",
+      "rows1y": 174,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2633.T",
+      "isin": "JP3049250008",
+      "jpName": "Ｓ＆Ｐ ５００ 指数(ＮＨ)連動型上場投信",
+      "rows1y": 174,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2860.T",
+      "isin": "JP3049670007",
+      "jpName": "ドイツ株式ＤＡＸ(Ｈ)連動型上場投信",
+      "rows1y": 174,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2867.T",
+      "isin": "JP3049740008",
+      "jpName": "グローバルＸ 自動運転＆ＥＶ ＥＴＦ",
+      "rows1y": 174,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1311.T",
+      "isin": "JP3040140000",
+      "jpName": "ＴＯＰＩＸＣｏｒｅ３０連動型上場投信",
+      "rows1y": 175,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1321.T",
+      "isin": "JP3027650005",
+      "jpName": "日経２２５連動型上場投信",
+      "rows1y": 175,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1330.T",
+      "isin": "JP3027660004",
+      "jpName": "上場インデックスファンド２２５",
+      "rows1y": 175,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1343.T",
+      "isin": "JP3047010008",
+      "jpName": "東証ＲＥＩＴ指数連動型上場投信",
+      "rows1y": 175,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1345.T",
+      "isin": "JP3047030006",
+      "jpName": "上場インデックスファンドＪリート隔月分配",
+      "rows1y": 175,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1473.T",
+      "isin": "JP3048090009",
+      "jpName": "Ｏｎｅ　ＥＴＦ　トピックス",
+      "rows1y": 175,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1476.T",
+      "isin": "JP3048130003",
+      "jpName": "ｉＳコア Ｊリート ＥＴＦ",
+      "rows1y": 175,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1477.T",
+      "isin": "JP3048140002",
+      "jpName": "ｉＳ ＭＳＣＩ 日本株最小分散 ＥＴＦ",
+      "rows1y": 175,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1478.T",
+      "isin": "JP3048150001",
+      "jpName": "ｉＳ ＭＳＣＩ ジャパン高配当利回 ＥＴＦ",
+      "rows1y": 175,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1487.T",
+      "isin": "JP3048340008",
+      "jpName": "上場インデックスＦ米国債券(為替ヘッジ有)",
+      "rows1y": 175,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1488.T",
+      "isin": "JP3048350007",
+      "jpName": "ｉＦｒｅｅＥＴＦ 東証ＲＥＩＴ指数",
+      "rows1y": 175,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1496.T",
+      "isin": "JP3048460004",
+      "jpName": "ｉＳ 米ドル建投資適格社債ＥＴＦ Ｈ有",
+      "rows1y": 175,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1554.T",
+      "isin": "JP3047330000",
+      "jpName": "上場 世界株式(ＭＳＣＩ ＡＣＷＩ)除く日本",
+      "rows1y": 175,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1559.T",
+      "isin": "JP3047360007",
+      "jpName": "タイ株式ＳＥＴ５０指数連動型上場投信",
+      "rows1y": 175,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1560.T",
+      "isin": "JP3047370006",
+      "jpName": "ＦＴＳＥブルサ・マレーシアＫＬＣＩ連動型",
+      "rows1y": 175,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1563.T",
+      "isin": "JP3047400001",
+      "jpName": "東証グロース・コアＥＴＦ",
+      "rows1y": 175,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1566.T",
+      "isin": "JP3047420009",
+      "jpName": "上場インデックスファンド新興国債券",
+      "rows1y": 175,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1577.T",
+      "isin": "JP3047560002",
+      "jpName": "野村日本株高配当７０連動型上場投信",
+      "rows1y": 175,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1578.T",
+      "isin": "JP3047570001",
+      "jpName": "上場インデックスファンド日経２２５(ミニ)",
+      "rows1y": 175,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1591.T",
+      "isin": "JP3047670009",
+      "jpName": "ＪＰＸ日経インデックス４００連動上場投信",
+      "rows1y": 175,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1632.T",
+      "isin": "JP3046710004",
+      "jpName": "ＮＥＸＴ ＦＵＮＤＳ 金融（除く銀行）",
+      "rows1y": 175,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1651.T",
+      "isin": "JP3048490001",
+      "jpName": "ｉＦｒｅｅＥＴＦ ＴＯＰＩＸ高配当４０",
+      "rows1y": 175,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1655.T",
+      "isin": "JP3048530004",
+      "jpName": "ｉＳ　Ｓ＆Ｐ　５００　米国株　ＥＴＦ",
+      "rows1y": 175,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1656.T",
+      "isin": "JP3048540003",
+      "jpName": "ｉＳ・コア　米国債７－１０年　ＥＴＦ",
+      "rows1y": 175,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1671.T",
+      "isin": "JP3047080001",
+      "jpName": "ＷＴＩ原油価格連動型上場投信",
+      "rows1y": 175,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1680.T",
+      "isin": "JP3047120005",
+      "jpName": "上場 海外先進国株式(MSCI-KOKUSAI)",
+      "rows1y": 175,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1681.T",
+      "isin": "JP3047130004",
+      "jpName": "上場 海外新興国株式(MSCIエマージング)",
+      "rows1y": 175,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1698.T",
+      "isin": "JP3047170000",
+      "jpName": "上場日本高配当(東証配当フォーカス１００)",
+      "rows1y": 175,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2236.T",
+      "isin": "JP3049790003",
+      "jpName": "グローバルＸ Ｓ＆Ｐ５００配当貴族ＥＴＦ",
+      "rows1y": 175,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2512.T",
+      "isin": "JP3048630002",
+      "jpName": "外債FTSE世界国債インデ(除く日本Ｈ有)",
+      "rows1y": 175,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2515.T",
+      "isin": "JP3048660009",
+      "jpName": "外ＲＥＩＴ・Ｓ＆Ｐ先進指数(除日本Ｈ無)",
+      "rows1y": 175,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2519.T",
+      "isin": "JP3048730000",
+      "jpName": "新興国債券J.P.モルガンインデプラス(H無)",
+      "rows1y": 175,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2520.T",
+      "isin": "JP3048740009",
+      "jpName": "新興株･ＭＳＣＩエマージング･インデ(Ｈ無)",
+      "rows1y": 175,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2529.T",
+      "isin": "JP3048890002",
+      "jpName": "野村株主還元７０連動型上場投信",
+      "rows1y": 175,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2554.T",
+      "isin": "JP3048930006",
+      "jpName": "ＮＥＸＴ ＦＵＮＤＳ米適格社債Ｈ有ＥＴＦ",
+      "rows1y": 175,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2555.T",
+      "isin": "JP3048940005",
+      "jpName": "東証ＲＥＩＴ　ＥＴＦ",
+      "rows1y": 175,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2562.T",
+      "isin": "JP3049030004",
+      "jpName": "上場インデックスＦ米株(ダウ平均)ヘッジ有",
+      "rows1y": 175,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2625.T",
+      "isin": "JP3049170008",
+      "jpName": "ｉＦｒｅｅＥＴＦ ＴＯＰＩＸ(年４回決算)",
+      "rows1y": 175,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2629.T",
+      "isin": "JP3049240009",
+      "jpName": "ｉＦＥＴＦ 中国ＧＢ･イノベ(ＧＢＡ１００)",
+      "rows1y": 175,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2632.T",
+      "isin": "JP3049200003",
+      "jpName": "ＭＡＸＩＳナスダック１００上場投信Ｈ有",
+      "rows1y": 175,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2634.T",
+      "isin": "JP3049260007",
+      "jpName": "Ｓ＆Ｐ ５００ 指数(Ｈ)連動型上場投信",
+      "rows1y": 175,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2641.T",
+      "isin": "JP3049330008",
+      "jpName": "グローバルリーダーズ-日本株式 ＥＴＦ",
+      "rows1y": 175,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2648.T",
+      "isin": "JP3049400009",
+      "jpName": "ＮＥＸＴ ＦＵＮＤＳ 米国国債ＨありＥＴＦ",
+      "rows1y": 175,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2840.T",
+      "isin": "JP3049460003",
+      "jpName": "ｉＦｒｅｅＥＴＦ ＮＡＳＤＡＱ１００ＮＨ",
+      "rows1y": 175,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2844.T",
+      "isin": "JP3049500006",
+      "jpName": "上場インデックスＦ豪州国債（為替Ｈなし）",
+      "rows1y": 175,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2846.T",
+      "isin": "JP3049530003",
+      "jpName": "ダウ工業株３０種平均(Ｈ有)連動上場",
+      "rows1y": 175,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2848.T",
+      "isin": "JP3049550001",
+      "jpName": "ＭＳＣＩ 気候変動対応-日本株式 ＥＴＦ",
+      "rows1y": 175,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2862.T",
+      "isin": "JP3049690005",
+      "jpName": "上場インデックスＦフランス国債(Ｈあり)",
+      "rows1y": 175,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2865.T",
+      "isin": "JP3049720000",
+      "jpName": "ＮＡＳＤＡＱ１００･カバード･コールＥＴＦ",
+      "rows1y": 175,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1308.T",
+      "isin": "JP3039100007",
+      "jpName": "上場インデックスファンドＴＯＰＩＸ",
+      "rows1y": 176,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1320.T",
+      "isin": "JP3027640006",
+      "jpName": "ｉＦｒｅｅＥＴＦ 日経２２５(年１回決算)",
+      "rows1y": 176,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1325.T",
+      "isin": "JP3046800003",
+      "jpName": "ブラジル株式指数・ボベスパ連動型上場投信",
+      "rows1y": 176,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1495.T",
+      "isin": "JP3048450005",
+      "jpName": "上場インデックスファンドアジアリート",
+      "rows1y": 176,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1543.T",
+      "isin": "JP3047220003",
+      "jpName": "日経パラジウム上場投資信託",
+      "rows1y": 176,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1615.T",
+      "isin": "JP3040170007",
+      "jpName": "東証銀行業株価指数連動型上場投信",
+      "rows1y": 176,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1620.T",
+      "isin": "JP3046590000",
+      "jpName": "ＮＥＸＴ ＦＵＮＤＳ 素材・化学",
+      "rows1y": 176,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1658.T",
+      "isin": "JP3048560001",
+      "jpName": "ｉＳ・コア　ＭＳＣＩ　新興国株　ＥＴＦ",
+      "rows1y": 176,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2235.T",
+      "isin": "JP3049780004",
+      "jpName": "上場インデックスＦ米株(ダウ平均)ヘッジ無",
+      "rows1y": 176,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2510.T",
+      "isin": "JP3048610004",
+      "jpName": "国内債券ＮＯＭＵＲＡ－ＢＰＩ総合連動上場",
+      "rows1y": 176,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2513.T",
+      "isin": "JP3048640001",
+      "jpName": "外株ＭＳＣＩ－ＫＯＫＵＳＡＩ指数(Ｈ無)",
+      "rows1y": 176,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2514.T",
+      "isin": "JP3048650000",
+      "jpName": "外株ＭＳＣＩ－ＫＯＫＵＳＡＩ指数(Ｈ有)",
+      "rows1y": 176,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2525.T",
+      "isin": "JP3048840007",
+      "jpName": "ＮＺＡＭ　上場投信　日経２２５",
+      "rows1y": 176,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2552.T",
+      "isin": "JP3048910008",
+      "jpName": "上場インデックスファンドＪリート隔月ミニ",
+      "rows1y": 176,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2561.T",
+      "isin": "JP3049020005",
+      "jpName": "ｉシェアーズ・コア 日本国債 ＥＴＦ",
+      "rows1y": 176,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2627.T",
+      "isin": "JP3049220001",
+      "jpName": "グローバルＸ ｅコマース-日本株式 ＥＴＦ",
+      "rows1y": 176,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2637.T",
+      "isin": "JP3049290004",
+      "jpName": "クリーンテック-日本株式 ＥＴＦ",
+      "rows1y": 176,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2845.T",
+      "isin": "JP3049520004",
+      "jpName": "ＮＡＳＤＡＱ－１００(Ｈ有)連動上場",
+      "rows1y": 176,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2851.T",
+      "isin": "JP3049580008",
+      "jpName": "ＭＳＣＩ　ジャパンＳＲＩ　ＥＴＦ",
+      "rows1y": 176,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2852.T",
+      "isin": "JP3049590007",
+      "jpName": "ｉシェアーズ グリーンＪリート ＥＴＦ",
+      "rows1y": 176,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2859.T",
+      "isin": "JP3049660008",
+      "jpName": "ユーロ･ストックス５０指数Ｈ連動上場投信",
+      "rows1y": 176,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1364.T",
+      "isin": "JP3047840008",
+      "jpName": "ｉシェアーズ ＪＰＸ日経４００ ＥＴＦ",
+      "rows1y": 177,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1475.T",
+      "isin": "JP3048120004",
+      "jpName": "ｉＳコア ＴＯＰＩＸ ＥＴＦ",
+      "rows1y": 177,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1596.T",
+      "isin": "JP3047710003",
+      "jpName": "上場ＴＯＰＩＸ Ｅｘ-Ｆｉｎａｎｃｉａｌｓ",
+      "rows1y": 177,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1619.T",
+      "isin": "JP3046580001",
+      "jpName": "ＮＥＸＴ ＦＵＮＤＳ 建設・資材",
+      "rows1y": 177,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1657.T",
+      "isin": "JP3048550002",
+      "jpName": "ｉＳコア ＭＳＣＩ 先進国株(除日本)ＥＴＦ",
+      "rows1y": 177,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2564.T",
+      "isin": "JP3049050002",
+      "jpName": "ＭＳＣＩスーパーディビィデンド日株ＥＴＦ",
+      "rows1y": 177,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2620.T",
+      "isin": "JP3049120003",
+      "jpName": "ｉＳ　米国債１-３年　ＥＴＦ",
+      "rows1y": 177,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2636.T",
+      "isin": "JP3049280005",
+      "jpName": "ＭＳＣＩガバナンス・クオリティ日株ＥＴＦ",
+      "rows1y": 177,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2638.T",
+      "isin": "JP3049300001",
+      "jpName": "ロボティクス＆ＡＩ-日本株式 ＥＴＦ",
+      "rows1y": 177,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2639.T",
+      "isin": "JP3049310000",
+      "jpName": "バイオ＆メドテック-日本株式 ＥＴＦ",
+      "rows1y": 177,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2640.T",
+      "isin": "JP3049320009",
+      "jpName": "ゲーム＆アニメ-日本株式 ＥＴＦ",
+      "rows1y": 177,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2645.T",
+      "isin": "JP3049370004",
+      "jpName": "レジャー＆エンタメ-日本株式 ＥＴＦ",
+      "rows1y": 177,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2646.T",
+      "isin": "JP3049380003",
+      "jpName": "メタルビジネス-日本株式 ＥＴＦ",
+      "rows1y": 177,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2837.T",
+      "isin": "JP3049420007",
+      "jpName": "中小型リーダーズ-日本株式 ＥＴＦ",
+      "rows1y": 177,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2854.T",
+      "isin": "JP3049610003",
+      "jpName": "テック・トップ２０－日本株式　ＥＴＦ",
+      "rows1y": 177,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2856.T",
+      "isin": "JP3049630001",
+      "jpName": "ｉシェアーズ　米国債３－７年　ＥＴＦ(Ｈ)",
+      "rows1y": 177,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2857.T",
+      "isin": "JP3049640000",
+      "jpName": "ｉＳ ドイツ国債 ＥＴＦ(為替ヘッジあり)",
+      "rows1y": 177,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2858.T",
+      "isin": "JP3049650009",
+      "jpName": "日経２２５カバードコールＥＴＦ(Ｐ再投資)",
+      "rows1y": 177,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2861.T",
+      "isin": "JP3049680006",
+      "jpName": "上場インデックスＦフランス国債(Ｈなし)",
+      "rows1y": 177,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2866.T",
+      "isin": "JP3049730009",
+      "jpName": "グローバルＸ 米国優先証券 ＥＴＦ",
+      "rows1y": 177,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2868.T",
+      "isin": "JP3049750007",
+      "jpName": "Ｓ＆Ｐ５００･カバード･コール　ＥＴＦ",
+      "rows1y": 177,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1540.T",
+      "isin": "JP3047190008",
+      "jpName": "日本物理金ETF",
+      "rows1y": 178,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1542.T",
+      "isin": "JP3047210004",
+      "jpName": "日本物理純銀ETF",
+      "rows1y": 178,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1621.T",
+      "isin": "JP3046600007",
+      "jpName": "ＮＥＸＴ ＦＵＮＤＳ 医薬品",
+      "rows1y": 178,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2522.T",
+      "isin": "JP3048790004",
+      "jpName": "ｉＳ　オートM＆ロボ　ＥＴＦ",
+      "rows1y": 178,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2563.T",
+      "isin": "JP3049040003",
+      "jpName": "ｉＳ　Ｓ＆Ｐ５００　米国株　ＥＴＦ(Ｈ有)",
+      "rows1y": 178,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2565.T",
+      "isin": "JP3049060001",
+      "jpName": "ロジスティクス･Ｊ-ＲＥＩＴ ＥＴＦ",
+      "rows1y": 178,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2622.T",
+      "isin": "JP3049140001",
+      "jpName": "ｉＳ　米ドル建て新興国債券 ＥＴＦ(Ｈ)",
+      "rows1y": 178,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2626.T",
+      "isin": "JP3049210002",
+      "jpName": "デジタル・イノベーション-日本株式ＥＴＦ",
+      "rows1y": 178,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2644.T",
+      "isin": "JP3049360005",
+      "jpName": "半導体関連-日本株式 ＥＴＦ",
+      "rows1y": 178,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2836.T",
+      "isin": "JP3049410008",
+      "jpName": "フィンテック-日本株式 ＥＴＦ",
+      "rows1y": 178,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2847.T",
+      "isin": "JP3049540002",
+      "jpName": "新成長インフラ-日本株式 ＥＴＦ",
+      "rows1y": 178,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2849.T",
+      "isin": "JP3049560000",
+      "jpName": "Ｍ 高配当 ＥＳＧ-日本株式 ＥＴＦ",
+      "rows1y": 178,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2855.T",
+      "isin": "JP3049620002",
+      "jpName": "グローバルＸ グリーン･Ｊ-ＲＥＩＴ ＥＴＦ",
+      "rows1y": 178,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1628.T",
+      "isin": "JP3046670000",
+      "jpName": "ＮＥＸＴ ＦＵＮＤＳ 運輸・物流",
+      "rows1y": 179,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1629.T",
+      "isin": "JP3046680009",
+      "jpName": "ＮＥＸＴ ＦＵＮＤＳ 商社・卸売",
+      "rows1y": 179,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1630.T",
+      "isin": "JP3046690008",
+      "jpName": "ＮＥＸＴ ＦＵＮＤＳ 小売",
+      "rows1y": 179,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1631.T",
+      "isin": "JP3046700005",
+      "jpName": "ＮＥＸＴ ＦＵＮＤＳ 銀行",
+      "rows1y": 179,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2864.T",
+      "isin": "JP3049710001",
+      "jpName": "ロジスティクス・ＲＥＩＴ ＥＴＦ",
+      "rows1y": 179,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1624.T",
+      "isin": "JP3046630004",
+      "jpName": "ＮＥＸＴ ＦＵＮＤＳ 機械",
+      "rows1y": 180,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "1626.T",
+      "isin": "JP3046650002",
+      "jpName": "ＮＥＸＴ ＦＵＮＤＳ 情報・サービスその他",
+      "rows1y": 180,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "183A.T",
+      "isin": "JP3050400005",
+      "jpName": "ＭＡＸＩＳ米国国債２０年超上場投信(Ｈ)",
+      "rows1y": 180,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2088.T",
+      "isin": "JP3050060007",
+      "jpName": "ＮＺＡＭ 上場投信 ＮＹダウ３０(Ｈあり)",
+      "rows1y": 180,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2091.T",
+      "isin": "JP3050090004",
+      "jpName": "上場投信 ドイツ国債７-１０年(Ｈ)",
+      "rows1y": 180,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2250.T",
+      "isin": "JP3049930005",
+      "jpName": "ｉＳ ＭＳＣＩ ジャパン気候変動アクション",
+      "rows1y": 180,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2089.T",
+      "isin": "JP3050070006",
+      "jpName": "ＮＺＡＭ 上場投信 ＤＡＸ(Ｈあり)",
+      "rows1y": 181,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2553.T",
+      "isin": "JP3048920007",
+      "jpName": "Ｏｎｅ　ＥＴＦ　南方中国Ａ株ＣＳＩ５００",
+      "rows1y": 181,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2090.T",
+      "isin": "JP3050080005",
+      "jpName": "上場投信 米国国債７-１０年(Ｈ)",
+      "rows1y": 182,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2254.T",
+      "isin": "JP3049970001",
+      "jpName": "チャイナＥＶ＆バッテリー ＥＴＦ",
+      "rows1y": 182,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2092.T",
+      "isin": "JP3050100001",
+      "jpName": "上場投信 フランス国債７-１０年(Ｈ)",
+      "rows1y": 183,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "295A.T",
+      "isin": "JP3050610009",
+      "jpName": "ＥＴＦ　ＦＴＳＥ･サウジアラビア･インデ",
+      "rows1y": 183,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "182A.T",
+      "isin": "JP3050390008",
+      "jpName": "ＭＡＸＩＳ米国国債２０年超上場投信(ＮＨ)",
+      "rows1y": 185,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2093.T",
+      "isin": "JP3050110000",
+      "jpName": "上場Ｔｒ 米国債０－２年ラダー(Ｈ無)",
+      "rows1y": 185,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2252.T",
+      "isin": "JP3049950003",
+      "jpName": "Ｍ 米国中小型 Ｍｏａｔ ＥＴＦ",
+      "rows1y": 185,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2018.T",
+      "isin": "JP3050290000",
+      "jpName": "ＵＳ ＲＥＩＴ･トップ２０ ＥＴＦ",
+      "rows1y": 186,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2019.T",
+      "isin": "JP3050300007",
+      "jpName": "グローバルＸ 米国優先証券 ＥＴＦ(隔月)",
+      "rows1y": 186,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "257A.T",
+      "isin": "JP3050550007",
+      "jpName": "ＥＴＦ日本株厳選投資アクティブ",
+      "rows1y": 186,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "133A.T",
+      "isin": "JP3050310006",
+      "jpName": "グローバルＸ 超短期米国債 ＥＴＦ",
+      "rows1y": 187,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2253.T",
+      "isin": "JP3049960002",
+      "jpName": "スーパーディビィデンド－ＵＳ　ＥＴＦ",
+      "rows1y": 187,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "236A.T",
+      "isin": "JP3050520000",
+      "jpName": "ｉシェアーズ　日本国債７－１０年 ＥＴＦ",
+      "rows1y": 187,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "235A.T",
+      "isin": "JP3050510001",
+      "jpName": "グローバルＸ 高配当３０-日本株式 ＥＴＦ",
+      "rows1y": 188,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "159A.T",
+      "isin": "JP3050330004",
+      "jpName": "ＪＰＸプライム１５０指数連動型上場投信",
+      "rows1y": 189,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "170A.T",
+      "isin": "JP3050340003",
+      "jpName": "ＳＭＴ　ＥＴＦ日本好配当株アクティブ",
+      "rows1y": 189,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "179A.T",
+      "isin": "JP3050360001",
+      "jpName": "グローバルＸ 超長期米国債 ＥＴＦ(Ｈ有)",
+      "rows1y": 189,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "180A.T",
+      "isin": "JP3050370000",
+      "jpName": "グローバルＸ 超長期米国債 ＥＴＦ",
+      "rows1y": 189,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2082.T",
+      "isin": "JP3050000003",
+      "jpName": "投資家経営者一心同体ＥＴＦ",
+      "rows1y": 189,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "210A.T",
+      "isin": "JP3050440001",
+      "jpName": "ｉＦｒｅｅＥＴＦ日経高利回りＲＥＩＴ指数",
+      "rows1y": 189,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "233A.T",
+      "isin": "JP3050490006",
+      "jpName": "ｉＦｒｅｅＥＴＦ インドＮｉｆｔｙ５０",
+      "rows1y": 189,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "234A.T",
+      "isin": "JP3050500002",
+      "jpName": "ＭＳＣＩ キャッシュフローキング-日本株式",
+      "rows1y": 189,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "237A.T",
+      "isin": "JP3050530009",
+      "jpName": "ｉＳ 米国債２５年超 Ｌデュレーション",
+      "rows1y": 189,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "238A.T",
+      "isin": "JP3050540008",
+      "jpName": "ｉＳ 米国債２５年超 ＬデュレーションＨ有",
+      "rows1y": 189,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "258A.T",
+      "isin": "JP3050560006",
+      "jpName": "ＥＴＦ国内リート厳選投資アクティブ",
+      "rows1y": 189,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "316A.T",
+      "isin": "JP3050650005",
+      "jpName": "ｉＦｒｅｅＥＴＦ ＦＡＮＧ+",
+      "rows1y": 189,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "188A.T",
+      "isin": "JP3050410004",
+      "jpName": "グローバルＸ インド・トップ１０+ ＥＴＦ",
+      "rows1y": 190,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "200A.T",
+      "isin": "JP3050420003",
+      "jpName": "日経半導体株指数連動型上場投信",
+      "rows1y": 190,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2011.T",
+      "isin": "JP3050220007",
+      "jpName": "Ａｃｔｉｖｅ　ＥＴＦ　日本高配当株式",
+      "rows1y": 190,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2014.T",
+      "isin": "JP3050250004",
+      "jpName": "ｉシェアーズ　米国連続増配株 ＥＴＦ",
+      "rows1y": 190,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2015.T",
+      "isin": "JP3050260003",
+      "jpName": "ｉＦｒｅｅＥＴＦ 米国国債７-１０年(Ｈ無)",
+      "rows1y": 190,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2016.T",
+      "isin": "JP3050270002",
+      "jpName": "ｉＦｒｅｅＥＴＦ 米国国債７-１０年(Ｈ有)",
+      "rows1y": 190,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2017.T",
+      "isin": "JP3050280001",
+      "jpName": "ｉＦｒｅｅＥＴＦ ＪＰＸプライム１５０",
+      "rows1y": 190,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "201A.T",
+      "isin": "JP3050430002",
+      "jpName": "ｉシェアーズ Ｎｉｆｔｙ５０ 印株 ＥＴＦ",
+      "rows1y": 190,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2080.T",
+      "isin": "JP3049980000",
+      "jpName": "ＰＢＲ１倍割れ解消推進ＥＴＦ",
+      "rows1y": 190,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2081.T",
+      "isin": "JP3049990009",
+      "jpName": "政策保有解消推進ＥＴＦ",
+      "rows1y": 190,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2083.T",
+      "isin": "JP3050010002",
+      "jpName": "日本成長株アクティブ上場投信",
+      "rows1y": 190,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2084.T",
+      "isin": "JP3050020001",
+      "jpName": "日本高配当株アクティブ上場投信",
+      "rows1y": 190,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2085.T",
+      "isin": "JP3050030000",
+      "jpName": "ＭＡＸＩＳ高配当日本株アクティブ上場投信",
+      "rows1y": 190,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2094.T",
+      "isin": "JP3050120009",
+      "jpName": "東証ＲＥＩＴインバースＥＴＦ",
+      "rows1y": 190,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2095.T",
+      "isin": "JP3050130008",
+      "jpName": "Ｓ＆Ｐ５００配当貴族 ＥＴＦ(Ｈあり)",
+      "rows1y": 190,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2097.T",
+      "isin": "JP3050150006",
+      "jpName": "レジデンシャル･Ｊ－ＲＥＩＴ ＥＴＦ",
+      "rows1y": 190,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2098.T",
+      "isin": "JP3050160005",
+      "jpName": "ホテル＆リテール･Ｊ－ＲＥＩＴ ＥＴＦ",
+      "rows1y": 190,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "213A.T",
+      "isin": "JP3050450000",
+      "jpName": "上場インデックスファンド日経半導体株",
+      "rows1y": 190,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "221A.T",
+      "isin": "JP3050460009",
+      "jpName": "ＭＡＸＩＳ日経半導体株上場投信",
+      "rows1y": 190,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "223A.T",
+      "isin": "JP3050470008",
+      "jpName": "グローバルＸ ＡＩ＆ビッグデータ ＥＴＦ",
+      "rows1y": 190,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2243.T",
+      "isin": "JP3049860004",
+      "jpName": "グローバルＸ 半導体 ＥＴＦ",
+      "rows1y": 190,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2244.T",
+      "isin": "JP3049870003",
+      "jpName": "ＵＳ テック･トップ２０ ＥＴＦ",
+      "rows1y": 190,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "224A.T",
+      "isin": "JP3050480007",
+      "jpName": "グローバルＸ ウラニウムビジネス ＥＴＦ",
+      "rows1y": 190,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2256.T",
+      "isin": "JP3050180003",
+      "jpName": "ｉシェアーズ 米国総合債券 ＥＴＦ",
+      "rows1y": 190,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2257.T",
+      "isin": "JP3050190002",
+      "jpName": "ｉＳ　米ドル建投資適格社債 ＥＴＦ",
+      "rows1y": 190,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2259.T",
+      "isin": "JP3050210008",
+      "jpName": "ｉＳ　仏国債７―１０年 ＥＴＦ(Ｈ有)",
+      "rows1y": 190,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "283A.T",
+      "isin": "JP3050590003",
+      "jpName": "グローバルＸ ＵＳ テック･配当貴族 ＥＴＦ",
+      "rows1y": 190,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "315A.T",
+      "isin": "JP3050640006",
+      "jpName": "グローバルＸ 銀行 高配当-日本株式 ＥＴＦ",
+      "rows1y": 190,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "178A.T",
+      "isin": "JP3050350002",
+      "jpName": "グローバルＸ 革新的優良企業 ＥＴＦ",
+      "rows1y": 191,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2012.T",
+      "isin": "JP3050230006",
+      "jpName": "ｉシェアーズ　米国債０－３ヶ月　ＥＴＦ",
+      "rows1y": 191,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2013.T",
+      "isin": "JP3050240005",
+      "jpName": "ｉシェアーズ　米国高配当株 ＥＴＦ",
+      "rows1y": 191,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2096.T",
+      "isin": "JP3050140007",
+      "jpName": "オフィス･Ｊ－ＲＥＩＴ ＥＴＦ",
+      "rows1y": 191,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2247.T",
+      "isin": "JP3049900008",
+      "jpName": "ｉＦｒｅｅＥＴＦ Ｓ＆Ｐ５００（Ｈなし）",
+      "rows1y": 191,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2248.T",
+      "isin": "JP3049910007",
+      "jpName": "ｉＦｒｅｅＥＴＦ Ｓ＆Ｐ５００（Ｈあり）",
+      "rows1y": 191,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2258.T",
+      "isin": "JP3050200009",
+      "jpName": "ｉＳ　米ドル建ハイイールド社債 ＥＴＦ",
+      "rows1y": 191,
+      "has1yForMetrics": true
+    },
+    {
+      "symbol": "2255.T",
+      "isin": "JP3050170004",
+      "jpName": "ｉシェアーズ 米国債２０年超 ＥＴＦ",
+      "rows1y": 192,
+      "has1yForMetrics": true
+    }
+  ]
+}

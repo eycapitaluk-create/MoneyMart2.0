@@ -14,7 +14,7 @@ const DEFAULT_MARKETSTACK_SYMBOLS = [
   'NVDA','AAPL','MSFT','AMZN','GOOGL','META','TSLA','AVGO','GOOG','COST',
   'NFLX','TMUS','ADBE','AMD','PEP','LIN','CSCO','INTU','ISRG','AMGN',
   'QCOM','TXN','HON','AMAT','BKNG','ADP','SBUX','MDLZ','GILD','ADI',
-  'MU','REGN','VRTX','PANW','SNPS','CDNS','KLAC','ASML','PYPL','MELI',
+  'MU','REGN','VRTX','VRT','PANW','SNPS','CDNS','KLAC','ASML','PYPL','MELI',
   'MAR','LRCX','NXPI','CTAS','ORLY','FTNT','MNST','ADSK','WDAY','PDD',
   'AEP','MCHP','KDP','CPRT','CHTR','KHC','IDXX','EXC','ROST','PAYX',
   'PCAR','DXCM','MRVL','CSX','GEHC','TEAM','AZN','BKR','ON',
@@ -64,9 +64,17 @@ const DEFAULT_MARKETSTACK_SYMBOLS = [
   '4324.T','6762.T','3407.T','9532.T','1803.T','4005.T','5802.T','7202.T','9735.T','5713.T',
 ]
 
+// Data integrity quarantine list.
+// Some symbols may temporarily carry obviously broken values from the provider.
+// We skip ingesting them until source quality is restored.
+const MARKETSTACK_TEMP_BAD_SYMBOLS = new Set([
+  'BKNG',
+])
+
 // Always keep MarketPage heatmap/Fear&Greed symbols in tier1 so they are not dropped in budget mode.
+// EU/UK 제외 (EUNK.DE 등)
 const REQUIRED_HEATMAP_SYMBOLS = [
-  'ACWI', 'MCHI', '1329.T', '1475.T', 'EUNK.DE', 'AAXJ', 'EEM', 'IVV', 'IJH', 'IJR',
+  'ACWI', 'MCHI', '1329.T', '1475.T', 'AAXJ', 'EEM', 'IVV', 'IJH', 'IJR',
   'IYE', 'IYM', 'IYJ', 'IYC', 'IYK', 'IYH', 'IYF', 'IYW', 'IYZ', 'IDU', 'IYR',
   'TLT', '2621.T',
   // 원자재 (Commodities via ETF proxies, fallback when commodity_daily_prices empty)
@@ -80,14 +88,18 @@ const toDateOnly = (value) => {
   return d.toISOString().slice(0, 10)
 }
 
-// MarketStack returns XTKS/XLON 등 → FundPage/StockPage는 .T/.L 사용. 저장 시 정규화
+// MarketStack returns XTKS/XLON/XTSE 등 → FundPage/StockPage는 .T/.L 사용. 저장 시 정규화
 const normalizeSymbolForStorage = (symbol) => {
   if (!symbol || typeof symbol !== 'string') return symbol
   const s = symbol.trim()
   if (s.endsWith('.XTKS')) return s.slice(0, -5) + '.T'
   if (s.endsWith('.XLON')) return s.slice(0, -5) + '.L'
+  if (s.endsWith('.XTSE')) return s.slice(0, -5) // DAY.XTSE → DAY
   return s
 }
+
+// DAY: Toronto (XTSE) 데이터 사용. NYSE DAY는 잘못된 데이터 가능
+const XTSE_SYMBOLS = new Set(['DAY'])
 
 const parseSymbols = (raw) => {
   if (!raw) return []
@@ -101,13 +113,17 @@ const uniqueSymbols = (symbols) => [...new Set((symbols || []).filter(Boolean))]
 const MAX_PRICE = 10_000_000
 const MAX_VOLUME = 1_000_000_000_000
 
-const estimateChunkCount = (symbols) => Math.ceil(uniqueSymbols(symbols).length / 20)
+// Timeout mitigation: fewer API requests per run while staying below MarketStack max(100)
+const CHUNK_SIZE = 80
+const estimateChunkCount = (symbols) => Math.ceil(uniqueSymbols(symbols).length / CHUNK_SIZE)
 
 const parsePositiveInt = (raw, fallback) => {
   const n = Number(raw)
   if (!Number.isFinite(n) || n <= 0) return fallback
   return Math.floor(n)
 }
+
+const parseBoolLike = (raw) => ['1', 'true', 'yes'].includes(String(raw || '').toLowerCase())
 
 const monthStartIsoUtc = () => {
   const now = new Date()
@@ -148,6 +164,15 @@ const normalizeVolumeNumber = (value) => {
   return Math.round(n)
 }
 
+const pickReliableClose = (row = {}) => {
+  const close = normalizePriceNumber(row?.close)
+  const marketstackLast = normalizePriceNumber(row?.marketstack_last)
+  const last = normalizePriceNumber(row?.last)
+  const mid = normalizePriceNumber(row?.mid)
+  // Prefer canonical close first. Some symbols return inconsistent marketstack_last.
+  return close ?? marketstackLast ?? last ?? mid
+}
+
 const getJson = async (url, init) => {
   const res = await fetch(url, init)
   const json = await res.json()
@@ -160,23 +185,44 @@ const getJson = async (url, init) => {
   return json
 }
 
-const CONCURRENCY = 4 // MarketStack 5 req/sec 제한
-const fetchMarketstackRows = async (marketstackKey, symbols) => {
-  const chunks = chunk(symbols, 20)
+const CONCURRENCY = 4 // Keep under 5 req/sec while reducing total wall-clock time
+const fetchXtseChunk = async (marketstackKey, symbols) => {
+  const xtseOnly = symbols.filter((s) => XTSE_SYMBOLS.has((s || '').toUpperCase()))
+  if (xtseOnly.length === 0) return { rows: [], endpoint: null }
+  const encodedKey = encodeURIComponent(marketstackKey)
+  const encodedSymbols = encodeURIComponent(xtseOnly.join(','))
+  const authQuery = `access_key=${encodedKey}&`
+  const url = `https://api.marketstack.com/v2/eod/latest?${authQuery}symbols=${encodedSymbols}&exchange=XTSE`
+  const json = await getJson(url)
+  const rows = Array.isArray(json?.data) ? json.data : []
+  return { rows, endpoint: 'v2:latest:XTSE' }
+}
+const fetchMarketstackRows = async (marketstackKey, symbols, opts = {}) => {
+  const xtseSymbols = symbols.filter((s) => XTSE_SYMBOLS.has((s || '').toUpperCase()))
+  const restSymbols = symbols.filter((s) => !XTSE_SYMBOLS.has((s || '').toUpperCase()))
   const allRows = []
   const endpointStats = {}
 
-  for (let i = 0; i < chunks.length; i += CONCURRENCY) {
-    const batch = chunks.slice(i, i + CONCURRENCY)
-    const results = await Promise.all(batch.map((c) => fetchChunkRows(marketstackKey, c)))
-    for (const r of results) {
-      allRows.push(...r.rows)
-      endpointStats[r.endpoint] = (endpointStats[r.endpoint] || 0) + 1
-    }
-    if (i + CONCURRENCY < chunks.length) await new Promise((r) => setTimeout(r, 1000))
+  if (xtseSymbols.length > 0) {
+    const { rows: xtseRows, endpoint } = await fetchXtseChunk(marketstackKey, xtseSymbols)
+    if (endpoint) endpointStats[endpoint] = 1
+    allRows.push(...xtseRows)
   }
 
-  return { rows: allRows, endpointStats, chunks: chunks.length }
+  if (restSymbols.length > 0) {
+    const chunks = chunk(restSymbols, CHUNK_SIZE)
+    for (let i = 0; i < chunks.length; i += CONCURRENCY) {
+      const batch = chunks.slice(i, i + CONCURRENCY)
+      const results = await Promise.all(batch.map((c) => fetchChunkRows(marketstackKey, c, opts)))
+      for (const r of results) {
+        allRows.push(...r.rows)
+        endpointStats[r.endpoint] = (endpointStats[r.endpoint] || 0) + 1
+      }
+      if (i + CONCURRENCY < chunks.length) await new Promise((r) => setTimeout(r, 400))
+    }
+  }
+
+  return { rows: allRows, endpointStats, chunks: Math.ceil(restSymbols.length / CHUNK_SIZE) + (xtseSymbols.length > 0 ? 1 : 0) }
 }
 
 
@@ -190,6 +236,17 @@ const getLastUSTradingDate = () => {
   return utcDate.toISOString().slice(0, 10)
 }
 
+/** 東京市場の最終営業日 (Asia/Tokyo) */
+const getLastJPTradingDate = () => {
+  const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit' })
+  const [y, m, d] = fmt.format(new Date()).split('-').map(Number)
+  const jstDate = new Date(Date.UTC(y, m - 1, d))
+  const day = jstDate.getUTCDay()
+  if (day === 0) jstDate.setUTCDate(jstDate.getUTCDate() - 2)
+  else if (day === 6) jstDate.setUTCDate(jstDate.getUTCDate() - 1)
+  return jstDate.toISOString().slice(0, 10)
+}
+
 const isUSSymbol = (s) => {
   if (!s || typeof s !== 'string') return false
   const u = s.toUpperCase()
@@ -198,9 +255,22 @@ const isUSSymbol = (s) => {
   return true
 }
 
-const fetchChunkRows = async (marketstackKey, symbols) => {
+/** jp / jp_etf / us / all — 같은 scope 내에서만 8h 중복 스킵 (US·JP 크론이 서로 막히지 않게) */
+const jobMetaMatchesRunScope = (meta, scope) => {
+  if (!meta || typeof meta !== 'object') return false
+  if (meta.scope === scope) return true
+  const bm = String(meta.budgetMode || '')
+  if (scope === 'jp') return bm.includes('_jp_only') && !bm.includes('_jp_etf')
+  if (scope === 'jp_etf') return bm.includes('_jp_etf')
+  if (scope === 'us') return bm.includes('_us_only')
+  if (scope === 'all') return !bm.includes('_jp_only') && !bm.includes('_us_only')
+  return false
+}
+
+const fetchChunkRows = async (marketstackKey, symbols, opts = {}) => {
   const encodedKey = encodeURIComponent(marketstackKey)
   const encodedSymbols = encodeURIComponent(symbols.join(','))
+  const safeOpts = opts && typeof opts === 'object' ? opts : {}
 
   const tryFetch = async ({ version, authMode }) => {
     const useHeaderAuth = authMode === 'header'
@@ -211,7 +281,7 @@ const fetchChunkRows = async (marketstackKey, symbols) => {
     const allUS = symbols.every((s) => isUSSymbol(s))
     if (version === 'v2' && allUS) {
       try {
-        const tradeDate = getLastUSTradingDate()
+        const tradeDate = safeOpts.usTradeDateOverride || getLastUSTradingDate()
         const intradayUrl = `https://api.marketstack.com/v2/intraday/${tradeDate}?${authQuery}symbols=${encodedSymbols}&interval=15min&limit=100&sort=DESC`
         const intradayJson = await getJson(intradayUrl, init)
         const intradayRows = Array.isArray(intradayJson?.data) ? intradayJson.data : []
@@ -225,23 +295,40 @@ const fetchChunkRows = async (marketstackKey, symbols) => {
           })
           const normalized = deduped.map((r) => ({
             ...r,
-            close: r?.marketstack_last ?? r?.last ?? r?.close ?? r?.mid ?? r?.close,
+            close: pickReliableClose(r),
           }))
           return { rows: normalized, endpoint: `v2:intraday:${authMode}` }
         }
       } catch (_) { /* intraday fallback to EOD */ }
     }
 
-    // EOD: latest는 시장 마감 직후 당일 데이터를 즉시 안 줄 수 있음. 명시적 날짜 먼저 시도
-    const tradeDate = getLastUSTradingDate()
-    const dateUrl = `https://api.marketstack.com/${version}/eod/${tradeDate}?${authQuery}symbols=${encodedSymbols}`
-    try {
-      const dateJson = await getJson(dateUrl, init)
-      const dateRows = Array.isArray(dateJson?.data) ? dateJson.data : []
-      if (dateRows.length > 0) {
-        return { rows: dateRows, endpoint: `${version}:eod:${tradeDate}:${authMode}` }
-      }
-    } catch (_) { /* fallback to latest */ }
+    // EOD: US 청크는 eod/{US날짜}, JP 전용 청크는 eod/{JP날짜}&exchange=XTKS로 날짜 지정 조회
+    const usTradeDate = safeOpts.usTradeDateOverride || getLastUSTradingDate()
+    const jpTradeDate = safeOpts.jpTradeDateOverride || getLastJPTradingDate()
+    const hasNonUS = symbols.some((s) => !isUSSymbol(s))
+    const allJP = symbols.every((s) => s?.toUpperCase().endsWith('.T'))
+
+    if (!hasNonUS) {
+      const dateUrl = `https://api.marketstack.com/${version}/eod/${usTradeDate}?${authQuery}symbols=${encodedSymbols}`
+      try {
+        const dateJson = await getJson(dateUrl, init)
+        const dateRows = Array.isArray(dateJson?.data) ? dateJson.data : []
+        if (dateRows.length > 0) {
+          return { rows: dateRows, endpoint: `${version}:eod:${usTradeDate}:${authMode}` }
+        }
+      } catch (_) { /* fallback to latest */ }
+    }
+
+    if (allJP) {
+      const jpDateUrl = `https://api.marketstack.com/${version}/eod/${jpTradeDate}?${authQuery}symbols=${encodedSymbols}&exchange=XTKS`
+      try {
+        const jpDateJson = await getJson(jpDateUrl, init)
+        const jpDateRows = Array.isArray(jpDateJson?.data) ? jpDateJson.data : []
+        if (jpDateRows.length > 0) {
+          return { rows: jpDateRows, endpoint: `${version}:eod:${jpTradeDate}:XTKS:${authMode}` }
+        }
+      } catch (_) { /* fallback to latest */ }
+    }
 
     const latestUrl = `https://api.marketstack.com/${version}/eod/latest?${authQuery}symbols=${encodedSymbols}`
     const latestJson = await getJson(latestUrl, init)
@@ -261,11 +348,10 @@ const fetchChunkRows = async (marketstackKey, symbols) => {
     return { rows: [], endpoint: `${version}:none:${authMode}` }
   }
 
+  // API v1 は廃止方向のため v2 のみ（https://api.marketstack.com/v2/...）
   const attempts = [
     { version: 'v2', authMode: 'query' },
     { version: 'v2', authMode: 'header' },
-    { version: 'v1', authMode: 'query' },
-    { version: 'v1', authMode: 'header' },
   ]
   const errors = []
 
@@ -303,17 +389,26 @@ export default async function handler(req, res) {
   const configuredTier1Symbols = parseSymbols(process.env.MARKETSTACK_SYMBOLS_TIER1)
   const configuredTier2Symbols = parseSymbols(process.env.MARKETSTACK_SYMBOLS_TIER2)
   const configuredSymbols = parseSymbols(process.env.MARKETSTACK_SYMBOLS)
-  const onlyWeekdays = String(process.env.MARKETSTACK_WEEKDAYS_ONLY || 'true').toLowerCase() !== 'false'
+  // Default false: Vercel crons are daily: JP Fri close is ingested on Sat UTC runs.
+  const onlyWeekdays = String(process.env.MARKETSTACK_WEEKDAYS_ONLY || 'false').toLowerCase() !== 'false'
   const skipIfAlreadyRanToday = String(process.env.MARKETSTACK_SKIP_IF_TODAY_SUCCESS || 'true').toLowerCase() !== 'false'
   const requestUrl = new URL(req.url || '/api/cron/marketstack-daily', 'http://localhost')
-  const forceRun = ['1', 'true', 'yes'].includes(
-    String(requestUrl.searchParams.get('force') || '').toLowerCase()
-  )
+  const forceRun = parseBoolLike(requestUrl.searchParams.get('force'))
   const overrideSymbols = parseSymbols(requestUrl.searchParams.get('symbols') || '')
+  const tradeDateOverride = requestUrl.searchParams.get('trade_date') || ''
+  const jpEtfOnly = parseBoolLike(requestUrl.searchParams.get('jp_etf_only'))
+  const jpOnly = parseBoolLike(requestUrl.searchParams.get('jp_only')) || jpEtfOnly
+  const hasUsOnlyParam = requestUrl.searchParams.has('us_only')
+  const usOnly = hasUsOnlyParam
+    ? parseBoolLike(requestUrl.searchParams.get('us_only'))
+    : String(process.env.MARKETSTACK_US_ONLY || 'true').toLowerCase() !== 'false'
+  const runScope = jpEtfOnly ? 'jp_etf' : jpOnly ? 'jp' : usOnly ? 'us' : 'all'
   const monthlyBudgetRequests = parsePositiveInt(
     process.env.MARKETSTACK_MONTHLY_BUDGET_REQUESTS,
     10000
   )
+  // usage 절약: 심볼 수 상한. 0이면 제한 없음. 데이터 유입 확인 전엔 100~200 권장
+  const maxSymbolsPerRun = parsePositiveInt(process.env.MARKETSTACK_MAX_SYMBOLS, 0)
 
   if (!supabaseUrl || !serviceRoleKey || !marketstackKey) {
     return res.status(500).json({
@@ -331,31 +426,57 @@ export default async function handler(req, res) {
       return res.status(200).json({
         ok: true,
         skipped: true,
-        reason: 'Weekend skip (MARKETSTACK_WEEKDAYS_ONLY=true)',
+        reason: 'Weekend skip (MARKETSTACK_WEEKDAYS_ONLY is truthy)',
       })
     }
 
-    // 09:00 UTC와 21:00 UTC 둘 다 같은 UTC일이라 "오늘 성공" 스킵 시 21:00(미국 마감 직후) 실행이 막힘.
-    // 최소 8시간 간격으로만 스킵해 두 번 모두 실행되도록 함.
+    // If a previous run was terminated unexpectedly, mark stale "started" jobs as failed
+    // so they don't hide real failures in monitoring.
+    const STALE_STARTED_MINUTES = 90
+    const staleCutoff = new Date(Date.now() - STALE_STARTED_MINUTES * 60 * 1000).toISOString()
+    const { data: staleJobs, error: staleJobsErr } = await supabase
+      .from('ingestion_jobs')
+      .select('id')
+      .eq('source', 'marketstack')
+      .eq('dataset', 'stock_daily_prices')
+      .eq('status', 'started')
+      .lt('started_at', staleCutoff)
+      .limit(200)
+    if (staleJobsErr) throw staleJobsErr
+    const staleIds = (staleJobs || []).map((x) => x.id).filter(Boolean)
+    if (staleIds.length > 0) {
+      const { error: staleUpdateErr } = await supabase
+        .from('ingestion_jobs')
+        .update({
+          status: 'failed',
+          finished_at: new Date().toISOString(),
+          error_message: `Marked failed by watchdog: stale started job exceeded ${STALE_STARTED_MINUTES} minutes without completion.`,
+        })
+        .in('id', staleIds)
+      if (staleUpdateErr) throw staleUpdateErr
+    }
+
+    // 같은 scope(jp / us / all)에서만 최근 성공 시 스킵. US(00 UTC) 직후 JP(07 UTC=KST16)가 막히지 않게 함.
     const SKIP_IF_SUCCESS_WITHIN_HOURS = 8
     if (skipIfAlreadyRanToday && !forceRun) {
       const cutoff = new Date(Date.now() - SKIP_IF_SUCCESS_WITHIN_HOURS * 60 * 60 * 1000)
-      const { data: recentJob, error: recentJobErr } = await supabase
+      const { data: recentJobs, error: recentJobErr } = await supabase
         .from('ingestion_jobs')
-        .select('id,started_at')
+        .select('id,started_at,meta')
         .eq('source', 'marketstack')
         .eq('dataset', 'stock_daily_prices')
         .eq('status', 'success')
         .gte('started_at', cutoff.toISOString())
         .order('started_at', { ascending: false })
-        .limit(1)
+        .limit(25)
       if (recentJobErr) throw recentJobErr
-      if (Array.isArray(recentJob) && recentJob.length > 0) {
+      const recentHit = (recentJobs || []).find((j) => jobMetaMatchesRunScope(j.meta, runScope))
+      if (recentHit) {
         return res.status(200).json({
           ok: true,
           skipped: true,
-          reason: `Already succeeded within ${SKIP_IF_SUCCESS_WITHIN_HOURS}h`,
-          last_success_started_at: recentJob[0].started_at,
+          reason: `Already succeeded (${runScope}) within ${SKIP_IF_SUCCESS_WITHIN_HOURS}h`,
+          last_success_started_at: recentHit.started_at,
         })
       }
     }
@@ -369,11 +490,21 @@ export default async function handler(req, res) {
     const tier1Symbols = uniqueSymbols([
       ...(configuredTier1Symbols.length >= 500 ? configuredTier1Symbols : baseFallbackSymbols),
       ...REQUIRED_HEATMAP_SYMBOLS,
-      ...ETF_SYMBOLS_FROM_XLSX, // 펀드(ETF)는 tier1에 포함해 예산 모드에서도 수집
+      // ETF는 자동 크론 수집 대상에서 제외한다.
+      // (JP/US 개별주식만 수집)
     ])
     const tier2Symbols = uniqueSymbols(configuredTier2Symbols)
     const rawAllSymbols = overrideSymbols.length > 0 ? overrideSymbols : uniqueSymbols([...tier1Symbols, ...tier2Symbols])
-    const allSymbols = rawAllSymbols.filter((s) => !MARKETSTACK_BLOCKLIST_EXPORT.has(s))
+    const isEU = (s) => /\.(PA|AS|DE|MI|MC|SW|BR|OL|HE|IR|CO|SE|ST|VX)$/i.test(s || '')
+    const isUK = (s) => (s || '').endsWith('.L')
+    const etfUpper = new Set(
+      ETF_SYMBOLS_FROM_XLSX.map((s) => String(s || '').toUpperCase())
+    )
+    const allSymbols = rawAllSymbols
+      .filter((s) => !MARKETSTACK_BLOCKLIST_EXPORT.has(s))
+      .filter((s) => !etfUpper.has(String(s || '').toUpperCase()))
+      .filter((s) => !MARKETSTACK_TEMP_BAD_SYMBOLS.has(String(s || '').toUpperCase()))
+      .filter((s) => !isEU(s) && !isUK(s))
 
     const { data: monthJobs, error: monthJobsErr } = await supabase
       .from('ingestion_jobs')
@@ -393,17 +524,56 @@ export default async function handler(req, res) {
 
     const allSymbolsRequests = estimateChunkCount(allSymbols)
     const tier1Requests = estimateChunkCount(tier1Symbols)
+    const tier1Pool = tier1Symbols
+      .filter((s) => !MARKETSTACK_BLOCKLIST_EXPORT.has(s))
+      .filter((s) => !etfUpper.has(String(s || '').toUpperCase()))
+      .filter((s) => !isEU(s) && !isUK(s))
+    const etfUpperStatic = new Set(ETF_SYMBOLS_FROM_XLSX.map((s) => String(s).toUpperCase()))
+    const jpTier1List = tier1Pool.filter((s) => (s || '').toUpperCase().endsWith('.T'))
+    const jpEtfTier1List = jpTier1List.filter((s) => etfUpperStatic.has(String(s).toUpperCase()))
+    const usTier1List = tier1Pool.filter((s) => isUSSymbol(s))
+    const jpTier1Requests = estimateChunkCount(jpTier1List)
+    const jpEtfTier1Requests = estimateChunkCount(jpEtfTier1List)
+    const usTier1Requests = estimateChunkCount(usTier1List)
 
     let selectedSymbols = allSymbols
     let budgetMode = 'all_tiers'
     if (monthRemainingRequests < allSymbolsRequests) {
       if (monthRemainingRequests >= tier1Requests) {
-        selectedSymbols = tier1Symbols.filter((s) => !MARKETSTACK_BLOCKLIST_EXPORT.has(s))
+        selectedSymbols = tier1Pool
         budgetMode = 'tier1_only'
+      } else if (jpEtfOnly && monthRemainingRequests >= jpEtfTier1Requests) {
+        selectedSymbols = jpEtfTier1List
+        budgetMode = 'tier1_jp_etf_budget'
+      } else if (jpOnly && monthRemainingRequests >= jpTier1Requests) {
+        selectedSymbols = jpTier1List
+        budgetMode = 'tier1_jp_budget'
+      } else if (usOnly && monthRemainingRequests >= usTier1Requests) {
+        selectedSymbols = usTier1List
+        budgetMode = 'tier1_us_budget'
       } else {
         selectedSymbols = []
         budgetMode = 'budget_skip'
       }
+    }
+    // jp/us 필터는 MARKETSTACK_MAX_SYMBOLS 슬라이스보다 먼저 적용해야 함.
+    // (슬라이스가 앞에 오면 tier1 앞쪽의 미국 심볼만 남고 .T 필터 후 ETF가 전부 빠질 수 있음)
+    if (jpOnly) {
+      selectedSymbols = selectedSymbols.filter((s) => (s || '').toUpperCase().endsWith('.T'))
+      budgetMode = `${budgetMode}_jp_only`
+      if (jpEtfOnly) {
+        selectedSymbols = selectedSymbols.filter((s) => etfUpperStatic.has(String(s).toUpperCase()))
+        budgetMode = `${budgetMode}_jp_etf`
+      }
+    } else if (usOnly) {
+      selectedSymbols = selectedSymbols.filter((s) => isUSSymbol(s))
+      budgetMode = `${budgetMode}_us_only`
+    }
+    // MARKETSTACK_MAX_SYMBOLS: 통합(비지역) 실행에만 적용. jp_only / us_only 크론은 지역 심볼 전부 수집.
+    const regionDedicatedRun = jpOnly || usOnly
+    if (!regionDedicatedRun && maxSymbolsPerRun > 0 && selectedSymbols.length > maxSymbolsPerRun) {
+      selectedSymbols = selectedSymbols.slice(0, maxSymbolsPerRun)
+      budgetMode = budgetMode === 'all_tiers' ? 'all_tiers_capped' : `${budgetMode}_capped`
     }
 
     const { data: startedJob, error: startedErr } = await supabase
@@ -414,6 +584,7 @@ export default async function handler(req, res) {
           dataset: 'stock_daily_prices',
           status: 'started',
           meta: {
+            scope: runScope,
             symbols: selectedSymbols,
             budgetMode,
             monthlyBudgetRequests,
@@ -461,7 +632,16 @@ export default async function handler(req, res) {
       })
     }
 
-    const { rows, endpointStats, chunks } = await fetchMarketstackRows(marketstackKey, selectedSymbols)
+    const fetchOpts = {}
+    if (/^\d{4}-\d{2}-\d{2}$/.test(tradeDateOverride)) {
+      fetchOpts.usTradeDateOverride = tradeDateOverride
+      fetchOpts.jpTradeDateOverride = tradeDateOverride
+    }
+    const { rows, endpointStats, chunks } = await fetchMarketstackRows(
+      marketstackKey,
+      selectedSymbols,
+      fetchOpts
+    )
     if (rows.length === 0) {
       throw new Error(
         'No rows returned from marketstack. Check MARKETSTACK_SYMBOLS and your plan coverage.'
@@ -486,7 +666,10 @@ export default async function handler(req, res) {
         is_active: true,
       })
 
-      const close = normalizePriceNumber(r?.close)
+      // 종가는 시가/고가/저가로 보간하지 않음. API가 close 계열을 비우면 open으로 채워져
+      // 「시가=종가인데 고저는 큰 폭」 같은 모순 OHLC가 DB에 남는 경우가 있음.
+      const rawClose = pickReliableClose(r)
+      const close = normalizePriceNumber(rawClose)
       if (close == null) {
         droppedPriceRows += 1
         droppedPriceRowsByQuality[symbol] = (droppedPriceRowsByQuality[symbol] || 0) + 1
@@ -539,6 +722,7 @@ export default async function handler(req, res) {
           finished_at: new Date().toISOString(),
           rows_processed: priceRows.length,
           meta: {
+            scope: runScope,
             symbols: selectedSymbols,
             chunks,
             endpointStats,

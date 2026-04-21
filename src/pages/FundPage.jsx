@@ -22,14 +22,32 @@ import {
 
 import { supabase } from '../lib/supabase'
 import { trackAnalyticsEvent } from '../lib/analytics'
+import { recordUserActivityEvent } from '../lib/userActivityApi'
+import { normalizeFundDisplayName } from '../lib/fundDisplayUtils'
+import { normalizeNisaCategoryField } from '../lib/textEncodingUtils'
+import { findBaseCloseByCalendarOffset } from '../lib/calendarDateUtils'
+import {
+  buildSplitAdjustedCloses,
+  resolveSpotCloseAndSessionChange,
+  skipEodSplitHeuristicForSymbol,
+} from '../lib/fundAdjustedCloses'
+import { fetchStockDailyHistoryBySymbolMap } from '../lib/stockDailyHistory'
 import {
   loadFundOptimizerWatchsets,
   saveFundOptimizerWatchsets,
   normalizeFundOptimizerWatchset,
+  upsertFundOptimizerWatchsetToDb,
+  deleteFundOptimizerWatchsetFromDb,
+  loadFundOptimizerWatchsetsFromDb,
 } from '../lib/fundOptimizerWatchsets'
+import { isPaidPlanTier } from '../lib/membership'
+import { annualizeThreeMonthReturnPct } from '../lib/wealthSimEtfReturns'
 import { LEGAL_NOTICE_TEMPLATES } from '../constants/legalNoticeTemplates'
+import { MM_SIMULATION_PAST_PERFORMANCE_JA } from '../lib/moneymartSimulationDisclaimer'
 import AdBanner from '../components/AdBanner'
 import AdSidebar from '../components/AdSidebar'
+import MarketDataEodFreshnessNote from '../components/MarketDataEodFreshnessNote'
+import { signedReturnBarHex, signedReturnTextClassStrong } from '../lib/marketDirectionColors'
 const PortfolioOptimizer3D = lazy(() => import('../components/funds/PortfolioOptimizer3D'))
 const FundComparePage = lazy(() => import('./FundComparePage'))
 
@@ -61,6 +79,16 @@ import {
   AI_THEME_ISIN_SET,
   HIGH_DIVIDEND_ISIN_SET,
 } from '../data/etfThemeFlags'
+import {
+  looksLikeHighDividendFromText,
+  isTrueCommodityName,
+  isEquitySectorMetalName,
+  isEquityFinancialSectorName,
+  normalizeDbCountryToken,
+  stockSubCategoryIdFromDbCountryNorm,
+  isDbCountryReitTag,
+  isDbCountryCommodityTag,
+} from '../lib/fundSubcategoryHeuristics'
 
 const detectCategory = (code, name) => {
   const n = name ? name.toLowerCase() : ''
@@ -72,6 +100,12 @@ const detectCategory = (code, name) => {
   if (n.includes('reit') || n.includes('リート')) return 'REIT'
   if (n.includes('バランス')) return 'バランス型'
   return 'その他'
+}
+
+const mapDbCategoryToDisplay = (dbCategory) => {
+  const c = String(dbCategory || '').trim()
+  if (c === '債券') return '債券型'
+  return c || 'その他'
 }
 
 const detectEtfCategory = (symbol, name) => {
@@ -99,17 +133,6 @@ const inferExposureCountry = (symbol = '', fundName = '') => {
   return 'US'
 }
 
-const COUNTRY_LABELS = {
-  JP: '日本',
-  US: '米国',
-  GLOBAL: '全世界',
-  EU: '欧州',
-  UK: '英国',
-  CN: '中国',
-  IN: 'インド',
-  EM: '新興国',
-}
-
 const calculateRiskFromReturn = (returnRate, category) => {
   if (category === '債券型') return 1.6
   if (category === 'バランス型') return 2.4
@@ -133,22 +156,15 @@ const calculateRealizedVolatility = (closes = []) => {
   return Math.sqrt(variance) * Math.sqrt(252) * 100
 }
 
-// Keep list metrics aligned with detail page by normalizing split/reverse-split gaps.
-const buildSplitAdjustedCloses = (history = []) => {
-  const closes = history.map((r) => Number(r.close)).map((v) => (Number.isFinite(v) && v > 0 ? v : null))
-  if (closes.length <= 1) return closes.map((v) => (Number.isFinite(v) ? v : 0))
-  const factors = new Array(closes.length).fill(1)
-  const isLikelySplitRatio = (ratio) => Number.isFinite(ratio) && ratio >= 0.05 && ratio <= 20 && (ratio <= 0.58 || ratio >= 1.7)
-  for (let i = closes.length - 2; i >= 0; i -= 1) {
-    const cur = closes[i]
-    const next = closes[i + 1]
-    const ratio = (Number.isFinite(cur) && Number.isFinite(next) && cur > 0) ? (next / cur) : NaN
-    factors[i] = factors[i + 1] * (isLikelySplitRatio(ratio) ? ratio : 1)
-  }
-  return closes.map((value, idx) => (Number.isFinite(value) ? Number((value * factors[idx]).toFixed(4)) : 0))
-}
-
 const TARGET_ETF_SYMBOL_SET = new Set(ETF_SYMBOLS_FROM_XLSX)
+// MarketStack returns XTKS/XLON → 우리는 .T/.L 사용. v_stock_latest 매칭용
+const normalizeSymbolFromApi = (s) => {
+  if (!s || typeof s !== 'string') return s
+  const t = s.trim()
+  if (t.endsWith('.XTKS')) return t.slice(0, -5) + '.T'
+  if (t.endsWith('.XLON')) return t.slice(0, -5) + '.L'
+  return t
+}
 const TARGET_ETF_META_MAP = new Map(ETF_LIST_FROM_XLSX.map((item) => [item.symbol, item]))
 const TARGET_ETF_META_BY_ISIN_MAP = new Map(
   ETF_LIST_FROM_XLSX
@@ -186,21 +202,111 @@ const BOND_SUBCATEGORY_LABELS = {
 
 const normalizeClassifierText = (value = '') => String(value || '').normalize('NFKC').toUpperCase()
 
-const detectAssetClassAndSubCategory = (symbol, fundName, baseCategory, marketCountry, isin = '') => {
+const detectAssetClassAndSubCategory = (symbol, fundName, baseCategory, marketCountry, isin = '', dbMeta = null) => {
   const s = String(symbol || '').toUpperCase()
   const isinCode = String(isin || '').trim().toUpperCase()
   const n = normalizeClassifierText(fundName)
+  const rawNameForJa = String(fundName || '')
   const c = String(baseCategory || '')
-  const country = String(marketCountry || '').toUpperCase()
+  const dbCategory = String(dbMeta?.category || '').trim()
+  const dbSubcategory = String(dbMeta?.subcategory || '').trim()
+  const dbCountryNorm = normalizeDbCountryToken(dbMeta?.country)
+  const country = dbCountryNorm || normalizeDbCountryToken(marketCountry)
+
+  // Supabase DB 우선: category/country가 있으면 사용
+  if (dbCategory === '債券') {
+    return { assetClassId: 'bond', subCategoryId: dbCountryNorm === 'JP' ? 'bond_jp' : 'bond_global' }
+  }
+  const shouldOverrideFalseCommodity =
+    (isEquitySectorMetalName(n, rawNameForJa) || isEquityFinancialSectorName(n, rawNameForJa)) && !isTrueCommodityName(n)
+
+  // stock_symbols.country: 자산군·リージョンの正規化（category が 株式 だけなどのときの足がかり）
+  if (dbCountryNorm) {
+    const rawCountryJa = String(dbMeta?.country || '').trim().normalize('NFKC')
+    if (/高配当/.test(rawCountryJa)) {
+      return { assetClassId: 'stock', subCategoryId: 'stock_dividend' }
+    }
+    if (isDbCountryReitTag(dbCountryNorm)) {
+      return { assetClassId: 'reit', subCategoryId: null }
+    }
+    if (isDbCountryCommodityTag(dbCountryNorm)) {
+      if (shouldOverrideFalseCommodity) {
+        const div = looksLikeHighDividendFromText(rawNameForJa, dbSubcategory)
+        if (div) return { assetClassId: 'stock', subCategoryId: 'stock_dividend' }
+        if (country === 'GLOBAL') return { assetClassId: 'stock', subCategoryId: 'stock_global' }
+        if (country === 'EM' || country === 'CN' || country === 'IN') return { assetClassId: 'stock', subCategoryId: 'stock_em' }
+        if (country === 'EU' || country === 'UK') return { assetClassId: 'stock', subCategoryId: 'stock_eu' }
+        if (country === 'JP') return { assetClassId: 'stock', subCategoryId: 'stock_jp' }
+        return { assetClassId: 'stock', subCategoryId: 'stock_us' }
+      }
+      return { assetClassId: 'commodity', subCategoryId: null }
+    }
+    if (dbCountryNorm === 'FX' || dbCountryNorm === 'FOREX') {
+      return { assetClassId: 'stock', subCategoryId: 'stock_global' }
+    }
+  }
+
+  if (dbCategory === 'REIT' || /REIT|J-REIT/.test(dbCategory)) {
+    return { assetClassId: 'reit', subCategoryId: null }
+  }
+
+  if (dbCategory === 'コモディティ') {
+    if (shouldOverrideFalseCommodity) {
+      const div = looksLikeHighDividendFromText(rawNameForJa, dbSubcategory)
+      if (div) return { assetClassId: 'stock', subCategoryId: 'stock_dividend' }
+      if (country === 'GLOBAL') return { assetClassId: 'stock', subCategoryId: 'stock_global' }
+      if (country === 'EM' || country === 'CN' || country === 'IN') return { assetClassId: 'stock', subCategoryId: 'stock_em' }
+      if (country === 'EU' || country === 'UK') return { assetClassId: 'stock', subCategoryId: 'stock_eu' }
+      if (country === 'JP') return { assetClassId: 'stock', subCategoryId: 'stock_jp' }
+      return { assetClassId: 'stock', subCategoryId: 'stock_us' }
+    }
+    return { assetClassId: 'commodity', subCategoryId: null }
+  }
+  if (dbCategory === '国内株式') {
+    if (looksLikeHighDividendFromText(rawNameForJa, dbSubcategory)) return { assetClassId: 'stock', subCategoryId: 'stock_dividend' }
+    return { assetClassId: 'stock', subCategoryId: 'stock_jp' }
+  }
+  if (dbCategory === '米国株式') {
+    if (looksLikeHighDividendFromText(rawNameForJa, dbSubcategory)) return { assetClassId: 'stock', subCategoryId: 'stock_dividend' }
+    return { assetClassId: 'stock', subCategoryId: 'stock_us' }
+  }
+  if (dbCategory === '全世界株式') {
+    if (looksLikeHighDividendFromText(rawNameForJa, dbSubcategory)) return { assetClassId: 'stock', subCategoryId: 'stock_dividend' }
+    return { assetClassId: 'stock', subCategoryId: 'stock_global' }
+  }
+  if (dbCategory === '新興国株式') {
+    if (looksLikeHighDividendFromText(rawNameForJa, dbSubcategory)) return { assetClassId: 'stock', subCategoryId: 'stock_dividend' }
+    return { assetClassId: 'stock', subCategoryId: 'stock_em' }
+  }
+  // DB が「株式」だけなどのときは country 列でリージョンを決める
+  if (dbCategory === '株式' || dbCategory === '股票') {
+    if (looksLikeHighDividendFromText(rawNameForJa, dbSubcategory)) return { assetClassId: 'stock', subCategoryId: 'stock_dividend' }
+    const subFromCountry =
+      stockSubCategoryIdFromDbCountryNorm(dbCountryNorm) || stockSubCategoryIdFromDbCountryNorm(country)
+    if (subFromCountry) return { assetClassId: 'stock', subCategoryId: subFromCountry }
+  }
 
   if (c === 'REIT' || /REIT|リート/.test(n)) {
     return { assetClassId: 'reit', subCategoryId: null }
   }
   if (c === '債券型' || /債券|BOND|TREASURY|国債|社債/.test(n) || ETF_BOND_SET.has(s)) {
-    const isDomesticBond = s.endsWith('.T') || /国内|日本|JGB/.test(n)
+    const isUsOrGlobalBond = /米国債|米国債券|米国|US.*BOND|TREASURY|新興国債|海外債券|WGBI|GLOBAL/i.test(n) || ETF_BOND_SET.has(s)
+    const isDomesticBond = !isUsOrGlobalBond && /国内|日本国債|JGB|国内債券/.test(n)
     return { assetClassId: 'bond', subCategoryId: isDomesticBond ? 'bond_jp' : 'bond_global' }
   }
-  if (c === 'コモディティ' || ETF_COMMODITY_SET.has(s) || /GOLD|SILVER|COMMODITY|原油|金|銀/.test(n)) {
+  if (ETF_COMMODITY_SET.has(s)) {
+    return { assetClassId: 'commodity', subCategoryId: null }
+  }
+  if (c === 'コモディティ' || isTrueCommodityName(n)) {
+    if (shouldOverrideFalseCommodity) {
+      const div = looksLikeHighDividendFromText(rawNameForJa, dbSubcategory)
+      if (div) return { assetClassId: 'stock', subCategoryId: 'stock_dividend' }
+      if (country === 'GLOBAL') return { assetClassId: 'stock', subCategoryId: 'stock_global' }
+      if (country === 'EM' || country === 'CN' || country === 'IN') return { assetClassId: 'stock', subCategoryId: 'stock_em' }
+      if (country === 'EU' || country === 'UK') return { assetClassId: 'stock', subCategoryId: 'stock_eu' }
+      if (country === 'JP') return { assetClassId: 'stock', subCategoryId: 'stock_jp' }
+      return { assetClassId: 'stock', subCategoryId: 'stock_us' }
+    }
     return { assetClassId: 'commodity', subCategoryId: null }
   }
 
@@ -211,7 +317,7 @@ const detectAssetClassAndSubCategory = (symbol, fundName, baseCategory, marketCo
   if (AI_THEME_SYMBOL_SET.has(s) || AI_THEME_ISIN_SET.has(isinCode)) {
     return { assetClassId: 'stock', subCategoryId: 'stock_thematic' }
   }
-  if (c === '配当' || /高配当|配当貴族|高利回り|DIVIDEND|INCOME|YIELD/.test(n)) {
+  if (c === '配当' || looksLikeHighDividendFromText(rawNameForJa, dbSubcategory)) {
     return { assetClassId: 'stock', subCategoryId: 'stock_dividend' }
   }
   if (c === 'テクノロジー' || c === '金融' || /半導体|TECH|AI|BIGDATA|ROBOT|CLOUD|FINTECH|クリーン|テーマ|セクター|INNOVATION|DEFENSE|EV|BATTERY|DIGITAL/.test(n)) {
@@ -223,8 +329,14 @@ const detectAssetClassAndSubCategory = (symbol, fundName, baseCategory, marketCo
   if (country === 'JP') return { assetClassId: 'stock', subCategoryId: 'stock_jp' }
   return { assetClassId: 'stock', subCategoryId: 'stock_us' }
 }
-const FUND_PAGE_CACHE_KEY = 'moneymart.fund.page.cache.v5'
+const FUND_PAGE_CACHE_KEY = 'moneymart.fund.page.cache.v12'
 const FUND_PAGE_UI_STATE_KEY = 'moneymart.fund.page.ui.v1'
+const FUND_OPTIMIZER_MONTHLY_USAGE_KEY = 'moneymart.fund.optimizer.monthly.usage.v1'
+const FREE_FUND_OPTIMIZER_RUNS_PER_MONTH = 1
+const PREMIUM_EMAIL_ALLOWLIST = new Set([
+  'justin.nam@moneymart.co.jp',
+  'kelly.nam@moneymart.co.jp',
+])
 const FUND_PAGE_CACHE_TTL_MS = 1000 * 60 * 5
 const FUND_PAGE_STALE_CACHE_MS = 1000 * 60 * 60 * 24
 const formatAum = (value) => {
@@ -244,6 +356,12 @@ const resolveAumValue = (fund, fallbackMeta = null) => {
   if (Number.isFinite(isinMetaAum) && isinMetaAum > 0) return isinMetaAum
   return null
 }
+const sanitizeCachedFundsNisa = (funds) =>
+  (Array.isArray(funds) ? funds : []).map((f) => ({
+    ...f,
+    nisaCategory: normalizeNisaCategoryField(f?.nisaCategory),
+  }))
+
 const readFundPageCache = () => {
   try {
     if (typeof window === 'undefined') return null
@@ -252,7 +370,7 @@ const readFundPageCache = () => {
     const parsed = JSON.parse(raw)
     const cachedAt = Number(parsed?.cachedAt || 0)
     if (!cachedAt || (Date.now() - cachedAt) > FUND_PAGE_CACHE_TTL_MS) return null
-    return Array.isArray(parsed?.funds) ? parsed.funds : null
+    return Array.isArray(parsed?.funds) ? sanitizeCachedFundsNisa(parsed.funds) : null
   } catch {
     return null
   }
@@ -265,11 +383,14 @@ const readStaleFundPageCache = () => {
     const parsed = JSON.parse(raw)
     const cachedAt = Number(parsed?.cachedAt || 0)
     if (!cachedAt || (Date.now() - cachedAt) > FUND_PAGE_STALE_CACHE_MS) return null
-    return Array.isArray(parsed?.funds) ? parsed.funds : null
+    return Array.isArray(parsed?.funds) ? sanitizeCachedFundsNisa(parsed.funds) : null
   } catch {
     return null
   }
 }
+// In-memory bootstrap cache to avoid chart flicker
+// during immediate remount/re-hydration cycles.
+let FUND_PAGE_BOOTSTRAP_CACHE = null
 const writeFundPageCache = (funds) => {
   try {
     if (typeof window === 'undefined') return
@@ -280,11 +401,6 @@ const writeFundPageCache = (funds) => {
   } catch {
     // ignore storage errors
   }
-}
-const normalizeFundDisplayName = (value = '') => {
-  const normalized = String(value || '').normalize('NFKC').replace(/\s+/g, ' ').trim()
-  // Join single-letter latin/digit tokens (e.g. "T O P I X" -> "TOPIX").
-  return normalized.replace(/\b([A-Za-z0-9])\s+(?=[A-Za-z0-9]\b)/g, '$1')
 }
 const formatTrustFee = (value) => {
   const n = Number(value)
@@ -298,6 +414,14 @@ const normalizeSortValue = (value) => {
   if (Number.isFinite(asNumber)) return asNumber
   return String(value).toLowerCase()
 }
+/** Lazily assigns a stable random key per fund id for the session (list order does not reshuffle on every render). */
+const randomSortKeyForId = (ref, id) => {
+  const m = ref.current
+  const k = String(id || '')
+  if (!m.has(k)) m.set(k, Math.random())
+  return m.get(k)
+}
+
 const compareBySortConfig = (a, b, { key, direction }) => {
   const aVal = normalizeSortValue(a?.[key])
   const bVal = normalizeSortValue(b?.[key])
@@ -499,10 +623,10 @@ const calcPortfolioMetrics = (funds, weightPctVector) => {
 }
 const FUND_FAQ_ITEMS = [
   { q: 'この一覧はおすすめ順ですか？', a: 'おすすめではなく、選択した条件と並び替え基準に従って表示されます。' },
-  { q: '表示されるデータはいつ更新されますか？', a: 'マーケットスタックで取得可能な最新データを定期取得して表示します。' },
+  { q: '表示されるデータはいつ更新されますか？', a: '中間データ事業者経由で取得可能な最新データを定期取得して表示します。' },
   { q: 'ここで購入できますか？', a: '購入は外部の公式チャネルで行われます。当ページは比較・検討支援が目的です。' },
 ]
-export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlist: propToggleWatchlist }) {
+export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlist: propToggleWatchlist, onUiMessage = null }) {
   const navigate = useNavigate()
   const location = useLocation()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -511,7 +635,18 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
   const [activeSubFilter, setActiveSubFilter] = useState('all')
   const [nisaQuickFilter, setNisaQuickFilter] = useState('all')
   const [dbFunds, setDbFunds] = useState([])
-  const [selectedFundIds, setSelectedFundIds] = useState([])
+  const [selectedFundIds, setSelectedFundIds] = useState(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const raw = window.sessionStorage.getItem(FUND_PAGE_UI_STATE_KEY)
+        if (raw) {
+          const parsed = JSON.parse(raw)
+          if (Array.isArray(parsed?.selectedFundIds)) return parsed.selectedFundIds.slice(0, 3)
+        }
+      }
+    } catch {}
+    return []
+  })
   const [isLoading, setIsLoading] = useState(true)
   const [fetchedDateLabel, setFetchedDateLabel] = useState(
     () => new Intl.DateTimeFormat('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
@@ -519,21 +654,27 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
   const [watchlist, setWatchlist] = useState(() => (Array.isArray(myWatchlist) ? myWatchlist : []))
   const [currentPage, setCurrentPage] = useState(1)
   const lastTrackedSearchRef = useRef('')
-  const [sortConfig, setSortConfig] = useState({ key: 'returnRate1Y', direction: 'descending' })
+  const fundRandomKeysRef = useRef(new Map())
+  const [sortConfig, setSortConfig] = useState({ key: 'random', direction: 'descending' })
   const [hoveredBubbleId, setHoveredBubbleId] = useState(null)
   const [bubbleViewMode, setBubbleViewMode] = useState('top_30')
+  const [isHydrating, setIsHydrating] = useState(false)
   const [miniScheme, setMiniScheme] = useState('nisa')
   const [miniMonthlyMan, setMiniMonthlyMan] = useState(1)
   const [miniCurrentAge, setMiniCurrentAge] = useState(30)
   const [miniAnnualRate, setMiniAnnualRate] = useState(5)
   const [miniWidgetOpen, setMiniWidgetOpen] = useState(false)
   const [isComposeModalOpen, setIsComposeModalOpen] = useState(false)
+  const [isComposeLimitModalOpen, setIsComposeLimitModalOpen] = useState(false)
   const [isCompareModalOpen, setIsCompareModalOpen] = useState(false)
   const [composeInitialYen, setComposeInitialYen] = useState(1000000)
   const [composeMonthlyYen, setComposeMonthlyYen] = useState(30000)
   const [optimizerWeightsByFundId, setOptimizerWeightsByFundId] = useState({})
   const pendingOptimizerWeightsFromWatchSet = useRef(null)
+  const pendingTop3OptimizerRef = useRef(false)
   const hasHydratedUiStateRef = useRef(false)
+  const selectedFundIdsOnComposeOpenRef = useRef([])
+  const prevComposeModalOpenRef = useRef(false)
   const isLoggedIn = Boolean(_user?.id)
   const promptLogin = () => {
     navigate('/login', { state: { from: `${location.pathname}${location.search}` } })
@@ -541,6 +682,12 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
       if (window.location.pathname !== '/login') window.location.assign('/login')
     }, 120)
   }
+
+  useEffect(() => {
+    if (!isLoggedIn && bubbleViewMode === 'watchlist') {
+      setBubbleViewMode('top_30')
+    }
+  }, [isLoggedIn, bubbleViewMode])
 
   useEffect(() => {
     const qsSearch = String(searchParams.get('q') || searchParams.get('search') || '').trim()
@@ -566,10 +713,24 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
           direction: qsDir || 'descending',
         })
       }
-      hasHydratedUiStateRef.current = true
-      return
     }
 
+    // always restore selectedFundIds from sessionStorage (never in URL)
+    try {
+      if (typeof window !== 'undefined') {
+        const raw = window.sessionStorage.getItem(FUND_PAGE_UI_STATE_KEY)
+        if (raw) {
+          const parsed = JSON.parse(raw)
+          if (Array.isArray(parsed?.selectedFundIds)) {
+            setSelectedFundIds(parsed.selectedFundIds.slice(0, 3))
+          }
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    if (!hasQueryState) {
     try {
       if (typeof window !== 'undefined') {
         const raw = window.sessionStorage.getItem(FUND_PAGE_UI_STATE_KEY)
@@ -584,16 +745,26 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
           if (parsed?.sortConfig && typeof parsed.sortConfig === 'object') {
             const key = String(parsed.sortConfig.key || '')
             const direction = parsed.sortConfig.direction === 'ascending' ? 'ascending' : 'descending'
-            if (key) setSortConfig({ key, direction })
+            if (key) {
+              const migrated =
+                key === 'returnRate1Y' && direction === 'descending'
+                  ? { key: 'random', direction: 'descending' }
+                  : { key, direction }
+              setSortConfig(migrated)
+            }
           }
         }
       }
     } catch {
       // ignore malformed persisted UI state
     }
+    }
 
     hasHydratedUiStateRef.current = true
   }, [searchParams])
+  const selectedFundIdsRef = useRef(selectedFundIds)
+  selectedFundIdsRef.current = selectedFundIds
+
   useEffect(() => {
     if (!hasHydratedUiStateRef.current) return
     try {
@@ -605,11 +776,25 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
         nisaQuickFilter,
         currentPage,
         sortConfig,
+        selectedFundIds,
       }))
     } catch {
       // ignore storage errors
     }
-  }, [searchTerm, activeFilter, activeSubFilter, nisaQuickFilter, currentPage, sortConfig])
+  }, [searchTerm, activeFilter, activeSubFilter, nisaQuickFilter, currentPage, sortConfig, selectedFundIds])
+
+  useEffect(() => {
+    return () => {
+      try {
+        if (typeof window === 'undefined') return
+        const current = selectedFundIdsRef.current
+        const raw = window.sessionStorage.getItem(FUND_PAGE_UI_STATE_KEY)
+        const stored = raw ? JSON.parse(raw) : {}
+        stored.selectedFundIds = Array.isArray(current) ? current.slice(0, 3) : []
+        window.sessionStorage.setItem(FUND_PAGE_UI_STATE_KEY, JSON.stringify(stored))
+      } catch {}
+    }
+  }, [])
 
   useEffect(() => {
     if (!hasHydratedUiStateRef.current) return
@@ -619,7 +804,8 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
     if (activeSubFilter && activeSubFilter !== 'all') next.set('sub', activeSubFilter)
     if (nisaQuickFilter && nisaQuickFilter !== 'all') next.set('nisa', nisaQuickFilter)
     if (Number(currentPage) > 1) next.set('page', String(currentPage))
-    if (sortConfig?.key && sortConfig.key !== 'returnRate1Y') next.set('sort', String(sortConfig.key))
+    const isDefaultRandomSort = sortConfig?.key === 'random' && sortConfig?.direction === 'descending'
+    if (sortConfig?.key && !isDefaultRandomSort) next.set('sort', String(sortConfig.key))
     if (sortConfig?.direction && sortConfig.direction !== 'descending') next.set('dir', String(sortConfig.direction))
 
     const prevString = searchParams.toString()
@@ -641,6 +827,77 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
   const [savedWatchSets, setSavedWatchSets] = useState(() => {
     return loadFundOptimizerWatchsets()
   })
+
+  // Supabase에서 세트 로드 (iOS 포함 크로스 디바이스 동기화)
+  useEffect(() => {
+    const userId = _user?.id
+    if (!userId) return
+    let cancelled = false
+    loadFundOptimizerWatchsetsFromDb(userId)
+      .then(({ data, available }) => {
+        if (cancelled || !available || !data) return
+        setSavedWatchSets(data)
+        saveFundOptimizerWatchsets(data)
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [_user?.id])
+  const [freeOptimizerRunsUsed, setFreeOptimizerRunsUsed] = useState(0)
+  const planTier = String(
+    _user?.app_metadata?.plan_tier
+    || _user?.user_metadata?.plan_tier
+    || _user?.app_metadata?.membership_tier
+    || _user?.user_metadata?.membership_tier
+    || '',
+  ).toLowerCase()
+  const userEmailLower = String(_user?.email || '').trim().toLowerCase()
+  const isPaidMember = isPaidPlanTier(planTier) || PREMIUM_EMAIL_ALLOWLIST.has(userEmailLower)
+  const freeOptimizerRunsRemaining = Math.max(0, FREE_FUND_OPTIMIZER_RUNS_PER_MONTH - freeOptimizerRunsUsed)
+
+  const getOptimizerMonthKey = () => {
+    const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+  }
+  const getOptimizerUsageKey = (userId) => `${String(userId || 'guest')}:${getOptimizerMonthKey()}`
+  const readMonthlyOptimizerUsage = (userId = _user?.id) => {
+    try {
+      if (typeof window === 'undefined') return 0
+      const raw = window.localStorage.getItem(FUND_OPTIMIZER_MONTHLY_USAGE_KEY)
+      const parsed = raw ? JSON.parse(raw) : {}
+      // New format: "<userId>:YYYY-MM" -> count
+      const userScopedRaw = parsed?.[getOptimizerUsageKey(userId)]
+      if (userScopedRaw != null) {
+        const userScoped = Number(userScopedRaw)
+        if (Number.isFinite(userScoped)) return Math.max(0, Math.floor(userScoped))
+      }
+      // Legacy fallback: "YYYY-MM" -> count (shared across users)
+      const legacy = Number(parsed?.[getOptimizerMonthKey()] || 0)
+      return Number.isFinite(legacy) ? Math.max(0, Math.floor(legacy)) : 0
+    } catch {
+      return 0
+    }
+  }
+  const consumeMonthlyOptimizerUsage = (userId = _user?.id) => {
+    try {
+      if (typeof window === 'undefined') return 0
+      const raw = window.localStorage.getItem(FUND_OPTIMIZER_MONTHLY_USAGE_KEY)
+      const parsed = raw ? JSON.parse(raw) : {}
+      const key = getOptimizerUsageKey(userId)
+      const nextUsed = Math.max(0, Math.floor(Number(parsed?.[key] || 0))) + 1
+      parsed[key] = nextUsed
+      window.localStorage.setItem(FUND_OPTIMIZER_MONTHLY_USAGE_KEY, JSON.stringify(parsed))
+      return nextUsed
+    } catch {
+      return readMonthlyOptimizerUsage(userId)
+    }
+  }
+  useEffect(() => {
+    if (isPaidMember) {
+      setFreeOptimizerRunsUsed(0)
+      return
+    }
+    setFreeOptimizerRunsUsed(readMonthlyOptimizerUsage(_user?.id))
+  }, [isPaidMember, _user?.id])
 
   const itemsPerPage = 12
   const pageGroupSize = 6
@@ -688,19 +945,26 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
   }, [miniYearsTo60, miniMonthlyMan, miniAnnualRate, miniScheme])
 
   useEffect(() => {
+    let cancelled = false
     const fetchData = async () => {
+      if (Array.isArray(FUND_PAGE_BOOTSTRAP_CACHE) && FUND_PAGE_BOOTSTRAP_CACHE.length > 0) {
+        setDbFunds(FUND_PAGE_BOOTSTRAP_CACHE)
+        setIsLoading(false)
+      }
       const cachedFunds = readFundPageCache()
       const staleFunds = readStaleFundPageCache()
       let hasRenderedBase = false
+      const hasValidReturn = (f) => f?.returnRate1Y != null && f.returnRate1Y !== '' && Number.isFinite(Number(f.returnRate1Y))
       if (Array.isArray(cachedFunds) && cachedFunds.length > 0) {
-        setDbFunds(cachedFunds)
+        setDbFunds(cachedFunds.filter(hasValidReturn))
         setIsLoading(false)
       } else if (Array.isArray(staleFunds) && staleFunds.length > 0) {
-        setDbFunds(staleFunds)
+        setDbFunds(staleFunds.filter(hasValidReturn))
         setIsLoading(false)
       } else {
         setIsLoading(true)
       }
+      setIsHydrating(true)
       setFetchedDateLabel(new Intl.DateTimeFormat('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()))
       try {
         const etfSymbols = ETF_SYMBOLS_FROM_XLSX
@@ -710,7 +974,7 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
         }
         const symbolPromise = supabase
           .from('stock_symbols')
-          .select('symbol,name,exchange,trust_fee,nisa_category,aum')
+          .select('symbol,name,exchange,trust_fee,nisa_category,aum,category,subcategory,country')
           .in('symbol', etfSymbols)
         const latestPromises = latestBatches.map((batch) =>
           supabase
@@ -728,8 +992,9 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
         const symbolMap = new Map((symbolRows || []).map((row) => [row.symbol, row]))
         const latestMap = new Map(
           (latestRows || [])
-            .filter((row) => TARGET_ETF_SYMBOL_SET.has(row.symbol))
-            .map((row) => [row.symbol, row])
+            .map((row) => ({ ...row, _norm: normalizeSymbolFromApi(row.symbol) }))
+            .filter((row) => TARGET_ETF_SYMBOL_SET.has(row._norm))
+            .map((row) => [row._norm, { ...row, symbol: row._norm }])
         )
         const baseFunds = [...latestMap.keys()].map((symbol) => {
           const row = latestMap.get(symbol) || {}
@@ -739,11 +1004,11 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
           const return1d = open > 0 ? ((close - open) / open) * 100 : 0
           const etfMeta = TARGET_ETF_META_MAP.get(symbol)
           const trustFeeValue = Number.isFinite(Number(meta.trust_fee)) ? Number(meta.trust_fee) : Number(etfMeta?.trustFee)
-          const normalizedNisaCategory = String(meta.nisa_category || etfMeta?.nisaCategory || '').trim() || '-'
+          const normalizedNisaCategory = normalizeNisaCategoryField(meta.nisa_category || etfMeta?.nisaCategory)
           const displayName = normalizeFundDisplayName(etfMeta?.jpName || getEtfJpName(symbol) || meta.name || symbol)
-          const displayCategory = detectEtfCategory(symbol, displayName)
-          const marketCountry = inferExposureCountry(symbol, displayName)
-          const { assetClassId, subCategoryId } = detectAssetClassAndSubCategory(symbol, displayName, displayCategory, marketCountry, etfMeta?.isin)
+          const displayCategory = meta.category ? mapDbCategoryToDisplay(meta.category) : detectEtfCategory(symbol, displayName)
+          const marketCountry = meta.country || inferExposureCountry(symbol, displayName)
+          const { assetClassId, subCategoryId } = detectAssetClassAndSubCategory(symbol, displayName, displayCategory, marketCountry, etfMeta?.isin, meta)
           const riskLvl = calculateRiskFromReturn(Number(return1d || 0), displayCategory)
           const aumValue = Number.isFinite(Number(meta.aum))
             ? Number(meta.aum)
@@ -757,7 +1022,7 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
             category: displayCategory,
             marketRegion: symbol.endsWith('.T') ? 'JP' : 'GLOBAL',
             marketCountry,
-            managementCompany: meta.exchange || 'マーケットスタック',
+            managementCompany: meta.exchange || '中間データ事業者',
             assetClassId,
             assetClassLabel: ASSET_CLASS_LABELS[assetClassId] || 'その他',
             subCategoryId,
@@ -765,6 +1030,8 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
             trustFee: Number.isFinite(trustFeeValue) ? trustFeeValue : null,
             nisaCategory: normalizedNisaCategory,
             returnRate1Y: null,
+            returnRate3M: null,
+            returnRate1M: null,
             aumValue: Number.isFinite(aumValue) && aumValue > 0 ? aumValue : null,
             annualReturnDisplay: '-',
             aumDisplay: formatAum(aumValue),
@@ -779,10 +1046,13 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
             tradeDate: row.trade_date || null,
           }
         })
-        const sortedBaseFunds = [...baseFunds].sort((a, b) => Number(b.aumValue || 0) - Number(a.aumValue || 0))
-        setDbFunds(sortedBaseFunds)
-        hasRenderedBase = true
-        setIsLoading(false)
+        // First paint fast: render with latest snapshot first, then hydrate 1Y history metrics.
+        if (!hasRenderedBase && baseFunds.length > 0) {
+          setDbFunds(baseFunds)
+          FUND_PAGE_BOOTSTRAP_CACHE = baseFunds
+          setIsLoading(false)
+          hasRenderedBase = true
+        }
 
         const sortedSymbolsByVolume = [...latestMap.values()]
           .sort((a, b) => Number(b.volume || 0) - Number(a.volume || 0))
@@ -792,62 +1062,32 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
         cutoff.setFullYear(cutoff.getFullYear() - 1)
         const cutoffStr = cutoff.toISOString().slice(0, 10)
 
-        const historyBySymbol = new Map()
-        // NOTE:
-        // Supabase projects often enforce a per-query row cap (commonly 1000).
-        // Fetching all symbols in one query can truncate history and break 1Y metrics.
-        // Pull per-symbol history for the most liquid funds first; the list itself should still render immediately.
-        const fetchHistoryBySymbol = async (symbol) => {
-          const { data, error } = await supabase
-            .from('stock_daily_prices')
-            .select('symbol,trade_date,close,volume')
-            .eq('symbol', symbol)
-            .gte('trade_date', cutoffStr)
-            .order('trade_date', { ascending: true })
-            .limit(260)
-          if (error) throw error
-          return data || []
-        }
-        const MAX_SYMBOLS_FOR_HISTORY = 200
+        const MAX_SYMBOLS_FOR_HISTORY = 999
         const symbolsForHistory = etfSymbolsFromLatest.slice(0, MAX_SYMBOLS_FOR_HISTORY)
-        const BATCH_SIZE = 10
-        const PARALLEL_BATCHES = 8
-        for (let outer = 0; outer < symbolsForHistory.length; outer += BATCH_SIZE * PARALLEL_BATCHES) {
-          const batchPromises = []
-          for (let b = 0; b < PARALLEL_BATCHES; b++) {
-            const start = outer + b * BATCH_SIZE
-            if (start >= symbolsForHistory.length) break
-            const batch = symbolsForHistory.slice(start, start + BATCH_SIZE)
-            batchPromises.push(
-              Promise.all(batch.map((symbol) => fetchHistoryBySymbol(symbol))).then((results) =>
-                results.forEach((rows, idx) => {
-                  historyBySymbol.set(batch[idx], rows)
-                })
-              )
-            )
-          }
-          await Promise.all(batchPromises)
-        }
+        // Batched multi-symbol queries + pagination (avoids ~1 HTTP round-trip per symbol).
+        const historyBySymbol = await fetchStockDailyHistoryBySymbolMap(supabase, symbolsForHistory, cutoffStr, {
+          jpDedupe: true,
+          jpSourceFilter: null,
+          jpChunkSize: 22,
+          nonJpChunkSize: 32,
+          parallelChunks: 10,
+        })
 
         formattedFunds = [...latestMap.keys()].map((symbol) => {
               const row = latestMap.get(symbol) || {}
               const meta = symbolMap.get(symbol) || {}
-              const open = Number(row.open || 0)
-              const rawClose = Number(row.close || 0)
               const symbolHistory = historyBySymbol.get(symbol) || []
-              const adjustedClosesRaw = buildSplitAdjustedCloses(symbolHistory)
+              const adjustedClosesRaw = buildSplitAdjustedCloses(symbolHistory, {
+                skipSplitHeuristic: skipEodSplitHeuristicForSymbol(symbol),
+              })
               const closes = adjustedClosesRaw.filter((v) => Number.isFinite(v) && v > 0)
-              const close = Number(adjustedClosesRaw[adjustedClosesRaw.length - 1] || rawClose || 0)
+              const { close, sessionDod } = resolveSpotCloseAndSessionChange(symbolHistory, adjustedClosesRaw, row)
               const volumes = symbolHistory.map((r) => Number(r.volume)).filter((v) => Number.isFinite(v) && v >= 0)
               const historyCount = closes.length
-              const oneYearTradingDays = 252
-              const oneYearLookbackIdx = historyCount > oneYearTradingDays
-                ? historyCount - oneYearTradingDays
-                : 0
-              const oneYearBaseClose = Number(closes[oneYearLookbackIdx] || 0)
-              const lookbackIdx = Math.max(0, closes.length - Math.min(22, Math.max(closes.length - 1, 1)))
-              const closeLookback = Number(closes[lookbackIdx] || 0)
-              const return1d = open > 0 ? ((close - open) / open) * 100 : 0
+              const oneYearBaseClose = findBaseCloseByCalendarOffset(symbolHistory, { years: 1 }, adjustedClosesRaw)
+              const threeMonthBaseClose = findBaseCloseByCalendarOffset(symbolHistory, { months: 3 }, adjustedClosesRaw)
+              const closeLookback = findBaseCloseByCalendarOffset(symbolHistory, { months: 1 }, adjustedClosesRaw)
+              const return1d = Number.isFinite(sessionDod.changePct) ? sessionDod.changePct : 0
               const firstTradeDateRaw = symbolHistory[0]?.trade_date
               const latestTradeDateRaw = symbolHistory[Math.max(0, symbolHistory.length - 1)]?.trade_date
               const firstTradeDate = firstTradeDateRaw ? new Date(firstTradeDateRaw) : null
@@ -861,17 +1101,23 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
                 ? Math.floor((latestTradeDate.getTime() - firstTradeDate.getTime()) / (1000 * 60 * 60 * 24))
                 : 0
               const hasReliableOneYearHistory = historyCount >= 2 && historySpanDays >= 330
-              const return1y = hasReliableOneYearHistory && oneYearBaseClose > 0
+              const hasReliableThreeMonthHistory = historyCount >= 2 && historySpanDays >= 90
+              const hasReliableOneMonthHistory = historyCount >= 2 && historySpanDays >= 25
+              const return1y = hasReliableOneYearHistory && oneYearBaseClose != null && oneYearBaseClose > 0
                 ? ((close - oneYearBaseClose) / oneYearBaseClose) * 100
                 : null
-              const return1m = closeLookback > 0 ? ((close - closeLookback) / closeLookback) * 100 : null
+              const return3m = hasReliableThreeMonthHistory && threeMonthBaseClose != null && threeMonthBaseClose > 0
+                ? ((close - threeMonthBaseClose) / threeMonthBaseClose) * 100
+                : null
+              const return1m = closeLookback != null && closeLookback > 0 ? ((close - closeLookback) / closeLookback) * 100 : null
+              const return1mRank = hasReliableOneMonthHistory && Number.isFinite(return1m) ? Number(return1m) : null
               const etfMeta = TARGET_ETF_META_MAP.get(symbol)
               const trustFeeValue = Number.isFinite(Number(meta.trust_fee)) ? Number(meta.trust_fee) : Number(etfMeta?.trustFee)
-              const normalizedNisaCategory = String(meta.nisa_category || etfMeta?.nisaCategory || '').trim() || '-'
+              const normalizedNisaCategory = normalizeNisaCategoryField(meta.nisa_category || etfMeta?.nisaCategory)
               const displayName = normalizeFundDisplayName(etfMeta?.jpName || getEtfJpName(symbol) || meta.name || symbol)
-              const displayCategory = detectEtfCategory(symbol, displayName)
-              const marketCountry = inferExposureCountry(symbol, displayName)
-              const { assetClassId, subCategoryId } = detectAssetClassAndSubCategory(symbol, displayName, displayCategory, marketCountry, etfMeta?.isin)
+              const displayCategory = meta.category ? mapDbCategoryToDisplay(meta.category) : detectEtfCategory(symbol, displayName)
+              const marketCountry = meta.country || inferExposureCountry(symbol, displayName)
+              const { assetClassId, subCategoryId } = detectAssetClassAndSubCategory(symbol, displayName, displayCategory, marketCountry, etfMeta?.isin, meta)
               const realizedVol = calculateRealizedVolatility(closes)
               const riskLvl = calculateRiskFromReturn(Number(return1y || return1d || 0), displayCategory)
               const stdDev = Number.isFinite(realizedVol) && realizedVol > 0 ? realizedVol : null
@@ -888,6 +1134,12 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
               const flowScore = Number.isFinite(return1m) && historyCount >= 6
                 ? ((return1m * 0.7) + (volumeMomentum * 0.3))
                 : null
+              const yearStartStr = `${new Date().getFullYear()}-01-01`
+              const ytdFirstIdx = symbolHistory.findIndex((r) => String(r?.trade_date || '') >= yearStartStr)
+              const ytdBaseClose = ytdFirstIdx >= 0 ? Number(adjustedClosesRaw[ytdFirstIdx] ?? symbolHistory[ytdFirstIdx]?.close ?? 0) : null
+              const returnYTD = (ytdBaseClose != null && ytdBaseClose > 0 && close > 0)
+                ? ((close - ytdBaseClose) / ytdBaseClose) * 100
+                : null
 
           return {
                 id: symbol,
@@ -897,7 +1149,7 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
             category: displayCategory,
                 marketRegion: symbol.endsWith('.T') ? 'JP' : 'GLOBAL',
                 marketCountry,
-                managementCompany: meta.exchange || 'マーケットスタック',
+                managementCompany: meta.exchange || '中間データ事業者',
             assetClassId,
             assetClassLabel: ASSET_CLASS_LABELS[assetClassId] || 'その他',
             subCategoryId,
@@ -905,6 +1157,8 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
                 trustFee: Number.isFinite(trustFeeValue) ? trustFeeValue : null,
                 nisaCategory: normalizedNisaCategory,
                 returnRate1Y: Number.isFinite(return1y) ? Number(return1y) : null,
+                returnRate3M: Number.isFinite(return3m) ? Number(return3m) : null,
+                returnRate1M: Number.isFinite(return1mRank) ? return1mRank : null,
                 aumValue: Number.isFinite(aumValue) && aumValue > 0 ? aumValue : null,
                 annualReturnDisplay: Number.isFinite(return1y)
                   ? `${return1y > 0 ? '+' : ''}${Number(return1y).toFixed(1)}%`
@@ -913,7 +1167,7 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
             riskLevel: riskLvl,
             stdDev,
                 basePrice: close,
-                prevComparison: close - open,
+                prevComparison: Number.isFinite(sessionDod.change) ? sessionDod.change : 0,
                 prevComparisonPercent: Number(return1d || 0).toFixed(2),
                 minInvest: 1,
                 flowScore,
@@ -921,24 +1175,31 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
                   ? Number((Number(return1y) / stdDev).toFixed(2))
                   : null,
                 tradeDate: row.trade_date || null,
+                returnYTD: Number.isFinite(returnYTD) ? Number(returnYTD) : null,
               }
             })
 
-        const funds = formattedFunds
+        const funds = formattedFunds.filter((f) => f.returnRate1Y != null && f.returnRate1Y !== '' && Number.isFinite(Number(f.returnRate1Y)))
         const sortedFunds = [...funds].sort((a, b) => Number(b.returnRate1Y || -999) - Number(a.returnRate1Y || -999))
+        if (cancelled) return
         setDbFunds(sortedFunds)
+        FUND_PAGE_BOOTSTRAP_CACHE = sortedFunds
         writeFundPageCache(sortedFunds)
       } catch (error) {
         console.error('Error fetching data:', error.message)
-        if (!(Array.isArray(cachedFunds) && cachedFunds.length > 0) && !hasRenderedBase) {
+        if (!cancelled && !(Array.isArray(cachedFunds) && cachedFunds.length > 0) && !hasRenderedBase) {
           setDbFunds([])
         }
       } finally {
-        setIsLoading(false)
+        if (!cancelled) {
+          setIsLoading(false)
+          setIsHydrating(false)
+        }
       }
     }
 
     fetchData()
+    return () => { cancelled = true }
   }, [])
 
   const filteredFunds = useMemo(() => {
@@ -1102,7 +1363,13 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
 
   const sortedFunds = useMemo(() => {
     const sortableItems = [...resolvedFilteredFunds]
-      sortableItems.sort((a, b) => compareBySortConfig(a, b, sortConfig))
+    if (sortConfig.key === 'random') {
+      sortableItems.sort(
+        (a, b) => randomSortKeyForId(fundRandomKeysRef, a.id) - randomSortKeyForId(fundRandomKeysRef, b.id)
+      )
+      return sortableItems
+    }
+    sortableItems.sort((a, b) => compareBySortConfig(a, b, sortConfig))
     return sortableItems
   }, [resolvedFilteredFunds, sortConfig])
 
@@ -1124,41 +1391,41 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
   }, [sortedFunds, currentPage])
 
   const returnLeaders = useMemo(() => {
-    const ranked = filteredFunds
-      .filter((f) => Number.isFinite(Number(f.returnRate1Y)))
-      .sort((a, b) => Number(b.returnRate1Y) - Number(a.returnRate1Y))
+    const ranked = dbFunds
+      .filter((f) => Number.isFinite(Number(f.returnRate1M)))
+      .sort((a, b) => Number(b.returnRate1M) - Number(a.returnRate1M))
     const top3 = ranked.slice(0, 3)
     const topIds = new Set(top3.map((f) => f.id))
     const bottom3 = [...ranked]
-      .sort((a, b) => Number(a.returnRate1Y) - Number(b.returnRate1Y))
+      .sort((a, b) => Number(a.returnRate1M) - Number(b.returnRate1M))
       .filter((f) => !topIds.has(f.id))
       .slice(0, 3)
     return { top3, bottom3 }
-  }, [filteredFunds])
+  }, [dbFunds])
   const returnLeaderBarData = useMemo(() => {
     const topRows = returnLeaders.top3.map((fund, idx) => ({
       id: `${fund.id}-top`,
       name: `Top ${idx + 1}`,
       fundName: fund.fundName,
-      value: Number(fund.returnRate1Y || 0),
+      value: Number(fund.returnRate1M || 0),
       tone: 'top',
     }))
     const bottomRows = returnLeaders.bottom3.map((fund, idx) => ({
       id: `${fund.id}-bottom`,
       name: `Bottom ${idx + 1}`,
       fundName: fund.fundName,
-      value: Number(fund.returnRate1Y || 0),
+      value: Number(fund.returnRate1M || 0),
       tone: 'bottom',
     }))
     return [...topRows, ...bottomRows]
   }, [returnLeaders])
 
   const lowFeeLeaders = useMemo(() => {
-    return [...filteredFunds]
+    return [...dbFunds]
       .filter((f) => Number.isFinite(Number(f.trustFee)) && Number(f.trustFee) >= 0)
       .sort((a, b) => Number(a.trustFee) - Number(b.trustFee))
       .slice(0, 5)
-  }, [filteredFunds])
+  }, [dbFunds])
 
   const optimizerSelectedFunds = useMemo(() => (
     selectedFundIds
@@ -1168,9 +1435,15 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
       .map((f, idx) => ({
         ...f,
         color: OPTIMIZER_COLORS[idx] || '#94a3b8',
-        expectedReturn: Number.isFinite(Number(f.returnRate1Y))
-          ? Number(f.returnRate1Y)
-          : Math.max(2, Number(f.riskLevel || 2.4) * 2.2),
+        expectedReturn: (() => {
+          if (Number.isFinite(Number(f.returnRate1Y))) return Number(f.returnRate1Y)
+          const r3 = Number(f.returnRate3M)
+          if (Number.isFinite(r3)) {
+            const fromQuarter = annualizeThreeMonthReturnPct(r3)
+            if (fromQuarter != null && Number.isFinite(fromQuarter)) return fromQuarter
+          }
+          return Math.max(2, Number(f.riskLevel || 2.4) * 2.2)
+        })(),
         riskStd: Number.isFinite(Number(f.stdDev))
           ? Number(f.stdDev)
           : Math.max(4, Number(f.riskLevel || 2.5) * 4.4),
@@ -1180,17 +1453,65 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
       }))
   ), [selectedFundIds, dbFunds])
 
-  // デフォルトは常に均等配分（equal weighted）。ウォッチセット適用時は保存済み配分を優先。
+  // オプティマイザの最適配分（イコールではなくスコアベース）を算出（optimizerWeightsByFundId に依存しない）
+  const optimizerOptimalWeightsMap = useMemo(() => {
+    if (optimizerSelectedFunds.length < 2) return null
+    const rawCombos = generateWeightCombos(optimizerSelectedFunds.length, optimizerSelectedFunds.length === 3 ? 5 : 2)
+    const constrainedCombos = optimizerSelectedFunds.length === 3
+      ? rawCombos.filter((weights) => Math.min(...weights) >= MIN_WEIGHT_FOR_3FUND_OPTIMIZATION)
+      : rawCombos
+    const combos = constrainedCombos.length > 0 ? constrainedCombos : rawCombos
+    const points = combos.map((weights) => {
+      const m = calcPortfolioMetrics(optimizerSelectedFunds, weights)
+      return { ...m, weightsPct: m.weightsPct }
+    })
+    const riskValues = points.map((p) => p.risk)
+    const retValues = points.map((p) => p.ret)
+    const feeValues = points.map((p) => p.fee)
+    const netReturnValues = points.map((p) => p.netReturnAfterFee ?? p.ret ?? 0)
+    const efficiencyValues = points.map((p) => p.efficiency ?? 0)
+    const riskRange = expandCollapsedRange(Math.min(...riskValues), Math.max(...riskValues), 0.8)
+    const feeRange = expandCollapsedRange(Math.min(...feeValues), Math.max(...feeValues), 0.03)
+    const netReturnRange = { min: Math.min(...netReturnValues), max: Math.max(...netReturnValues) }
+    const efficiencyRange = { min: Math.min(...efficiencyValues), max: Math.max(...efficiencyValues) }
+    const scored = points.map((p) => {
+      const riskNorm = normalizeRange(p.risk, riskRange.min, riskRange.max)
+      const feeNorm = normalizeRange(p.fee, feeRange.min, feeRange.max)
+      const netRetNorm = normalizeRange(p.netReturnAfterFee ?? p.ret, netReturnRange.min, netReturnRange.max)
+      const efficiencyNorm = normalizeRange(p.efficiency, efficiencyRange.min, efficiencyRange.max)
+      const diversificationNorm = Number(p.diversification || 0)
+      const isThreeFund = optimizerSelectedFunds.length === 3
+      const score = isThreeFund
+        ? (netRetNorm * 0.3) + (efficiencyNorm * 0.22) + ((1 - riskNorm) * 0.18) + ((1 - feeNorm) * 0.1) + (diversificationNorm * 0.2)
+        : (netRetNorm * 0.38) + (efficiencyNorm * 0.24) + ((1 - riskNorm) * 0.23) + ((1 - feeNorm) * 0.15)
+      return { ...p, score }
+    })
+    const best = [...scored].sort((a, b) => Number(b.score || 0) - Number(a.score || 0))[0]
+    if (!best?.weightsPct) return null
+    const ids = optimizerSelectedFunds.map((f) => f.id)
+    const next = {}
+    ids.forEach((id, idx) => { next[id] = Number((best.weightsPct[idx] || 0).toFixed(1)) })
+    return next
+  }, [optimizerSelectedFunds])
+
+  // デフォルトは最適配分（オプティマイジング済み）。ウォッチセット適用時は保存済み配分を優先。上位3件選択時は最適配分を適用
   useEffect(() => {
     if (optimizerSelectedFunds.length === 0) {
       setOptimizerWeightsByFundId({})
       pendingOptimizerWeightsFromWatchSet.current = null
+      pendingTop3OptimizerRef.current = false
       return
     }
     const fromWatchSet = pendingOptimizerWeightsFromWatchSet.current
     if (fromWatchSet && Object.keys(fromWatchSet).length > 0) {
       setOptimizerWeightsByFundId(fromWatchSet)
       pendingOptimizerWeightsFromWatchSet.current = null
+      return
+    }
+    if (pendingTop3OptimizerRef.current) return
+    const optimal = optimizerOptimalWeightsMap
+    if (optimal && Object.keys(optimal).length > 0) {
+      setOptimizerWeightsByFundId(optimal)
       return
     }
     const ids = optimizerSelectedFunds.map((f) => f.id)
@@ -1200,7 +1521,37 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
       next[id] = idx === ids.length - 1 ? Number((100 - equalPct * (ids.length - 1)).toFixed(1)) : equalPct
     })
     setOptimizerWeightsByFundId(next)
-  }, [optimizerSelectedFunds])
+  }, [optimizerSelectedFunds, optimizerOptimalWeightsMap])
+
+  // 構成モーダルを開いたときに最適配分を自動適用（isComposeModalOpen のみを deps にして再実行ループを防止）
+  useEffect(() => {
+    const wasOpen = prevComposeModalOpenRef.current
+    prevComposeModalOpenRef.current = isComposeModalOpen
+    if (!wasOpen && isComposeModalOpen && optimizerSelectedFunds.length >= 2 && optimizerFrontier.optimalPoint) {
+      const ids = optimizerSelectedFunds.map((f) => f.id)
+      const next = {}
+      ids.forEach((id, idx) => {
+        next[id] = Number((optimizerFrontier.optimalPoint.weightsPct[idx] || 0).toFixed(1))
+      })
+      setOptimizerWeightsByFundId(next)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- モーダルオープン時のみ実行したいため
+  }, [isComposeModalOpen])
+
+  useEffect(() => {
+    if (!isComposeModalOpen) return
+    const onKey = (e) => { if (e.key === 'Escape') closeComposeModal() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- closeComposeModal is stable
+  }, [isComposeModalOpen])
+
+  useEffect(() => {
+    if (!isCompareModalOpen) return
+    const onKey = (e) => { if (e.key === 'Escape') setIsCompareModalOpen(false) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [isCompareModalOpen])
 
   const optimizerCurrentWeights = useMemo(() => {
     if (optimizerSelectedFunds.length === 0) return []
@@ -1283,6 +1634,19 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
     const pathPoints = [...scored].sort((a, b) => Number(a.risk || 0) - Number(b.risk || 0))
     return { points: scored, pathPoints, currentPoint, optimalPoint, ranges }
   }, [optimizerSelectedFunds, optimizerCurrentWeights])
+
+  // 上位3件選択時は最適配分を適用（イコールではなくオプティマイジング）
+  useEffect(() => {
+    if (!pendingTop3OptimizerRef.current || !optimizerFrontier.optimalPoint || optimizerSelectedFunds.length < 2) return
+    const ids = optimizerSelectedFunds.map((f) => f.id)
+    const next = {}
+    ids.forEach((id, idx) => {
+      next[id] = Number((optimizerFrontier.optimalPoint.weightsPct[idx] || 0).toFixed(1))
+    })
+    setOptimizerWeightsByFundId(next)
+    pendingTop3OptimizerRef.current = false
+  }, [optimizerFrontier.optimalPoint, optimizerSelectedFunds])
+
   const optimizer5yProjectionCurrent = useMemo(() => {
     const current = optimizerFrontier.currentPoint
     if (!current) return null
@@ -1348,33 +1712,20 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
   }
 
   const setTopThreeFundsForOptimizer = () => {
-    const rankCandidates = (rows) => (
-      [...rows]
-        .filter((f) => Boolean(f?.id))
-        .sort((a, b) => {
-          const aHasReturn = Number.isFinite(Number(a?.returnRate1Y))
-          const bHasReturn = Number.isFinite(Number(b?.returnRate1Y))
-          if (aHasReturn !== bHasReturn) return aHasReturn ? -1 : 1
-          const returnGap = Number(b?.returnRate1Y || -Infinity) - Number(a?.returnRate1Y || -Infinity)
-          if (Number.isFinite(returnGap) && returnGap !== 0) return returnGap
-          const aHasFee = Number.isFinite(Number(a?.trustFee))
-          const bHasFee = Number.isFinite(Number(b?.trustFee))
-          if (aHasFee !== bHasFee) return aHasFee ? -1 : 1
-          return Number(b?.aumValue || 0) - Number(a?.aumValue || 0)
-        })
-    )
-
-    const fromFiltered = rankCandidates(filteredFunds)
-    const fallbackPool = rankCandidates(dbFunds).filter((fund) => !fromFiltered.some((row) => row.id === fund.id))
-    const picked = [...fromFiltered, ...fallbackPool].slice(0, 3)
+    const withReturn = dbFunds
+      .filter((f) => Boolean(f?.id) && Number.isFinite(Number(f?.returnRate1M)))
+      .sort((a, b) => Number(b?.returnRate1M || 0) - Number(a?.returnRate1M || 0))
+    const picked = withReturn.slice(0, 3)
     const ids = picked.map((f) => f.id).filter(Boolean)
 
     if (ids.length >= 2) {
+      pendingTop3OptimizerRef.current = true
       setSelectedFundIds(ids)
       return
     }
 
-    window.alert('最適化に使えるファンドデータがまだ不足しています。')
+    if (typeof onUiMessage === 'function') onUiMessage('最適化に使えるファンドデータがまだ不足しています。', 'info')
+    else window.alert('最適化に使えるファンドデータがまだ不足しています。')
   }
 
   const applyOptimalAllocationToSlider = () => {
@@ -1387,14 +1738,22 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
     setOptimizerWeightsByFundId(next)
   }
 
-  const saveCurrentAllocationAsWatchSet = () => {
+  const saveCurrentAllocationAsWatchSet = async () => {
+    if (!isPaidMember) {
+      if (typeof onUiMessage === 'function') onUiMessage('ウォッチセット保存はプレミアム機能です。', 'premium')
+      else alert('ウォッチセット保存はプレミアム機能です。')
+      navigate('/premium')
+      return
+    }
     if (optimizerSelectedFunds.length < 2) {
-      alert('ウォッチセット保存には2〜3件のファンド選択が必要です。')
+      if (typeof onUiMessage === 'function') onUiMessage('ウォッチセット保存には2〜3件のファンド選択が必要です。', 'info')
+      else alert('ウォッチセット保存には2〜3件のファンド選択が必要です。')
       return
     }
     const name = String(watchSetName || '').trim()
     if (!name) {
-      alert('ウォッチセット名を入力してください。')
+      if (typeof onUiMessage === 'function') onUiMessage('ウォッチセット名を入力してください。', 'info')
+      else alert('ウォッチセット名を入力してください。')
       return
     }
     const payload = normalizeFundOptimizerWatchset({
@@ -1420,6 +1779,7 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
       const next = [payload, ...prev].slice(0, 20)
       try {
         saveFundOptimizerWatchsets(next)
+        if (_user?.id) upsertFundOptimizerWatchsetToDb(_user.id, payload).catch(() => {})
       } catch {
         // ignore storage errors in UI flow
       }
@@ -1427,6 +1787,12 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
     })
     syncFundsToMyWatchlist(optimizerSelectedFunds)
     setWatchSetName('')
+    recordUserActivityEvent(_user?.id, 'fund_watchset_saved', {
+      source: 'fund_page',
+      fund_count: optimizerSelectedFunds.length,
+      watchset_name: name.slice(0, 40),
+    })
+
   }
 
   const applyWatchSet = (setId) => {
@@ -1451,6 +1817,7 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
       const next = prev.filter((row) => row.id !== setId)
       try {
         saveFundOptimizerWatchsets(next)
+        if (_user?.id) deleteFundOptimizerWatchsetFromDb(_user.id, setId).catch(() => {})
       } catch {
         // ignore storage errors in UI flow
       }
@@ -1459,17 +1826,29 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
   }
 
   const mapData = useMemo(() => {
-    // Keep bubble universe aligned with current filter/search scope.
-    const calculable = filteredFunds
+    // 全銘柄ベースでバブルチャート表示（フィルター/検索の影響を受けない）
+    // Top/Bottomに加えて、ウォッチ中銘柄は常に表示する。
+    const watchIds = new Set(Array.isArray(effectiveWatchlist) ? effectiveWatchlist : [])
+    const calculable = dbFunds
       .filter((f) => Number.isFinite(Number(f.stdDev)) && Number.isFinite(Number(f.returnRate1Y)))
     if (calculable.length === 0) return []
+    const watchlistedOnly = calculable
+      .filter((f) => watchIds.has(f.id))
+      .sort((a, b) => Number(b.returnRate1Y) - Number(a.returnRate1Y))
     const sortedByReturn = [...calculable].sort((a, b) => Number(b.returnRate1Y) - Number(a.returnRate1Y))
     const top = sortedByReturn.slice(0, 30)
     const topSet = new Set(top.map((f) => f.id))
     const bottom = [...sortedByReturn].reverse().filter((f) => !topSet.has(f.id)).slice(0, 30)
-    const base = bubbleViewMode === 'bottom_30' ? bottom : top
-    return base.map((f) => {
-        const isWatchlisted = Array.isArray(effectiveWatchlist) && effectiveWatchlist.includes(f.id)
+    let finalRows = watchlistedOnly
+    if (bubbleViewMode !== 'watchlist') {
+      const base = bubbleViewMode === 'bottom_30' ? bottom : top
+      const baseIdSet = new Set(base.map((f) => f.id))
+      const watchlistedExtras = watchlistedOnly.filter((f) => !baseIdSet.has(f.id))
+      finalRows = [...base, ...watchlistedExtras]
+    }
+
+    return finalRows.map((f) => {
+        const isWatchlisted = watchIds.has(f.id)
         return {
           id: f.id,
         x: Number(f.stdDev),
@@ -1481,7 +1860,7 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
         isWatchlisted,
       }
     })
-  }, [filteredFunds, effectiveWatchlist, bubbleViewMode])
+  }, [dbFunds, effectiveWatchlist, bubbleViewMode])
 
   const requestSort = (key) => {
     const direction = sortConfig.key === key && sortConfig.direction === 'descending' ? 'ascending' : 'descending'
@@ -1495,7 +1874,8 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
     setSelectedFundIds((prev) => {
       if (prev.includes(fundId)) return prev.filter((id) => id !== fundId)
       if (prev.length >= 3) {
-        alert('比較は最大3件まで選択できます。')
+      if (typeof onUiMessage === 'function') onUiMessage('比較は最大3件まで選択できます。', 'info')
+      else alert('比較は最大3件まで選択できます。')
         return prev
       }
       return [...prev, fundId]
@@ -1507,14 +1887,56 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
       return
     }
     if (selectedFundIds.length < 2) {
-      alert('比較するには2つのファンドを選択してください。')
+      if (typeof onUiMessage === 'function') onUiMessage('比較するには2つのファンドを選択してください。', 'info')
+      else alert('比較するには2つのファンドを選択してください。')
       return
     }
     setIsCompareModalOpen(true)
+    recordUserActivityEvent(_user?.id, 'fund_compare_open', {
+      source: 'fund_page',
+      selected_count: selectedFundIds.length,
+      symbols: selectedFundIds.slice(0, 3),
+    })
   }
   useEffect(() => {
     if (selectedFundIds.length === 0) setIsComposeModalOpen(false)
   }, [selectedFundIds.length])
+
+  const openComposeModal = () => {
+    if (!isLoggedIn) {
+      promptLogin()
+      return
+    }
+    if (!isPaidMember) {
+      const used = readMonthlyOptimizerUsage(_user?.id)
+      if (used >= FREE_FUND_OPTIMIZER_RUNS_PER_MONTH) {
+        setIsComposeLimitModalOpen(true)
+        return
+      }
+      const nextUsed = consumeMonthlyOptimizerUsage(_user?.id)
+      setFreeOptimizerRunsUsed(nextUsed)
+    }
+    selectedFundIdsOnComposeOpenRef.current = [...selectedFundIds]
+    setIsComposeModalOpen(true)
+    recordUserActivityEvent(_user?.id, 'fund_compose_open', {
+      source: 'fund_page',
+      selected_count: selectedFundIds.length,
+      symbols: selectedFundIds.slice(0, 3),
+    })
+  }
+  const closeComposeModal = () => {
+    setIsComposeModalOpen(false)
+    setSharePopoverOpen(false)
+    setSelectedFundIds([...selectedFundIdsOnComposeOpenRef.current])
+  }
+  useEffect(() => {
+    if (!isComposeLimitModalOpen) return
+    const onKey = (e) => {
+      if (e.key === 'Escape') setIsComposeLimitModalOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [isComposeLimitModalOpen])
   useEffect(() => {
     if (selectedFundIds.length < 2) setIsCompareModalOpen(false)
   }, [selectedFundIds.length])
@@ -1536,10 +1958,11 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
             比較チェックで2〜3ファンドを選ぶと、配分変更に応じて「Optimal Allocation」がリアルタイムに移動します。
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 relative">
           <button
             type="button"
             onClick={setTopThreeFundsForOptimizer}
+            title="1ヶ月リターン上位3件"
             className="px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-600 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
           >
             上位3件を自動選択
@@ -1548,7 +1971,7 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
             type="button"
             disabled={!optimizerFrontier.optimalPoint}
             onClick={applyOptimalAllocationToSlider}
-            className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-black"
+            className="px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-600 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-indigo-600 hover:text-white hover:border-indigo-600 disabled:opacity-50 disabled:pointer-events-none"
           >
             最適配分を適用
           </button>
@@ -1621,62 +2044,13 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
                 {optimizer5yProjectionCurrent && (
                   <p className="text-[11px] text-slate-600 dark:text-slate-300 mt-1">
                     現在配分 5年想定（初期100万円 + 毎月3万円）: {fmtYen(optimizer5yProjectionCurrent.total)}
-                    <span className={`ml-1 font-black ${optimizer5yProjectionCurrent.gain >= 0 ? 'text-emerald-600 dark:text-emerald-300' : 'text-rose-600 dark:text-rose-300'}`}>
+                    <span className={`ml-1 font-black ${signedReturnTextClassStrong(optimizer5yProjectionCurrent.gain)}`}>
                       ({optimizer5yProjectionCurrent.gain >= 0 ? '+' : ''}{fmtYen(optimizer5yProjectionCurrent.gain)})
                     </span>
                   </p>
                 )}
               </div>
             )}
-            <div className="rounded-xl border border-sky-200 dark:border-slate-700 bg-sky-50 dark:bg-slate-900/70 p-2.5 mt-3">
-              <p className="text-[11px] font-black tracking-wider text-sky-700 dark:text-sky-300 mb-2">ウォッチセット保存（配分つき）</p>
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  value={watchSetName}
-                  onChange={(e) => setWatchSetName(e.target.value)}
-                  placeholder="例: 私の守備型セット"
-                  className="flex-1 h-8 px-2.5 rounded-lg border border-sky-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs text-slate-800 dark:text-slate-100 placeholder:text-slate-400 outline-none"
-                />
-                <button
-                  type="button"
-                  onClick={saveCurrentAllocationAsWatchSet}
-                  className="h-8 px-2.5 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-xs font-black"
-                >
-                  保存
-                </button>
-              </div>
-              {savedWatchSets.length > 0 && (
-                <div className="mt-2.5 space-y-1.5 max-h-40 overflow-y-auto pr-1">
-                  {savedWatchSets.slice(0, 6).map((row) => (
-                    <div key={row.id} className="rounded-lg border border-sky-200 dark:border-slate-700 bg-white/90 dark:bg-slate-800/80 px-2 py-1.5">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-[11px] font-black text-slate-800 dark:text-slate-100 line-clamp-1">{row.name}</p>
-                        <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => applyWatchSet(row.id)}
-                            className="text-[10px] font-black text-emerald-600 dark:text-emerald-300 hover:text-emerald-500"
-                          >
-                            適用
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => removeWatchSet(row.id)}
-                            className="text-[10px] font-black text-rose-500 dark:text-rose-300 hover:text-rose-400"
-                          >
-                            削除
-                          </button>
-                        </div>
-                      </div>
-                      <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 line-clamp-1">
-                        {(row.funds || []).map((f) => `${f.name} ${Number(f.weightPct || 0).toFixed(1)}%`).join(' / ')}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
           </div>
 
           <Suspense fallback={<Optimizer3DLoadingCard />}>
@@ -1716,16 +2090,22 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
             ? 'text-amber-600 dark:text-amber-300'
             : 'text-emerald-600 dark:text-emerald-300'
         }`}>
-          更新日: {updatedDateLabel} / データソース: マーケットスタック
+          更新日: {updatedDateLabel} / データソース: 中間データ事業者
         </p>
+        {isHydrating && (
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">最新指標を更新中...</p>
+        )}
+        <div className="mt-3">
+          <MarketDataEodFreshnessNote variant="fund" />
+        </div>
       </div>
 
       <section className="mb-6 rounded-2xl border border-slate-200 dark:border-slate-700/70 bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-slate-900 dark:via-slate-900 dark:to-slate-950 shadow-xl p-4 md:p-5">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
           <div>
             <h2 className="text-lg font-black text-slate-900 dark:text-white">ポートフォリオ最適化</h2>
-            <p className="text-xs text-slate-600 dark:text-slate-300 mt-1">
-              3D最適化・配分調整・ウォッチセット保存は「構成」ポップアップ内でまとめて操作できます。
+            <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 leading-relaxed">
+              3D最適化・配分調整・ウォッチセット（配分セット）保存は「構成」ポップアップ内でまとめて操作できます。保存したセットはマイページの「保存した配分セット」に一覧表示されます。
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -1735,13 +2115,14 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
             <button
               type="button"
               onClick={setTopThreeFundsForOptimizer}
+              title="1ヶ月リターン上位3件"
               className="px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-600 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
             >
               上位3件を自動選択
             </button>
             <button
               type="button"
-              onClick={() => (isLoggedIn ? setIsComposeModalOpen(true) : promptLogin())}
+              onClick={openComposeModal}
               className="px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-xs font-black"
             >
               構成で開く
@@ -1753,7 +2134,7 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
       <div className="mb-6 rounded-2xl border border-emerald-100 dark:border-emerald-900/40 bg-emerald-50/60 dark:bg-emerald-900/10 p-4">
         <div className="flex items-center justify-between gap-3 mb-2">
           <h2 className="text-sm font-black text-emerald-700 dark:text-emerald-300">低コストTOP 5（信託報酬）</h2>
-          <p className="text-[11px] text-emerald-600/80 dark:text-emerald-300/80">現在フィルター対象</p>
+          <p className="text-[11px] text-emerald-600/80 dark:text-emerald-300/80">全銘柄で算出</p>
         </div>
         {lowFeeLeaders.length === 0 ? (
           <p className="text-xs text-slate-500 dark:text-slate-300">信託報酬データが不足しています。</p>
@@ -1779,13 +2160,13 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
           <div className={`${!isLoggedIn ? 'blur-[6px] pointer-events-none select-none' : ''}`}>
             <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-5">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-extrabold text-slate-900 dark:text-white">1年リターン Top / Bottom</h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400">現在フィルター対象で算出</p>
+                <h2 className="text-lg font-extrabold text-slate-900 dark:text-white">1ヶ月リターン Top / Bottom</h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400">全銘柄で算出</p>
                 </div>
               <div className="h-[220px]">
             {returnLeaderBarData.length === 0 ? (
               <div className="h-full flex items-center justify-center text-sm font-bold text-slate-400">
-                1年リターン算出に必要な履歴データが不足しています
+                1ヶ月リターン算出に必要な履歴データが不足しています
           </div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
@@ -1798,13 +2179,13 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
                     formatter={(v) => {
                       const n = Number(v || 0)
                       const rounded = Math.round(n)
-                      return [`${rounded > 0 ? '+' : ''}${rounded}%`, '1年リターン']
+                      return [`${rounded > 0 ? '+' : ''}${rounded}%`, '1ヶ月リターン']
                     }}
                   />
                   <ReferenceLine x={0} stroke="#94a3b8" />
-                  <Bar dataKey="value" name="1年リターン" barSize={16}>
+                  <Bar dataKey="value" name="1ヶ月リターン" barSize={16}>
                     {returnLeaderBarData.map((entry) => (
-                      <Cell key={entry.id} fill={Number(entry.value || 0) >= 0 ? '#10b981' : '#ef4444'} />
+                      <Cell key={entry.id} fill={signedReturnBarHex(entry.value)} />
                     ))}
                   </Bar>
                 </BarChart>
@@ -1812,22 +2193,20 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
             )}
           </div>
           <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="rounded-xl border border-blue-100 dark:border-blue-900/40 bg-blue-50/60 dark:bg-blue-900/10 p-3">
-              <p className="text-xs font-bold text-blue-700 dark:text-blue-300 mb-2">Top 3</p>
+            <div className="rounded-xl border border-rose-100 dark:border-rose-900/40 bg-rose-50/60 dark:bg-rose-900/10 p-3">
+              <p className="text-xs font-bold text-rose-700 dark:text-rose-300 mb-2">Top 3</p>
               <div className="space-y-1.5">
                 {returnLeaders.top3.map((fund, idx) => (
                   <button
                     key={`${fund.id}-top`}
                     onClick={() => navigate(`/funds/${fund.id}`)}
-                    className="w-full text-left flex items-center justify-between gap-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:text-blue-600 dark:hover:text-blue-300"
+                    className="w-full text-left flex items-center justify-between gap-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:text-rose-600 dark:hover:text-rose-300"
                   >
                     <span className="truncate">{idx + 1}. {fund.fundName}</span>
                     <span className={`shrink-0 font-bold ${
-                      Number(fund.returnRate1Y || 0) >= 0
-                        ? 'text-emerald-600 dark:text-emerald-300'
-                        : 'text-red-500 dark:text-red-400'
+                      signedReturnTextClassStrong(Number(fund.returnRate1M || 0))
                     }`}>
-                      {fmtPct(fund.returnRate1Y)}
+                      {fmtPct(fund.returnRate1M)}
                     </span>
                 </button>
                 ))}
@@ -1836,8 +2215,8 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
                       )}
                     </div>
                   </div>
-            <div className="rounded-xl border border-rose-100 dark:border-rose-900/40 bg-rose-50/60 dark:bg-rose-900/10 p-3">
-              <p className="text-xs font-bold text-rose-700 dark:text-rose-300 mb-2">Bottom 3</p>
+            <div className="rounded-xl border border-blue-100 dark:border-blue-900/40 bg-blue-50/60 dark:bg-blue-900/10 p-3">
+              <p className="text-xs font-bold text-blue-700 dark:text-blue-300 mb-2">Bottom 3</p>
               <div className="space-y-1.5">
                 {returnLeaders.bottom3.length === 0 && (
                   <p className="text-[11px] text-slate-500 dark:text-slate-300">比較可能な下位データが不足しています</p>
@@ -1846,15 +2225,13 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
                   <button
                     key={`${fund.id}-bottom`}
                     onClick={() => navigate(`/funds/${fund.id}`)}
-                    className="w-full text-left flex items-center justify-between gap-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:text-rose-600 dark:hover:text-rose-300"
+                    className="w-full text-left flex items-center justify-between gap-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:text-blue-600 dark:hover:text-blue-300"
                   >
                     <span className="truncate">{idx + 1}. {fund.fundName}</span>
                     <span className={`shrink-0 font-bold ${
-                      Number(fund.returnRate1Y || 0) >= 0
-                        ? 'text-emerald-600 dark:text-emerald-300'
-                        : 'text-red-500 dark:text-red-400'
+                      signedReturnTextClassStrong(Number(fund.returnRate1M || 0))
                     }`}>
-                      {fmtPct(fund.returnRate1Y)}
+                      {fmtPct(fund.returnRate1M)}
                     </span>
                   </button>
                 ))}
@@ -1898,10 +2275,13 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
             >
               <option value="top_30">Top 30（1年リターン）</option>
               <option value="bottom_30">Bottom 30（1年リターン）</option>
+              {isLoggedIn ? (
+                <option value="watchlist">ウォッチ中のみ</option>
+              ) : null}
             </select>
       </div>
           <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-2">
-            ※ 算出可能な銘柄のみ表示（マイナス1年リターン銘柄が無い場合、負の領域は表示されません）
+            ※ 算出可能な銘柄のみ表示（Top/Bottomではウォッチ銘柄を常時含みます）
           </p>
           <div className="relative">
             <div className={`${!isLoggedIn ? 'blur-[6px] pointer-events-none select-none' : ''}`}>
@@ -1912,10 +2292,40 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
                   </div>
                 ) : (
                 <ResponsiveContainer width="100%" height="100%">
-                    <ScatterChart margin={{ top: 8, right: 20, left: 0, bottom: 0 }}>
+                    <ScatterChart margin={{ top: 16, right: 20, left: 20, bottom: 40 }}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                      <XAxis type="number" dataKey="x" name="変動性" unit="%" tick={{ fontSize: 11, fill: '#64748b' }} />
-                      <YAxis type="number" dataKey="y" name="1年リターン" unit="%" tick={{ fontSize: 11, fill: '#64748b' }} />
+                      <XAxis
+                        type="number"
+                        dataKey="x"
+                        name="変動性"
+                        unit="%"
+                        tick={{ fontSize: 11, fill: '#64748b' }}
+                        label={{
+                          value: 'リスク（年率標準偏差 %）',
+                          position: 'insideBottom',
+                          offset: -2,
+                          fontSize: 11,
+                          fill: '#475569',
+                          fontWeight: 700,
+                        }}
+                      />
+                      <YAxis
+                        type="number"
+                        dataKey="y"
+                        name="1年リターン"
+                        unit="%"
+                        tick={{ fontSize: 11, fill: '#64748b' }}
+                        width={48}
+                        label={{
+                          value: '1年リターン（%）',
+                          angle: -90,
+                          position: 'insideLeft',
+                          offset: 4,
+                          fontSize: 11,
+                          fill: '#475569',
+                          fontWeight: 700,
+                        }}
+                      />
                       <ZAxis type="number" dataKey="z" range={[120, 1100]} />
                       <Tooltip
                         cursor={{ strokeDasharray: '3 3' }}
@@ -1991,10 +2401,6 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
         </div>
             </div>
 
-      <div className="mb-6 2xl:hidden">
-        <AdBanner variant="horizontal" />
-            </div>
-
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
         <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800">
           <div className="flex items-center justify-between mb-3">
@@ -2038,31 +2444,34 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
                 { id: 'watchlist', label: 'ウォッチ', icon: Heart },
                 ...assetClassFilterOptions.map((opt) => ({
                   id: opt.id,
-                  label: `${opt.label} (${opt.count})`,
+                  label: opt.label,
                   icon: opt.id === 'stock' ? Globe : opt.id === 'bond' ? Flag : Globe,
                 })),
               ].map((filter) => (
-                <button
-                  key={filter.id}
-                  onClick={() => {
-                    setActiveFilter(filter.id)
-                    setActiveSubFilter('all')
-                    setCurrentPage(1)
-                  }}
-                  className={`px-3 py-1.5 rounded-full border text-xs font-bold flex items-center gap-1.5 transition ${
-                    activeFilter === filter.id
-                      ? 'bg-slate-900 text-white border-slate-900 dark:bg-orange-500 dark:border-orange-500'
-                      : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
-                  }`}
-                >
-                  {filter.id !== 'all' && <filter.icon size={12} />}
-                  {filter.label}
-                </button>
+                  <button
+                    key={filter.id}
+                    onClick={() => {
+                      setActiveFilter(filter.id)
+                      setActiveSubFilter('all')
+                      setCurrentPage(1)
+                    }}
+                    className={`px-3 py-1.5 rounded-full border text-xs font-bold flex items-center gap-1.5 transition ${
+                      activeFilter === filter.id
+                        ? 'bg-slate-900 text-white border-slate-900 dark:bg-orange-500 dark:border-orange-500'
+                        : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+                    }`}
+                  >
+                    {filter.id !== 'all' && filter.icon && <filter.icon size={12} />}
+                    {filter.label}
+                  </button>
               ))}
+            </div>
 
             {subCategoryFilterOptions.length > 0 && (
-              <div className="flex flex-wrap gap-2 mt-2">
+              <div className="flex flex-wrap items-center gap-2 mt-2.5">
+                <span className="text-[11px] font-bold text-indigo-800 dark:text-indigo-300 shrink-0">サブカテゴリ</span>
                 <button
+                  type="button"
                   onClick={() => {
                     setActiveSubFilter('all')
                     setCurrentPage(1)
@@ -2073,10 +2482,11 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
                       : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
                   }`}
                 >
-                  サブカテゴリ すべて
+                  すべて
                 </button>
                 {subCategoryFilterOptions.map((opt) => (
                   <button
+                    type="button"
                     key={opt.id}
                     onClick={() => {
                       setActiveSubFilter(opt.id)
@@ -2088,12 +2498,11 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
                         : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
                     }`}
                   >
-                    {opt.label} ({opt.count})
+                    {opt.label}
                   </button>
                 ))}
               </div>
             )}
-            </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-wide">NISA:</span>
@@ -2110,7 +2519,7 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
                     : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-emerald-400 dark:hover:border-emerald-500'
                 }`}
               >
-                {opt.label} ({opt.count})
+                {opt.label}
               </button>
             ))}
           </div>
@@ -2120,7 +2529,12 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
           {paginatedData.map((fund, idx) => {
             const isWatchlisted = Array.isArray(effectiveWatchlist) && effectiveWatchlist.includes(fund.id)
             const isCompared = selectedFundIds.includes(fund.id)
-            const ret1y = Number(fund.returnRate1Y || 0)
+            const retDisplay = Number.isFinite(Number(fund.returnRate1Y))
+              ? fmtPct(fund.returnRate1Y)
+              : (Number.isFinite(Number(fund.returnYTD))
+                ? `YTD ${fund.returnYTD >= 0 ? '+' : ''}${Number(fund.returnYTD).toFixed(1)}%`
+                : '-')
+            const retValue = Number.isFinite(Number(fund.returnRate1Y)) ? Number(fund.returnRate1Y) : Number(fund.returnYTD ?? NaN)
             return (
               <div
                 key={fund.id}
@@ -2143,7 +2557,9 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
                   </div>
                   <div className="min-w-0 flex-1">
                     <span className="text-[10px] text-slate-500 dark:text-slate-400">{fund.isin}</span>
-                    <h3 className="line-clamp-1 text-sm font-bold text-slate-900 dark:text-white">{fund.fundName}</h3>
+                    <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                      <h3 className="line-clamp-1 text-sm font-bold text-slate-900 dark:text-white">{fund.fundName}</h3>
+                    </div>
                     <div className="mt-1 flex flex-wrap gap-1">
                       <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-600 dark:bg-slate-700 dark:text-slate-300">{nisaDisplayLabel(fund.nisaCategory)}</span>
                     </div>
@@ -2157,7 +2573,9 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
                   )}
                 </div>
                 <div className="flex items-center justify-between text-sm">
-                  <span className={`font-black ${ret1y >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>{fmtPct(fund.returnRate1Y)}</span>
+                  <span className={`font-black ${retDisplay === '-' ? 'text-slate-400' : signedReturnTextClassStrong(retValue)}`}>
+                    {retDisplay}
+                  </span>
                   <span className="text-xs text-slate-500 dark:text-slate-400">{formatTrustFee(fund.trustFee)}</span>
                 </div>
               </div>
@@ -2188,7 +2606,7 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
               return (
                   <tr
                   key={fund.id}
-                    className="border-t border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/40 cursor-pointer"
+                    className="border-t border-slate-100 dark:border-slate-800 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40"
                   onClick={() => {
                     trackAnalyticsEvent('fund_select', {
                       product_type: 'fund',
@@ -2217,7 +2635,9 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
                     <td className="px-4 py-3">
                       <div className="flex items-start justify-between gap-2">
                     <div>
-                          <div className="font-bold text-slate-900 dark:text-white line-clamp-1">{fund.fundName}</div>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="font-bold text-slate-900 dark:text-white line-clamp-1">{fund.fundName}</span>
+                          </div>
                           <div className="text-[11px] text-slate-500 dark:text-slate-400">{fund.isin}</div>
                     </div>
                     {isLoggedIn ? (
@@ -2247,16 +2667,30 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
                     )}
                   </div>
                     </td>
-                    <td className="px-4 py-3 text-left text-slate-700 dark:text-slate-300">{nisaDisplayLabel(fund.nisaCategory)}</td>
+                    <td className="px-4 py-3 text-left text-slate-700 dark:text-slate-300">
+                      <span>{nisaDisplayLabel(fund.nisaCategory)}</span>
+                    </td>
                     <td className="px-4 py-3 text-right text-slate-700 dark:text-slate-300">{formatTrustFee(fund.trustFee)}</td>
                     <td className="px-4 py-3 text-right text-slate-700 dark:text-slate-300">{fund.aumDisplay}</td>
                     <td className="px-4 py-3 text-right text-slate-700 dark:text-slate-300">{Number.isFinite(fund.sharpe) ? fund.sharpe.toFixed(2) : '-'}</td>
                     <td className="px-4 py-3 text-right text-slate-700 dark:text-slate-300">{Number.isFinite(fund.stdDev) ? `${fund.stdDev.toFixed(1)}%` : '-'}</td>
-                    <td className={`px-4 py-3 text-right font-bold ${
-                      Number.isFinite(Number(fund.returnRate1Y))
-                        ? (Number(fund.returnRate1Y) >= 0 ? 'text-emerald-500' : 'text-red-500')
-                        : 'text-slate-400'
-                    }`}>{fmtPct(fund.returnRate1Y)}</td>
+                    <td
+                      className={`px-4 py-3 text-right font-bold ${
+                        Number.isFinite(Number(fund.returnRate1Y))
+                          ? signedReturnTextClassStrong(Number(fund.returnRate1Y))
+                          : (Number.isFinite(Number(fund.returnYTD))
+                            ? signedReturnTextClassStrong(Number(fund.returnYTD))
+                            : 'text-slate-400')
+                      }`}
+                    >
+                      <span>
+                        {Number.isFinite(Number(fund.returnRate1Y))
+                          ? fmtPct(fund.returnRate1Y)
+                          : (Number.isFinite(Number(fund.returnYTD))
+                            ? `YTD ${fund.returnYTD >= 0 ? '+' : ''}${Number(fund.returnYTD).toFixed(1)}%`
+                            : '-')}
+                      </span>
+                    </td>
                   </tr>
                 )
               })}
@@ -2315,6 +2749,10 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
             </div>
         </div>
 
+      <div className="mt-6 mb-6 2xl:hidden">
+        <AdBanner variant="horizontal" />
+      </div>
+
       <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4">
           <p className="text-sm font-black text-slate-900 dark:text-white mb-3">よくある質問（比較の見方）</p>
@@ -2348,32 +2786,140 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
             <BarChart2 size={14} /> 比較する
           </button>
           <button
-            onClick={() => (isLoggedIn ? setIsComposeModalOpen(true) : promptLogin())}
+            onClick={openComposeModal}
             className="text-xs font-bold text-sky-300 hover:text-sky-200 inline-flex items-center gap-1"
           >
             構成
           </button>
-          <button onClick={() => setSelectedFundIds([])} className="text-slate-300 hover:text-white">
-            <X size={14} />
+          <button onClick={() => setSelectedFundIds([])} className="text-xs font-bold text-slate-300 hover:text-white inline-flex items-center gap-1">
+            <X size={14} /> 全選択解除
           </button>
         </div>
       )}
 
-      {isComposeModalOpen && (
-        <div className="fixed inset-0 z-[130] p-4 flex items-center justify-center">
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsComposeModalOpen(false)} />
-          <div className="relative z-10 w-full max-w-6xl max-h-[90vh] overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl">
-            <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-black text-slate-900 dark:text-white">構成シミュレーター</h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">比率調整→期待収益/リスク/信託報酬→20年成長を一画面で確認</p>
-              </div>
-              <button onClick={() => setIsComposeModalOpen(false)} className="p-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-900 dark:hover:text-white">
-                <X size={16} />
+      {isComposeLimitModalOpen && (
+        <div
+          className="fixed inset-0 z-[135] flex items-center justify-center p-4 pt-[max(0.5rem,env(safe-area-inset-top))] pb-[max(0.5rem,env(safe-area-inset-bottom))]"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="compose-limit-modal-title"
+        >
+          <div
+            className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+            aria-hidden="true"
+            onClick={() => setIsComposeLimitModalOpen(false)}
+          />
+          <div
+            className="relative z-10 w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 id="compose-limit-modal-title" className="text-lg font-black text-slate-900 dark:text-white">
+              無料プランの利用上限
+            </h3>
+            <p className="mt-3 text-sm font-semibold leading-relaxed text-slate-600 dark:text-slate-300">
+              構成シミュレーター（オプティマイザー）は無料プランでは月に{FREE_FUND_OPTIMIZER_RUNS_PER_MONTH}回までです。今月の回数を使い切りました。続けてご利用になる場合はプレミアム（有料）プランへのアップグレードをご検討ください。
+            </p>
+            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setIsComposeLimitModalOpen(false)}
+                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-black text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700 sm:w-auto"
+              >
+                閉じる
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsComposeLimitModalOpen(false)
+                  navigate('/premium')
+                }}
+                className="w-full rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-black text-white hover:bg-amber-400 sm:w-auto"
+              >
+                プレミアムを見る
               </button>
             </div>
+          </div>
+        </div>
+      )}
 
-            <div className="p-4 md:p-5 overflow-y-auto max-h-[calc(90vh-84px)] space-y-4">
+      {isComposeModalOpen && (
+        <div
+          className="fixed inset-0 z-[130] flex items-center justify-center p-2 sm:p-4 pt-[max(0.5rem,env(safe-area-inset-top))] pb-[max(0.5rem,env(safe-area-inset-bottom))]"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="compose-modal-title"
+        >
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={closeComposeModal} aria-hidden="true" />
+          <div className="relative z-10 flex h-[min(92dvh,100dvh)] w-full max-w-6xl min-h-0 flex-col">
+            <div
+              className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  closeComposeModal()
+                }}
+                onPointerDown={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  closeComposeModal()
+                }}
+                style={{ touchAction: 'manipulation', cursor: 'pointer' }}
+                className="absolute right-2 top-2 z-20 flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-2 border-slate-200 bg-white text-slate-700 shadow-md hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 sm:right-3 sm:top-3"
+                aria-label="閉じる"
+                title="閉じる (Esc)"
+              >
+                <X size={20} strokeWidth={2.5} />
+              </button>
+              <div className="shrink-0 border-b border-slate-200 dark:border-slate-700 px-4 py-3 pr-14 sm:px-5 sm:py-4 sm:pr-16 flex flex-col gap-3 md:flex-row md:items-center md:justify-between md:gap-3">
+              <div className="min-w-0 w-full md:flex-1">
+                <h3 id="compose-modal-title" className="text-lg font-black text-slate-900 dark:text-white break-words">構成シミュレーター</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 break-words leading-relaxed">比率調整→期待収益/リスク/信託報酬→20年成長を一画面で確認。ウォッチセット＝現在の構成を名前付きで保存し、後で「適用」で復元（マイページでは「保存した配分セット」に表示）。保存・適用時、構成銘柄のうちまだウォッチに無いものはマイページのファンドウォッチリストへ自動追加されます。</p>
+              </div>
+              <div className="flex w-full shrink-0 md:w-auto md:justify-end">
+                {optimizerSelectedFunds.length >= 2 && (
+                  <div className="flex w-full flex-wrap items-center gap-2 md:max-w-none">
+                    <input
+                      type="text"
+                      value={watchSetName}
+                      onChange={(e) => setWatchSetName(e.target.value)}
+                      placeholder="ウォッチセット名"
+                      disabled={!isPaidMember}
+                      className="min-w-0 flex-1 basis-[10rem] md:flex-none md:w-32 h-8 px-2.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs text-slate-800 dark:text-slate-100 placeholder:text-slate-400 outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => saveCurrentAllocationAsWatchSet()}
+                      disabled={!isPaidMember}
+                      className="h-8 shrink-0 px-2.5 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-xs font-black whitespace-nowrap"
+                    >
+                      ウォッチセット保存
+                    </button>
+                    {!isPaidMember ? (
+                      <span className="text-[10px] font-black text-amber-600 dark:text-amber-300">
+                        無料残り {freeOptimizerRunsRemaining} 回 / 保存はプレミアム限定
+                      </span>
+                    ) : null}
+                    {savedWatchSets.length > 0 && (
+                      <div className="flex items-center gap-1 flex-wrap">
+                        {savedWatchSets.slice(0, 4).map((row) => (
+                          <div key={row.id} className="flex items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 px-2 py-1">
+                            <button type="button" onClick={() => applyWatchSet(row.id)} className="text-[10px] font-black text-emerald-600 dark:text-emerald-300 hover:text-emerald-500">適用</button>
+                            <button type="button" onClick={() => removeWatchSet(row.id)} className="text-[10px] font-black text-rose-500 dark:text-rose-300">削除</button>
+                            <span className="text-[10px] text-slate-600 dark:text-slate-300 truncate max-w-[80px]">{row.name}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain p-4 pb-6 sm:pb-8 md:p-5 space-y-4">
               {optimizerSelectedFunds.length < 1 ? (
                 <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-700">
                   ファンドを選択すると構成シミュレーターが有効になります。
@@ -2433,17 +2979,11 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
                       <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-900/80 p-4">
                         <div className="flex items-start justify-between gap-3 mb-3">
                           <div>
-                            <p className="text-[22px] leading-none font-black text-slate-900 dark:text-white">将来推移シミュレーション (20年)</p>
+                            <p className="text-[17px] sm:text-[20px] md:text-[22px] leading-tight font-black text-slate-900 dark:text-white">将来推移シミュレーション (20年)</p>
                             <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
                               現在配分ベース | 期待収益 {fmtPct(optimizerFrontier.currentPoint?.ret)} / リスク {Number(optimizerFrontier.currentPoint?.risk || 0).toFixed(1)}% / 信託報酬 {Number(optimizerFrontier.currentPoint?.fee || 0).toFixed(2)}%
                             </p>
                           </div>
-                          {Number.isFinite(composeAnnualProjectionRate) && (
-                            <div className="shrink-0 rounded-xl border border-indigo-200 dark:border-indigo-700/50 bg-indigo-50 dark:bg-indigo-950/30 px-3 py-2">
-                              <p className="text-[10px] font-bold text-indigo-500 dark:text-indigo-300">保守的換算 年率</p>
-                              <p className="text-sm font-black text-indigo-700 dark:text-indigo-200">{composeAnnualProjectionRate.toFixed(1)}%</p>
-                            </div>
-                          )}
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
@@ -2454,7 +2994,7 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
                               inputMode="numeric"
                               value={fmtNumber(composeInitialYen)}
                               onChange={(e) => setComposeInitialYen(parseNumericInput(e.target.value))}
-                              className="mt-1 w-full bg-transparent outline-none text-[22px] leading-none font-black text-slate-900 dark:text-white"
+                              className="mt-1 w-full bg-transparent outline-none text-[17px] sm:text-[20px] md:text-[22px] leading-none font-black text-slate-900 dark:text-white"
                             />
                           </label>
                           <label className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2.5">
@@ -2464,7 +3004,7 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
                               inputMode="numeric"
                               value={fmtNumber(composeMonthlyYen)}
                               onChange={(e) => setComposeMonthlyYen(parseNumericInput(e.target.value))}
-                              className="mt-1 w-full bg-transparent outline-none text-[22px] leading-none font-black text-slate-900 dark:text-white"
+                              className="mt-1 w-full bg-transparent outline-none text-[17px] sm:text-[20px] md:text-[22px] leading-none font-black text-slate-900 dark:text-white"
                             />
                           </label>
                         </div>
@@ -2488,48 +3028,77 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mt-2">
                             <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 p-3">
                               <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400">投資元本 (20年)</p>
-                              <p className="text-[24px] md:text-[26px] leading-none font-black text-slate-900 dark:text-white mt-2">{fmtYen(composeGrowthLast.principal)}</p>
+                              <p className="text-[18px] sm:text-[22px] md:text-[26px] leading-none font-black text-slate-900 dark:text-white mt-2">{fmtYen(composeGrowthLast.principal)}</p>
                             </div>
                             <div className="rounded-xl border border-blue-200 dark:border-blue-700/50 bg-blue-50/50 dark:bg-blue-950/20 p-3">
                               <p className="text-[11px] font-bold text-blue-600 dark:text-blue-300">運用資産総額 (推計)</p>
-                              <p className="text-[24px] md:text-[26px] leading-none font-black text-blue-700 dark:text-blue-200 mt-2">{fmtYen(composeGrowthLast.total)}</p>
-                              <p className="text-xs font-black text-blue-500 dark:text-blue-300 mt-1">{composeGrowthLast.gain >= 0 ? '+' : ''}{fmtYen(composeGrowthLast.gain)} の損益</p>
+                              <p className="text-[18px] sm:text-[22px] md:text-[26px] leading-none font-black text-blue-700 dark:text-blue-200 mt-2">{fmtYen(composeGrowthLast.total)}</p>
+                              <p className={`text-xs font-black mt-1 ${signedReturnTextClassStrong(composeGrowthLast.gain)}`}>{composeGrowthLast.gain >= 0 ? '+' : ''}{fmtYen(composeGrowthLast.gain)} の損益</p>
                             </div>
                             <div className="rounded-xl border border-rose-200 dark:border-rose-700/50 bg-rose-50/60 dark:bg-rose-950/20 p-3">
                               <p className="text-[11px] font-bold text-rose-600 dark:text-rose-300">支払う手数料 (推計)</p>
-                              <p className="text-[24px] md:text-[26px] leading-none font-black text-rose-700 dark:text-rose-200 mt-2">{fmtYen(composeGrowthLast.feePaid)}</p>
+                              <p className="text-[18px] sm:text-[22px] md:text-[26px] leading-none font-black text-rose-700 dark:text-rose-200 mt-2">{fmtYen(composeGrowthLast.feePaid)}</p>
                               <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">※信託報酬 {Number(optimizerFrontier.currentPoint?.fee || 0).toFixed(2)}% に基づく</p>
                             </div>
                           </div>
                         )}
+                      </div>
+                      <div className="mt-3 space-y-1">
+                        {Number.isFinite(composeAnnualProjectionRate) ? (
+                          <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                            ※ 保守的換算 年率: {composeAnnualProjectionRate.toFixed(1)}%（表示上の長期シミュレーション用に期待収益を保守的に圧縮）
+                          </p>
+                        ) : null}
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed">{MM_SIMULATION_PAST_PERFORMANCE_JA}</p>
                       </div>
                     </div>
                   </div>
                 </>
               )}
             </div>
+            </div>
           </div>
         </div>
       )}
 
       {isCompareModalOpen && (
-        <div className="fixed inset-0 z-[135] p-4 flex items-center justify-center">
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsCompareModalOpen(false)} />
-          <div className="relative z-10 w-full max-w-7xl max-h-[92vh] overflow-hidden rounded-2xl shadow-2xl">
-            <Suspense fallback={<CompareModalLoadingCard />}>
-              <FundComparePage
-                myWatchlist={effectiveWatchlist}
-                toggleWatchlist={toggleWatchlist}
-                embeddedMode
-                initialSymbols={selectedFundIds}
-                onClose={() => setIsCompareModalOpen(false)}
-              />
-            </Suspense>
+        <div
+          className="fixed inset-0 z-[135] flex items-center justify-center p-2 sm:p-4 pt-[max(0.5rem,env(safe-area-inset-top))] pb-[max(0.5rem,env(safe-area-inset-bottom))]"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsCompareModalOpen(false)} aria-hidden="true" />
+          <div className="relative z-10 flex h-[min(92dvh,100dvh)] w-full max-w-7xl min-h-0 flex-col">
+            <div
+              className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <Suspense fallback={<CompareModalLoadingCard />}>
+                <FundComparePage
+                  user={_user || null}
+                  myWatchlist={effectiveWatchlist}
+                  toggleWatchlist={toggleWatchlist}
+                  onUiMessage={onUiMessage}
+                  embeddedMode
+                  initialSymbols={selectedFundIds}
+                  onClose={() => setIsCompareModalOpen(false)}
+                />
+              </Suspense>
+            </div>
           </div>
         </div>
       )}
 
-      <div className="text-right mt-4 text-xs text-slate-400">※ データ提供: マーケットスタック（ETF）</div>
+      <div className="text-right mt-4 text-xs text-slate-400">※ データ提供: 中間データ事業者（ETF）</div>
+      <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+        ※ 信託報酬は予告なく変更される場合があります。最新情報は各運用会社の公式サイトをご確認ください。
+      </p>
+      <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+        ※ 過去の運用実績・リターンは将来の成果を保証するものではありません。
+      </p>
+      <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+        ※ 信託報酬等の数値は参考値であり、予告なく変更される場合があります。※ NISAの非課税メリットはお客様個人の状況により異なります。最終的な投資判断はご自身でお願いします。
+      </p>
       <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
         {LEGAL_NOTICE_TEMPLATES.investment}
       </p>
@@ -2620,7 +3189,7 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
           <div className="mt-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 p-2.5">
             <p className="text-[10px] text-slate-500">60歳時点の想定資産</p>
             <p className="text-base font-black text-indigo-600 dark:text-indigo-300">¥{miniProjection.projectedTotal.toLocaleString()}</p>
-            <p className="text-[11px] font-bold text-emerald-600 dark:text-emerald-300 mt-1">+¥{miniProjection.gain.toLocaleString()}（+{miniProjection.totalReturnPct.toFixed(1)}%）</p>
+            <p className={`text-[11px] font-bold mt-1 ${signedReturnTextClassStrong(miniProjection.gain)}`}>+¥{miniProjection.gain.toLocaleString()}（+{miniProjection.totalReturnPct.toFixed(1)}%）</p>
           </div>
         </div>
       ) : (

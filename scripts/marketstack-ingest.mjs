@@ -6,7 +6,7 @@ const DEFAULT_MARKETSTACK_SYMBOLS = [
   'PLTR', 'JPM', 'GS', 'MS', 'BAC', 'WFC', 'C', 'BLK', 'V', 'MA',
   'AXP', 'PYPL', 'SCHW', 'USB', 'PNC', 'COF', 'BK', 'SPGI', 'ICE', 'JNJ',
   'PFE', 'MRK', 'UNH', 'ABBV', 'LLY', 'TMO', 'ABT', 'DHR', 'ISRG', 'BMY',
-  'GILD', 'AMGN', 'VRTX', 'CVS', 'MDT', 'SYK', 'ZTS', 'REGN', 'CI', 'XOM',
+  'GILD', 'AMGN', 'VRTX', 'VRT', 'CVS', 'MDT', 'SYK', 'ZTS', 'REGN', 'CI', 'XOM',
   'CVX', 'COP', 'SLB', 'EOG', 'MPC', 'PSX', 'VLO', 'OKE', 'KMI', 'WMB',
   'DVN', 'FANG', 'HAL', 'BKR', 'CAT', 'GE', 'DE', 'HON', 'ETN', 'MMM',
   'LMT', 'RTX', 'NOC', 'BA', 'UNP', 'UPS', 'FDX', 'WM', 'EMR', 'ITW',
@@ -15,6 +15,8 @@ const DEFAULT_MARKETSTACK_SYMBOLS = [
   'MRVL', 'SMCI', 'KKR', 'BX', 'APO', 'CG', 'MSTR', 'ARM', 'RBLX', 'DDOG',
   'ASML', 'NVO', 'SAP', 'SHEL', 'HSBC', 'UL', 'BP', 'RIO', 'BCS', 'AZN',
 ]
+const MAX_PRICE = 10_000_000
+const MAX_VOLUME = 1_000_000_000_000
 
 const parseSymbols = (raw) =>
   (raw || '')
@@ -32,6 +34,20 @@ const toDateOnly = (value) => {
   const d = new Date(value)
   if (Number.isNaN(d.getTime())) return null
   return d.toISOString().slice(0, 10)
+}
+
+const normalizePriceNumber = (value, { min = 0.000001, max = MAX_PRICE } = {}) => {
+  const n = Number(value)
+  if (!Number.isFinite(n)) return null
+  if (n < min || n > max) return null
+  return n
+}
+
+const normalizeVolumeNumber = (value) => {
+  const n = Number(value)
+  if (!Number.isFinite(n)) return null
+  if (n < 0 || n > MAX_VOLUME) return null
+  return Math.round(n)
 }
 
 const getJson = async (url, init) => {
@@ -79,8 +95,6 @@ const fetchRowsForChunk = async (key, symbols) => {
   }
 
   const attempts = [
-    { version: 'v1', authMode: 'query' },
-    { version: 'v1', authMode: 'header' },
     { version: 'v2', authMode: 'query' },
     { version: 'v2', authMode: 'header' },
   ]
@@ -92,7 +106,6 @@ const fetchRowsForChunk = async (key, symbols) => {
     } catch (e) {
       const msg = String(e?.message || '').toLowerCase()
       errors.push(`${attempt.version}/${attempt.authMode}: ${e.message}`)
-      // If v1 is unavailable for account, continue to v2 attempts.
       if (msg.includes('not available in the v1 endpoint')) continue
       // If auth fails, continue trying the other auth mode and version.
       if (msg.includes('access key') || msg.includes('apikey') || msg.includes('invalid')) continue
@@ -104,13 +117,12 @@ const fetchRowsForChunk = async (key, symbols) => {
 }
 
 const run = async () => {
-  const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
+  const supabaseUrl = process.env.SUPABASE_URL
   const serviceRole = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY
   const marketstackKey =
     process.env.MARKETSTACK_ACCESS_KEY ||
     process.env.MARKETSTACK_APIKEY ||
-    process.env.MARKETSTACK_API_KEY ||
-    process.env.VITE_MARKETSTACK_ACCESS_KEY
+    process.env.MARKETSTACK_API_KEY
   const symbols = parseSymbols(process.env.MARKETSTACK_SYMBOLS || DEFAULT_MARKETSTACK_SYMBOLS.join(','))
 
   if (!supabaseUrl || !serviceRole || !marketstackKey) {
@@ -134,6 +146,8 @@ const run = async () => {
 
     const symbolRows = []
     const priceRows = []
+    const droppedPriceRowsByQuality = {}
+    let droppedPriceRows = 0
 
     for (const r of rows) {
       const symbol = r?.symbol || r?.ticker
@@ -148,17 +162,31 @@ const run = async () => {
         is_active: true,
       })
 
+      const close = normalizePriceNumber(r?.close)
+      if (close == null) {
+        droppedPriceRows += 1
+        droppedPriceRowsByQuality[symbol] = (droppedPriceRowsByQuality[symbol] || 0) + 1
+        continue
+      }
       priceRows.push({
         source: 'marketstack',
         symbol,
         trade_date: tradeDate,
-        open: r?.open ?? null,
-        high: r?.high ?? null,
-        low: r?.low ?? null,
-        close: r?.close ?? null,
-        volume: r?.volume ?? null,
+        open: normalizePriceNumber(r?.open),
+        high: normalizePriceNumber(r?.high),
+        low: normalizePriceNumber(r?.low),
+        close,
+        volume: normalizeVolumeNumber(r?.volume),
         raw: r,
       })
+    }
+    const qualitySummary = {
+      sourceRows: rows.length,
+      acceptedPriceRows: priceRows.length,
+      droppedPriceRows,
+      droppedSymbolsTop10: Object.entries(droppedPriceRowsByQuality)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10),
     }
 
     if (symbolRows.length > 0) {
@@ -178,11 +206,11 @@ const run = async () => {
         status: 'success',
         finished_at: new Date().toISOString(),
         rows_processed: priceRows.length,
-        meta: { symbols, chunks, endpointStats },
+        meta: { symbols, chunks, endpointStats, qualitySummary },
       })
       .eq('id', job?.id)
 
-    console.log(`OK: chunks=${chunks}, rows=${priceRows.length}, endpointStats=${JSON.stringify(endpointStats)}`)
+    console.log(`OK: chunks=${chunks}, rows=${priceRows.length}, dropped=${droppedPriceRows}, endpointStats=${JSON.stringify(endpointStats)}`)
   } catch (e) {
     await supabase
       .from('ingestion_jobs')

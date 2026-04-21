@@ -1,0 +1,79 @@
+name: Trigger News Crons
+
+on:
+  schedule:
+    - cron: '0 22,10 * * *'
+  workflow_dispatch:
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies (triage script)
+        run: npm ci
+
+      - name: Verify secrets
+        env:
+          BASE: ${{ secrets.VERCEL_PROD_BASE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$BASE" ] || [ -z "$CRON_SECRET" ]; then
+            echo "::error::Set VERCEL_PROD_BASE_URL and CRON_SECRET"
+            exit 1
+          fi
+
+      - name: Trigger market-news
+        id: market_news
+        continue-on-error: true
+        env:
+          BASE: ${{ secrets.VERCEL_PROD_BASE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          mkdir -p cron-health
+          code=$(curl -sS -o cron-health/market-news.body -w "%{http_code}" -X POST "${BASE}/api/cron/market-news" -H "Authorization: Bearer ${CRON_SECRET}")
+          echo "$code" > cron-health/market-news.code
+          test "$code" = "200"
+
+      - name: Trigger ai-news
+        id: ai_news
+        continue-on-error: true
+        env:
+          BASE: ${{ secrets.VERCEL_PROD_BASE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          code=$(curl -sS -o cron-health/ai-news.body -w "%{http_code}" -X POST "${BASE}/api/cron/ai-news" -H "Authorization: Bearer ${CRON_SECRET}")
+          echo "$code" > cron-health/ai-news.code
+          test "$code" = "200"
+
+      - name: AI triage (if a trigger failed)
+        if: steps.market_news.outcome == 'failure' || steps.ai_news.outcome == 'failure'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: node scripts/gh-ai-triage.mjs cron cron-health
+
+      - name: Validate cron JSON (HTTP 200 の両方のとき)
+        id: validate_cron
+        if: steps.market_news.outcome == 'success' && steps.ai_news.outcome == 'success'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: node scripts/gh-ai-triage.mjs cron cron-health
+
+      - name: Require crons OK (HTTP + JSON)
+        if: always()
+        run: |
+          echo "market_news=${{ steps.market_news.outcome }} ai_news=${{ steps.ai_news.outcome }} validate=${{ steps.validate_cron.outcome }}"
+          if [ "${{ steps.market_news.outcome }}" != "success" ] || [ "${{ steps.ai_news.outcome }}" != "success" ]; then
+            exit 1
+          fi
+          if [ "${{ steps.validate_cron.outcome }}" = "failure" ]; then
+            exit 1
+          fi

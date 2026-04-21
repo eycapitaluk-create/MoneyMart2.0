@@ -1,0 +1,49 @@
+-- MarketStack 적재 시 종가가 시가로 폴백되며 생긴 의심 행 정리 후, 크론/스크립트로 다시 넣기.
+-- 적용 순서: (1) 아래 DELETE 중 하나 실행 (2) 로컬 또는 Vercel에서 jp-etf + trade_date 로 재수집
+--
+-- 재수집 예:
+--   node scripts/run-marketstack-daily.mjs jp-etf 2026-04-01
+--
+-- 주의: DELETE 는 되돌리기 어렵습니다. 먼저 SELECT 로 건수 확인 권장.
+
+-- ---------------------------------------------------------------------------
+-- A) 특정 영업일·일본 상장(.T)·marketstack 전부 삭제 후 그날만 재적재 (가장 단순)
+-- ---------------------------------------------------------------------------
+-- delete from public.stock_daily_prices
+-- where source = 'marketstack'
+--   and trade_date = '2026-04-01'
+--   and symbol like '%.T';
+
+-- 확인용:
+-- select symbol, trade_date, open, high, low, close
+-- from public.stock_daily_prices
+-- where source = 'marketstack'
+--   and trade_date = '2026-04-01'
+--   and symbol like '%.T'
+-- order by symbol;
+
+-- ---------------------------------------------------------------------------
+-- B) 시가=종가인데 고저 폭이 큰 행만 삭제 (여러 날짜에 퍼져 있을 때)
+--    종가 폴백 버그로 생긴 패턴에 가깝게 좁힘. (진짜 시가=종가인 날은 드묾)
+-- ---------------------------------------------------------------------------
+-- delete from public.stock_daily_prices sdp
+-- using (
+--   select id
+--   from public.stock_daily_prices
+--   where source = 'marketstack'
+--     and open is not null
+--     and close is not null
+--     and open = close
+--     and high is not null
+--     and low is not null
+--     and high > low
+--     and (high - low) > greatest(abs(close) * 0.002, 1)
+-- ) d
+-- where sdp.id = d.id;
+
+-- 확인용(삭제 전 건수):
+-- select count(*) from public.stock_daily_prices
+-- where source = 'marketstack'
+--   and open = close
+--   and high > low
+--   and (high - low) > greatest(abs(close) * 0.002, 1);

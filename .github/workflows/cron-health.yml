@@ -1,0 +1,60 @@
+name: Cron health (news)
+
+# 本番の market-news / ai-news を POST し、HTTP・JSON ok を検査。
+# 失敗時は GITHUB_STEP_SUMMARY に生ログ +（設定されていれば）Claude 短いメモ。
+#
+# GitHub secrets 必須: VERCEL_PROD_BASE_URL, CRON_SECRET
+# 任意: ANTHROPIC_API_KEY（無い場合は AI メモなしでログのみ）
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '30 23 * * *'
+
+jobs:
+  news-crons:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify secrets
+        env:
+          BASE: ${{ secrets.VERCEL_PROD_BASE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$BASE" ] || [ -z "$CRON_SECRET" ]; then
+            echo "::error::Set repository secrets VERCEL_PROD_BASE_URL and CRON_SECRET"
+            exit 1
+          fi
+
+      - name: Ping market-news
+        env:
+          BASE: ${{ secrets.VERCEL_PROD_BASE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          mkdir -p cron-health
+          code=$(curl -sS -o cron-health/market-news.body -w "%{http_code}" -X POST "${BASE}/api/cron/market-news" -H "Authorization: Bearer ${CRON_SECRET}")
+          echo "$code" > cron-health/market-news.code
+
+      - name: Ping ai-news
+        env:
+          BASE: ${{ secrets.VERCEL_PROD_BASE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          code=$(curl -sS -o cron-health/ai-news.body -w "%{http_code}" -X POST "${BASE}/api/cron/ai-news" -H "Authorization: Bearer ${CRON_SECRET}")
+          echo "$code" > cron-health/ai-news.code
+
+      - name: Summarize (AI optional)
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: node scripts/gh-ai-triage.mjs cron cron-health

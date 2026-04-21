@@ -1,16 +1,19 @@
 import { useNavigate, Link, useLocation } from 'react-router-dom'
 import {
   ShieldCheck, HelpCircle, FileText, Lock,
-  Home, TrendingUp, PieChart, Package, MessageCircle,
-  Globe
+  Home, TrendingUp, PieChart, Package, BookOpen,
+  Globe, Sparkles,
 } from 'lucide-react'
+
+// Phase 1: 金融商品・アカデミーを非表示（ローンチ後に表示）
+const PHASE1_HIDE_PRODUCTS_ACADEMY = true
 
 const mobileNavItems = [
   { to: '/', icon: Home, label: 'ホーム' },
   { to: '/market', icon: TrendingUp, label: 'マーケット' },
   { to: '/funds', icon: PieChart, label: 'ファンド' },
   { to: '/products', icon: Package, label: '金融商品' },
-  { to: '/lounge', icon: MessageCircle, label: 'ラウンジ' },
+  { to: '/insights', icon: BookOpen, label: 'インサイト' },
 ]
 
 export default function Footer() {
@@ -29,15 +32,13 @@ export default function Footer() {
         <div className="max-w-7xl mx-auto px-6">
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6 mb-6">
             <div className="col-span-2 lg:col-span-2">
-              <Link to="/" className="flex-shrink-0 flex items-start -space-x-0.5 mb-3">
-                <svg className="w-10 h-10 text-orange-500 flex-shrink-0" viewBox="0 6 40 38" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <circle cx="18" cy="20" r="12" stroke="currentColor" strokeWidth="2.5" fill="none" />
-                  <path d="M10 28l-8 8" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
-                  <text x="18" y="24" textAnchor="middle" fontSize="16" fontWeight="bold" fill="currentColor" fontFamily="system-ui, sans-serif">¥</text>
-                </svg>
-                <div className="flex flex-col">
+              <Link to="/" className="flex-shrink-0 flex items-center gap-1.5 mb-3">
+                <span className="w-8 h-8 rounded-lg bg-gradient-to-br from-orange-500 to-red-500 text-white text-2xl font-black leading-none flex items-center justify-center">
+                  M
+                </span>
+                <div className="flex flex-col items-center text-center">
                   <span className="text-xl font-black text-orange-500 tracking-tight leading-tight">MoneyMart</span>
-                  <span className="text-[10px] font-medium text-slate-400 leading-tight">Compare, Choose, Save.</span>
+                  <span className="text-[10px] font-medium text-slate-400 leading-tight">My Money, My Future</span>
                 </div>
               </Link>
               <p className="text-xs text-slate-400 leading-relaxed max-w-xs">
@@ -50,9 +51,14 @@ export default function Footer() {
               <ul className="space-y-2 text-xs font-medium">
                 <li><button onClick={() => navigate('/funds')} className="hover:text-orange-400 transition">投資信託・ファンド</button></li>
                 <li><button onClick={() => navigate('/stocks')} className="hover:text-orange-400 transition">株式・マーケット</button></li>
-                <li><button onClick={() => navigate('/products')} className="hover:text-orange-400 transition">カード・ローン比較</button></li>
-                <li><button onClick={() => navigate('/products')} className="hover:text-orange-400 transition">保険見直し</button></li>
+                {!PHASE1_HIDE_PRODUCTS_ACADEMY && (
+                  <>
+                    <li><button onClick={() => navigate('/products')} className="hover:text-orange-400 transition">カード・ローン比較</button></li>
+                    <li><button onClick={() => navigate('/products')} className="hover:text-orange-400 transition">保険見直し</button></li>
+                  </>
+                )}
                 <li><button onClick={() => navigate('/mypage')} className="hover:text-orange-400 transition flex items-center gap-1"><span className="w-2 h-2 bg-green-500 rounded-full" /> AI 資産診断</button></li>
+                <li><button onClick={() => navigate('/premium')} className="hover:text-amber-400 transition flex items-center gap-1.5"><Sparkles size={12} className="text-amber-400 shrink-0" aria-hidden /> プレミアム会員</button></li>
               </ul>
             </div>
 
@@ -69,6 +75,7 @@ export default function Footer() {
               <ul className="space-y-2 text-xs font-medium">
                 <li><button onClick={() => navigate('/legal/terms')} className="hover:text-white transition flex items-center gap-2"><FileText size={12} /> 利用規約</button></li>
                 <li><button onClick={() => navigate('/legal/privacy')} className="hover:text-white transition flex items-center gap-2"><Lock size={12} /> プライバシーポリシー</button></li>
+                <li><button onClick={() => navigate('/legal/disclaimer')} className="hover:text-white transition flex items-center gap-2"><ShieldCheck size={12} /> 免責事項</button></li>
                 <li><button onClick={() => navigate('/legal/security')} className="hover:text-white transition flex items-center gap-2"><ShieldCheck size={12} /> セキュリティ宣言</button></li>
                 <li><button onClick={() => navigate('/legal/solicitation')} className="hover:text-white transition">勧誘方針</button></li>
                 <li><button onClick={() => navigate('/legal/antisocial')} className="hover:text-white transition">反社会的勢力への対応</button></li>
@@ -81,20 +88,24 @@ export default function Footer() {
               <ShieldCheck size={12} className="text-orange-500" /> 免責事項 (Disclaimer)
             </h5>
             <p className="text-[10px] leading-relaxed text-slate-500 text-justify">
-              ※ 本サービスは金融商品の比較・情報提供を目的としており、特定の商品の勧誘を目的とするものではありません。<br />
-              ※ 投資に関する最終決定は、お客様ご自身の判断でなさるようお願いいたします。<br />
-              ※ 本サービスで提供しているデータ・情報については、万全を期しておりますが、その内容を保証するものではありません。
-              万が一、本サービスの情報に基づいて被ったいかなる損害についても、当社は一切の責任を負いかねます。<br />
-              ※ 実際の取引条件や商品詳細は、各金融機関の公式サイトにて必ずご確認ください。
+              ※ 本サービスは、金融商品に関する一般的な情報提供および比較を目的としたものであり、金融商品取引法第2条第8項に定める金融商品取引業（投資助言・代理業を含む）には該当しません。特定の金融商品の取得・売却を勧誘・推奨するものではありません。<br />
+              ※ 本サービスで提供するコンテンツの一部は、AI（人工知能）による自動生成または処理を含みます。情報の正確性・最新性の確保に努めておりますが、完全性・正確性を保証するものではありません。<br />
+              ※ 投資に関するすべての最終判断は、お客様ご自身の責任において行ってください。本サービスの情報に基づき生じたいかなる損害についても、当社は責任を負いかねます。<br />
+              ※ 実際の取引条件・商品詳細については、各金融機関の公式サイトまたは担当者にて必ずご確認ください。<br />
+              ※ 本サービスの運営者（MoneyLab Ltd.）は、日本法に基づき設立された法人です。本サービスに関する準拠法は日本法とし、紛争が生じた場合は東京地方裁判所を第一審の専属的合意管轄裁判所とします。<br />
+              ※ 個人情報の取扱いについては、
+              <button type="button" onClick={() => navigate('/legal/privacy')} className="underline underline-offset-2 hover:text-slate-300">
+                プライバシーポリシー
+              </button>
+              をご参照ください。<br />
+              最終更新：2026年4月1日<br />
+              © 2026 MoneyLab Ltd.
             </p>
           </div>
 
           <div className="border-t border-slate-800 pt-4 flex flex-col md:flex-row justify-between items-center gap-3">
             <p className="text-[10px] text-slate-500 font-medium">© 2026 MoneyLab Ltd.</p>
             <div className="flex items-center gap-4">
-              <span className="text-[9px] text-slate-600 border border-slate-700 px-2 py-0.5 rounded">
-                金融商品取引業者 関東財務局長（金商）第1234号
-              </span>
               <span className="text-[10px] text-slate-500 font-medium flex items-center gap-1"><Globe size={12} /> Japan</span>
             </div>
           </div>
@@ -104,22 +115,23 @@ export default function Footer() {
       {/* Mobile Footer (Compact) */}
       <footer className="md:hidden bg-[#0F172A] text-slate-300 pt-6 pb-24 font-sans border-t border-slate-800">
         <div className="max-w-7xl mx-auto px-4">
-          <Link to="/" className="flex-shrink-0 flex items-start -space-x-0.5 mb-3">
-            <svg className="w-8 h-8 text-orange-500 flex-shrink-0" viewBox="0 6 40 38" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <circle cx="18" cy="20" r="12" stroke="currentColor" strokeWidth="2.5" fill="none" />
-              <path d="M10 28l-8 8" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
-              <text x="18" y="24" textAnchor="middle" fontSize="16" fontWeight="bold" fill="currentColor" fontFamily="system-ui, sans-serif">¥</text>
-            </svg>
-            <div className="flex flex-col">
+          <Link to="/" className="flex-shrink-0 flex items-center gap-1.5 mb-3">
+            <span className="w-8 h-8 rounded-lg bg-gradient-to-br from-orange-500 to-red-500 text-white text-2xl font-black leading-none flex items-center justify-center">
+              M
+            </span>
+            <div className="flex flex-col items-center text-center">
               <span className="text-lg font-black text-orange-500 tracking-tight leading-tight">MoneyMart</span>
-              <span className="text-[9px] font-medium text-slate-400 leading-tight">Compare, Choose, Save.</span>
+              <span className="text-[9px] font-medium text-slate-400 leading-tight">My Money, My Future</span>
             </div>
           </Link>
           <div className="flex flex-wrap gap-3 text-[11px] font-medium mb-2">
             <button onClick={() => navigate('/funds')} className="hover:text-orange-400">ファンド</button>
-            <button onClick={() => navigate('/products')} className="hover:text-orange-400">金融商品</button>
+            {!PHASE1_HIDE_PRODUCTS_ACADEMY && (
+              <button onClick={() => navigate('/products')} className="hover:text-orange-400">金融商品</button>
+            )}
             <button onClick={() => navigate('/faq')} className="hover:text-orange-400">FAQ</button>
             <button onClick={() => navigate('/mypage')} className="hover:text-orange-400">AI診断</button>
+            <button onClick={() => navigate('/premium')} className="hover:text-amber-400">プレミアム</button>
             <button onClick={() => navigate('/legal/terms')} className="hover:text-orange-400">利用規約</button>
             <button onClick={() => navigate('/legal/privacy')} className="hover:text-orange-400">プライバシー</button>
           </div>

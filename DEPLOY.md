@@ -53,7 +53,7 @@ git push -u origin main
    - `SUPABASE_URL` = Supabase 프로젝트 URL (server-side)
    - `SUPABASE_SECRET_KEY` = Supabase service role key (server-side)
    - `CRON_SECRET` = cron 보호 토큰 (랜덤 문자열)
-   - `MARKETSTACK_ACCESS_KEY` = marketstack API key (server-side)
+   - `MARKETSTACK_ACCESS_KEY` = 中間データ事業者（市場データAPI）のキー (server-side、変数名は従来どおり)
    - `MARKETSTACK_SYMBOLS` = (선택) 수집 심볼 목록, 예: `AAPL,MSFT,NVDA`
 6. **Deploy** 클릭
 

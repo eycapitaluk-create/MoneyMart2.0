@@ -17,7 +17,7 @@ const JP_BOND_SYMBOL  = '2621.T'
 const US_SYMBOLS = [
   'NVDA','AAPL','MSFT','AMZN','GOOGL','META','TSLA','AVGO','COST','NFLX',
   'ADBE','AMD','PEP','CSCO','INTU','AMGN','QCOM','TXN','HON','AMAT',
-  'BKNG','ADP','SBUX','GILD','ADI','MU','REGN','VRTX','PANW','KLAC',
+  'BKNG','ADP','SBUX','GILD','ADI','MU','REGN','VRTX','VRT','PANW','KLAC',
   'LRCX','NXPI','ORLY','FTNT','ADSK','WDAY','AEP','MCHP','CPRT','ROST',
   'BRK.B','LLY','JPM','V','UNH','MA','XOM','WMT','PG','JNJ',
 ]
@@ -139,9 +139,7 @@ function Gauge({ score, grade }) {
     ctx.font = "bold 13px 'Noto Sans JP', sans-serif"
     ctx.fillText(grade.label, cx, cy - R * 0.06)
 
-    ctx.fillStyle = '#9ca3af'
-    ctx.font = "11px 'Noto Sans JP', sans-serif"
-    ctx.fillText(grade.en, cx, cy + R * 0.06)
+    // 英語サブ表記は出さず（米国タブでも日本語UIに統一）
   }, [score, grade])
 
   return <canvas ref={canvasRef} width={320} height={210} style={{ maxWidth: '100%' }} />
@@ -308,12 +306,60 @@ async function calcFearGreedFromDB(market) {
 
   // ── 가중 합산
   const indicators = [
-    { id: 'momentum',       name: market === 'JP' ? '株価モメンタム'  : 'Price Momentum',      icon: '📈', desc: market === 'JP' ? '日経225 vs 125日移動平均' : 'S&P500 vs 125-Day MA',         score: Math.round(momentumScore),      weight: 0.25, realData: idxData.length > 0 },
-    { id: 'strength',       name: market === 'JP' ? '株価強度'        : 'Market Strength',      icon: '💪', desc: market === 'JP' ? '52週高値・安値比率'      : '52-Week High/Low Ratio',         score: Math.round(strengthScore),      weight: 0.20, realData: totalChecked > 0 },
-    { id: 'breadth',        name: market === 'JP' ? '市場の幅'        : 'Market Breadth',       icon: '🌊', desc: market === 'JP' ? '上昇銘柄数 / 全銘柄数'  : 'Advancing / Total Stocks',       score: Math.round(breadthScore),       weight: 0.20, realData: totalBreadth > 0 },
-    { id: 'volatility',     name: market === 'JP' ? '市場ボラティリティ' : 'Volatility (VIX Alt)', icon: '⚡', desc: market === 'JP' ? '20日間リターン標準偏差' : '20-Day Return Std Deviation',    score: Math.round(volatilityScore),    weight: 0.15, realData: idxData.length >= 20 },
-    { id: 'safe_haven',     name: market === 'JP' ? '安全資産需要'    : 'Safe Haven Demand',    icon: '🏦', desc: market === 'JP' ? '国債ETF vs 株式相対強度' : 'Bond ETF vs Equity Relative',    score: Math.round(safeHavenScore),     weight: 0.10, realData: bondData.length >= 20 },
-    { id: 'momentum_accel', name: market === 'JP' ? 'モメンタム加速度' : 'Momentum Accel.',     icon: '🚀', desc: market === 'JP' ? '5日MA vs 20日MA比率'    : '5-Day MA vs 20-Day MA Ratio',    score: Math.round(momentumAccelScore), weight: 0.10, realData: idxData.length >= 20 },
+    {
+      id: 'momentum',
+      name: '株価モメンタム',
+      icon: '📈',
+      desc: market === 'JP' ? '日経225指数と125日移動平均の位置関係' : 'S&P500指数と125日移動平均の位置関係',
+      score: Math.round(momentumScore),
+      weight: 0.25,
+      realData: idxData.length > 0,
+    },
+    {
+      id: 'strength',
+      name: '株価強度',
+      icon: '💪',
+      desc: market === 'JP' ? '52週高値・安値圏にいる銘柄の比率' : '52週高値・安値圏にいる銘柄の比率（米国代表株）',
+      score: Math.round(strengthScore),
+      weight: 0.20,
+      realData: totalChecked > 0,
+    },
+    {
+      id: 'breadth',
+      name: '市場の幅',
+      icon: '🌊',
+      desc: market === 'JP' ? '前日比で上昇した銘柄の割合' : '前日比で上昇した銘柄の割合（米国代表株）',
+      score: Math.round(breadthScore),
+      weight: 0.20,
+      realData: totalBreadth > 0,
+    },
+    {
+      id: 'volatility',
+      name: '市場ボラティリティ',
+      icon: '⚡',
+      desc: market === 'JP' ? '直近20営業日リターンの標準偏差（代替ボラ）' : '直近20営業日リターンの標準偏差（代替ボラ・S&P500）',
+      score: Math.round(volatilityScore),
+      weight: 0.15,
+      realData: idxData.length >= 20,
+    },
+    {
+      id: 'safe_haven',
+      name: '安全資産需要',
+      icon: '🏦',
+      desc: market === 'JP' ? '国債ETFと株式指数の相対リターン' : '米国債ETF（TLT）とS&P500の相対リターン',
+      score: Math.round(safeHavenScore),
+      weight: 0.10,
+      realData: bondData.length >= 20,
+    },
+    {
+      id: 'momentum_accel',
+      name: 'モメンタム加速度',
+      icon: '🚀',
+      desc: market === 'JP' ? '5日移動平均と20日移動平均の乖離率' : '5日移動平均と20日移動平均の乖離率（S&P500）',
+      score: Math.round(momentumAccelScore),
+      weight: 0.10,
+      realData: idxData.length >= 20,
+    },
   ]
 
   const totalScore = Math.round(indicators.reduce((s, ind) => s + ind.score * ind.weight, 0))
@@ -372,13 +418,13 @@ export default function FearGreedIndex() {
   const wDiff = data ? data.score - data.weekAgo   : 0
 
   return (
-    <div className="bg-white dark:bg-slate-800 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
+    <div className="bg-white dark:bg-slate-800 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm">
       {/* ── ヘッダー */}
       <div className="bg-slate-900 dark:bg-black px-5 py-4 flex items-center justify-between">
         <div>
-          <div className="text-[10px] font-black text-orange-400 tracking-widest mb-1">FEAR &amp; GREED INDEX</div>
+          <div className="text-[10px] font-black text-orange-400 tracking-[0.12em] mb-1">恐怖・強欲指数</div>
           <h2 className="text-base font-black text-white">投資家心理指数</h2>
-          <p className="text-[11px] text-slate-400 mt-0.5">Marketstackデータから算出{data?.latestTradeDate ? ` · データ基準: ${data.latestTradeDate}` : ""}</p>
+          <p className="text-[11px] text-slate-400 mt-0.5">中間データ事業者のデータから算出{data?.latestTradeDate ? ` · データ基準: ${data.latestTradeDate}` : ""}</p>
         </div>
         <div className="flex items-center gap-3">
           {/* 市場タブ */}
@@ -446,48 +492,48 @@ export default function FearGreedIndex() {
       {/* ── メインコンテンツ */}
       {!loading && !error && data && (
         <div className="p-5">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
-            {/* ゲージ */}
-            <div className="flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-900/50 rounded-2xl p-4">
+          {/* 上段: ゲージ+解説 と グレードカードを同じ行の高さで揃える（下段に比較3枚） */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-3 md:items-stretch">
+            {/* ゲージ + 解説（ノ란 카드와 높이 맞춤） */}
+            <div className="flex h-full min-h-0 w-full min-w-0 flex-col items-center justify-center gap-2 overflow-visible rounded-2xl bg-slate-50 p-4 dark:bg-slate-900/50">
               <Gauge score={data.score} grade={grade} />
-              <p className="text-xs text-slate-500 dark:text-slate-400 text-center mt-2 max-w-[240px]">{grade.desc}</p>
+              <p className="w-full min-w-0 max-w-full whitespace-normal text-balance break-words text-center text-[13px] leading-relaxed text-slate-600 dark:text-slate-300 md:text-sm md:px-1">
+                {grade.desc}
+              </p>
             </div>
 
-            {/* スコア + 比較 */}
-            <div className="flex flex-col gap-3">
-              {/* 現在グレードカード */}
-              <div
-                className="rounded-2xl p-5 flex-1"
-                style={{ background: grade.bg, border: `2px solid ${grade.border}` }}
-              >
-                <div className="text-3xl mb-2">{grade.emoji}</div>
-                <div className="text-lg font-black mb-1" style={{ color: grade.color }}>{grade.label}</div>
-                <div className="font-mono text-5xl font-black leading-none" style={{ color: grade.color }}>{data.score}</div>
-                <div className="text-xs text-slate-500 mt-1">/ 100点満点</div>
-              </div>
-
-              {/* 前日 / 1週間 / 1ヶ月平均 */}
-              <div className="grid grid-cols-3 gap-2">
-                {[
-                  { label: '前日比',       val: diff,  base: data.yesterday },
-                  { label: '1週間前',      val: wDiff, base: data.weekAgo },
-                  { label: '30日平均',     val: data.score - Math.round(data.history.reduce((s, d) => s + d.score, 0) / Math.max(data.history.length, 1)), base: null },
-                ].map((item, i) => (
-                  <div key={i} className="bg-slate-50 dark:bg-slate-900/50 rounded-xl p-3 text-center border border-slate-100 dark:border-slate-700">
-                    <div className="text-[10px] font-bold text-slate-400 mb-1">{item.label}</div>
-                    <div
-                      className="font-mono text-xl font-black"
-                      style={{ color: item.val > 0 ? '#16a34a' : item.val < 0 ? '#dc2626' : '#6b7280' }}
-                    >
-                      {item.val > 0 ? '+' : ''}{item.val}
-                    </div>
-                    {item.base != null && (
-                      <div className="text-[9px] text-slate-400 mt-0.5">前回 {item.base}点</div>
-                    )}
-                  </div>
-                ))}
-              </div>
+            {/* 現在グレードカード（右列はこのカードだけで行高を決める） */}
+            <div
+              className="flex h-full min-h-0 flex-col items-center justify-center rounded-2xl p-5 text-center"
+              style={{ background: grade.bg, border: `2px solid ${grade.border}` }}
+            >
+              <div className="mb-2 text-3xl">{grade.emoji}</div>
+              <div className="mb-1 text-lg font-black" style={{ color: grade.color }}>{grade.label}</div>
+              <div className="font-mono text-5xl font-black leading-none" style={{ color: grade.color }}>{data.score}</div>
+              <div className="mt-1 text-xs text-slate-500">/ 100点満点</div>
             </div>
+          </div>
+
+          {/* 前日 / 1週間 / 30日平均（全幅） */}
+          <div className="mb-5 grid grid-cols-3 gap-2">
+            {[
+              { label: '前日比',       val: diff,  base: data.yesterday },
+              { label: '1週間前',      val: wDiff, base: data.weekAgo },
+              { label: '30日平均',     val: data.score - Math.round(data.history.reduce((s, d) => s + d.score, 0) / Math.max(data.history.length, 1)), base: null },
+            ].map((item, i) => (
+              <div key={i} className="rounded-xl border border-slate-100 bg-slate-50 p-3 text-center dark:border-slate-700 dark:bg-slate-900/50">
+                <div className="mb-1 text-[10px] font-bold text-slate-400">{item.label}</div>
+                <div
+                  className="font-mono text-xl font-black"
+                  style={{ color: item.val > 0 ? '#ef4444' : item.val < 0 ? '#2563eb' : '#6b7280' }}
+                >
+                  {item.val > 0 ? '+' : ''}{item.val}
+                </div>
+                {item.base != null && (
+                  <div className="mt-0.5 text-[9px] text-slate-400">前回 {item.base}点</div>
+                )}
+              </div>
+            ))}
           </div>
 
           {/* 30日トレンド */}

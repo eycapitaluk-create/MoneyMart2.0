@@ -18,7 +18,7 @@ export default function AboutPage() {
             <span className="text-orange-600 dark:text-orange-400">誰もが主役になれる</span>金融社会へ。
           </h1>
           <p className="text-lg text-slate-600 dark:text-slate-400 font-medium leading-loose max-w-2xl mx-auto">
-            MoneyMartは、<span className="font-bold text-slate-700 dark:text-slate-300">独立系</span>・AIを活用し、中立・公正な立場で最適な金融商品を提案する<br />
+            MoneyMartは、<span className="font-bold text-slate-700 dark:text-slate-300">独立系</span>・AIを活用し、中立・公正な立場で金融商品を比較できる<br />
             日本発のAI金融プラットフォームです。
           </p>
         </div>
@@ -45,9 +45,9 @@ export default function AboutPage() {
           </div>
           <div className="space-y-6">
             {[
-              { title: '独立系 (Independent)', desc: '金融機関との資本提携を持たず、完全に中立な立場でアドバイスを提供します。' },
-              { title: '中立・公正 (Fairness)', desc: '金融機関の手数料に左右されず、ユーザーにとって本当に良い商品だけを提案します。' },
-              { title: 'AI駆動', desc: 'AIを活用し、個人の状況に最適化された金融アドバイスを誰もが利用できるようにします。' },
+              { title: '独立系 (Independent)', desc: '金融機関との資本提携を持たず、完全に中立な立場で比較情報を提供します。' },
+              { title: '中立・公正 (Fairness)', desc: '金融機関の手数料に左右されず、比較に必要な情報を公平に表示します。' },
+              { title: 'AI駆動', desc: 'AIを活用し、個人の状況に合わせた分析情報を誰もが利用できるようにします。' },
               { title: '透明性 (Transparency)', desc: 'コストやリスクを隠さず、全ての情報をオープンにします。' },
               { title: 'ユーザーファースト', desc: 'すべての意思決定において、ユーザーの利益を最優先します。' },
             ].map((item, i) => (
@@ -83,7 +83,7 @@ export default function AboutPage() {
               </h3>
               <div className="space-y-4 text-slate-600 dark:text-slate-400 leading-relaxed text-justify">
                 <p>創業以来、私たちは「わかりにくい金融を、もっとシンプルに」という想いで走り続けてきました。</p>
-                <p>グローバル金融機関での経験と最新の<strong>AI</strong>テクノロジーを掛け合わせることで、これまで専門家しかアクセスできなかった高度な分析を、スマートフォンの画面一つで提供できるようにしました。<strong>独立系</strong>として、金融機関の利害に左右されない公正なアドバイスを届けています。</p>
+                <p>グローバル金融機関での経験と最新の<strong>AI</strong>テクノロジーを掛け合わせることで、これまで専門家しかアクセスできなかった高度な分析を、スマートフォンの画面一つで提供できるようにしました。<strong>独立系</strong>として、金融機関の利害に左右されない公正な比較情報を届けています。</p>
                 <p>MoneyMartは単なる比較サイトではありません。あなたの人生に寄り添う、最も信頼できる金融パートナーを目指しています。</p>
               </div>
               <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
@@ -110,7 +110,6 @@ export default function AboutPage() {
             { label: '資本金', value: '5,000万円（資本準備金含む）' },
             { label: '所在地', value: '〒106-0032 東京都港区六本木 1-4-5 アークヒルズサウスタワー' },
             { label: '事業内容', value: '金融商品比較プラットフォーム「MoneyMart」の運営\nAI資産管理ツールの開発・提供' },
-            { label: '登録番号', value: '金融商品取引業者 関東財務局長（金商）第1234号' },
             { label: '主要取引銀行', value: '三菱UFJ銀行、三井住友銀行、みずほ銀行' },
           ].map((row, i) => (
             <div key={i} className="flex flex-col md:flex-row py-5 border-b border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/30 transition px-4">

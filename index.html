@@ -2,73 +2,57 @@
 <html lang="ja">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="/icon.png" />
+    <link rel="apple-touch-icon" href="/icon.png" />
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#0f172a" />
+    <meta name="robots" content="index,follow,max-snippet:-1,max-image-preview:large,max-video-preview:-1" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="MoneyMart" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-
-    <!-- Primary SEO -->
-    <title>MoneyMart | 日本の個人投資家向け無料金融管理ツール</title>
-    <meta name="description" content="ETF比較（344本）・配当カレンダー（711銘柄）・ヒートマップ・Fear&Greed・家計簿・ローン管理・NISAシミュレーター・3Dポートフォリオ最適化。無料・登録不要で使える日本最大級の個人投資家向け金融プラットフォーム。" />
-    <meta name="keywords" content="ETF比較,NISA,投資信託,配当カレンダー,家計簿,ポートフォリオ,資産管理,日本株,米国株,MoneyMart" />
-    <link rel="canonical" href="https://moneymart.co.jp" />
-
-    <!-- OGP -->
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Noto+Sans+JP:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+    <title>MoneyMart | 新NISA ETF比較・配当カレンダー 無料 | 個人投資家向け</title>
+    <meta name="description" content="新NISA・つみたて・成長投資枠向けの無料ツール。国内ETF比較（上場投信）、配当カレンダー、信託報酬の確認、マーケット指標、株・ニュース、投資インサイト（/insights）まで。" />
+    <meta name="keywords" content="新NISA,ETF比較,配当カレンダー,無料,つみたて,成長投資枠,上場投信,NISA,国内ETF,信託報酬,MoneyMart" />
+    <link rel="canonical" href="https://www.moneymart.co.jp/" />
     <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://moneymart.co.jp" />
-    <meta property="og:title" content="MoneyMart | 日本の個人投資家向け無料金融管理ツール" />
-    <meta property="og:description" content="ETF比較（344本）・配当カレンダー・ヒートマップ・家計簿・NISAシミュレーター。無料・登録不要。" />
-    <meta property="og:image" content="https://moneymart.co.jp/og-image.png" />
-    <meta property="og:locale" content="ja_JP" />
     <meta property="og:site_name" content="MoneyMart" />
-
-    <!-- Twitter Card -->
+    <meta property="og:title" content="MoneyMart | 新NISA ETF比較・配当カレンダー 無料" />
+    <meta property="og:description" content="新NISA向け無料ツール。国内ETF比較、配当カレンダー、信託報酬・株価・マーケット指標・家計トラッカー・投資インサイトまで。" />
+    <meta property="og:url" content="https://www.moneymart.co.jp/" />
+    <meta property="og:image" content="https://www.moneymart.co.jp/icon.png" />
+    <meta property="og:locale" content="ja_JP" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:site" content="@moneymartjp" />
-    <meta name="twitter:title" content="MoneyMart | 日本の個人投資家向け無料金融管理ツール" />
-    <meta name="twitter:description" content="ETF比較（344本）・配当カレンダー・ヒートマップ・家計簿・NISAシミュレーター。無料・登録不要。" />
-    <meta name="twitter:image" content="https://moneymart.co.jp/og-image.png" />
-
-    <!-- JSON-LD Structured Data -->
+    <meta name="twitter:title" content="MoneyMart | 新NISA ETF比較・配当カレンダー 無料" />
+    <meta name="twitter:description" content="新NISA向け無料ツール。国内ETF比較、配当カレンダー、信託報酬・株価・マーケット指標・投資インサイトまで。" />
+    <meta name="twitter:image" content="https://www.moneymart.co.jp/icon.png" />
     <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "WebSite",
-      "name": "MoneyMart",
-      "url": "https://moneymart.co.jp",
-      "description": "日本の個人投資家向け無料総合金融管理ツール。ETF比較、配当カレンダー、家計簿、NISAシミュレーターなど。",
-      "inLanguage": "ja",
-      "publisher": {
-        "@type": "Organization",
-        "name": "MoneyLab Ltd.",
-        "url": "https://moneymart.co.jp"
-      },
-      "potentialAction": {
-        "@type": "SearchAction",
-        "target": "https://moneymart.co.jp/funds?search={search_term_string}",
-        "query-input": "required name=search_term_string"
-      }
-    }
+      {"@context":"https://schema.org","@type":"Organization","name":"MoneyMart","url":"https://www.moneymart.co.jp"}
     </script>
-
-    <!-- Google Search Console 소유권 인증 태그가 있으면 여기 추가 -->
-    <!-- <meta name="google-site-verification" content="YOUR_VERIFICATION_CODE" /> -->
   </head>
   <body>
-    <div id="root">
-      <!-- Google봇용 기본 콘텐츠 (JS 미실행 환경) -->
-      <noscript>
-        <h1>MoneyMart - 日本の個人投資家向け無料金融管理ツール</h1>
-        <p>ETF比較（344本）・配当カレンダー（711銘柄）・ヒートマップ・Fear&amp;Greed・家計簿・ローン管理・NISAシミュレーター・3Dポートフォリオ最適化。無料・登録不要。</p>
-        <ul>
-          <li><a href="/funds">ETFファンド比較</a></li>
-          <li><a href="/market">マーケット情報</a></li>
-          <li><a href="/stocks">株式情報</a></li>
-          <li><a href="/news">AIニュース</a></li>
-        </ul>
-      </noscript>
-    </div>
+    <section id="static-seo-fallback" style="padding:24px;max-width:960px;margin:0 auto;font-family:'Noto Sans JP',system-ui,-apple-system,sans-serif;color:#0f172a;background:#f8fafc;">
+      <h1 style="margin:0 0 10px 0;font-size:28px;font-weight:800;">MoneyMart — 新NISA ETF比較・配当カレンダー 無料（個人投資家向け）</h1>
+      <p style="margin:0 0 12px 0;font-size:14px;line-height:1.75;">
+        <strong>新NISA</strong>のつみたて・成長投資枠に使える<strong>無料</strong>の<strong>ETF比較</strong>（国内上場投信）、<strong>配当カレンダー</strong>、信託報酬の確認、株式・マーケット指標、家計トラッカー、投資インサイトまでをひとつのサイトにまとめた<strong>日本向けファイナンスプラットフォーム</strong>です。
+      </p>
+      <p style="margin:0 0 12px 0;font-size:13px;line-height:1.75;color:#475569;">
+        長文の<strong>投資インサイト</strong>や解説記事は <a href="/insights" style="color:#ea580c;font-weight:700;text-decoration:none;">/insights</a> で公開しています（検索エンジンが本文を読み取りやすい構成）。ツールの初期画面はサーバー側HTMLでも補完しています。
+      </p>
+      <p style="margin:0 0 18px 0;font-size:13px;line-height:1.7;color:#475569;">
+        主要ページ: ETF比較・配当カレンダー・マーケット指標・ニュース・家計トラッカー。登録なしで試せる機能と、会員向けのマイページがあります。
+      </p>
+      <div style="display:flex;flex-wrap:wrap;gap:10px 12px;font-size:14px;">
+        <a href="/etf-compare" style="color:#ea580c;text-decoration:none;font-weight:700;">ETF比較</a>
+        <a href="/dividend-calendar" style="color:#ea580c;text-decoration:none;font-weight:700;">配当カレンダー</a>
+        <a href="/market-indicator" style="color:#ea580c;text-decoration:none;font-weight:700;">マーケット指標</a>
+        <a href="/budget-tracker" style="color:#ea580c;text-decoration:none;font-weight:700;">家計トラッカー</a>
+        <a href="/insights" style="color:#ea580c;text-decoration:none;font-weight:700;">インサイト</a>
+      </div>
+    </section>
+    <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

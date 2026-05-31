@@ -277,31 +277,6 @@ const fetchChunkRows = async (marketstackKey, symbols, opts = {}) => {
     const authQuery = useHeaderAuth ? '' : `access_key=${encodedKey}&`
     const init = useHeaderAuth ? { headers: { apikey: marketstackKey } } : undefined
 
-    // v2 + US 청크: intraday 먼저 (IEX)
-    const allUS = symbols.every((s) => isUSSymbol(s))
-    if (version === 'v2' && allUS) {
-      try {
-        const tradeDate = safeOpts.usTradeDateOverride || getLastUSTradingDate()
-        const intradayUrl = `https://api.marketstack.com/v2/intraday/${tradeDate}?${authQuery}symbols=${encodedSymbols}&interval=15min&limit=100&sort=DESC`
-        const intradayJson = await getJson(intradayUrl, init)
-        const intradayRows = Array.isArray(intradayJson?.data) ? intradayJson.data : []
-        if (intradayRows.length > 0) {
-          const seen = new Set()
-          const deduped = intradayRows.filter((r) => {
-            const s = r?.symbol || r?.ticker
-            if (!s || seen.has(s)) return false
-            seen.add(s)
-            return true
-          })
-          const normalized = deduped.map((r) => ({
-            ...r,
-            close: pickReliableClose(r),
-          }))
-          return { rows: normalized, endpoint: `v2:intraday:${authMode}` }
-        }
-      } catch (_) { /* intraday fallback to EOD */ }
-    }
-
     // EOD: US 청크는 eod/{US날짜}, JP 전용 청크는 eod/{JP날짜}&exchange=XTKS로 날짜 지정 조회
     const usTradeDate = safeOpts.usTradeDateOverride || getLastUSTradingDate()
     const jpTradeDate = safeOpts.jpTradeDateOverride || getLastJPTradingDate()
@@ -367,6 +342,10 @@ const fetchChunkRows = async (marketstackKey, symbols, opts = {}) => {
   }
 
   throw new Error(`Marketstack fetch failed: ${errors.join(' | ')}`)
+}
+
+export const __marketstackDailyTestInternals = {
+  fetchChunkRows,
 }
 
 export default async function handler(req, res) {

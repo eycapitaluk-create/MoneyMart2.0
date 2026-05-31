@@ -9,6 +9,7 @@
     "build:prerender": "vite build && node scripts/prerender-spa.mjs",
     "check:vercel-routes": "node scripts/check-vercel-routes.mjs",
     "lint": "eslint .",
+    "test": "node --test",
     "preview": "vite preview",
     "backfill:csv": "node scripts/backfill-from-final-csv.mjs",
     "backfill:csv:dry": "node scripts/backfill-from-final-csv.mjs --dry-run",

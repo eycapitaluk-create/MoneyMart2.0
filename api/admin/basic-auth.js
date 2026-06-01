@@ -1,32 +1,25 @@
-function parseBasicAuth(headerValue = '') {
-  const raw = String(headerValue || '')
-  if (!raw.startsWith('Basic ')) return null
-  const encoded = raw.slice(6).trim()
-  if (!encoded) return null
-  try {
-    const decoded = Buffer.from(encoded, 'base64').toString('utf8')
-    const idx = decoded.indexOf(':')
-    if (idx < 0) return null
-    return {
-      user: decoded.slice(0, idx),
-      pass: decoded.slice(idx + 1),
-    }
-  } catch {
-    return null
-  }
-}
-
-function safeCookieValue(value = '') {
-  return String(value || '').replace(/[^a-zA-Z0-9._-]/g, '')
-}
+import {
+  getAdminBasicConfig,
+  hasAdminBasicSession,
+  parseBasicAuth,
+  safeCookieValue,
+  verifyAdminIp,
+} from '../_lib/admin-security.js'
 
 export default function handler(req, res) {
-  const adminUser = String(process.env.ADMIN_BASIC_USER || '').trim()
-  const adminPass = String(process.env.ADMIN_BASIC_PASS || '').trim()
+  const adminConfig = getAdminBasicConfig()
   const nextPathRaw = String(req.query?.next || '/admin')
   const nextPath = nextPathRaw.startsWith('/admin') ? nextPathRaw : '/admin'
 
-  if (!adminUser || !adminPass) {
+  const ipCheck = verifyAdminIp(req)
+  if (!ipCheck.ok) {
+    res.statusCode = 403
+    res.setHeader('Content-Type', 'application/json; charset=utf-8')
+    res.end(JSON.stringify({ ok: false, error: 'Access denied', ip: ipCheck.ip }))
+    return
+  }
+
+  if (!adminConfig.configured) {
     res.statusCode = 500
     res.setHeader('Content-Type', 'application/json; charset=utf-8')
     res.end(JSON.stringify({
@@ -36,10 +29,9 @@ export default function handler(req, res) {
     return
   }
 
-  const cookieHeader = String(req.headers.cookie || '')
-  const hasSession = cookieHeader.includes('mm_admin_basic=1')
+  const hasSession = hasAdminBasicSession(req)
   const parsed = parseBasicAuth(req.headers.authorization || '')
-  const authenticated = parsed?.user === adminUser && parsed?.pass === adminPass
+  const authenticated = parsed?.user === adminConfig.user && parsed?.pass === adminConfig.pass
 
   if (hasSession || authenticated) {
     const secure = process.env.NODE_ENV === 'production' ? '; Secure' : ''

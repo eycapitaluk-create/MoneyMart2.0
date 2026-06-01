@@ -1,21 +1,19 @@
-/**
- * Admin Basic Auth check — Stripe 일본 보안 요건 대응
- * ADMIN_BASIC_USER / ADMIN_BASIC_PASS 환경변수로 인증
- */
+import { getAdminBasicConfig, parseBasicAuth, verifyAdminIp } from './_lib/admin-security.js'
+
 export default function handler(req, res) {
-  const authHeader = req.headers['authorization'] || ''
+  const ipCheck = verifyAdminIp(req)
+  if (!ipCheck.ok) {
+    return res.status(403).json({ ok: false, error: 'Access denied', ip: ipCheck.ip })
+  }
 
-  if (authHeader.startsWith('Basic ')) {
-    const base64 = authHeader.slice(6)
-    const decoded = Buffer.from(base64, 'base64').toString('utf-8')
-    const [user, pass] = decoded.split(':')
+  const adminConfig = getAdminBasicConfig()
+  if (!adminConfig.configured) {
+    return res.status(500).json({ ok: false, error: 'ADMIN_BASIC_USER / ADMIN_BASIC_PASS is required' })
+  }
 
-    if (
-      user === process.env.ADMIN_BASIC_USER &&
-      pass === process.env.ADMIN_BASIC_PASS
-    ) {
-      return res.status(200).json({ ok: true })
-    }
+  const parsed = parseBasicAuth(req.headers.authorization || '')
+  if (parsed?.user === adminConfig.user && parsed?.pass === adminConfig.pass) {
+    return res.status(200).json({ ok: true })
   }
 
   res.setHeader('WWW-Authenticate', 'Basic realm="MoneyMart Admin"')

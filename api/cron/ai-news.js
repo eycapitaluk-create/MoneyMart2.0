@@ -1061,14 +1061,23 @@ export default async function handler(req, res) {
     }))
 
     if (rowsToInsert.length > 0) {
-      const { error: deactivateErr } = await admin
+      const { data: activeRows, error: activeRowsErr } = await admin
         .from('ai_news_summaries')
-        .update({ is_active: false })
+        .select('id')
         .eq('is_active', true)
-      if (deactivateErr) throw deactivateErr
+      if (activeRowsErr) throw activeRowsErr
 
       const { error: insertErr } = await admin.from('ai_news_summaries').insert(rowsToInsert)
       if (insertErr) throw insertErr
+
+      const oldActiveIds = (activeRows || []).map((row) => row.id).filter((id) => id != null)
+      if (oldActiveIds.length > 0) {
+        const { error: deactivateErr } = await admin
+          .from('ai_news_summaries')
+          .update({ is_active: false })
+          .in('id', oldActiveIds)
+        if (deactivateErr) throw deactivateErr
+      }
     }
 
     const analysisComplete = rowsToInsert.filter((r) => r?.ai_analysis_status === 'complete').length

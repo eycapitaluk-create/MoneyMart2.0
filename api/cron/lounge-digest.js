@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { replaceNewsManualBucketRows } from '../../src/lib/newsManualReplace.js'
 
 function sendJson(res, status, payload) {
   if (typeof res.status === 'function') {
@@ -262,16 +263,7 @@ export default async function handler(req, res) {
       },
     ]
 
-    const { error: delErr } = await adminClient
-      .from('news_manual')
-      .delete()
-      .eq('bucket', DIGEST_BUCKET)
-    if (delErr) throw delErr
-
-    const { error: insErr } = await adminClient
-      .from('news_manual')
-      .insert(rows)
-    if (insErr) throw insErr
+    await replaceNewsManualBucketRows(adminClient, DIGEST_BUCKET, rows)
 
     return sendJson(res, 200, { ok: true, slot, inserted: rows.length })
   } catch (error) {

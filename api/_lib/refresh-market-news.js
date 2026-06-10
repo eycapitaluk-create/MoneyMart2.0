@@ -12,6 +12,7 @@ import {
   getNewsDataIoToken,
   normalizeNewsDataIoArticle,
 } from './newsdata-api.js'
+import { replaceNewsManualBucketRows } from './news-manual-replace.js'
 
 const readLocalEnvMap = () => {
   const candidates = [
@@ -408,11 +409,17 @@ export const refreshMarketNewsManualFeed = async () => {
   })
 
   const buckets = ['market_ticker', 'market_pickup', 'fund_pickup', 'daily_brief']
-  const { error: deleteErr } = await adminClient.from('news_manual').delete().in('bucket', buckets)
-  if (deleteErr) return { status: 500, body: { ok: false, error: deleteErr.message } }
-
-  const { error: insertErr } = await adminClient.from('news_manual').insert(rows)
-  if (insertErr) return { status: 500, body: { ok: false, error: insertErr.message } }
+  const replacement = await replaceNewsManualBucketRows(adminClient, buckets, rows, { batchUpdatedAt: now })
+  if (!replacement.ok) {
+    return {
+      status: 500,
+      body: {
+        ok: false,
+        error: replacement.error?.message || 'Failed to replace market news rows',
+        phase: replacement.phase,
+      },
+    }
+  }
 
   return {
     status: 200,

@@ -267,6 +267,97 @@ const jobMetaMatchesRunScope = (meta, scope) => {
   return false
 }
 
+const isEU = (s) => /\.(PA|AS|DE|MI|MC|SW|BR|OL|HE|IR|CO|SE|ST|VX)$/i.test(s || '')
+const isUK = (s) => (s || '').endsWith('.L')
+const isJpSymbol = (s) => (s || '').toUpperCase().endsWith('.T')
+const etfSymbolUpperSet = new Set(ETF_SYMBOLS_FROM_XLSX.map((s) => String(s || '').toUpperCase()))
+const isEtfSymbol = (s) => etfSymbolUpperSet.has(String(s || '').toUpperCase())
+const isMarketstackAllowedSymbol = (s) =>
+  !MARKETSTACK_BLOCKLIST_EXPORT.has(s) &&
+  !MARKETSTACK_TEMP_BAD_SYMBOLS.has(String(s || '').toUpperCase()) &&
+  !isEU(s) &&
+  !isUK(s)
+
+export const buildMarketstackSymbolSelection = ({
+  rawAllSymbols,
+  tier1Symbols,
+  overrideSymbols = [],
+  jpEtfOnly = false,
+  jpOnly = false,
+  usOnly = false,
+  monthRemainingRequests = Number.POSITIVE_INFINITY,
+  maxSymbolsPerRun = 0,
+}) => {
+  const baseAllSymbols = jpEtfOnly
+    ? (overrideSymbols.length > 0 ? overrideSymbols : ETF_SYMBOLS_FROM_XLSX)
+    : rawAllSymbols
+  const allSymbols = uniqueSymbols(baseAllSymbols)
+    .filter(isMarketstackAllowedSymbol)
+    .filter((s) => (jpEtfOnly ? isEtfSymbol(s) && isJpSymbol(s) : !isEtfSymbol(s)))
+  const tier1Pool = uniqueSymbols(tier1Symbols)
+    .filter(isMarketstackAllowedSymbol)
+    .filter((s) => !isEtfSymbol(s))
+
+  const allSymbolsRequests = estimateChunkCount(allSymbols)
+  const tier1Requests = estimateChunkCount(tier1Pool)
+  const jpTier1List = tier1Pool.filter(isJpSymbol)
+  const jpEtfTier1List = allSymbols.filter((s) => isEtfSymbol(s) && isJpSymbol(s))
+  const usTier1List = tier1Pool.filter((s) => isUSSymbol(s))
+  const jpTier1Requests = estimateChunkCount(jpTier1List)
+  const jpEtfTier1Requests = estimateChunkCount(jpEtfTier1List)
+  const usTier1Requests = estimateChunkCount(usTier1List)
+
+  let selectedSymbols = allSymbols
+  let budgetMode = 'all_tiers'
+  if (monthRemainingRequests < allSymbolsRequests) {
+    if (monthRemainingRequests >= tier1Requests) {
+      selectedSymbols = tier1Pool
+      budgetMode = 'tier1_only'
+    } else if (jpEtfOnly && monthRemainingRequests >= jpEtfTier1Requests) {
+      selectedSymbols = jpEtfTier1List
+      budgetMode = 'tier1_jp_etf_budget'
+    } else if (jpOnly && monthRemainingRequests >= jpTier1Requests) {
+      selectedSymbols = jpTier1List
+      budgetMode = 'tier1_jp_budget'
+    } else if (usOnly && monthRemainingRequests >= usTier1Requests) {
+      selectedSymbols = usTier1List
+      budgetMode = 'tier1_us_budget'
+    } else {
+      selectedSymbols = []
+      budgetMode = 'budget_skip'
+    }
+  }
+
+  // Apply region filters before MARKETSTACK_MAX_SYMBOLS slicing.
+  if (jpOnly) {
+    selectedSymbols = selectedSymbols.filter(isJpSymbol)
+    budgetMode = `${budgetMode}_jp_only`
+    if (jpEtfOnly) {
+      selectedSymbols = selectedSymbols.filter(isEtfSymbol)
+      budgetMode = `${budgetMode}_jp_etf`
+    }
+  } else if (usOnly) {
+    selectedSymbols = selectedSymbols.filter((s) => isUSSymbol(s))
+    budgetMode = `${budgetMode}_us_only`
+  }
+
+  const regionDedicatedRun = jpOnly || usOnly
+  if (!regionDedicatedRun && maxSymbolsPerRun > 0 && selectedSymbols.length > maxSymbolsPerRun) {
+    selectedSymbols = selectedSymbols.slice(0, maxSymbolsPerRun)
+    budgetMode = budgetMode === 'all_tiers' ? 'all_tiers_capped' : `${budgetMode}_capped`
+  }
+
+  return {
+    selectedSymbols,
+    budgetMode,
+    allSymbolsRequests,
+    tier1Requests,
+    jpTier1Requests,
+    jpEtfTier1Requests,
+    usTier1Requests,
+  }
+}
+
 const fetchChunkRows = async (marketstackKey, symbols, opts = {}) => {
   const encodedKey = encodeURIComponent(marketstackKey)
   const encodedSymbols = encodeURIComponent(symbols.join(','))
@@ -495,16 +586,6 @@ export default async function handler(req, res) {
     ])
     const tier2Symbols = uniqueSymbols(configuredTier2Symbols)
     const rawAllSymbols = overrideSymbols.length > 0 ? overrideSymbols : uniqueSymbols([...tier1Symbols, ...tier2Symbols])
-    const isEU = (s) => /\.(PA|AS|DE|MI|MC|SW|BR|OL|HE|IR|CO|SE|ST|VX)$/i.test(s || '')
-    const isUK = (s) => (s || '').endsWith('.L')
-    const etfUpper = new Set(
-      ETF_SYMBOLS_FROM_XLSX.map((s) => String(s || '').toUpperCase())
-    )
-    const allSymbols = rawAllSymbols
-      .filter((s) => !MARKETSTACK_BLOCKLIST_EXPORT.has(s))
-      .filter((s) => !etfUpper.has(String(s || '').toUpperCase()))
-      .filter((s) => !MARKETSTACK_TEMP_BAD_SYMBOLS.has(String(s || '').toUpperCase()))
-      .filter((s) => !isEU(s) && !isUK(s))
 
     const { data: monthJobs, error: monthJobsErr } = await supabase
       .from('ingestion_jobs')
@@ -522,59 +603,19 @@ export default async function handler(req, res) {
     )
     const monthRemainingRequests = Math.max(0, monthlyBudgetRequests - monthUsedRequests)
 
-    const allSymbolsRequests = estimateChunkCount(allSymbols)
-    const tier1Requests = estimateChunkCount(tier1Symbols)
-    const tier1Pool = tier1Symbols
-      .filter((s) => !MARKETSTACK_BLOCKLIST_EXPORT.has(s))
-      .filter((s) => !etfUpper.has(String(s || '').toUpperCase()))
-      .filter((s) => !isEU(s) && !isUK(s))
-    const etfUpperStatic = new Set(ETF_SYMBOLS_FROM_XLSX.map((s) => String(s).toUpperCase()))
-    const jpTier1List = tier1Pool.filter((s) => (s || '').toUpperCase().endsWith('.T'))
-    const jpEtfTier1List = jpTier1List.filter((s) => etfUpperStatic.has(String(s).toUpperCase()))
-    const usTier1List = tier1Pool.filter((s) => isUSSymbol(s))
-    const jpTier1Requests = estimateChunkCount(jpTier1List)
-    const jpEtfTier1Requests = estimateChunkCount(jpEtfTier1List)
-    const usTier1Requests = estimateChunkCount(usTier1List)
-
-    let selectedSymbols = allSymbols
-    let budgetMode = 'all_tiers'
-    if (monthRemainingRequests < allSymbolsRequests) {
-      if (monthRemainingRequests >= tier1Requests) {
-        selectedSymbols = tier1Pool
-        budgetMode = 'tier1_only'
-      } else if (jpEtfOnly && monthRemainingRequests >= jpEtfTier1Requests) {
-        selectedSymbols = jpEtfTier1List
-        budgetMode = 'tier1_jp_etf_budget'
-      } else if (jpOnly && monthRemainingRequests >= jpTier1Requests) {
-        selectedSymbols = jpTier1List
-        budgetMode = 'tier1_jp_budget'
-      } else if (usOnly && monthRemainingRequests >= usTier1Requests) {
-        selectedSymbols = usTier1List
-        budgetMode = 'tier1_us_budget'
-      } else {
-        selectedSymbols = []
-        budgetMode = 'budget_skip'
-      }
-    }
-    // jp/us 필터는 MARKETSTACK_MAX_SYMBOLS 슬라이스보다 먼저 적용해야 함.
-    // (슬라이스가 앞에 오면 tier1 앞쪽의 미국 심볼만 남고 .T 필터 후 ETF가 전부 빠질 수 있음)
-    if (jpOnly) {
-      selectedSymbols = selectedSymbols.filter((s) => (s || '').toUpperCase().endsWith('.T'))
-      budgetMode = `${budgetMode}_jp_only`
-      if (jpEtfOnly) {
-        selectedSymbols = selectedSymbols.filter((s) => etfUpperStatic.has(String(s).toUpperCase()))
-        budgetMode = `${budgetMode}_jp_etf`
-      }
-    } else if (usOnly) {
-      selectedSymbols = selectedSymbols.filter((s) => isUSSymbol(s))
-      budgetMode = `${budgetMode}_us_only`
-    }
-    // MARKETSTACK_MAX_SYMBOLS: 통합(비지역) 실행에만 적용. jp_only / us_only 크론은 지역 심볼 전부 수집.
-    const regionDedicatedRun = jpOnly || usOnly
-    if (!regionDedicatedRun && maxSymbolsPerRun > 0 && selectedSymbols.length > maxSymbolsPerRun) {
-      selectedSymbols = selectedSymbols.slice(0, maxSymbolsPerRun)
-      budgetMode = budgetMode === 'all_tiers' ? 'all_tiers_capped' : `${budgetMode}_capped`
-    }
+    const {
+      selectedSymbols,
+      budgetMode,
+    } = buildMarketstackSymbolSelection({
+      rawAllSymbols,
+      tier1Symbols,
+      overrideSymbols,
+      jpEtfOnly,
+      jpOnly,
+      usOnly,
+      monthRemainingRequests,
+      maxSymbolsPerRun,
+    })
 
     const { data: startedJob, error: startedErr } = await supabase
       .from('ingestion_jobs')

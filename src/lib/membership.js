@@ -27,14 +27,8 @@ export function isPaidPlanTier(planTierLower) {
 
 export function isPaidFromUserProfileRow(profile) {
   if (!profile) return false
-  if (profile.is_premium || profile.is_prime || profile.prime_member) return true
-  const p = String(
-    profile.plan_tier
-    || profile.membership_tier
-    || profile.subscription_tier
-    || profile.plan
-    || '',
-  ).toLowerCase()
+  if (profile.is_premium) return true
+  const p = String(profile.subscription_tier || '').toLowerCase()
   return isPaidPlanTier(p)
 }
 

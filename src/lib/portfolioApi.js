@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { fetchUserProfileDisplayNameMap } from './userProfileDisplayNames'
 
 const normalizeAllocations = (arr = [], assetType = 'fund') =>
   (Array.isArray(arr) ? arr : [])
@@ -98,14 +99,7 @@ export async function fetchPublicPortfolios({ limit = 20, orderBy = 'followers' 
 }
 
 async function fetchProfileNames(userIds) {
-  if (userIds.length === 0) return new Map()
-  const { data } = await supabase
-    .from('user_profiles')
-    .select('user_id,nickname,full_name')
-    .in('user_id', userIds)
-  return new Map(
-    (data || []).map((row) => [row.user_id, row.nickname || row.full_name || 'Member'])
-  )
+  return fetchUserProfileDisplayNameMap(userIds, { fallback: 'Member' })
 }
 
 /**

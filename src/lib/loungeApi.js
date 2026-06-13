@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { expToLevel, getBadgeByExp } from './loungeCharacterApi'
+import { fetchUserProfileDisplayNameMap } from './userProfileDisplayNames'
 
 const FEED_LIMIT = 30
 
@@ -21,19 +22,7 @@ const hasCommunitySchema = async () => {
 }
 
 const fetchProfileNameMap = async (userIds = []) => {
-  const ids = [...new Set((userIds || []).filter(Boolean))]
-  if (ids.length === 0) return new Map()
-  const { data, error } = await supabase
-    .from('user_profiles')
-    .select('user_id,nickname,full_name')
-    .in('user_id', ids)
-  if (error) return new Map()
-  return new Map(
-    (data || []).map((row) => [
-      row.user_id,
-      row.nickname || row.full_name || 'Member',
-    ])
-  )
+  return fetchUserProfileDisplayNameMap(userIds, { fallback: 'Member' })
 }
 
 const buildTitleFromContent = (content = '') => {
@@ -769,23 +758,19 @@ export async function fetchSuggestedUsers({ userId = null, limit = 3 } = {}) {
     : Promise.resolve({ data: [], error: null })
 
   if (await hasCommunitySchema()) {
-    const [postsRes, followRes, profileRes] = await Promise.all([
+    const [postsRes, followRes] = await Promise.all([
       supabase
         .from('community_posts')
         .select('user_id,created_at,hot_score,view_count')
         .order('created_at', { ascending: false })
         .limit(maxRows),
       followPromise,
-      supabase.from('user_profiles').select('user_id,nickname,full_name').limit(1000),
     ])
     if (postsRes.error) throw postsRes.error
     if (followRes.error) throw followRes.error
 
     const followSet = new Set((followRes.data || []).map((row) => row.following_id))
-    const profileMap = new Map((profileRes.data || []).map((row) => [
-      row.user_id,
-      row.nickname || row.full_name || '',
-    ]))
+    const profileMap = await fetchProfileNameMap((postsRes.data || []).map((row) => row.user_id))
     const aggregated = new Map()
 
     for (const row of postsRes.data || []) {

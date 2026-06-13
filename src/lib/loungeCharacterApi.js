@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { fetchUserProfileDisplayNameMap } from './userProfileDisplayNames'
 
 // Keep progression meaningful for power users.
 const EXP_LEVELS = [0, 300, 900, 2500, 6000] // 0→Lv1, 300→Lv2, ...
@@ -109,13 +110,7 @@ export async function fetchCharacterLeaderboardWithNames(limit = 5) {
   const rows = await fetchCharacterLeaderboard(limit)
   if (rows.length === 0) return []
   const ids = rows.map((r) => r.user_id)
-  const { data: profiles } = await supabase
-    .from('user_profiles')
-    .select('user_id, nickname, full_name')
-    .in('user_id', ids)
-  const nameByUserId = new Map(
-    (profiles || []).map((p) => [p.user_id, p.nickname || p.full_name || 'メンバー'])
-  )
+  const nameByUserId = await fetchUserProfileDisplayNameMap(ids, { fallback: 'メンバー' })
   return rows.map((r) => ({
     ...r,
     name: nameByUserId.get(r.user_id) || 'メンバー',

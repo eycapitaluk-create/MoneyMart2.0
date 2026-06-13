@@ -189,6 +189,7 @@ const calcPortfolioMetrics = (funds, weightPctVector) => {
 
 export default function FundComparePage({
   user = null,
+  userProfile = null,
   myWatchlist = [],
   toggleWatchlist = null,
   onUiMessage = null,
@@ -231,10 +232,9 @@ export default function FundComparePage({
   ))
   const pendingWatchSetWeightsRef = useRef(null)
   const planTier = String(
-    user?.app_metadata?.plan_tier
-    || user?.user_metadata?.plan_tier
+    userProfile?.planTier
+    || user?.app_metadata?.plan_tier
     || user?.app_metadata?.membership_tier
-    || user?.user_metadata?.membership_tier
     || '',
   ).toLowerCase()
   const userEmailLower = String(user?.email || '').trim().toLowerCase()

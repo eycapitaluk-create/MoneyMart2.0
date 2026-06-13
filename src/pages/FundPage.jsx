@@ -626,7 +626,7 @@ const FUND_FAQ_ITEMS = [
   { q: '表示されるデータはいつ更新されますか？', a: '中間データ事業者経由で取得可能な最新データを定期取得して表示します。' },
   { q: 'ここで購入できますか？', a: '購入は外部の公式チャネルで行われます。当ページは比較・検討支援が目的です。' },
 ]
-export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlist: propToggleWatchlist, onUiMessage = null }) {
+export default function FundPage({ user: _user, userProfile = null, myWatchlist = [], toggleWatchlist: propToggleWatchlist, onUiMessage = null }) {
   const navigate = useNavigate()
   const location = useLocation()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -844,10 +844,9 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
   }, [_user?.id])
   const [freeOptimizerRunsUsed, setFreeOptimizerRunsUsed] = useState(0)
   const planTier = String(
-    _user?.app_metadata?.plan_tier
-    || _user?.user_metadata?.plan_tier
+    userProfile?.planTier
+    || _user?.app_metadata?.plan_tier
     || _user?.app_metadata?.membership_tier
-    || _user?.user_metadata?.membership_tier
     || '',
   ).toLowerCase()
   const userEmailLower = String(_user?.email || '').trim().toLowerCase()

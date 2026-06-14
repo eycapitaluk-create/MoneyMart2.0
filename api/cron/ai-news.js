@@ -11,6 +11,7 @@ import {
   fetchNewsDataIoArticles,
   getNewsDataIoToken,
 } from '../_lib/newsdata-api.js'
+import { replaceAiNewsSummaryRows } from '../_lib/news-replacement.js'
 
 /** 取得クエリの軸。件数が少ないと毎日同じ超大手に偏りやすいので、JP を多めに持つ。 */
 const NEWS_TARGETS = [
@@ -1061,14 +1062,9 @@ export default async function handler(req, res) {
     }))
 
     if (rowsToInsert.length > 0) {
-      const { error: deactivateErr } = await admin
-        .from('ai_news_summaries')
-        .update({ is_active: false })
-        .eq('is_active', true)
-      if (deactivateErr) throw deactivateErr
-
-      const { error: insertErr } = await admin.from('ai_news_summaries').insert(rowsToInsert)
-      if (insertErr) throw insertErr
+      const batchUpdatedAt = new Date().toISOString()
+      const { error: replaceErr } = await replaceAiNewsSummaryRows(admin, rowsToInsert, batchUpdatedAt)
+      if (replaceErr) throw replaceErr
     }
 
     const analysisComplete = rowsToInsert.filter((r) => r?.ai_analysis_status === 'complete').length

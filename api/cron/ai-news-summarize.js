@@ -1,10 +1,11 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@supabase/supabase-js'
+import { verifyCronBearerToken } from '../_lib/cron-auth.js'
 
 export default async function handler(req, res) {
-  const auth = req.headers.authorization || ''
-  if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
-    return res.status(401).json({ ok: false, error: 'Unauthorized' })
+  const authResult = verifyCronBearerToken(req.headers.authorization || '', process.env.CRON_SECRET)
+  if (!authResult.ok) {
+    return res.status(authResult.status).json(authResult.payload)
   }
 
   const supabase = createClient(

@@ -33,7 +33,7 @@ async function setUserPremium(admin, userId, active, extra = {}) {
     .maybeSingle()
   if (selErr) {
     console.error('stripe-webhook profile select', selErr)
-    return
+    throw selErr
   }
   if (existing?.user_id) {
     const { error } = await admin
@@ -45,7 +45,10 @@ async function setUserPremium(admin, userId, active, extra = {}) {
         ...(extra.stripe_subscription_id != null ? { stripe_subscription_id: extra.stripe_subscription_id } : {}),
       })
       .eq('user_id', uid)
-    if (error) console.error('stripe-webhook profile update', error)
+    if (error) {
+      console.error('stripe-webhook profile update', error)
+      throw error
+    }
   } else {
     const ins = {
       user_id: uid,
@@ -57,7 +60,10 @@ async function setUserPremium(admin, userId, active, extra = {}) {
       ...(extra.stripe_subscription_id != null ? { stripe_subscription_id: extra.stripe_subscription_id } : {}),
     }
     const { error } = await admin.from('user_profiles').insert(ins)
-    if (error) console.error('stripe-webhook profile insert', error)
+    if (error) {
+      console.error('stripe-webhook profile insert', error)
+      throw error
+    }
   }
 }
 

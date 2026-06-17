@@ -3,6 +3,8 @@
 // ETF_SYMBOLS_FROM_XLSX: just the ticker symbols array
 // MARKETSTACK_BLOCKLIST_EXPORT: Set of symbols to exclude from Marketstack fetching
 
+import { ETF_SYMBOLS_FROM_XLSX as ETF_UNIVERSE_SYMBOLS_FROM_XLSX } from './etfUniverseLite.js'
+
 export const ETF_LIST_FROM_XLSX = [
   { symbol: '1329.T', jpName: '日経225連動型上場投資信託', category: '株式' },
   { symbol: '1475.T', jpName: 'iShares Core TOPIX ETF', category: '株式' },
@@ -35,7 +37,12 @@ export const ETF_LIST_FROM_XLSX = [
   { symbol: 'TLT',  jpName: 'iShares 20+ Year Treasury Bond ETF', category: '債券' },
 ]
 
-export const ETF_SYMBOLS_FROM_XLSX = ETF_LIST_FROM_XLSX.map((e) => e.symbol)
+export const ETF_SYMBOLS_FROM_XLSX = [
+  ...new Set([
+    ...ETF_UNIVERSE_SYMBOLS_FROM_XLSX,
+    ...ETF_LIST_FROM_XLSX.map((e) => e.symbol),
+  ].filter(Boolean)),
+]
 
 export const MARKETSTACK_BLOCKLIST_EXPORT = new Set([
   'EUNK.DE',

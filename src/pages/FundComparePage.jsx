@@ -16,7 +16,6 @@ import {
   deleteFundOptimizerWatchsetFromDb,
   loadFundOptimizerWatchsetsFromDb,
 } from '../lib/fundOptimizerWatchsets'
-import { isPaidPlanTier } from '../lib/membership'
 import { normalizeFundDisplayName } from '../lib/fundDisplayUtils'
 import { normalizeNisaCategoryField } from '../lib/textEncodingUtils'
 import { findBaseCloseByCalendarOffset } from '../lib/calendarDateUtils'
@@ -112,11 +111,6 @@ const shortenFundLabel = (name = '', max = 18) => {
 const SAFE_DIVISOR = 1e-9
 const MIN_WEIGHT_FOR_3FUND_OPTIMIZATION = 10
 const OPTIMIZER_COLORS = ['#38bdf8', '#34d399', '#fb923c']
-const PREMIUM_EMAIL_ALLOWLIST = new Set([
-  'justin.nam@moneymart.co.jp',
-  'kelly.nam@moneymart.co.jp',
-])
-
 const normalizeWeightVector = (weights = []) => {
   const sanitized = weights.map((w) => Math.max(0, Number(w) || 0))
   const sum = sanitized.reduce((acc, cur) => acc + cur, 0)
@@ -189,6 +183,7 @@ const calcPortfolioMetrics = (funds, weightPctVector) => {
 
 export default function FundComparePage({
   user = null,
+  isPaidMember = false,
   myWatchlist = [],
   toggleWatchlist = null,
   onUiMessage = null,
@@ -230,15 +225,6 @@ export default function FundComparePage({
     [...new Set((initialSymbols || []).map((s) => String(s || '').trim().toUpperCase()).filter(Boolean))].slice(0, 3)
   ))
   const pendingWatchSetWeightsRef = useRef(null)
-  const planTier = String(
-    user?.app_metadata?.plan_tier
-    || user?.user_metadata?.plan_tier
-    || user?.app_metadata?.membership_tier
-    || user?.user_metadata?.membership_tier
-    || '',
-  ).toLowerCase()
-  const userEmailLower = String(user?.email || '').trim().toLowerCase()
-  const isPaidMember = isPaidPlanTier(planTier) || PREMIUM_EMAIL_ALLOWLIST.has(userEmailLower)
 
   useEffect(() => {
     if (!embeddedMode) return

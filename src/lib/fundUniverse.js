@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import { ETF_LIST_FROM_XLSX } from '../data/etfListFromXlsx'
+import { ETF_LIST_FROM_XLSX, ETF_SYMBOLS_FROM_XLSX } from '../data/etfListFromXlsx'
 import { getEtfJpName } from '../data/etfJpNameMap'
 import { normalizeFundDisplayName } from './fundDisplayUtils'
 import { normalizeNisaCategoryField } from './textEncodingUtils'
@@ -17,7 +17,8 @@ const sanitizeUniverseNisa = (payload) =>
     : payload
 
 const ETF_META_MAP = new Map(ETF_LIST_FROM_XLSX.map((item) => [item.symbol, item]))
-const ETF_SYMBOLS = ETF_LIST_FROM_XLSX.map((item) => item.symbol).filter(Boolean)
+const ETF_SYMBOLS = ETF_SYMBOLS_FROM_XLSX.filter(Boolean)
+const ETF_SYMBOL_SET = new Set(ETF_SYMBOLS)
 
 const readCache = () => {
   const now = Date.now()
@@ -91,10 +92,11 @@ const fetchHistoryBySymbol = async (symbol, cutoffStr) => {
 }
 
 const buildLocalFallbackSnapshot = () => {
-  return ETF_LIST_FROM_XLSX
-    .map((item) => {
-      const symbol = String(item?.symbol || '').trim()
+  return ETF_SYMBOLS
+    .map((rawSymbol) => {
+      const symbol = String(rawSymbol || '').trim()
       if (!symbol) return null
+      const item = ETF_META_MAP.get(symbol) || { symbol }
       const displayName = normalizeFundDisplayName(item?.jpName || getEtfJpName(symbol) || symbol)
       const trustFeeValue = Number(item?.trustFee)
       return {
@@ -139,7 +141,7 @@ export const fetchFundUniverseSnapshot = async () => {
     const symbolMap = new Map((symbolRows || []).map((row) => [row.symbol, row]))
     const latestMap = new Map(
       (latestRows || [])
-        .filter((row) => row?.symbol && ETF_META_MAP.has(row.symbol))
+        .filter((row) => row?.symbol && ETF_SYMBOL_SET.has(row.symbol))
         .map((row) => [row.symbol, row])
     )
 

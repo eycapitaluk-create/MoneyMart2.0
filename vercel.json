@@ -70,13 +70,6 @@
       "dest": "/api/sitemap"
     },
     {
-      "src": "^/funds/compare/?$",
-      "status": 308,
-      "headers": {
-        "Location": "/etf-compare"
-      }
-    },
-    {
       "src": "/api/(.*)",
       "dest": "/api/$1"
     },

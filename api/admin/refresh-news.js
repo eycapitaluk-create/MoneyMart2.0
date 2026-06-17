@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import { getServerEnv, refreshMarketNewsManualFeed } from '../_lib/refresh-market-news'
+import { getServerEnv, refreshMarketNewsManualFeed } from '../_lib/refresh-market-news.js'
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {

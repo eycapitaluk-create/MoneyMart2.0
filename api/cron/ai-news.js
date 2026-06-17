@@ -940,6 +940,7 @@ export default async function handler(req, res) {
   const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } })
   const slot = getSlot(new Date())
   const batchKey = `${new Date().toISOString().slice(0, 10)}:${slot}`
+  const batchUpdatedAt = new Date().toISOString()
 
   try {
     const fetched = []
@@ -1009,6 +1010,7 @@ export default async function handler(req, res) {
         language: String(preparedArticle?.language || (isJapaneseArticle(preparedArticle) ? 'ja' : 'en') || 'ja'),
         is_active: true,
         batch_key: batchKey,
+        updated_at: batchUpdatedAt,
       }
       try {
         const { mapped: ai, provider } = await summarizeNewsArticle(preparedArticle, anthropicKey, geminiKey, summaryTimeoutMs)
@@ -1061,14 +1063,15 @@ export default async function handler(req, res) {
     }))
 
     if (rowsToInsert.length > 0) {
+      const { error: insertErr } = await admin.from('ai_news_summaries').insert(rowsToInsert)
+      if (insertErr) throw insertErr
+
       const { error: deactivateErr } = await admin
         .from('ai_news_summaries')
         .update({ is_active: false })
         .eq('is_active', true)
+        .lt('updated_at', batchUpdatedAt)
       if (deactivateErr) throw deactivateErr
-
-      const { error: insertErr } = await admin.from('ai_news_summaries').insert(rowsToInsert)
-      if (insertErr) throw insertErr
     }
 
     const analysisComplete = rowsToInsert.filter((r) => r?.ai_analysis_status === 'complete').length

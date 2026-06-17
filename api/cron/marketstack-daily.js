@@ -529,22 +529,29 @@ export default async function handler(req, res) {
       .filter((s) => !etfUpper.has(String(s || '').toUpperCase()))
       .filter((s) => !isEU(s) && !isUK(s))
     const etfUpperStatic = new Set(ETF_SYMBOLS_FROM_XLSX.map((s) => String(s).toUpperCase()))
+    const jpEtfSourceSymbols = overrideSymbols.length > 0 ? overrideSymbols : ETF_SYMBOLS_FROM_XLSX
+    const jpEtfSymbolPool = uniqueSymbols(jpEtfSourceSymbols)
+      .filter((s) => !MARKETSTACK_BLOCKLIST_EXPORT.has(s))
+      .filter((s) => !MARKETSTACK_TEMP_BAD_SYMBOLS.has(String(s || '').toUpperCase()))
+      .filter((s) => String(s || '').toUpperCase().endsWith('.T'))
+      .filter((s) => etfUpperStatic.has(String(s || '').toUpperCase()))
     const jpTier1List = tier1Pool.filter((s) => (s || '').toUpperCase().endsWith('.T'))
-    const jpEtfTier1List = jpTier1List.filter((s) => etfUpperStatic.has(String(s).toUpperCase()))
     const usTier1List = tier1Pool.filter((s) => isUSSymbol(s))
     const jpTier1Requests = estimateChunkCount(jpTier1List)
-    const jpEtfTier1Requests = estimateChunkCount(jpEtfTier1List)
+    const jpEtfRequests = estimateChunkCount(jpEtfSymbolPool)
     const usTier1Requests = estimateChunkCount(usTier1List)
 
-    let selectedSymbols = allSymbols
-    let budgetMode = 'all_tiers'
-    if (monthRemainingRequests < allSymbolsRequests) {
+    let selectedSymbols = jpEtfOnly ? jpEtfSymbolPool : allSymbols
+    let budgetMode = jpEtfOnly ? 'jp_etf_only' : 'all_tiers'
+    if (jpEtfOnly) {
+      if (monthRemainingRequests < jpEtfRequests) {
+        selectedSymbols = []
+        budgetMode = 'budget_skip_jp_etf'
+      }
+    } else if (monthRemainingRequests < allSymbolsRequests) {
       if (monthRemainingRequests >= tier1Requests) {
         selectedSymbols = tier1Pool
         budgetMode = 'tier1_only'
-      } else if (jpEtfOnly && monthRemainingRequests >= jpEtfTier1Requests) {
-        selectedSymbols = jpEtfTier1List
-        budgetMode = 'tier1_jp_etf_budget'
       } else if (jpOnly && monthRemainingRequests >= jpTier1Requests) {
         selectedSymbols = jpTier1List
         budgetMode = 'tier1_jp_budget'

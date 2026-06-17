@@ -172,10 +172,10 @@ export const migrateFundOptimizerSetsToDb = async (userId) => {
 
 export const buildFundOptimizerCompareUrl = (watchset) => {
   const normalized = normalizeFundOptimizerWatchset(watchset)
-  if (!normalized) return '/funds/compare'
+  if (!normalized) return '/etf-compare'
   const params = new URLSearchParams({
     ids: normalized.funds.map((f) => f.id).join(','),
     weights: normalized.funds.map((f) => Number(f.weightPct || 0).toFixed(1)).join(','),
   })
-  return `/funds/compare?${params.toString()}`
+  return `/etf-compare?${params.toString()}`
 }

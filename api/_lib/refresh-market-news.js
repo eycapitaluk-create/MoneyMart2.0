@@ -49,6 +49,24 @@ const readLocalEnvMap = () => {
 const localEnvMap = readLocalEnvMap()
 export const getServerEnv = (key) => process.env[key] || localEnvMap[key]
 
+export async function replaceNewsManualBucketRows(adminClient, buckets, rows, batchUpdatedAt) {
+  const safeBuckets = [...new Set((buckets || []).map((bucket) => String(bucket || '').trim()).filter(Boolean))]
+  const safeRows = Array.isArray(rows) ? rows : []
+  if (safeBuckets.length === 0 || safeRows.length === 0) return { error: null }
+
+  const { error: insertErr } = await adminClient.from('news_manual').insert(safeRows)
+  if (insertErr) return { error: insertErr }
+
+  const { error: deleteErr } = await adminClient
+    .from('news_manual')
+    .delete()
+    .in('bucket', safeBuckets)
+    .lt('updated_at', batchUpdatedAt)
+  if (deleteErr) return { error: deleteErr }
+
+  return { error: null }
+}
+
 const toJpTime = (value) => {
   const d = new Date(value)
   if (Number.isNaN(d.getTime())) return '--:--'
@@ -408,11 +426,8 @@ export const refreshMarketNewsManualFeed = async () => {
   })
 
   const buckets = ['market_ticker', 'market_pickup', 'fund_pickup', 'daily_brief']
-  const { error: deleteErr } = await adminClient.from('news_manual').delete().in('bucket', buckets)
-  if (deleteErr) return { status: 500, body: { ok: false, error: deleteErr.message } }
-
-  const { error: insertErr } = await adminClient.from('news_manual').insert(rows)
-  if (insertErr) return { status: 500, body: { ok: false, error: insertErr.message } }
+  const { error: replaceErr } = await replaceNewsManualBucketRows(adminClient, buckets, rows, now)
+  if (replaceErr) return { status: 500, body: { ok: false, error: replaceErr.message } }
 
   return {
     status: 200,

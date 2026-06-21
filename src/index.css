@@ -2,6 +2,18 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Native <select> in dark mode: without color-scheme / option colors, some browsers
+ * (macOS Chrome/Safari) render the popup with dark background but unreadable option text.
+ */
+html.dark select {
+  color-scheme: dark;
+}
+html.dark select option {
+  background-color: rgb(31 41 55); /* gray-800 */
+  color: rgb(243 244 246); /* gray-100 */
+}
+
 /* Lounge / 共通 - カードホバー */
 @layer utilities {
   .card-hover {
@@ -18,8 +30,9 @@
   100% { transform: translate3d(-33.333%, 0, 0); }
 }
 
+/* マーケット速報ヘッダー帯：読み取りしやすいよう周期を長めに */
 .animate-ticker {
-  animation: ticker-scroll 48s linear infinite;
+  animation: ticker-scroll 100s linear infinite;
   will-change: transform;
 }
 
@@ -81,8 +94,18 @@
 /* Sanitized rich-text bodies (insights admin → DOMPurify → public) */
 .insight-body-html {
   max-width: 100%;
-  overflow-wrap: anywhere;
-  word-break: break-word;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+.insight-editorial .insight-body-html {
+  line-height: 1.82;
+  font-size: 1rem;
+}
+@media (min-width: 1024px) {
+  .insight-editorial .insight-body-html {
+    line-height: 1.78;
+    font-size: 1.0625rem;
+  }
 }
 /* 記事側の Tailwind text-* より優先（管理画面で付けた 小/大・書体） */
 .insight-editorial .insight-body-html .insight-fs-sm {
@@ -118,7 +141,7 @@
   max-width: 100%;
   height: auto;
   border-radius: 0.75rem;
-  margin: 0.75rem 0;
+  margin: 1rem 0 1.25rem;
 }
 .insight-body-html hr.mm-insight-split {
   border: none;
@@ -142,7 +165,7 @@
   margin: 0.35rem 0;
 }
 .insight-body-html p {
-  margin: 0 0 0.65rem 0;
+  margin: 0 0 0.85rem 0;
 }
 .insight-body-html p:last-child {
   margin-bottom: 0;
@@ -159,8 +182,8 @@
 .insight-body-html h3,
 .insight-body-html h4 {
   font-weight: 700;
-  margin: 1rem 0 0.5rem;
-  line-height: 1.35;
+  margin: 1.25rem 0 0.6rem;
+  line-height: 1.4;
 }
 
 /* Mobile-first touch slider for averaging-down calculator */
@@ -189,4 +212,16 @@
   background: #f97316;
   border: 3px solid #ffffff;
   box-shadow: 0 4px 12px rgba(249, 115, 22, 0.35);
+}
+
+/* PAY.JP card element: avoid mobile clip/overlap inside Premium checkout */
+.payjp-premium-checkout [id^='payjp-card-'] {
+  width: 100%;
+  min-height: 3.5rem;
+  overflow: visible;
+}
+.payjp-premium-checkout [id^='payjp-card-'] iframe {
+  display: block;
+  width: 100% !important;
+  min-height: 2.75rem;
 }

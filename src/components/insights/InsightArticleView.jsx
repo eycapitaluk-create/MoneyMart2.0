@@ -1,5 +1,7 @@
 import { Fragment, useEffect, useRef } from 'react'
 import { isEmptyInsightBodyHtml, looksLikeInsightHtml, sanitizeInsightBodyHtml } from '../../lib/insightHtml'
+import { normalizeInsightDocumentForRender } from '../../lib/insightDocumentNormalize'
+import { normalizeInsightKeywordList } from '../../lib/insightKeywords'
 import InsightToolPill from './InsightToolPill'
 
 const accentTitle = (accent) => {
@@ -100,8 +102,14 @@ function ProseParagraph({ text, className = '' }) {
   return <p className={`whitespace-pre-line ${className}`}>{raw}</p>
 }
 
-export default function InsightArticleView({ document: doc }) {
+/** モバイルは読みやすい幅、lg+ で本文を広げて横余白・縦スクロールを抑える */
+const INSIGHT_ARTICLE_WIDTH = 'w-full min-w-0 max-w-3xl lg:max-w-[42rem] xl:max-w-[46rem] mx-auto'
+const INSIGHT_ARTICLE_PAD = 'px-5 sm:px-6 lg:px-8'
+const INSIGHT_PROSE_TEXT = 'text-[15px] sm:text-base lg:text-[17px] leading-[1.88] lg:leading-[1.82] text-stone-700 dark:text-slate-300'
+
+export default function InsightArticleView({ document: docRaw }) {
   const rootRef = useFadeInVisible()
+  const doc = normalizeInsightDocumentForRender(docRaw || {})
   const hero = doc?.hero || {}
   const adminMeta = doc?.admin && typeof doc.admin === 'object' ? doc.admin : {}
   /** 一覧サムネは admin.coverImageUrl を使う。本文ヘッダは従来 hero のみだったため、管理の URL を合流 */
@@ -109,10 +117,7 @@ export default function InsightArticleView({ document: doc }) {
   const ticker = Array.isArray(doc?.ticker) ? doc.ticker : []
   const tickerLoop = ticker.length ? [...ticker, ...ticker] : []
   const sections = Array.isArray(doc?.sections) ? doc.sections : []
-  const footer = doc?.footer || {}
-  const keywordList = Array.isArray(adminMeta?.keywords)
-    ? adminMeta.keywords.map((k) => String(k || '').trim()).filter(Boolean)
-    : []
+  const keywordList = normalizeInsightKeywordList(adminMeta?.keywords)
   const relatedToolList = Array.isArray(adminMeta?.relatedTools)
     ? adminMeta.relatedTools.map((t) => String(t || '').trim()).filter(Boolean)
     : []
@@ -134,7 +139,7 @@ export default function InsightArticleView({ document: doc }) {
         .insight-marquee-track { animation: insight-marquee 28s linear infinite; }
       `}</style>
 
-      <header className="relative flex flex-col justify-start px-5 sm:px-10 lg:px-24 pb-8 sm:pb-10 pt-8 sm:pt-10 border-b border-stone-200/80 dark:border-slate-800/90">
+      <header className={`relative flex flex-col justify-start ${INSIGHT_ARTICLE_PAD} lg:px-12 xl:px-16 pb-7 sm:pb-9 pt-7 sm:pt-9 border-b border-stone-200/80 dark:border-slate-800/90`}>
         {/* 背景だけクリップ。見出し・リードは overflow で切らない（長い見出しが右で欠けないように） */}
         <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
           <div
@@ -178,7 +183,7 @@ export default function InsightArticleView({ document: doc }) {
           ) : null}
         </div>
 
-        <div className="relative z-[1] mx-auto w-full min-w-0 max-w-4xl">
+        <div className={`relative z-[1] ${INSIGHT_ARTICLE_WIDTH}`}>
           {hero.badge ? (
             <div className="inline-flex max-w-full items-center gap-2 px-4 py-1.5 rounded-full border border-rose-300/80 dark:border-rose-500/40 bg-[#faf8f4]/90 dark:bg-slate-900/80 backdrop-blur-sm text-[11px] font-semibold tracking-[0.12em] text-rose-700 dark:text-rose-300 mb-5 shadow-sm break-words [overflow-wrap:anywhere]">
               <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
@@ -199,8 +204,8 @@ export default function InsightArticleView({ document: doc }) {
           </h1>
 
           {hero.sub ? (
-            <div className="relative w-full min-w-0 max-w-2xl mb-10 pl-4 sm:pl-5 border-l-[3px] border-amber-500/90 dark:border-amber-500/70">
-              <p className="text-base sm:text-lg text-stone-700 dark:text-slate-300 leading-[1.95] font-normal break-words [overflow-wrap:anywhere]">
+            <div className="relative w-full min-w-0 max-w-2xl lg:max-w-3xl mb-8 lg:mb-9 pl-4 sm:pl-5 border-l-[3px] border-amber-500/90 dark:border-amber-500/70">
+              <p className="text-base sm:text-lg lg:text-[1.125rem] text-stone-700 dark:text-slate-300 leading-[1.75] lg:leading-[1.7] font-normal break-words [overflow-wrap:break-word]">
                 {hero.sub}
               </p>
             </div>
@@ -220,12 +225,12 @@ export default function InsightArticleView({ document: doc }) {
         <div className="relative bg-[#faf8f4] dark:bg-slate-950 border-b border-stone-200/60 dark:border-slate-800/80">
           <div
             data-insight-reveal
-            className="mx-auto max-w-3xl px-5 sm:px-8 pb-6 sm:pb-8 w-full overflow-hidden rounded-2xl border border-stone-200/90 dark:border-slate-600/80 bg-stone-200/80 dark:bg-slate-800 shadow-[0_22px_55px_-28px_rgba(28,25,23,0.28)] dark:shadow-[0_24px_60px_-28px_rgba(0,0,0,0.5)]"
+            className={`${INSIGHT_ARTICLE_WIDTH} ${INSIGHT_ARTICLE_PAD} pb-5 sm:pb-7 w-full overflow-hidden rounded-2xl border border-stone-200/90 dark:border-slate-600/80 bg-stone-200/80 dark:bg-slate-800 shadow-[0_22px_55px_-28px_rgba(28,25,23,0.28)] dark:shadow-[0_24px_60px_-28px_rgba(0,0,0,0.5)]`}
           >
             <img
               src={coverImageUrl}
               alt=""
-              className="w-full max-h-[min(52vh,520px)] object-cover object-center"
+              className="w-full h-auto max-w-full block align-middle"
               loading="eager"
               decoding="async"
             />
@@ -250,7 +255,7 @@ export default function InsightArticleView({ document: doc }) {
       ) : null}
 
       <div className="relative bg-gradient-to-b from-[#faf8f4] via-[#f6f4ef] to-[#f0ece6] dark:from-slate-950 dark:via-slate-950 dark:to-slate-900">
-        <div className="max-w-3xl mx-auto px-5 sm:px-8 pt-4 sm:pt-6 pb-6 sm:pb-8 space-y-12 sm:space-y-16">
+        <div className={`${INSIGHT_ARTICLE_WIDTH} ${INSIGHT_ARTICLE_PAD} pt-4 sm:pt-5 lg:pt-6 pb-6 sm:pb-8 space-y-8 sm:space-y-10 lg:space-y-12`}>
         {sections.map((block, idx) => {
           if (!block || !block.type) return null
           if (block.type === 'prose') {
@@ -273,37 +278,37 @@ export default function InsightArticleView({ document: doc }) {
                   </p>
                   {paras.length >= 2 ? (
                     <div className="space-y-6">
-                      <div className="rounded-2xl border border-emerald-200/90 dark:border-emerald-900/50 bg-[#eef6f2] dark:bg-slate-900/80 p-6 sm:p-8 shadow-[0_16px_40px_-28px_rgba(6,78,59,0.2)] dark:shadow-[0_20px_50px_-28px_rgba(0,0,0,0.5)]">
+                      <div className="rounded-2xl border border-emerald-200/90 dark:border-emerald-900/50 bg-[#eef6f2] dark:bg-slate-900/80 p-5 sm:p-6 lg:p-7 shadow-[0_16px_40px_-28px_rgba(6,78,59,0.2)] dark:shadow-[0_20px_50px_-28px_rgba(0,0,0,0.5)]">
                         <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-emerald-800 dark:text-emerald-300 mb-3">
                           投資テーゼ
                         </p>
                         <ProseParagraph
                           text={paras[0]}
-                          className="text-[16px] sm:text-[17px] leading-[1.9] text-stone-800 dark:text-slate-100 font-medium"
+                          className="text-[16px] sm:text-[17px] lg:text-[18px] leading-[1.85] lg:leading-[1.8] text-stone-800 dark:text-slate-100 font-medium"
                         />
                       </div>
-                      <div className="rounded-2xl border border-sky-200/90 dark:border-sky-900/50 bg-[#eef3f8] dark:bg-slate-900/80 p-6 sm:p-8 shadow-[0_16px_40px_-28px_rgba(12,74,110,0.15)] dark:shadow-[0_20px_50px_-28px_rgba(0,0,0,0.5)]">
+                      <div className="rounded-2xl border border-sky-200/90 dark:border-sky-900/50 bg-[#eef3f8] dark:bg-slate-900/80 p-5 sm:p-6 lg:p-7 shadow-[0_16px_40px_-28px_rgba(12,74,110,0.15)] dark:shadow-[0_20px_50px_-28px_rgba(0,0,0,0.5)]">
                         <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-sky-800 dark:text-sky-300 mb-3">
                           根拠
                         </p>
-                        <div className="space-y-5">
+                        <div className="space-y-4">
                           {paras.slice(1).map((p, ri) => (
                             <ProseParagraph
                               key={`rat-${ri}`}
                               text={p}
-                              className="text-[16px] sm:text-[17px] leading-[1.9] text-stone-700 dark:text-slate-200"
+                              className="text-[16px] sm:text-[17px] lg:text-[18px] leading-[1.85] lg:leading-[1.8] text-stone-700 dark:text-slate-200"
                             />
                           ))}
                         </div>
                       </div>
                     </div>
                   ) : (
-                    <div className="rounded-2xl border border-stone-200/90 dark:border-slate-700 bg-[#faf8f4] dark:bg-slate-900/90 p-6 sm:p-8 shadow-[0_20px_50px_-30px_rgba(28,25,23,0.12)] dark:shadow-[0_24px_60px_-28px_rgba(0,0,0,0.45)]">
+                    <div className="rounded-2xl border border-stone-200/90 dark:border-slate-700 bg-[#faf8f4] dark:bg-slate-900/90 p-5 sm:p-6 lg:p-7 shadow-[0_20px_50px_-30px_rgba(28,25,23,0.12)] dark:shadow-[0_24px_60px_-28px_rgba(0,0,0,0.45)]">
                       {paras.map((p, pi) => (
                         <ProseParagraph
                           key={`p-${pi}`}
                           text={p}
-                          className="text-[16px] sm:text-[17px] leading-[1.9] text-stone-800 dark:text-slate-100 mb-6 last:mb-0"
+                          className="text-[16px] sm:text-[17px] lg:text-[18px] leading-[1.85] lg:leading-[1.8] text-stone-800 dark:text-slate-100 mb-4 last:mb-0"
                         />
                       ))}
                     </div>
@@ -313,7 +318,7 @@ export default function InsightArticleView({ document: doc }) {
             }
 
             return (
-              <section key={`b-${idx}`} data-insight-reveal className="rounded-2xl border border-stone-200/80 dark:border-slate-700/90 bg-[#faf8f4] dark:bg-slate-900/85 p-6 sm:p-9 shadow-[0_18px_48px_-32px_rgba(28,25,23,0.18)] dark:shadow-[0_22px_55px_-28px_rgba(0,0,0,0.5)] space-y-5">
+              <section key={`b-${idx}`} data-insight-reveal className="rounded-2xl border border-stone-200/80 dark:border-slate-700/90 bg-[#faf8f4] dark:bg-slate-900/85 p-5 sm:p-7 lg:p-8 shadow-[0_18px_48px_-32px_rgba(28,25,23,0.18)] dark:shadow-[0_22px_55px_-28px_rgba(0,0,0,0.5)] space-y-4 sm:space-y-5">
                 {block.kicker ? (
                   <p className="font-mono text-base font-semibold tracking-[0.2em] uppercase text-amber-800/90 dark:text-amber-400/90">
                     {block.kicker}
@@ -323,7 +328,7 @@ export default function InsightArticleView({ document: doc }) {
                   {block.title}
                 </h2>
                 {block.lead ? (
-                  <p className="text-stone-600 dark:text-slate-400 text-[15px] sm:text-base leading-[1.95] border-l-2 border-amber-400/70 dark:border-amber-600/50 pl-4">
+                  <p className="text-stone-600 dark:text-slate-400 text-[15px] sm:text-base leading-[1.8] lg:leading-[1.75] border-l-2 border-amber-400/70 dark:border-amber-600/50 pl-4">
                     {block.lead}
                   </p>
                 ) : null}
@@ -331,7 +336,7 @@ export default function InsightArticleView({ document: doc }) {
                   <ProseParagraph
                     key={`p-${pi}`}
                     text={p}
-                    className="text-stone-700 dark:text-slate-300 text-[15px] sm:text-[16px] leading-[2.05]"
+                    className={INSIGHT_PROSE_TEXT}
                   />
                 ))}
               </section>
@@ -461,7 +466,7 @@ export default function InsightArticleView({ document: doc }) {
 
         {relatedToolList.length > 0 ? (
           <section
-            className="max-w-3xl mx-auto px-5 sm:px-8 pt-3 sm:pt-4 pb-5 sm:pb-6 border-b border-stone-200/80 dark:border-slate-800"
+            className={`${INSIGHT_ARTICLE_WIDTH} ${INSIGHT_ARTICLE_PAD} pt-3 sm:pt-4 pb-5 sm:pb-6 border-b border-stone-200/80 dark:border-slate-800`}
             aria-label="関連コンテンツ"
           >
             <p className="font-mono text-xs sm:text-sm tracking-[0.18em] uppercase text-amber-800/90 dark:text-amber-400/90 mb-2 font-bold">
@@ -476,7 +481,7 @@ export default function InsightArticleView({ document: doc }) {
         ) : null}
         {keywordList.length > 0 ? (
           <section
-            className="max-w-3xl mx-auto px-5 sm:px-8 pt-3 sm:pt-4 pb-5 sm:pb-6 border-b border-stone-200/80 dark:border-slate-800"
+            className={`${INSIGHT_ARTICLE_WIDTH} ${INSIGHT_ARTICLE_PAD} pt-3 sm:pt-4 pb-5 sm:pb-6 border-b border-stone-200/80 dark:border-slate-800`}
             aria-label="キーワード"
           >
             <p className="font-mono text-xs sm:text-sm tracking-[0.18em] uppercase text-amber-800/90 dark:text-amber-400/90 mb-2 font-bold">
@@ -486,7 +491,7 @@ export default function InsightArticleView({ document: doc }) {
               {keywordList.map((kw, ki) => (
                 <span
                   key={`${kw}-${ki}`}
-                  className="inline-flex items-center rounded-full border border-stone-300/90 dark:border-slate-500 bg-[#ebe6dc]/90 dark:bg-slate-800/95 px-3.5 py-1.5 sm:px-4 sm:py-2 text-sm sm:text-[15px] font-bold text-stone-800 dark:text-slate-100 leading-snug"
+                  className="inline-flex items-center rounded-full border border-stone-300/90 dark:border-slate-500 bg-[#ebe6dc]/90 dark:bg-slate-800/95 px-3.5 py-1.5 sm:px-4 sm:py-2 text-sm sm:text-[15px] font-bold text-stone-800 dark:text-slate-100 leading-snug whitespace-nowrap max-w-full"
                 >
                   {kw}
                 </span>
@@ -499,13 +504,11 @@ export default function InsightArticleView({ document: doc }) {
       <footer className="border-t border-stone-200 dark:border-slate-800 bg-[#f0ece6]/50 dark:bg-slate-900/60 py-8 sm:py-9 px-5 text-center">
         <p className="font-mono text-lg font-semibold text-amber-900/90 dark:text-amber-300/90 tracking-wide mb-1.5">MoneyMart</p>
         <p className="text-xs text-stone-500 dark:text-slate-500 tracking-[0.12em] font-medium mb-5">
-          投資をもっとシンプルに、もっとスマートに
+          金融情報をもっとシンプルに、もっと見やすく
         </p>
-        {footer.disclaimer ? (
-          <p className="text-[11px] text-stone-500 dark:text-slate-400 leading-[1.85] max-w-xl mx-auto border-t border-stone-200/80 dark:border-slate-700 pt-5">
-            ※本ページは情報提供を目的としたものであり、特定の金融商品の購入・売却を推奨するものではありません。投資判断はご自身の責任において行ってください。本コンテンツの著作権はMoneyMart（運営：MoneyLab Ltd.）に帰属します。無断での転載・複製・配布・改変を禁じます。一部記事の作成にAIを活用している場合があります。すべての記事は編集チームが内容を確認しています。
-          </p>
-        ) : null}
+        <p className="text-[11px] text-stone-500 dark:text-slate-400 leading-[1.85] max-w-xl mx-auto border-t border-stone-200/80 dark:border-slate-700 pt-5">
+          ※本ページは情報提供を目的としたものであり、特定の金融商品の購入・売却を推奨するものではありません。投資判断はご自身の責任において行ってください。本コンテンツの著作権はMoneyMart（運営：マネーラボ合同会社／MoneyLab G.K.）に帰属します。無断での転載・複製・配布・改変を禁じます。一部記事の作成にAIを活用している場合があります。すべての記事は編集チームが内容を確認しています。
+        </p>
       </footer>
     </div>
   )

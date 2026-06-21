@@ -103,9 +103,9 @@ function ProseParagraph({ text, className = '' }) {
 }
 
 /** モバイルは読みやすい幅、lg+ で本文を広げて横余白・縦スクロールを抑える */
-const INSIGHT_ARTICLE_WIDTH = 'w-full min-w-0 max-w-3xl lg:max-w-[42rem] xl:max-w-[46rem] mx-auto'
+const INSIGHT_ARTICLE_WIDTH = 'w-full min-w-0 max-w-3xl lg:max-w-4xl xl:max-w-5xl mx-auto'
 const INSIGHT_ARTICLE_PAD = 'px-5 sm:px-6 lg:px-8'
-const INSIGHT_PROSE_TEXT = 'text-[15px] sm:text-base lg:text-[17px] leading-[1.88] lg:leading-[1.82] text-stone-700 dark:text-slate-300'
+const INSIGHT_PROSE_TEXT = 'text-[15px] sm:text-[16px] lg:text-[17px] leading-[1.8] lg:leading-[1.75] text-stone-700 dark:text-slate-300'
 
 export default function InsightArticleView({ document: docRaw }) {
   const rootRef = useFadeInVisible()
@@ -318,7 +318,7 @@ export default function InsightArticleView({ document: docRaw }) {
             }
 
             return (
-              <section key={`b-${idx}`} data-insight-reveal className="rounded-2xl border border-stone-200/80 dark:border-slate-700/90 bg-[#faf8f4] dark:bg-slate-900/85 p-5 sm:p-7 lg:p-8 shadow-[0_18px_48px_-32px_rgba(28,25,23,0.18)] dark:shadow-[0_22px_55px_-28px_rgba(0,0,0,0.5)] space-y-4 sm:space-y-5">
+              <section key={`b-${idx}`} data-insight-reveal className="rounded-2xl border border-stone-200/80 dark:border-slate-700/90 bg-[#faf8f4] dark:bg-slate-900/85 p-5 sm:p-6 lg:p-7 shadow-[0_18px_48px_-32px_rgba(28,25,23,0.18)] dark:shadow-[0_22px_55px_-28px_rgba(0,0,0,0.5)] space-y-4">
                 {block.kicker ? (
                   <p className="font-mono text-base font-semibold tracking-[0.2em] uppercase text-amber-800/90 dark:text-amber-400/90">
                     {block.kicker}

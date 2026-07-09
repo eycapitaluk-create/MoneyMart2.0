@@ -24,14 +24,12 @@ const fetchProfileNameMap = async (userIds = []) => {
   const ids = [...new Set((userIds || []).filter(Boolean))]
   if (ids.length === 0) return new Map()
   const { data, error } = await supabase
-    .from('user_profiles')
-    .select('user_id,nickname,full_name')
-    .in('user_id', ids)
+    .rpc('get_user_profile_display_names', { user_ids: ids })
   if (error) return new Map()
   return new Map(
     (data || []).map((row) => [
       row.user_id,
-      row.nickname || row.full_name || 'Member',
+      row.display_name || 'Member',
     ])
   )
 }

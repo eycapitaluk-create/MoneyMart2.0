@@ -444,23 +444,11 @@ const App = () => {
 
       const metadataPlan = String(
         nextSession.user?.app_metadata?.plan_tier
-        || nextSession.user?.user_metadata?.plan_tier
         || nextSession.user?.app_metadata?.membership_tier
-        || nextSession.user?.user_metadata?.membership_tier
         || ''
       ).toLowerCase()
-      const profilePlan = String(
-        effectiveProfile?.plan_tier
-        || effectiveProfile?.membership_tier
-        || effectiveProfile?.subscription_tier
-        || effectiveProfile?.plan
-        || ''
-      ).toLowerCase()
-      const isProfilePrime = Boolean(
-        effectiveProfile?.is_prime
-        || effectiveProfile?.is_premium
-        || effectiveProfile?.prime_member
-      )
+      const profilePlan = String(effectiveProfile?.subscription_tier || '').toLowerCase()
+      const isProfilePrime = Boolean(effectiveProfile?.is_premium)
       const planTier = profilePlan || metadataPlan || (isProfilePrime ? 'prime' : 'free')
       const emailLower = String(nextSession.user?.email || '').trim().toLowerCase()
       const forcedPremiumPlanTier = PREMIUM_EMAIL_ALLOWLIST.has(emailLower) ? 'prime' : planTier
@@ -764,6 +752,7 @@ const App = () => {
             element={
               <FundPage
                 user={session?.user || null}
+                userProfile={currentUserProfile || null}
                 myWatchlist={fundWatchlist.map((item) => item.id)}
                 toggleWatchlist={toggleFundWatchlist}
                 onUiMessage={showUiMessage}
@@ -776,6 +765,7 @@ const App = () => {
             element={
               <FundComparePage
                 user={session?.user || null}
+                userProfile={currentUserProfile || null}
                 myWatchlist={fundWatchlist.map((item) => item.id)}
                 toggleWatchlist={toggleFundWatchlist}
                 onUiMessage={showUiMessage}

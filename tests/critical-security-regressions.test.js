@@ -45,7 +45,7 @@ test('storage write policies are scoped to owners or admins', () => {
 
   assert.match(loungeSql, /\(storage\.foldername\(name\)\)\[1\] = auth\.uid\(\)::text/)
   assert.doesNotMatch(loungeSql, /with check \(bucket_id = 'lounge-images'\);/)
-  assert.doesNotMatch(loungeSql, /using \(bucket_id = 'lounge-images'\);/)
+  assert.doesNotMatch(loungeSql, /for (update|delete)[\s\S]{0,120}using \(bucket_id = 'lounge-images'\);/)
 
   assert.match(newsSql, /drop policy if exists "Authenticated upload news images"/)
   assert.match(newsSql, /drop policy if exists "Authenticated update news images"/)

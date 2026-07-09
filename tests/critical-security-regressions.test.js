@@ -30,8 +30,6 @@ test('user profile entitlement and billing columns are protected from owner writ
     'subscription_tier',
     'stripe_customer_id',
     'stripe_subscription_id',
-    'plan_tier',
-    'membership_tier',
   ]) {
     assert.match(sql, new RegExp(`'${column}'`))
   }

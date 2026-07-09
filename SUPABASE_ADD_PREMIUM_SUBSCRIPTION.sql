@@ -23,14 +23,9 @@ declare
     'is_premium',
     'subscription_tier',
     'stripe_customer_id',
-    'stripe_subscription_id',
-    'is_prime',
-    'prime_member',
-    'plan_tier',
-    'membership_tier',
-    'plan'
+    'stripe_subscription_id'
   ];
-  boolean_columns constant text[] := array['is_premium', 'is_prime', 'prime_member'];
+  boolean_columns constant text[] := array['is_premium'];
   column_name text;
   new_row jsonb := to_jsonb(new);
   old_row jsonb := case when tg_op = 'UPDATE' then to_jsonb(old) else '{}'::jsonb end;

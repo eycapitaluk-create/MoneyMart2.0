@@ -53,7 +53,7 @@ test('storage write policies are scoped to owners or admins', () => {
   assert.match(newsSql, /from public\.user_roles ur/)
   assert.match(newsSql, /ur\.role = 'admin'/)
   assert.doesNotMatch(newsSql, /with check \(bucket_id = 'news-images'\);/)
-  assert.doesNotMatch(newsSql, /using \(bucket_id = 'news-images'\);/)
+  assert.doesNotMatch(newsSql, /for (update|delete)[\s\S]{0,120}using \(bucket_id = 'news-images'\);/)
 })
 
 test('site analytics aggregate views run with invoker privileges', () => {

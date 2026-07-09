@@ -1054,21 +1054,24 @@ export default async function handler(req, res) {
       }
     }
 
+    const batchUpdatedAt = new Date().toISOString()
     const rowsToInsert = summarized.map((row, idx) => ({
       ...row,
       sort_order: idx + 1,
       is_hot: idx < 3,
+      updated_at: batchUpdatedAt,
     }))
 
     if (rowsToInsert.length > 0) {
+      const { error: insertErr } = await admin.from('ai_news_summaries').insert(rowsToInsert)
+      if (insertErr) throw insertErr
+
       const { error: deactivateErr } = await admin
         .from('ai_news_summaries')
         .update({ is_active: false })
         .eq('is_active', true)
+        .lt('updated_at', batchUpdatedAt)
       if (deactivateErr) throw deactivateErr
-
-      const { error: insertErr } = await admin.from('ai_news_summaries').insert(rowsToInsert)
-      if (insertErr) throw insertErr
     }
 
     const analysisComplete = rowsToInsert.filter((r) => r?.ai_analysis_status === 'complete').length

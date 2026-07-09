@@ -30,8 +30,6 @@ export default function Navbar({
   const dividendMonthAlerts = useDividendMonthBellAlerts(session)
   const planTier = String(
     userProfile?.planTier
-    || userProfile?.plan_tier
-    || userProfile?.membership_tier
     || '',
   ).toLowerCase()
   const isPremium = Boolean(session && isPaidPlanTier(planTier))

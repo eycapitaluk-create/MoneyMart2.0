@@ -38,7 +38,9 @@ create index if not exists idx_site_analytics_events_user_created_at
 create index if not exists idx_site_analytics_events_meta_gin
   on public.site_analytics_events using gin (event_meta);
 
-create or replace view public.site_analytics_top_pages_30d as
+create or replace view public.site_analytics_top_pages_30d
+with (security_invoker = true)
+as
 select
   page_path,
   count(*) filter (where event_name = 'page_view') as views,
@@ -50,7 +52,9 @@ group by page_path
 having count(*) filter (where event_name = 'page_view') > 0
 order by views desc;
 
-create or replace view public.site_analytics_top_products_30d as
+create or replace view public.site_analytics_top_products_30d
+with (security_invoker = true)
+as
 select
   coalesce(event_meta->>'product_type', event_meta->>'item_type', 'unknown') as product_type,
   coalesce(event_meta->>'product_id', event_meta->>'item_id', '') as product_id,
@@ -64,7 +68,9 @@ group by 1, 2, 3
 having coalesce(event_meta->>'product_id', event_meta->>'item_id', '') <> ''
 order by clicks desc;
 
-create or replace view public.site_analytics_top_search_terms_30d as
+create or replace view public.site_analytics_top_search_terms_30d
+with (security_invoker = true)
+as
 select
   page_path,
   lower(trim(coalesce(event_meta->>'query', ''))) as query,
@@ -77,7 +83,9 @@ group by 1, 2
 having lower(trim(coalesce(event_meta->>'query', ''))) <> ''
 order by searches desc;
 
-create or replace view public.site_analytics_top_referrers_30d as
+create or replace view public.site_analytics_top_referrers_30d
+with (security_invoker = true)
+as
 select
   nullif(referrer_domain, '') as referrer_domain,
   nullif(source, '') as utm_source,

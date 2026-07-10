@@ -644,7 +644,9 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
           if (Array.isArray(parsed?.selectedFundIds)) return parsed.selectedFundIds.slice(0, 3)
         }
       }
-    } catch {}
+    } catch {
+      // Ignore malformed persisted UI state and start from an empty selection.
+    }
     return []
   })
   const [isLoading, setIsLoading] = useState(true)
@@ -792,7 +794,9 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
         const stored = raw ? JSON.parse(raw) : {}
         stored.selectedFundIds = Array.isArray(current) ? current.slice(0, 3) : []
         window.sessionStorage.setItem(FUND_PAGE_UI_STATE_KEY, JSON.stringify(stored))
-      } catch {}
+      } catch {
+        // Ignore storage failures during unmount persistence.
+      }
     }
   }, [])
 
@@ -1940,7 +1944,6 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
   }
   const closeComposeModal = () => {
     setIsComposeModalOpen(false)
-    setSharePopoverOpen(false)
     setSelectedFundIds([...selectedFundIdsOnComposeOpenRef.current])
   }
   useEffect(() => {

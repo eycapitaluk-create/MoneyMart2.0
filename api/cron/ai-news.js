@@ -172,6 +172,28 @@ function sendJson(res, status, payload) {
   res.end(JSON.stringify(payload))
 }
 
+export async function replaceAiNewsSummaryRows(admin, rowsToInsert, batchUpdatedAt = new Date().toISOString()) {
+  const nextRows = (Array.isArray(rowsToInsert) ? rowsToInsert : []).map((row) => ({
+    ...row,
+    is_active: true,
+    updated_at: batchUpdatedAt,
+  }))
+  if (nextRows.length === 0) return { inserted: 0, deactivated: 0 }
+
+  const { error: insertErr } = await admin.from('ai_news_summaries').insert(nextRows)
+  if (insertErr) throw insertErr
+
+  const { data: deactivatedRows, error: deactivateErr } = await admin
+    .from('ai_news_summaries')
+    .update({ is_active: false })
+    .eq('is_active', true)
+    .lt('updated_at', batchUpdatedAt)
+    .select('id')
+  if (deactivateErr) throw deactivateErr
+
+  return { inserted: nextRows.length, deactivated: Array.isArray(deactivatedRows) ? deactivatedRows.length : 0 }
+}
+
 const toJstHour = (date = new Date()) => {
   const fmt = new Intl.DateTimeFormat('en-GB', {
     timeZone: 'Asia/Tokyo',
@@ -938,8 +960,9 @@ export default async function handler(req, res) {
   }
 
   const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } })
-  const slot = getSlot(new Date())
-  const batchKey = `${new Date().toISOString().slice(0, 10)}:${slot}`
+  const batchUpdatedAt = new Date().toISOString()
+  const slot = getSlot(new Date(batchUpdatedAt))
+  const batchKey = `${batchUpdatedAt.slice(0, 10)}:${slot}`
 
   try {
     const fetched = []
@@ -1009,6 +1032,7 @@ export default async function handler(req, res) {
         language: String(preparedArticle?.language || (isJapaneseArticle(preparedArticle) ? 'ja' : 'en') || 'ja'),
         is_active: true,
         batch_key: batchKey,
+        updated_at: batchUpdatedAt,
       }
       try {
         const { mapped: ai, provider } = await summarizeNewsArticle(preparedArticle, anthropicKey, geminiKey, summaryTimeoutMs)
@@ -1060,16 +1084,7 @@ export default async function handler(req, res) {
       is_hot: idx < 3,
     }))
 
-    if (rowsToInsert.length > 0) {
-      const { error: deactivateErr } = await admin
-        .from('ai_news_summaries')
-        .update({ is_active: false })
-        .eq('is_active', true)
-      if (deactivateErr) throw deactivateErr
-
-      const { error: insertErr } = await admin.from('ai_news_summaries').insert(rowsToInsert)
-      if (insertErr) throw insertErr
-    }
+    const replaceResult = await replaceAiNewsSummaryRows(admin, rowsToInsert, batchUpdatedAt)
 
     const analysisComplete = rowsToInsert.filter((r) => r?.ai_analysis_status === 'complete').length
     const newsOnly = rowsToInsert.filter((r) => r?.ai_analysis_status === 'failed').length
@@ -1081,7 +1096,8 @@ export default async function handler(req, res) {
       fetchedCandidates: uniqueArticles.length,
       deduped: Math.max(0, uniqueArticles.length - freshArticles.length),
       fallbackUsed: freshArticles.length === 0 && selectedArticles.length > 0,
-      inserted: rowsToInsert.length,
+      inserted: replaceResult.inserted,
+      deactivated: replaceResult.deactivated,
       analysisComplete,
       newsOnly,
       attempted: selectedArticles.length,

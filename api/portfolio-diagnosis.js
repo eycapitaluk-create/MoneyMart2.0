@@ -16,6 +16,13 @@ function sendJson(res, status, payload) {
   res.end(JSON.stringify(payload))
 }
 
+function isPaidProfile(profile) {
+  if (!profile) return false
+  if (profile.is_premium) return true
+  const tier = String(profile.subscription_tier || '').toLowerCase()
+  return ['prime', 'premium', 'pro', 'plus', 'paid'].some((key) => tier.includes(key))
+}
+
 function readJsonBody(req) {
   return new Promise((resolve, reject) => {
     let raw = ''
@@ -463,6 +470,15 @@ export default async function handler(req, res) {
   const { data: userData, error: userErr } = await adminClient.auth.getUser(accessToken)
   if (userErr || !userData?.user) {
     return sendJson(res, 401, { error: 'ログインが必要です' })
+  }
+
+  const { data: profile, error: profileErr } = await adminClient
+    .from('user_profiles')
+    .select('subscription_tier, is_premium')
+    .eq('user_id', userData.user.id)
+    .maybeSingle()
+  if (profileErr || !isPaidProfile(profile)) {
+    return sendJson(res, 403, { error: 'プレミアム会員限定機能です' })
   }
 
   try {

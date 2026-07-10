@@ -608,7 +608,7 @@ const fetchUserProfilePaidFlag = async (userId) => {
   if (!userId) return false
   const { data, error } = await supabase
     .from('user_profiles')
-    .select('plan_tier, membership_tier, subscription_tier, plan, is_premium, is_prime, prime_member')
+    .select('subscription_tier, is_premium')
     .eq('user_id', userId)
     .maybeSingle()
   if (error || !data) return false

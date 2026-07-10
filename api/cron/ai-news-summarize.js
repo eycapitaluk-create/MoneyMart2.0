@@ -2,8 +2,14 @@ import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@supabase/supabase-js'
 
 export default async function handler(req, res) {
+  const cronSecret = String(process.env.CRON_SECRET || '').trim()
+  if (!cronSecret) {
+    return res.status(500).json({ ok: false, error: 'CRON_SECRET is required' })
+  }
+
   const auth = req.headers.authorization || ''
-  if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
+  const token = auth.startsWith('Bearer ') ? auth.slice(7).trim() : ''
+  if (token !== cronSecret) {
     return res.status(401).json({ ok: false, error: 'Unauthorized' })
   }
 

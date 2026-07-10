@@ -49,6 +49,28 @@ const readLocalEnvMap = () => {
 const localEnvMap = readLocalEnvMap()
 export const getServerEnv = (key) => process.env[key] || localEnvMap[key]
 
+export async function replaceNewsManualBucketRows(adminClient, buckets, rows, batchUpdatedAt = new Date().toISOString()) {
+  const bucketList = [...new Set((Array.isArray(buckets) ? buckets : []).map((bucket) => String(bucket || '').trim()).filter(Boolean))]
+  const nextRows = (Array.isArray(rows) ? rows : []).map((row) => ({
+    ...row,
+    updated_at: batchUpdatedAt,
+  }))
+  if (bucketList.length === 0 || nextRows.length === 0) return { inserted: 0, pruned: 0 }
+
+  const { error: insertErr } = await adminClient.from('news_manual').insert(nextRows)
+  if (insertErr) throw insertErr
+
+  const { data: prunedRows, error: deleteErr } = await adminClient
+    .from('news_manual')
+    .delete()
+    .in('bucket', bucketList)
+    .or(`updated_at.is.null,updated_at.lt.${batchUpdatedAt}`)
+    .select('id')
+  if (deleteErr) throw deleteErr
+
+  return { inserted: nextRows.length, pruned: Array.isArray(prunedRows) ? prunedRows.length : 0 }
+}
+
 const toJpTime = (value) => {
   const d = new Date(value)
   if (Number.isNaN(d.getTime())) return '--:--'
@@ -340,7 +362,7 @@ export const refreshMarketNewsManualFeed = async () => {
     }
   }
 
-  const now = new Date().toISOString()
+  const batchUpdatedAt = new Date().toISOString()
   const displayRows = uniqueByTitle([...japanese, ...translatedEnglish])
     .filter((item) => hasUsableArticleUrl(item))
     .sort((a, b) => new Date(b.published_at || 0).getTime() - new Date(a.published_at || 0).getTime())
@@ -382,7 +404,7 @@ export const refreshMarketNewsManualFeed = async () => {
         published_at: item.published_at || null,
         tone: null,
         is_active: true,
-        updated_at: now,
+        updated_at: batchUpdatedAt,
       })
     })
   }
@@ -404,21 +426,23 @@ export const refreshMarketNewsManualFeed = async () => {
     published_at: lead.published_at || null,
     tone: dailyBrief.tone,
     is_active: true,
-    updated_at: now,
+    updated_at: batchUpdatedAt,
   })
 
   const buckets = ['market_ticker', 'market_pickup', 'fund_pickup', 'daily_brief']
-  const { error: deleteErr } = await adminClient.from('news_manual').delete().in('bucket', buckets)
-  if (deleteErr) return { status: 500, body: { ok: false, error: deleteErr.message } }
-
-  const { error: insertErr } = await adminClient.from('news_manual').insert(rows)
-  if (insertErr) return { status: 500, body: { ok: false, error: insertErr.message } }
+  let replaceResult = { inserted: 0, pruned: 0 }
+  try {
+    replaceResult = await replaceNewsManualBucketRows(adminClient, buckets, rows, batchUpdatedAt)
+  } catch (err) {
+    return { status: 500, body: { ok: false, error: err?.message || 'Failed to replace market news rows' } }
+  }
 
   return {
     status: 200,
     body: {
       ok: true,
-      inserted: rows.length,
+      inserted: replaceResult.inserted,
+      pruned: replaceResult.pruned,
       japaneseCount: japanese.length,
       translatedCount: translatedEnglish.length,
       preview: marketTicker.slice(0, 3).map((r) => ({ title: r.title, source: r.source })),

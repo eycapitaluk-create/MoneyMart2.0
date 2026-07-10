@@ -16,7 +16,7 @@ import {
   deleteFundOptimizerWatchsetFromDb,
   loadFundOptimizerWatchsetsFromDb,
 } from '../lib/fundOptimizerWatchsets'
-import { isPaidPlanTier } from '../lib/membership'
+import { isPaidFromUserProfileRow } from '../lib/membership'
 import { normalizeFundDisplayName } from '../lib/fundDisplayUtils'
 import { normalizeNisaCategoryField } from '../lib/textEncodingUtils'
 import { findBaseCloseByCalendarOffset } from '../lib/calendarDateUtils'
@@ -230,15 +230,29 @@ export default function FundComparePage({
     [...new Set((initialSymbols || []).map((s) => String(s || '').trim().toUpperCase()).filter(Boolean))].slice(0, 3)
   ))
   const pendingWatchSetWeightsRef = useRef(null)
-  const planTier = String(
-    user?.app_metadata?.plan_tier
-    || user?.user_metadata?.plan_tier
-    || user?.app_metadata?.membership_tier
-    || user?.user_metadata?.membership_tier
-    || '',
-  ).toLowerCase()
+  const [profilePaidMember, setProfilePaidMember] = useState(false)
+  useEffect(() => {
+    const userId = user?.id
+    if (!userId) {
+      setProfilePaidMember(false)
+      return
+    }
+    let cancelled = false
+    supabase
+      .from('user_profiles')
+      .select('subscription_tier, is_premium')
+      .eq('user_id', userId)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (!cancelled) setProfilePaidMember(!error && isPaidFromUserProfileRow(data))
+      })
+      .catch(() => {
+        if (!cancelled) setProfilePaidMember(false)
+      })
+    return () => { cancelled = true }
+  }, [user?.id])
   const userEmailLower = String(user?.email || '').trim().toLowerCase()
-  const isPaidMember = isPaidPlanTier(planTier) || PREMIUM_EMAIL_ALLOWLIST.has(userEmailLower)
+  const isPaidMember = profilePaidMember || PREMIUM_EMAIL_ALLOWLIST.has(userEmailLower)
 
   useEffect(() => {
     if (!embeddedMode) return

@@ -423,45 +423,12 @@ const App = () => {
         }
       }
 
-      // Some users already have a profile row from earlier flows but without consent timestamp.
-      // Since signup step enforces legal agreement, backfill consent once to avoid duplicate prompt.
-      if (effectiveProfile && !effectiveProfile?.consent_acknowledged_at) {
-        try {
-          const nowIso = new Date().toISOString()
-          const { data: patched, error: patchErr } = await supabase
-            .from('user_profiles')
-            .upsert({
-              user_id: nextSession.user.id,
-              consent_acknowledged_at: nowIso,
-            }, { onConflict: 'user_id' })
-            .select('*')
-            .single()
-          if (!patchErr && patched) effectiveProfile = patched
-        } catch {
-          // ignore and continue; user may still be routed to complete-profile if patch fails
-        }
-      }
-
-      const metadataPlan = String(
-        nextSession.user?.app_metadata?.plan_tier
-        || nextSession.user?.user_metadata?.plan_tier
-        || nextSession.user?.app_metadata?.membership_tier
-        || nextSession.user?.user_metadata?.membership_tier
-        || ''
-      ).toLowerCase()
       const profilePlan = String(
-        effectiveProfile?.plan_tier
-        || effectiveProfile?.membership_tier
-        || effectiveProfile?.subscription_tier
-        || effectiveProfile?.plan
+        effectiveProfile?.subscription_tier
         || ''
       ).toLowerCase()
-      const isProfilePrime = Boolean(
-        effectiveProfile?.is_prime
-        || effectiveProfile?.is_premium
-        || effectiveProfile?.prime_member
-      )
-      const planTier = profilePlan || metadataPlan || (isProfilePrime ? 'prime' : 'free')
+      const isProfilePaid = Boolean(effectiveProfile?.is_premium) || isPaidPlanTier(profilePlan)
+      const planTier = isProfilePaid ? (profilePlan || 'premium') : 'free'
       const emailLower = String(nextSession.user?.email || '').trim().toLowerCase()
       const forcedPremiumPlanTier = PREMIUM_EMAIL_ALLOWLIST.has(emailLower) ? 'prime' : planTier
 

@@ -40,7 +40,7 @@ import {
   deleteFundOptimizerWatchsetFromDb,
   loadFundOptimizerWatchsetsFromDb,
 } from '../lib/fundOptimizerWatchsets'
-import { isPaidPlanTier } from '../lib/membership'
+import { isPaidFromUserProfileRow } from '../lib/membership'
 import { annualizeThreeMonthReturnPct } from '../lib/wealthSimEtfReturns'
 import { LEGAL_NOTICE_TEMPLATES } from '../constants/legalNoticeTemplates'
 import { MM_SIMULATION_PAST_PERFORMANCE_JA } from '../lib/moneymartSimulationDisclaimer'
@@ -644,7 +644,9 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
           if (Array.isArray(parsed?.selectedFundIds)) return parsed.selectedFundIds.slice(0, 3)
         }
       }
-    } catch {}
+    } catch {
+      // Ignore malformed persisted UI state and start from an empty selection.
+    }
     return []
   })
   const [isLoading, setIsLoading] = useState(true)
@@ -792,7 +794,9 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
         const stored = raw ? JSON.parse(raw) : {}
         stored.selectedFundIds = Array.isArray(current) ? current.slice(0, 3) : []
         window.sessionStorage.setItem(FUND_PAGE_UI_STATE_KEY, JSON.stringify(stored))
-      } catch {}
+      } catch {
+        // Ignore storage failures during unmount persistence.
+      }
     }
   }, [])
 
@@ -843,15 +847,29 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
     return () => { cancelled = true }
   }, [_user?.id])
   const [freeOptimizerRunsUsed, setFreeOptimizerRunsUsed] = useState(0)
-  const planTier = String(
-    _user?.app_metadata?.plan_tier
-    || _user?.user_metadata?.plan_tier
-    || _user?.app_metadata?.membership_tier
-    || _user?.user_metadata?.membership_tier
-    || '',
-  ).toLowerCase()
+  const [profilePaidMember, setProfilePaidMember] = useState(false)
+  useEffect(() => {
+    const userId = _user?.id
+    if (!userId) {
+      setProfilePaidMember(false)
+      return
+    }
+    let cancelled = false
+    supabase
+      .from('user_profiles')
+      .select('subscription_tier, is_premium')
+      .eq('user_id', userId)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (!cancelled) setProfilePaidMember(!error && isPaidFromUserProfileRow(data))
+      })
+      .catch(() => {
+        if (!cancelled) setProfilePaidMember(false)
+      })
+    return () => { cancelled = true }
+  }, [_user?.id])
   const userEmailLower = String(_user?.email || '').trim().toLowerCase()
-  const isPaidMember = isPaidPlanTier(planTier) || PREMIUM_EMAIL_ALLOWLIST.has(userEmailLower)
+  const isPaidMember = profilePaidMember || PREMIUM_EMAIL_ALLOWLIST.has(userEmailLower)
   const freeOptimizerRunsRemaining = Math.max(0, FREE_FUND_OPTIMIZER_RUNS_PER_MONTH - freeOptimizerRunsUsed)
 
   const getOptimizerMonthKey = () => {
@@ -1926,7 +1944,6 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
   }
   const closeComposeModal = () => {
     setIsComposeModalOpen(false)
-    setSharePopoverOpen(false)
     setSelectedFundIds([...selectedFundIdsOnComposeOpenRef.current])
   }
   useEffect(() => {

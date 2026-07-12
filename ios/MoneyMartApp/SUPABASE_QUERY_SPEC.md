@@ -6,10 +6,10 @@ This spec mirrors web app table usage and keeps data integrity first.
 
 - Latest: `v_stock_latest`
   - `select=symbol,trade_date,close`
-  - `symbol=in.(...)`
+  - `symbol=in.("IYE","1329.T",...)` (quote symbols containing `.`)
 - Previous close source: `stock_daily_prices`
   - `select=symbol,trade_date,close`
-  - `symbol=in.(...)`
+  - `symbol=in.("IYE","1329.T",...)`
   - `trade_date=gte.<today-10d>`
   - `order=trade_date.desc`
 - Rule: if previous close is missing, omit tile (no fake change%).

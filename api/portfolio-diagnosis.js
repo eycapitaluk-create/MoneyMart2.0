@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { isPaidFromUserProfileRow, isPaidPlanTier, isPremiumEmail } from '../src/lib/membership.js'
 
 const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-20250514'
 
@@ -463,6 +464,29 @@ export default async function handler(req, res) {
   const { data: userData, error: userErr } = await adminClient.auth.getUser(accessToken)
   if (userErr || !userData?.user) {
     return sendJson(res, 401, { error: 'ログインが必要です' })
+  }
+
+  const user = userData.user
+  const appMetadataPlan = String(
+    user?.app_metadata?.plan_tier
+    || user?.app_metadata?.membership_tier
+    || '',
+  ).toLowerCase()
+  const { data: profile, error: profileErr } = await adminClient
+    .from('user_profiles')
+    .select('is_premium,subscription_tier')
+    .eq('user_id', user.id)
+    .maybeSingle()
+  if (profileErr) {
+    return sendJson(res, 500, { error: 'プロフィール確認に失敗しました' })
+  }
+  const hasPremiumAccess = Boolean(
+    isPremiumEmail(user?.email)
+    || isPaidPlanTier(appMetadataPlan)
+    || isPaidFromUserProfileRow(profile),
+  )
+  if (!hasPremiumAccess) {
+    return sendJson(res, 403, { error: 'プレミアム限定機能です' })
   }
 
   try {

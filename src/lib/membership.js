@@ -19,22 +19,24 @@ export const PREMIUM_ANNUAL_PRICE_YEN = 3900
 export const PREMIUM_ANNUAL_MONTHLY_EQUIV_YEN = Math.round(PREMIUM_ANNUAL_PRICE_YEN / 12)
 
 export const PREMIUM_PLAN_KEYS = ['prime', 'premium', 'pro', 'plus', 'paid']
+export const PREMIUM_EMAIL_ALLOWLIST = new Set([
+  'justin.nam@moneymart.co.jp',
+  'kelly.nam@moneymart.co.jp',
+])
 
 export function isPaidPlanTier(planTierLower) {
   const k = String(planTierLower || '').toLowerCase()
   return PREMIUM_PLAN_KEYS.some((key) => k.includes(key))
 }
 
+export function isPremiumEmail(email) {
+  return PREMIUM_EMAIL_ALLOWLIST.has(String(email || '').trim().toLowerCase())
+}
+
 export function isPaidFromUserProfileRow(profile) {
   if (!profile) return false
-  if (profile.is_premium || profile.is_prime || profile.prime_member) return true
-  const p = String(
-    profile.plan_tier
-    || profile.membership_tier
-    || profile.subscription_tier
-    || profile.plan
-    || '',
-  ).toLowerCase()
+  if (profile.is_premium === true) return true
+  const p = String(profile.subscription_tier || '').toLowerCase()
   return isPaidPlanTier(p)
 }
 

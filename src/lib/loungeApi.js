@@ -24,9 +24,7 @@ const fetchProfileNameMap = async (userIds = []) => {
   const ids = [...new Set((userIds || []).filter(Boolean))]
   if (ids.length === 0) return new Map()
   const { data, error } = await supabase
-    .from('user_profiles')
-    .select('user_id,nickname,full_name')
-    .in('user_id', ids)
+    .rpc('get_user_profile_display_names', { user_ids: ids })
   if (error) return new Map()
   return new Map(
     (data || []).map((row) => [
@@ -127,12 +125,10 @@ const normalizePost = (post, tags = [], likeMap = new Set(), bookmarkMap = new S
 const getUserProfileName = async (userId, fallbackEmail = '') => {
   if (!userId) return 'Guest'
   const { data } = await supabase
-    .from('user_profiles')
-    .select('nickname, full_name')
-    .eq('user_id', userId)
-    .maybeSingle()
-  if (data?.nickname) return data.nickname
-  if (data?.full_name) return data.full_name
+    .rpc('get_user_profile_display_names', { user_ids: [userId] })
+  const row = Array.isArray(data) ? data[0] : null
+  if (row?.nickname) return row.nickname
+  if (row?.full_name) return row.full_name
   return fallbackEmail ? fallbackEmail.split('@')[0] : 'Member'
 }
 
@@ -769,23 +765,19 @@ export async function fetchSuggestedUsers({ userId = null, limit = 3 } = {}) {
     : Promise.resolve({ data: [], error: null })
 
   if (await hasCommunitySchema()) {
-    const [postsRes, followRes, profileRes] = await Promise.all([
+    const [postsRes, followRes] = await Promise.all([
       supabase
         .from('community_posts')
         .select('user_id,created_at,hot_score,view_count')
         .order('created_at', { ascending: false })
         .limit(maxRows),
       followPromise,
-      supabase.from('user_profiles').select('user_id,nickname,full_name').limit(1000),
     ])
     if (postsRes.error) throw postsRes.error
     if (followRes.error) throw followRes.error
 
     const followSet = new Set((followRes.data || []).map((row) => row.following_id))
-    const profileMap = new Map((profileRes.data || []).map((row) => [
-      row.user_id,
-      row.nickname || row.full_name || '',
-    ]))
+    const profileMap = await fetchProfileNameMap((postsRes.data || []).map((row) => row.user_id).filter(Boolean))
     const aggregated = new Map()
 
     for (const row of postsRes.data || []) {

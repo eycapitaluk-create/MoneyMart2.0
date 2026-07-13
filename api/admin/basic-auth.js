@@ -20,6 +20,17 @@ function safeCookieValue(value = '') {
   return String(value || '').replace(/[^a-zA-Z0-9._-]/g, '')
 }
 
+function hasAdminBasicSessionCookie(cookieHeader = '') {
+  return String(cookieHeader || '')
+    .split(';')
+    .some((part) => {
+      const [rawName, ...valueParts] = part.split('=')
+      const name = rawName?.trim()
+      const value = valueParts.join('=').trim()
+      return name === 'mm_admin_basic' && value === '1'
+    })
+}
+
 export default function handler(req, res) {
   const adminUser = String(process.env.ADMIN_BASIC_USER || '').trim()
   const adminPass = String(process.env.ADMIN_BASIC_PASS || '').trim()
@@ -37,7 +48,7 @@ export default function handler(req, res) {
   }
 
   const cookieHeader = String(req.headers.cookie || '')
-  const hasSession = cookieHeader.includes('mm_admin_basic=1')
+  const hasSession = hasAdminBasicSessionCookie(cookieHeader)
   const parsed = parseBasicAuth(req.headers.authorization || '')
   const authenticated = parsed?.user === adminUser && parsed?.pass === adminPass
 

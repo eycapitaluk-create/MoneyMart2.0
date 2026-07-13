@@ -17,7 +17,7 @@ import {
 } from './lib/myPageApi'
 import { getCurrentMonthBudgetUsage } from './lib/mypageBudgetAlerts'
 import { sanitizeInternalRedirectPath } from './lib/navigationGuards'
-import { isPaidPlanTier } from './lib/membership'
+import { isPaidFromUserProfileRow, isPaidPlanTier, isPremiumEmail } from './lib/membership'
 
 const ALERT_EXPIRY_DAYS = 30
 const AUTH_IDLE_TIMEOUT_MINUTES = Number(import.meta.env.VITE_AUTH_IDLE_TIMEOUT_MINUTES || 30)
@@ -111,10 +111,6 @@ const ADMIN_EMAIL_ALLOWLIST = new Set([
   'justin.nam@moneymart.co.jp',
   'kelly.nam@moneymart.co.jp',
 ])
-const PREMIUM_EMAIL_ALLOWLIST = new Set([
-  'justin.nam@moneymart.co.jp',
-  'kelly.nam@moneymart.co.jp',
-])
 const FREE_FUND_WATCHLIST_LIMIT = 3
 
 /** /funds/compare?ids=… は /etf-compare へ統合するが、クエリ（ids/weights）を落とさない */
@@ -155,7 +151,7 @@ const App = () => {
   const safeRouteReturnPath = sanitizeInternalRedirectPath(location.state?.from, '/')
   const userEmailLower = String(session?.user?.email || '').trim().toLowerCase()
   const isPaidMember = Boolean(
-    PREMIUM_EMAIL_ALLOWLIST.has(userEmailLower)
+    isPremiumEmail(userEmailLower)
     || isPaidPlanTier(String(currentUserProfile?.planTier || '').toLowerCase())
   )
 
@@ -374,7 +370,10 @@ const App = () => {
         if (cached && mounted) {
           const parsed = JSON.parse(cached)
           if (parsed?.id === nextSession.user.id && parsed?.displayName) {
-            setCurrentUserProfile(parsed)
+            setCurrentUserProfile({
+              ...parsed,
+              planTier: isPremiumEmail(nextSession.user?.email) ? 'prime' : 'free',
+            })
           }
         }
       } catch {
@@ -442,28 +441,15 @@ const App = () => {
         }
       }
 
-      const metadataPlan = String(
+      const appMetadataPlan = String(
         nextSession.user?.app_metadata?.plan_tier
-        || nextSession.user?.user_metadata?.plan_tier
         || nextSession.user?.app_metadata?.membership_tier
-        || nextSession.user?.user_metadata?.membership_tier
         || ''
       ).toLowerCase()
-      const profilePlan = String(
-        effectiveProfile?.plan_tier
-        || effectiveProfile?.membership_tier
-        || effectiveProfile?.subscription_tier
-        || effectiveProfile?.plan
-        || ''
-      ).toLowerCase()
-      const isProfilePrime = Boolean(
-        effectiveProfile?.is_prime
-        || effectiveProfile?.is_premium
-        || effectiveProfile?.prime_member
-      )
-      const planTier = profilePlan || metadataPlan || (isProfilePrime ? 'prime' : 'free')
+      const profilePlan = isPaidFromUserProfileRow(effectiveProfile) ? 'premium' : ''
+      const planTier = profilePlan || (isPaidPlanTier(appMetadataPlan) ? appMetadataPlan : 'free')
       const emailLower = String(nextSession.user?.email || '').trim().toLowerCase()
-      const forcedPremiumPlanTier = PREMIUM_EMAIL_ALLOWLIST.has(emailLower) ? 'prime' : planTier
+      const forcedPremiumPlanTier = isPremiumEmail(emailLower) ? 'prime' : planTier
 
       const displayName = effectiveProfile?.nickname
         || effectiveProfile?.full_name
@@ -764,6 +750,7 @@ const App = () => {
             element={
               <FundPage
                 user={session?.user || null}
+                userProfile={currentUserProfile || null}
                 myWatchlist={fundWatchlist.map((item) => item.id)}
                 toggleWatchlist={toggleFundWatchlist}
                 onUiMessage={showUiMessage}
@@ -776,6 +763,7 @@ const App = () => {
             element={
               <FundComparePage
                 user={session?.user || null}
+                userProfile={currentUserProfile || null}
                 myWatchlist={fundWatchlist.map((item) => item.id)}
                 toggleWatchlist={toggleFundWatchlist}
                 onUiMessage={showUiMessage}

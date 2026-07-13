@@ -640,7 +640,9 @@ export default function FundPage({ user: _user, userProfile = null, myWatchlist 
           if (Array.isArray(parsed?.selectedFundIds)) return parsed.selectedFundIds.slice(0, 3)
         }
       }
-    } catch {}
+    } catch {
+      // Ignore malformed persisted UI state and start with a clean selection.
+    }
     return []
   })
   const [isLoading, setIsLoading] = useState(true)
@@ -788,7 +790,9 @@ export default function FundPage({ user: _user, userProfile = null, myWatchlist 
         const stored = raw ? JSON.parse(raw) : {}
         stored.selectedFundIds = Array.isArray(current) ? current.slice(0, 3) : []
         window.sessionStorage.setItem(FUND_PAGE_UI_STATE_KEY, JSON.stringify(stored))
-      } catch {}
+      } catch {
+        // Best-effort UI state persistence; navigation must not fail on storage errors.
+      }
     }
   }, [])
 
@@ -1916,7 +1920,6 @@ export default function FundPage({ user: _user, userProfile = null, myWatchlist 
   }
   const closeComposeModal = () => {
     setIsComposeModalOpen(false)
-    setSharePopoverOpen(false)
     setSelectedFundIds([...selectedFundIdsOnComposeOpenRef.current])
   }
   useEffect(() => {

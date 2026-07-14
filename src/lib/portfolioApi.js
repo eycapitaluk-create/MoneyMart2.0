@@ -99,10 +99,9 @@ export async function fetchPublicPortfolios({ limit = 20, orderBy = 'followers' 
 
 async function fetchProfileNames(userIds) {
   if (userIds.length === 0) return new Map()
-  const { data } = await supabase
-    .from('user_profiles')
-    .select('user_id,nickname,full_name')
-    .in('user_id', userIds)
+  const { data, error } = await supabase
+    .rpc('get_user_profile_display_names', { user_ids: userIds })
+  if (error) return new Map()
   return new Map(
     (data || []).map((row) => [row.user_id, row.nickname || row.full_name || 'Member'])
   )

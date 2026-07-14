@@ -40,7 +40,7 @@ import {
   deleteFundOptimizerWatchsetFromDb,
   loadFundOptimizerWatchsetsFromDb,
 } from '../lib/fundOptimizerWatchsets'
-import { isPaidPlanTier } from '../lib/membership'
+import { isPaidPlanTier, isPremiumEmail } from '../lib/membership'
 import { annualizeThreeMonthReturnPct } from '../lib/wealthSimEtfReturns'
 import { LEGAL_NOTICE_TEMPLATES } from '../constants/legalNoticeTemplates'
 import { MM_SIMULATION_PAST_PERFORMANCE_JA } from '../lib/moneymartSimulationDisclaimer'
@@ -333,10 +333,6 @@ const FUND_PAGE_CACHE_KEY = 'moneymart.fund.page.cache.v12'
 const FUND_PAGE_UI_STATE_KEY = 'moneymart.fund.page.ui.v1'
 const FUND_OPTIMIZER_MONTHLY_USAGE_KEY = 'moneymart.fund.optimizer.monthly.usage.v1'
 const FREE_FUND_OPTIMIZER_RUNS_PER_MONTH = 1
-const PREMIUM_EMAIL_ALLOWLIST = new Set([
-  'justin.nam@moneymart.co.jp',
-  'kelly.nam@moneymart.co.jp',
-])
 const FUND_PAGE_CACHE_TTL_MS = 1000 * 60 * 5
 const FUND_PAGE_STALE_CACHE_MS = 1000 * 60 * 60 * 24
 const formatAum = (value) => {
@@ -626,7 +622,7 @@ const FUND_FAQ_ITEMS = [
   { q: '表示されるデータはいつ更新されますか？', a: '中間データ事業者経由で取得可能な最新データを定期取得して表示します。' },
   { q: 'ここで購入できますか？', a: '購入は外部の公式チャネルで行われます。当ページは比較・検討支援が目的です。' },
 ]
-export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlist: propToggleWatchlist, onUiMessage = null }) {
+export default function FundPage({ user: _user, userProfile = null, myWatchlist = [], toggleWatchlist: propToggleWatchlist, onUiMessage = null }) {
   const navigate = useNavigate()
   const location = useLocation()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -644,7 +640,9 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
           if (Array.isArray(parsed?.selectedFundIds)) return parsed.selectedFundIds.slice(0, 3)
         }
       }
-    } catch {}
+    } catch {
+      // Ignore malformed persisted UI state and start with a clean selection.
+    }
     return []
   })
   const [isLoading, setIsLoading] = useState(true)
@@ -792,7 +790,9 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
         const stored = raw ? JSON.parse(raw) : {}
         stored.selectedFundIds = Array.isArray(current) ? current.slice(0, 3) : []
         window.sessionStorage.setItem(FUND_PAGE_UI_STATE_KEY, JSON.stringify(stored))
-      } catch {}
+      } catch {
+        // Best-effort UI state persistence; navigation must not fail on storage errors.
+      }
     }
   }, [])
 
@@ -843,15 +843,9 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
     return () => { cancelled = true }
   }, [_user?.id])
   const [freeOptimizerRunsUsed, setFreeOptimizerRunsUsed] = useState(0)
-  const planTier = String(
-    _user?.app_metadata?.plan_tier
-    || _user?.user_metadata?.plan_tier
-    || _user?.app_metadata?.membership_tier
-    || _user?.user_metadata?.membership_tier
-    || '',
-  ).toLowerCase()
+  const planTier = String(userProfile?.planTier || '').toLowerCase()
   const userEmailLower = String(_user?.email || '').trim().toLowerCase()
-  const isPaidMember = isPaidPlanTier(planTier) || PREMIUM_EMAIL_ALLOWLIST.has(userEmailLower)
+  const isPaidMember = isPaidPlanTier(planTier) || isPremiumEmail(userEmailLower)
   const freeOptimizerRunsRemaining = Math.max(0, FREE_FUND_OPTIMIZER_RUNS_PER_MONTH - freeOptimizerRunsUsed)
 
   const getOptimizerMonthKey = () => {
@@ -1926,7 +1920,6 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
   }
   const closeComposeModal = () => {
     setIsComposeModalOpen(false)
-    setSharePopoverOpen(false)
     setSelectedFundIds([...selectedFundIdsOnComposeOpenRef.current])
   }
   useEffect(() => {
@@ -3076,6 +3069,7 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
               <Suspense fallback={<CompareModalLoadingCard />}>
                 <FundComparePage
                   user={_user || null}
+                  userProfile={userProfile || null}
                   myWatchlist={effectiveWatchlist}
                   toggleWatchlist={toggleWatchlist}
                   onUiMessage={onUiMessage}

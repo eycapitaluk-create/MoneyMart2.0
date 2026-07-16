@@ -245,15 +245,16 @@ function localChatApiPlugin(runtimeEnv) {
             'post_engagements',
           ]
 
+          // Do not remove personal data unless the Auth account deletion succeeds.
+          const { error: deleteErr } = await admin.auth.admin.deleteUser(userId)
+          if (deleteErr) return sendJson(res, 500, { ok: false, error: deleteErr.message || 'Failed to delete user' })
+
           for (const table of cleanupTables) {
             const { error } = await admin.from(table).delete().eq('user_id', userId)
             if (error && !String(error.message || '').toLowerCase().includes('does not exist')) {
-              // best-effort cleanup
+              // best-effort cleanup after the account is irreversibly deleted
             }
           }
-
-          const { error: deleteErr } = await admin.auth.admin.deleteUser(userId)
-          if (deleteErr) return sendJson(res, 500, { ok: false, error: deleteErr.message || 'Failed to delete user' })
 
           return sendJson(res, 200, { ok: true })
         } catch (error) {

@@ -1,4 +1,5 @@
--- Manual earnings calendar table for Admin CRUD
+-- Manual earnings calendar table for Admin CRUD.
+-- Requires public.user_roles from SUPABASE_SETUP_MARKETSTACK_QUICK.sql.
 create extension if not exists pgcrypto;
 
 create table if not exists public.earnings_calendar_manual (
@@ -43,10 +44,25 @@ to anon, authenticated
 using (true);
 
 drop policy if exists "earnings_calendar_manual_write_authenticated" on public.earnings_calendar_manual;
-create policy "earnings_calendar_manual_write_authenticated"
+drop policy if exists "earnings_calendar_manual_admin_write" on public.earnings_calendar_manual;
+create policy "earnings_calendar_manual_admin_write"
 on public.earnings_calendar_manual
 for all
 to authenticated
-using (true)
-with check (true);
+using (
+  exists (
+    select 1
+    from public.user_roles ur
+    where ur.user_id = auth.uid()
+      and ur.role = 'admin'
+  )
+)
+with check (
+  exists (
+    select 1
+    from public.user_roles ur
+    where ur.user_id = auth.uid()
+      and ur.role = 'admin'
+  )
+);
 

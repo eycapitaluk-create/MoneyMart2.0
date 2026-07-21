@@ -5,6 +5,7 @@ import portfolioDiagnosisHandler from './api/portfolio-diagnosis.js'
 import aiNewsCronHandler from './api/cron/ai-news.js'
 import contactHandler from './api/contact.js'
 import createCheckoutSessionHandler from './api/billing/create-checkout-session.js'
+import accountDeleteHandler from './api/account/delete.js'
 import chatbotHandler from './api/chatbot.js'
 import loungeDigestHandler from './api/cron/lounge-digest.js'
 import fxHandler from './api/fx.js'
@@ -204,61 +205,14 @@ function localChatApiPlugin(runtimeEnv) {
 
       server.middlewares.use('/api/account/delete', async (req, res, next) => {
         if (req.method !== 'POST') return next()
-
-        const supabaseUrl = runtimeEnv.SUPABASE_URL || process.env.SUPABASE_URL || runtimeEnv.VITE_SUPABASE_URL || process.env.VITE_SUPABASE_URL || ''
-        const serviceRole = runtimeEnv.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || ''
-        if (!supabaseUrl || !serviceRole) {
-          return sendJson(res, 500, { ok: false, error: 'Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in env' })
+        const copy = (key) => {
+          if (!process.env[key] && runtimeEnv[key]) process.env[key] = runtimeEnv[key]
         }
-
-        const authHeader = req.headers.authorization || ''
-        const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : ''
-        if (!token) return sendJson(res, 401, { ok: false, error: 'Unauthorized' })
-
-        try {
-          const admin = createClient(supabaseUrl, serviceRole, { auth: { persistSession: false } })
-          const { data: userData, error: userErr } = await admin.auth.getUser(token)
-          if (userErr || !userData?.user?.id) return sendJson(res, 401, { ok: false, error: 'Invalid token' })
-
-          const userId = userData.user.id
-          const cleanupTables = [
-            'user_expenses',
-            'user_insurances',
-            'user_asset_positions',
-            'user_point_accounts',
-            'user_finance_profiles',
-            'user_owned_stocks',
-            'user_owned_funds',
-            'user_revolving_profiles',
-            'user_revolving_debts',
-            'refinance_simulations',
-            'user_tax_shield_profiles',
-            'tax_shield_simulations',
-            'user_cashflow_optimizer_profiles',
-            'cashflow_optimizer_simulations',
-            'user_watchlists',
-            'lounge_posts',
-            'lounge_post_likes',
-            'lounge_post_bookmarks',
-            'lounge_post_comments',
-            'community_posts',
-            'post_engagements',
-          ]
-
-          for (const table of cleanupTables) {
-            const { error } = await admin.from(table).delete().eq('user_id', userId)
-            if (error && !String(error.message || '').toLowerCase().includes('does not exist')) {
-              // best-effort cleanup
-            }
-          }
-
-          const { error: deleteErr } = await admin.auth.admin.deleteUser(userId)
-          if (deleteErr) return sendJson(res, 500, { ok: false, error: deleteErr.message || 'Failed to delete user' })
-
-          return sendJson(res, 200, { ok: true })
-        } catch (error) {
-          return sendJson(res, 500, { ok: false, error: error?.message || 'account deletion failed' })
-        }
+        copy('SUPABASE_URL')
+        copy('VITE_SUPABASE_URL')
+        copy('SUPABASE_SERVICE_ROLE_KEY')
+        copy('STRIPE_SECRET_KEY')
+        return accountDeleteHandler(req, makeExpressStyleResponse(res))
       })
 
       server.middlewares.use('/api/cron/lounge-digest', async (req, res, next) => {

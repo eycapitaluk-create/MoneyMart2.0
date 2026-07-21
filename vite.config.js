@@ -1,6 +1,5 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
-import { createClient } from '@supabase/supabase-js'
 import portfolioDiagnosisHandler from './api/portfolio-diagnosis.js'
 import aiNewsCronHandler from './api/cron/ai-news.js'
 import contactHandler from './api/contact.js'

@@ -27,6 +27,110 @@ function getSiteOrigin() {
   return o
 }
 
+function stripeSearchValue(value) {
+  return String(value || '')
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+}
+
+async function findActiveSubscription(stripe, userId) {
+  const uid = stripeSearchValue(userId)
+  for (const status of ['active', 'trialing']) {
+    const result = await stripe.subscriptions.search({
+      query: `status:'${status}' AND metadata['supabase_user_id']:'${uid}'`,
+      limit: 1,
+    })
+    if (result.data?.[0]) return result.data[0]
+  }
+  return null
+}
+
+async function getOrCreateCustomer(stripe, user) {
+  const uid = stripeSearchValue(user.id)
+  const existing = await stripe.customers.search({
+    query: `metadata['supabase_user_id']:'${uid}'`,
+    limit: 1,
+  })
+  if (existing.data?.[0]) return existing.data[0]
+
+  return stripe.customers.create(
+    {
+      email: user.email || undefined,
+      metadata: { supabase_user_id: user.id },
+    },
+    { idempotencyKey: `moneymart-customer-${user.id}` },
+  )
+}
+
+export async function createCheckoutForUser({ stripe, user, priceId, origin }) {
+  const activeSubscription = await findActiveSubscription(stripe, user.id)
+  if (activeSubscription) {
+    const error = new Error('すでに有効なプレミアム契約があります。')
+    error.statusCode = 409
+    error.code = 'subscription_already_active'
+    throw error
+  }
+
+  const customer = await getOrCreateCustomer(stripe, user)
+
+  // Stripe Search is eventually consistent. Check this customer's subscriptions
+  // directly as well so a second request cannot race a just-completed Checkout.
+  const subscriptions = await stripe.subscriptions.list({
+    customer: customer.id,
+    status: 'all',
+    limit: 100,
+  })
+  const currentSubscription = subscriptions.data?.find((subscription) => (
+    subscription.metadata?.supabase_user_id === user.id
+    && (subscription.status === 'active' || subscription.status === 'trialing')
+  ))
+  if (currentSubscription) {
+    const error = new Error('すでに有効なプレミアム契約があります。')
+    error.statusCode = 409
+    error.code = 'subscription_already_active'
+    throw error
+  }
+
+  const sessions = await stripe.checkout.sessions.list({
+    customer: customer.id,
+    limit: 1,
+  })
+  const latestSession = sessions.data?.[0]
+  if (latestSession?.status === 'open') {
+    if (latestSession.url) return latestSession
+    const error = new Error('決済セッションを処理中です。しばらくしてから再度お試しください。')
+    error.statusCode = 409
+    error.code = 'checkout_session_pending'
+    throw error
+  }
+
+  return stripe.checkout.sessions.create(
+    {
+      mode: 'subscription',
+      client_reference_id: user.id,
+      customer: customer.id,
+      metadata: { supabase_user_id: user.id },
+      subscription_data: {
+        metadata: { supabase_user_id: user.id },
+      },
+      line_items: [{ price: priceId, quantity: 1 }],
+      success_url: `${origin}/mypage?subscription=success`,
+      cancel_url: `${origin}/premium?cancelled=1`,
+      allow_promotion_codes: true,
+    },
+    {
+      // Concurrent initial requests see the same previous session and collapse
+      // to one Stripe object. Once it expires, its id becomes the next key.
+      idempotencyKey: [
+        'moneymart-premium-checkout',
+        user.id,
+        priceId,
+        latestSession?.id || 'initial',
+      ].join('-'),
+    },
+  )
+}
+
 export default async function handler(req, res) {
   if (req.method === 'OPTIONS') {
     res.statusCode = 204
@@ -73,22 +177,18 @@ export default async function handler(req, res) {
   const origin = getSiteOrigin()
 
   try {
-    const session = await stripe.checkout.sessions.create({
-      mode: 'subscription',
-      client_reference_id: user.id,
-      customer_email: user.email || undefined,
-      metadata: { supabase_user_id: user.id },
-      subscription_data: {
-        metadata: { supabase_user_id: user.id },
-      },
-      line_items: [{ price: priceId, quantity: 1 }],
-      success_url: `${origin}/mypage?subscription=success`,
-      cancel_url: `${origin}/premium?cancelled=1`,
-      allow_promotion_codes: true,
+    const session = await createCheckoutForUser({
+      stripe,
+      user,
+      priceId,
+      origin,
     })
     return sendJson(res, 200, { url: session.url })
   } catch (err) {
     console.error('create-checkout-session', err?.message || err)
-    return sendJson(res, 500, { error: err?.message || 'Stripe error' })
+    return sendJson(res, err?.statusCode || 500, {
+      ...(err?.code ? { code: err.code } : {}),
+      error: err?.message || 'Stripe error',
+    })
   }
 }

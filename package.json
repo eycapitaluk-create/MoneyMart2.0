@@ -29,7 +29,9 @@
     "import:jp-long-csv:dry": "node scripts/import-jp-prices-long-csv.mjs --dry-run",
     "internal:claude": "node scripts/internal-claude.mjs",
     "gh:triage:ci": "node scripts/gh-ai-triage.mjs ci",
-    "gh:triage:cron": "node scripts/gh-ai-triage.mjs cron"
+    "gh:triage:cron": "node scripts/gh-ai-triage.mjs cron",
+    "seed:community-hourly": "node scripts/seed-community-hourly.mjs",
+    "seed:community-hourly:dry": "node scripts/seed-community-hourly.mjs --dry-run"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.82.0",

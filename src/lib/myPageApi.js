@@ -6,6 +6,9 @@ import {
   FREE_OWNED_DISTINCT_FUND_SYMBOLS,
 } from './membership'
 import { decodeHtmlEntities } from './fundDisplayUtils'
+import { prepareStockWatchlistReplace } from './stockWatchlistReplace'
+
+export { prepareStockWatchlistReplace } from './stockWatchlistReplace'
 
 const TABLE_NOT_FOUND_CODE = '42P01'
 const COLUMN_NOT_FOUND_CODE = '42703'
@@ -1270,18 +1273,6 @@ export const loadStockWatchlistSymbolsFromDb = async (userId) => {
     .map((r) => String(r.item_id || '').trim().toUpperCase())
     .filter(Boolean)
   return { symbols: [...new Set(symbols)], available: true }
-}
-
-/**
- * Full stock-watchlist replace is delete-then-insert. Empty snapshots are refused by default
- * so a pre-hydration UI race cannot wipe the cloud list.
- */
-export const prepareStockWatchlistReplace = ({ symbols = [], allowEmptyReplace = false } = {}) => {
-  const unique = [...new Set((symbols || []).map((s) => String(s).trim().toUpperCase()).filter(Boolean))]
-  if (unique.length === 0 && !allowEmptyReplace) {
-    return { skip: true, reason: 'empty_replace_blocked', symbols: [] }
-  }
-  return { skip: false, reason: null, symbols: unique }
 }
 
 /** 同ユーザーへの stock watchlist replace が交差し DELETE/INSERT が空振りしないよう直列化 */

@@ -1272,25 +1272,98 @@ export const loadStockWatchlistSymbolsFromDb = async (userId) => {
   return { symbols: [...new Set(symbols)], available: true }
 }
 
-export const replaceStockWatchlistInDb = async ({ userId, symbols = [] }) => {
-  if (!userId) return
+/**
+ * Full stock-watchlist replace is delete-then-insert. Empty snapshots are refused by default
+ * so a pre-hydration UI race cannot wipe the cloud list.
+ */
+export const prepareStockWatchlistReplace = ({ symbols = [], allowEmptyReplace = false } = {}) => {
   const unique = [...new Set((symbols || []).map((s) => String(s).trim().toUpperCase()).filter(Boolean))]
-  const { error: delErr } = await supabase
-    .from('user_watchlists')
-    .delete()
-    .eq('user_id', userId)
-    .eq('item_type', 'stock')
-  if (delErr) throw delErr
-  if (unique.length === 0) return
-  const rows = unique.map((symbol) => ({
-    user_id: userId,
-    item_type: 'stock',
-    item_id: symbol,
-    item_name: symbol,
+  if (unique.length === 0 && !allowEmptyReplace) {
+    return { skip: true, reason: 'empty_replace_blocked', symbols: [] }
+  }
+  return { skip: false, reason: null, symbols: unique }
+}
+
+/** 同ユーザーへの stock watchlist replace が交差し DELETE/INSERT が空振りしないよう直列化 */
+let stockWatchlistReplaceChain = Promise.resolve()
+const runSerializedStockWatchlistReplace = (fn) => {
+  const p = stockWatchlistReplaceChain.then(() => fn())
+  stockWatchlistReplaceChain = p.catch(() => {})
+  return p
+}
+
+export const upsertStockWatchlistSymbolInDb = async ({ userId, symbol, itemName } = {}) => {
+  if (!userId) return
+  const normalized = String(symbol || '').trim().toUpperCase()
+  if (!normalized) return
+  await addDbWatchlistItem({
+    userId,
+    itemType: 'stock',
+    itemId: normalized,
+    itemName: String(itemName || normalized).trim() || normalized,
     metadata: {},
-  }))
-  const { error } = await supabase.from('user_watchlists').insert(rows)
-  if (error) throw error
+  })
+}
+
+export const removeStockWatchlistSymbolInDb = async ({ userId, symbol } = {}) => {
+  if (!userId) return
+  const normalized = String(symbol || '').trim().toUpperCase()
+  if (!normalized) return
+  await removeDbWatchlistItem({
+    userId,
+    itemType: 'stock',
+    itemId: normalized,
+  })
+}
+
+export const replaceStockWatchlistInDb = async ({
+  userId,
+  symbols = [],
+  allowEmptyReplace = false,
+} = {}) => {
+  if (!userId) return
+  const plan = prepareStockWatchlistReplace({ symbols, allowEmptyReplace })
+  if (plan.skip) return { skipped: true, reason: plan.reason }
+
+  return runSerializedStockWatchlistReplace(async () => {
+    const { data: backupRows, error: backupErr } = await supabase
+      .from('user_watchlists')
+      .select('user_id,item_type,item_id,item_name,metadata')
+      .eq('user_id', userId)
+      .eq('item_type', 'stock')
+    if (backupErr) throw backupErr
+    const backup = Array.isArray(backupRows) ? backupRows : []
+
+    const { error: delErr } = await supabase
+      .from('user_watchlists')
+      .delete()
+      .eq('user_id', userId)
+      .eq('item_type', 'stock')
+    if (delErr) throw delErr
+
+    if (plan.symbols.length === 0) return { skipped: false, restored: false }
+
+    const rows = plan.symbols.map((symbol) => ({
+      user_id: userId,
+      item_type: 'stock',
+      item_id: symbol,
+      item_name: symbol,
+      metadata: {},
+    }))
+    const { error } = await supabase.from('user_watchlists').insert(rows)
+    if (error) {
+      if (backup.length > 0) {
+        const { error: restoreErr } = await supabase.from('user_watchlists').insert(backup)
+        if (restoreErr) {
+          throw new Error(
+            `株式ウォッチリストの保存に失敗し、直前データの復元にも失敗しました: ${restoreErr.message}（元: ${error.message}）`,
+          )
+        }
+      }
+      throw error
+    }
+    return { skipped: false }
+  })
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

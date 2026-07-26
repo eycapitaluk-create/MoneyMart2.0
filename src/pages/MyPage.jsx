@@ -49,6 +49,7 @@ import {
   saveCashFlowOptimizerSimulation,
   loadStockWatchlistSymbolsFromDb,
   replaceStockWatchlistInDb,
+  removeStockWatchlistSymbolInDb,
   loadDividendWatchlist,
   upsertDividendWatchlistItem,
   updateDividendWatchlistQty,
@@ -11340,7 +11341,8 @@ export default function MyPage({
       const next = Array.isArray(prev) ? prev.filter((row) => String(row?.id || '').trim() !== id) : []
       const nextIds = next.map((row) => String(row?.id || '').trim()).filter(Boolean)
       if (user?.id) {
-        replaceStockWatchlistInDb({ userId: user.id, symbols: nextIds }).catch(() => {})
+        // Incremental delete — never rewrite the whole list from possibly stale UI state.
+        removeStockWatchlistSymbolInDb({ userId: user.id, symbol: id }).catch(() => {})
       } else {
         try {
           localStorage.setItem(getStockWatchlistStorageKey(null), JSON.stringify(nextIds))

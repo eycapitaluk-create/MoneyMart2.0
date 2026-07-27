@@ -3,24 +3,12 @@
  * Uses real index/stock closes from DB when available; no fabricated prices.
  */
 
+import { COMMUNITY_SEED_PERSONAS } from './community-seed-personas.js'
+
+export { COMMUNITY_SEED_PERSONAS } from './community-seed-personas.js'
+
 export const COMMUNITY_HOURLY_JST_START = 5
 export const COMMUNITY_HOURLY_JST_END = 22
-
-/** @type {{ email: string, name: string, exp: number }[]} */
-export const COMMUNITY_SEED_PERSONAS = [
-  { email: 'mm-seed-01@community.seed', name: '田中健太', exp: 4200 },
-  { email: 'mm-seed-02@community.seed', name: '佐藤美咲', exp: 3100 },
-  { email: 'mm-seed-03@community.seed', name: '鈴木大輔', exp: 2800 },
-  { email: 'mm-seed-04@community.seed', name: '高橋翔', exp: 5200 },
-  { email: 'mm-seed-05@community.seed', name: '伊藤恵', exp: 1900 },
-  { email: 'mm-seed-06@community.seed', name: '渡辺直樹', exp: 1500 },
-  { email: 'mm-seed-07@community.seed', name: '山本涼', exp: 3600 },
-  { email: 'mm-seed-08@community.seed', name: '中村さくら', exp: 2400 },
-  { email: 'mm-seed-09@community.seed', name: '小林拓海', exp: 4800 },
-  { email: 'mm-seed-10@community.seed', name: '加藤悠真', exp: 2700 },
-  { email: 'mm-seed-11@community.seed', name: '吉田隼人', exp: 3300 },
-  { email: 'mm-seed-12@community.seed', name: '松本彩', exp: 2100 },
-]
 
 const COMMENT_POOL = [
   '同意です',
@@ -128,21 +116,23 @@ async function findUserIdByEmail(admin, emailNorm) {
 
 export async function ensureSeedPersona(admin, persona) {
   const email = persona.email.toLowerCase()
+  const nickname = String(persona.nickname || '').trim()
+  if (!nickname) throw new Error(`Seed persona missing nickname: ${email}`)
   let userId = await findUserIdByEmail(admin, email)
   if (!userId) {
     const { data, error } = await admin.auth.admin.createUser({
       email,
-      password: `MmSeed!${persona.name.length}99`,
+      password: `MmSeed!${nickname.length}99`,
       email_confirm: true,
-      user_metadata: { full_name: persona.name, display_name: persona.name },
+      user_metadata: { nickname, display_name: nickname },
     })
     if (error) throw error
     userId = data.user.id
   }
   await admin.from('user_profiles').upsert({
     user_id: userId,
-    nickname: persona.name,
-    full_name: persona.name,
+    nickname,
+    full_name: null,
   }, { onConflict: 'user_id' })
   const level = persona.exp >= 6000 ? 5 : persona.exp >= 2500 ? 4 : persona.exp >= 900 ? 3 : persona.exp >= 300 ? 2 : 1
   await admin.from('lounge_character_stats').upsert({
@@ -152,7 +142,7 @@ export async function ensureSeedPersona(admin, persona) {
     character_stage: level,
     updated_at: new Date().toISOString(),
   }, { onConflict: 'user_id' })
-  return { userId, name: persona.name, email }
+  return { userId, nickname, email }
 }
 
 export async function ensureAllPersonas(admin) {
@@ -281,7 +271,7 @@ async function insertPostBundle(admin, {
 
   const payload = {
     author_id: mapped.userId,
-    author_name: mapped.name,
+    author_name: mapped.nickname,
     title: draft.title,
     content: String(draft.content || ''),
     ticker: draft.ticker || null,
@@ -327,7 +317,7 @@ async function insertPostBundle(admin, {
     const { error: cErr } = await admin.from('lounge_comments').insert({
       post_id: post.id,
       author_id: commentMapped.userId,
-      author_name: commentMapped.name,
+      author_name: commentMapped.nickname,
       content: comments[c],
       status: 'published',
       created_at: commentAt,
@@ -391,7 +381,7 @@ async function enrichRecentPost(admin, personaMap, now, slotSeed) {
       const { error: cErr } = await admin.from('lounge_comments').insert({
         post_id: target.id,
         author_id: cm.userId,
-        author_name: cm.name,
+        author_name: cm.nickname,
         content: pick(COMMENT_POOL, slotSeed),
         status: 'published',
         created_at: now.toISOString(),

@@ -825,19 +825,25 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
 
   const [watchSetName, setWatchSetName] = useState('')
   const [savedWatchSets, setSavedWatchSets] = useState(() => {
-    return loadFundOptimizerWatchsets()
+    return loadFundOptimizerWatchsets(_user?.id)
   })
 
   // Supabase에서 세트 로드 (iOS 포함 크로스 디바이스 동기화)
   useEffect(() => {
     const userId = _user?.id
-    if (!userId) return
+    if (!userId) {
+      setSavedWatchSets(loadFundOptimizerWatchsets())
+      return
+    }
     let cancelled = false
+    setSavedWatchSets(loadFundOptimizerWatchsets(userId))
     loadFundOptimizerWatchsetsFromDb(userId)
       .then(({ data, available }) => {
-        if (cancelled || !available || !data) return
+        if (cancelled || !available || !Array.isArray(data)) return
+        // Empty DB must not wipe/replace with shared leftovers; only hydrate when cloud has rows.
+        if (data.length === 0) return
         setSavedWatchSets(data)
-        saveFundOptimizerWatchsets(data)
+        saveFundOptimizerWatchsets(data, userId)
       })
       .catch(() => {})
     return () => { cancelled = true }
@@ -1778,7 +1784,7 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
     setSavedWatchSets((prev) => {
       const next = [payload, ...prev].slice(0, 20)
       try {
-        saveFundOptimizerWatchsets(next)
+        saveFundOptimizerWatchsets(next, _user?.id)
         if (_user?.id) upsertFundOptimizerWatchsetToDb(_user.id, payload).catch(() => {})
       } catch {
         // ignore storage errors in UI flow
@@ -1816,7 +1822,7 @@ export default function FundPage({ user: _user, myWatchlist = [], toggleWatchlis
     setSavedWatchSets((prev) => {
       const next = prev.filter((row) => row.id !== setId)
       try {
-        saveFundOptimizerWatchsets(next)
+        saveFundOptimizerWatchsets(next, _user?.id)
         if (_user?.id) deleteFundOptimizerWatchsetFromDb(_user.id, setId).catch(() => {})
       } catch {
         // ignore storage errors in UI flow

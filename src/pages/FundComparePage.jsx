@@ -209,19 +209,24 @@ export default function FundComparePage({
   const [compareSearchTerm, setCompareSearchTerm] = useState('')
   const [watchSetName, setWatchSetName] = useState('')
   const [savedWatchSets, setSavedWatchSets] = useState(() => {
-    return loadFundOptimizerWatchsets()
+    return loadFundOptimizerWatchsets(user?.id)
   })
 
   // Supabase에서 세트 로드 (iOS 포함 크로스 디바이스 동기화)
   useEffect(() => {
     const userId = user?.id
-    if (!userId) return
+    if (!userId) {
+      setSavedWatchSets(loadFundOptimizerWatchsets())
+      return
+    }
     let cancelled = false
+    setSavedWatchSets(loadFundOptimizerWatchsets(userId))
     loadFundOptimizerWatchsetsFromDb(userId)
       .then(({ data, available }) => {
-        if (cancelled || !available || !data) return
+        if (cancelled || !available || !Array.isArray(data)) return
+        if (data.length === 0) return
         setSavedWatchSets(data)
-        saveFundOptimizerWatchsets(data)
+        saveFundOptimizerWatchsets(data, userId)
       })
       .catch(() => {})
     return () => { cancelled = true }
@@ -692,7 +697,7 @@ export default function FundComparePage({
     setSavedWatchSets((prev) => {
       const next = [payload, ...prev].slice(0, 20)
       try {
-        saveFundOptimizerWatchsets(next)
+        saveFundOptimizerWatchsets(next, user?.id)
         if (user?.id) upsertFundOptimizerWatchsetToDb(user.id, payload).catch(() => {})
       } catch {
         // ignore local storage errors
@@ -727,7 +732,7 @@ export default function FundComparePage({
     setSavedWatchSets((prev) => {
       const next = prev.filter((row) => row.id !== setId)
       try {
-        saveFundOptimizerWatchsets(next)
+        saveFundOptimizerWatchsets(next, user?.id)
         if (user?.id) deleteFundOptimizerWatchsetFromDb(user.id, setId).catch(() => {})
       } catch {
         // ignore local storage errors

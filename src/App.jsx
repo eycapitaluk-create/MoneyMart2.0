@@ -18,6 +18,7 @@ import {
 import { getCurrentMonthBudgetUsage } from './lib/mypageBudgetAlerts'
 import { sanitizeInternalRedirectPath } from './lib/navigationGuards'
 import { isPaidPlanTier } from './lib/membership'
+import { clearUnscopedFundOptimizerWatchsets } from './lib/fundOptimizerWatchsets'
 
 const ALERT_EXPIRY_DAYS = 30
 const AUTH_IDLE_TIMEOUT_MINUTES = Number(import.meta.env.VITE_AUTH_IDLE_TIMEOUT_MINUTES || 30)
@@ -205,6 +206,7 @@ const App = () => {
   })
   const [uiMessage, setUiMessage] = useState(null)
   const freeUserLockNudgeShownRef = useRef(false)
+  const sessionUserIdRef = useRef('')
 
   useEffect(() => {
     localStorage.setItem('mm_product_interests', JSON.stringify(productInterests))
@@ -487,6 +489,7 @@ const App = () => {
       const { data } = await supabase.auth.getSession()
       if (!mounted) return
       const nextSession = data?.session ?? null
+      sessionUserIdRef.current = String(nextSession?.user?.id || '').trim()
       setSession(nextSession)
       await loadDisplayProfile(nextSession)
       setAuthReady(true)
@@ -494,6 +497,14 @@ const App = () => {
     init()
 
     const { data: authListener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      const prevUserId = String(sessionUserIdRef.current || '').trim()
+      const nextUserId = String(nextSession?.user?.id || '').trim()
+      // Drop shared fund-optimizer leftovers whenever auth identity changes or clears,
+      // so the next empty account cannot adopt another user's local allocation sets.
+      if (prevUserId !== nextUserId) {
+        clearUnscopedFundOptimizerWatchsets()
+      }
+      sessionUserIdRef.current = nextUserId
       setSession(nextSession ?? null)
       setCurrentUserProfile(undefined)
       loadDisplayProfile(nextSession ?? null)

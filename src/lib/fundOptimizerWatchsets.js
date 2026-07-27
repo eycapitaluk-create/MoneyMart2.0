@@ -4,11 +4,20 @@
  * 테이블: user_fund_optimizer_sets
  *   primary key: (user_id, id)
  *   columns: id, user_id, name, source, funds(jsonb), summary(jsonb), created_at, updated_at
+ *
+ * localStorage is user-scoped when a userId is provided. The shared
+ * `mm_fund_optimizer_watchsets_v2` key is only for logged-out/guest use and is
+ * cleared on authenticated saves and logout so it cannot seed another account.
  */
 import { supabase } from './supabase'
+import {
+  LEGACY_STORAGE_KEYS,
+  PRIMARY_STORAGE_KEY,
+  planFundOptimizerDbMigration,
+  planFundOptimizerLocalSave,
+  scopedFundOptimizerStorageKey,
+} from './fundOptimizerWatchsetsStorage'
 
-const PRIMARY_STORAGE_KEY = 'mm_fund_optimizer_watchsets_v2'
-const LEGACY_STORAGE_KEYS = ['mm_fund_watchset_v1', 'moneymart.fund.compare.watchsets.v1']
 const TABLE = 'user_fund_optimizer_sets'
 const MAX_SETS = 30
 
@@ -54,34 +63,70 @@ export const normalizeFundOptimizerWatchset = (row = {}, fallbackSource = 'fund_
   }
 }
 
-// ── localStorage 읽기 (로그인 전 / fallback) ────────────────────────────────
-export const loadFundOptimizerWatchsets = () => {
+const readStorageRows = (key, source) => {
   if (typeof window === 'undefined') return []
+  return safeParse(window.localStorage.getItem(key))
+    .map((row) => normalizeFundOptimizerWatchset(row, source))
+    .filter(Boolean)
+}
+
+const mergeNormalizedSets = (buckets = []) => {
   const merged = []
   const seen = new Set()
-  const rawBuckets = [
-    [PRIMARY_STORAGE_KEY, 'optimizer'],
-    ...LEGACY_STORAGE_KEYS.map((key) => [key, key.includes('compare') ? 'compare' : 'fund_page']),
-  ]
-  rawBuckets.forEach(([key, source]) => {
-    const rows = safeParse(window.localStorage.getItem(key))
-    rows.forEach((row) => {
-      const normalized = normalizeFundOptimizerWatchset(row, source)
-      if (!normalized) return
-      const sig = `${normalized.name}::${normalized.funds.map((f) => `${f.id}:${f.weightPct.toFixed(1)}`).join('|')}`
-      if (seen.has(sig)) return
-      seen.add(sig)
-      merged.push(normalized)
-    })
+  buckets.flat().forEach((normalized) => {
+    if (!normalized) return
+    const sig = `${normalized.name}::${normalized.funds.map((f) => `${f.id}:${f.weightPct.toFixed(1)}`).join('|')}`
+    if (seen.has(sig)) return
+    seen.add(sig)
+    merged.push(normalized)
   })
   return merged
     .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
     .slice(0, MAX_SETS)
 }
 
-export const saveFundOptimizerWatchsets = (sets = []) => {
+export const clearUnscopedFundOptimizerWatchsets = () => {
   if (typeof window === 'undefined') return
-  window.localStorage.setItem(PRIMARY_STORAGE_KEY, JSON.stringify(sets))
+  window.localStorage.removeItem(PRIMARY_STORAGE_KEY)
+}
+
+const writeStorageSets = (key, sets = []) => {
+  if (typeof window === 'undefined') return
+  window.localStorage.setItem(key, JSON.stringify(sets))
+}
+
+const loadUserScopedFundOptimizerWatchsets = (userId) => {
+  const id = String(userId || '').trim()
+  if (!id) return []
+  return mergeNormalizedSets([
+    readStorageRows(scopedFundOptimizerStorageKey(id), 'optimizer'),
+  ])
+}
+
+const loadUnscopedFundOptimizerWatchsets = () => mergeNormalizedSets([
+  readStorageRows(PRIMARY_STORAGE_KEY, 'optimizer'),
+  ...LEGACY_STORAGE_KEYS.map((key) => (
+    readStorageRows(key, key.includes('compare') ? 'compare' : 'fund_page')
+  )),
+])
+
+// ── localStorage 읽기 (로그인 전 / fallback) ────────────────────────────────
+export const loadFundOptimizerWatchsets = (userId) => {
+  if (typeof window === 'undefined') return []
+  const id = String(userId || '').trim()
+  if (id) {
+    // Authenticated reads never fall back to the shared key — that is how a
+    // previous user's leftovers used to seed the next empty cloud account.
+    return loadUserScopedFundOptimizerWatchsets(id)
+  }
+  return loadUnscopedFundOptimizerWatchsets()
+}
+
+export const saveFundOptimizerWatchsets = (sets = [], userId) => {
+  if (typeof window === 'undefined') return
+  const plan = planFundOptimizerLocalSave({ userId, sets })
+  writeStorageSets(plan.writeKey, plan.sets)
+  if (plan.clearUnscopedPrimary) clearUnscopedFundOptimizerWatchsets()
 }
 
 // ── Supabase 읽기 ─────────────────────────────────────────────────────────────
@@ -163,11 +208,21 @@ export const deleteFundOptimizerWatchsetFromDb = async (userId, setId) => {
 // ── localStorage → Supabase 1회 마이그레이션 ─────────────────────────────────
 export const migrateFundOptimizerSetsToDb = async (userId) => {
   if (!userId) return
-  const localSets = loadFundOptimizerWatchsets()
-  if (localSets.length === 0) return
+  const userScopedSets = loadUserScopedFundOptimizerWatchsets(userId)
   const { data: existing } = await loadFundOptimizerWatchsetsFromDb(userId)
-  if (existing && existing.length > 0) return // 이미 DB에 데이터 있으면 스킵
-  await replaceFundOptimizerWatchsetsInDb(userId, localSets)
+  const plan = planFundOptimizerDbMigration({
+    userId,
+    userScopedSets,
+    existingDbSets: existing || [],
+  })
+  if (plan.action !== 'migrate') {
+    // Even when skipping migrate, drop shared leftovers so they cannot be
+    // read by a later guest session after this authenticated user touched sync.
+    if (plan.reason === 'db_already_has_sets') clearUnscopedFundOptimizerWatchsets()
+    return
+  }
+  await replaceFundOptimizerWatchsetsInDb(userId, plan.sets)
+  saveFundOptimizerWatchsets(plan.sets, userId)
 }
 
 export const buildFundOptimizerCompareUrl = (watchset) => {
@@ -179,3 +234,10 @@ export const buildFundOptimizerCompareUrl = (watchset) => {
   })
   return `/funds/compare?${params.toString()}`
 }
+
+export {
+  PRIMARY_STORAGE_KEY,
+  scopedFundOptimizerStorageKey,
+  planFundOptimizerDbMigration,
+  planFundOptimizerLocalSave,
+} from './fundOptimizerWatchsetsStorage'

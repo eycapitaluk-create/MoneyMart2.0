@@ -10519,7 +10519,7 @@ export default function MyPage({
   const [ownedFunds, setOwnedFunds] = useState([])
   const [ownedFundItems, setOwnedFundItems] = useState([])
   const ownedFundItemsClearTimerRef = useRef(null)
-  const [fundOptimizerSets, setFundOptimizerSets] = useState(() => loadFundOptimizerWatchsets())
+  const [fundOptimizerSets, setFundOptimizerSets] = useState(() => loadFundOptimizerWatchsets(user?.id))
   const [ownedAssetDbAvailable, setOwnedAssetDbAvailable] = useState(false)
   const [ownedAssetDbReady, setOwnedAssetDbReady] = useState(false)
   /** 株とファンドで分離 — 株だけ触った状態でファンドを空配列として replace すると DB のファンドが全消去されるため */
@@ -10603,18 +10603,18 @@ export default function MyPage({
     let cancelled = false
     ;(async () => {
       try {
-        // 1회 마이그레이션: localStorage → Supabase
+        // Only migrates user-scoped local sets — never shared leftovers from another account.
         await migrateFundOptimizerSetsToDb(userId)
         const { data, available } = await loadFundOptimizerWatchsetsFromDb(userId)
         if (cancelled) return
-        if (available && data) {
+        if (available && Array.isArray(data) && data.length > 0) {
           setFundOptimizerSets(data)
-          saveFundOptimizerWatchsets(data) // localStorage도 동기화
+          saveFundOptimizerWatchsets(data, userId)
         } else {
-          setFundOptimizerSets(loadFundOptimizerWatchsets())
+          setFundOptimizerSets(loadFundOptimizerWatchsets(userId))
         }
       } catch {
-        if (!cancelled) setFundOptimizerSets(loadFundOptimizerWatchsets())
+        if (!cancelled) setFundOptimizerSets(loadFundOptimizerWatchsets(userId))
       }
     })()
     return () => { cancelled = true }
@@ -10624,7 +10624,7 @@ export default function MyPage({
     const userId = user?.id
     setFundOptimizerSets((prev) => {
       const next = prev.filter((row) => row.id !== setId)
-      saveFundOptimizerWatchsets(next)
+      saveFundOptimizerWatchsets(next, userId)
       if (userId) deleteFundOptimizerWatchsetFromDb(userId, setId).catch(() => {})
       return next
     })

@@ -1,7 +1,31 @@
 import { supabase } from './supabase'
 import { expToLevel, getBadgeByExp } from './loungeCharacterApi'
+import {
+  containsCommunitySeedMarker,
+  filterPublicCommunityTags,
+  getCommunityPostTitle,
+  stripCommunitySeedMarker,
+} from './communitySeed'
 
 const FEED_LIMIT = 30
+const COMMUNITY_MEMBER_FALLBACK = 'Member'
+
+const pickCommunityDisplayName = ({ nickname, displayName, email } = {}) => {
+  const nick = String(nickname || '').trim()
+  if (nick) return nick
+  const display = String(displayName || '').trim()
+  if (display) return display
+  const mail = String(email || '').trim()
+  if (mail.includes('@')) return mail.split('@')[0]
+  if (mail) return mail
+  return COMMUNITY_MEMBER_FALLBACK
+}
+
+const applyFeedSort = (query, tab) => (
+  tab === 'new' || tab === 'mine'
+    ? query.order('created_at', { ascending: false })
+    : query.order('hot_score', { ascending: false }).order('created_at', { ascending: false })
+)
 
 let communitySchemaAvailablePromise = null
 
@@ -25,21 +49,18 @@ const fetchProfileNameMap = async (userIds = []) => {
   if (ids.length === 0) return new Map()
   const { data, error } = await supabase
     .from('user_profiles')
-    .select('user_id,nickname,full_name')
+    .select('user_id,nickname')
     .in('user_id', ids)
   if (error) return new Map()
   return new Map(
     (data || []).map((row) => [
       row.user_id,
-      row.nickname || row.full_name || 'Member',
+      pickCommunityDisplayName({ nickname: row.nickname }),
     ])
   )
 }
 
-const buildTitleFromContent = (content = '') => {
-  const firstLine = String(content).split('\n').find((line) => line.trim())
-  return (firstLine || 'ラウンジ投稿').slice(0, 80)
-}
+const buildTitleFromContent = (content = '') => getCommunityPostTitle({ content })
 
 const LOUNGE_IMAGES_BUCKET = 'lounge-images'
 
@@ -118,7 +139,9 @@ const recordLevelBadgeNotificationIfEarned = async (userId) => {
 
 const normalizePost = (post, tags = [], likeMap = new Set(), bookmarkMap = new Set(), followMap = new Set()) => ({
   ...post,
-  tags,
+  title: stripCommunitySeedMarker(post.title || ''),
+  content: stripCommunitySeedMarker(post.content || ''),
+  tags: filterPublicCommunityTags(tags),
   isLiked: likeMap.has(post.id),
   isBookmarked: bookmarkMap.has(post.id),
   isFollowingAuthor: followMap.has(post.author_id || post.user_id),
@@ -128,12 +151,30 @@ const getUserProfileName = async (userId, fallbackEmail = '') => {
   if (!userId) return 'Guest'
   const { data } = await supabase
     .from('user_profiles')
-    .select('nickname, full_name')
+    .select('nickname')
     .eq('user_id', userId)
     .maybeSingle()
-  if (data?.nickname) return data.nickname
-  if (data?.full_name) return data.full_name
-  return fallbackEmail ? fallbackEmail.split('@')[0] : 'Member'
+  if (String(data?.nickname || '').trim()) {
+    return String(data.nickname).trim()
+  }
+
+  let meta = {}
+  let email = fallbackEmail
+  try {
+    const { data: authData } = await supabase.auth.getUser()
+    if (authData?.user?.id === userId) {
+      meta = authData.user.user_metadata || {}
+      email = email || authData.user.email || ''
+    }
+  } catch {
+    // ignore auth lookup failures
+  }
+
+  return pickCommunityDisplayName({
+    nickname: meta.nickname,
+    displayName: meta.display_name,
+    email,
+  })
 }
 
 export async function getCurrentLoungeUser() {
@@ -153,19 +194,25 @@ export async function getCurrentLoungeUser() {
   }
 }
 
+function isPublicCommunityTag(tag = '') {
+  return filterPublicCommunityTags([tag]).length > 0
+}
+
 export async function fetchTrendingTags(limit = 8) {
+  const take = Math.max(limit * 4, 24)
+
   // Preferred path: new community aggregation source
   const { data: newRows, error: newErr } = await supabase
     .from('trending_assets')
     .select('*')
-    .limit(Math.max(limit * 2, 16))
+    .limit(take)
   if (!newErr && Array.isArray(newRows)) {
     const normalized = newRows
       .map((row) => ({
         tag: row.asset_tag || row.tag || '',
         count: Number(row.mention_count || row.post_count || row.count || 0),
       }))
-      .filter((row) => row.tag)
+      .filter((row) => isPublicCommunityTag(row.tag))
       .sort((a, b) => b.count - a.count)
       .slice(0, limit)
     if (normalized.length > 0) return normalized
@@ -181,6 +228,7 @@ export async function fetchTrendingTags(limit = 8) {
       const tagStats = new Map()
       for (const row of cpRows) {
         const tag = String(row.asset_tag || '').trim() || 'TOPIC'
+        if (!isPublicCommunityTag(tag)) continue
         tagStats.set(tag, (tagStats.get(tag) || 0) + 1)
       }
       const result = [...tagStats.entries()]
@@ -197,11 +245,13 @@ export async function fetchTrendingTags(limit = 8) {
     .select('tag,post_count,last_posted_at')
     .order('post_count', { ascending: false })
     .order('last_posted_at', { ascending: false })
-    .limit(limit)
+    .limit(take)
   if (!viewErr && Array.isArray(viewRows)) {
-    return viewRows
-      .filter((row) => row?.tag)
+    const filtered = viewRows
+      .filter((row) => isPublicCommunityTag(row?.tag))
       .map((row) => ({ tag: row.tag, count: Number(row.post_count || 0) }))
+      .slice(0, limit)
+    if (filtered.length > 0) return filtered
   }
 
   // Fallback path: client-side aggregation for backward compatibility
@@ -209,13 +259,13 @@ export async function fetchTrendingTags(limit = 8) {
     .from('lounge_post_tags')
     .select('tag, post_id, lounge_posts!inner(status)')
     .eq('lounge_posts.status', 'published')
-    .limit(500)
+    .limit(1000)
   if (error) throw error
 
   const tagStats = new Map()
   for (const row of data || []) {
     const key = (row.tag || '').trim()
-    if (!key) continue
+    if (!isPublicCommunityTag(key)) continue
     tagStats.set(key, (tagStats.get(key) || 0) + 1)
   }
 
@@ -225,8 +275,8 @@ export async function fetchTrendingTags(limit = 8) {
     .slice(0, limit)
 }
 
-export async function fetchFeed({ tab = 'popular', search = '', userId = null, limit = FEED_LIMIT } = {}) {
-  if (await hasCommunitySchema()) {
+export async function fetchFeed({ tab = 'popular', search = '', userId = null, limit = FEED_LIMIT, seedOnly = false, preferLounge = false } = {}) {
+  if (await hasCommunitySchema() && !preferLounge && !seedOnly) {
     let postIdsFilter = null
     let authorIdsFilter = null
 
@@ -251,6 +301,9 @@ export async function fetchFeed({ tab = 'popular', search = '', userId = null, l
       if (followErr) throw followErr
       authorIdsFilter = (follows || []).map((r) => r.following_id)
       if (authorIdsFilter.length === 0) return []
+    } else if (tab === 'mine') {
+      if (!userId) return []
+      authorIdsFilter = [userId]
     }
 
     let query = supabase.from('community_posts').select('*')
@@ -260,7 +313,7 @@ export async function fetchFeed({ tab = 'popular', search = '', userId = null, l
       const keyword = search.trim().replace(/,/g, ' ')
       query = query.or(`content.ilike.%${keyword}%,asset_tag.ilike.%${keyword}%`)
     }
-    query = query.order('created_at', { ascending: false }).limit(limit)
+    query = applyFeedSort(query, tab).limit(limit)
 
     const { data: communityPosts, error: postErr } = await query
     if (postErr) throw postErr
@@ -300,17 +353,17 @@ export async function fetchFeed({ tab = 'popular', search = '', userId = null, l
     const followSet = new Set((followRes.data || []).map((r) => r.following_id))
     return communityPosts.map((post) => {
       const authorId = post.user_id || null
-      const authorName = post.author_name || profileMap.get(authorId) || 'Member'
+      const authorName = profileMap.get(authorId) || COMMUNITY_MEMBER_FALLBACK
       const tag = String(post.asset_tag || '').trim()
       const item = {
         id: post.id,
         author_id: authorId,
         author_name: authorName,
-        title: buildTitleFromContent(post.content),
-        content: post.content || '',
+        title: getCommunityPostTitle(post),
+        content: stripCommunitySeedMarker(post.content || ''),
         ticker: tag || null,
         sentiment: post.sentiment || 'neutral',
-        tags: tag ? [tag] : [],
+        tags: filterPublicCommunityTags(tag ? [tag] : []),
         image_urls: Array.isArray(post.image_urls) ? post.image_urls : [],
         like_count: Number(likeCountMap.get(post.id) || 0),
         comment_count: Number(commentCountMap.get(post.id) || 0),
@@ -349,6 +402,34 @@ export async function fetchFeed({ tab = 'popular', search = '', userId = null, l
     if (followErr) throw followErr
     authorIdsFilter = (follows || []).map((r) => r.following_id)
     if (authorIdsFilter.length === 0) return []
+  } else if (tab === 'mine') {
+    if (!userId) return []
+    authorIdsFilter = [userId]
+  }
+
+  const searchTrim = String(search || '').trim()
+  let searchPostIds = null
+  if (searchTrim.startsWith('#')) {
+    const tag = searchTrim.replace(/^#+/, '').trim()
+    if (tag) {
+      const { data: tagRows, error: tagErr } = await supabase
+        .from('lounge_post_tags')
+        .select('post_id')
+        .ilike('tag', `%${tag}%`)
+      if (tagErr) throw tagErr
+      searchPostIds = [...new Set((tagRows || []).map((r) => r.post_id).filter(Boolean))]
+      if (searchPostIds.length === 0) return []
+    }
+  }
+
+  if (searchPostIds?.length) {
+    if (postIdsFilter?.length) {
+      const allowed = new Set(searchPostIds)
+      postIdsFilter = postIdsFilter.filter((id) => allowed.has(id))
+      if (postIdsFilter.length === 0) return []
+    } else {
+      postIdsFilter = searchPostIds
+    }
   }
 
   let query = supabase
@@ -358,15 +439,22 @@ export async function fetchFeed({ tab = 'popular', search = '', userId = null, l
 
   if (postIdsFilter) query = query.in('id', postIdsFilter)
   if (authorIdsFilter) query = query.in('author_id', authorIdsFilter)
-  if (search.trim()) {
-    const keyword = search.trim().replace(/,/g, ' ')
+  if (searchTrim && !searchTrim.startsWith('#')) {
+    const keyword = searchTrim.replace(/,/g, ' ')
     query = query.or(`title.ilike.%${keyword}%,content.ilike.%${keyword}%,ticker.ilike.%${keyword}%`)
   }
+  if (seedOnly) {
+    const { data: seedTagRows } = await supabase
+      .from('lounge_post_tags')
+      .select('post_id')
+      .like('tag', '_seed:%')
+      .limit(2000)
+    const seedIds = [...new Set((seedTagRows || []).map((r) => r.post_id).filter(Boolean))]
+    if (seedIds.length === 0) return []
+    query = query.in('id', seedIds)
+  }
 
-  query = tab === 'new'
-    ? query.order('created_at', { ascending: false })
-    : query.order('hot_score', { ascending: false }).order('created_at', { ascending: false })
-  query = query.limit(limit)
+  query = applyFeedSort(query, tab).limit(limit)
 
   const { data: posts, error } = await query
   if (error) throw error
@@ -390,6 +478,7 @@ export async function fetchFeed({ tab = 'popular', search = '', userId = null, l
   let likeSet = new Set()
   let bookmarkSet = new Set()
   let followSet = new Set()
+  const profileMap = await fetchProfileNameMap(authorIds)
   if (userId) {
     const [likeRes, bookmarkRes, followRes] = await Promise.all([
       supabase.from('lounge_post_likes').select('post_id').eq('user_id', userId).in('post_id', postIds),
@@ -404,19 +493,23 @@ export async function fetchFeed({ tab = 'popular', search = '', userId = null, l
     followSet = new Set((followRes.data || []).map((r) => r.following_id))
   }
 
-  return posts.map((post) =>
-    normalizePost(
+  return posts.map((post) => {
+    const normalized = normalizePost(
       post,
       tagsByPost.get(post.id) || [],
       likeSet,
       bookmarkSet,
       followSet
     )
-  )
+    return {
+      ...normalized,
+      author_name: profileMap.get(post.author_id) || COMMUNITY_MEMBER_FALLBACK,
+    }
+  })
 }
 
-export async function fetchComments(postId) {
-  if (await hasCommunitySchema()) {
+export async function fetchComments(postId, { preferLounge = false } = {}) {
+  if (await hasCommunitySchema() && !preferLounge) {
     const { data, error } = await supabase
       .from('post_engagements')
       .select('*')
@@ -425,20 +518,26 @@ export async function fetchComments(postId) {
       .order('created_at', { ascending: true })
       .limit(200)
     if (!error) {
-      const authorIds = [...new Set((data || []).map((r) => r.user_id).filter(Boolean))]
+      const authorIds = [...new Set((data || []).flatMap((r) => {
+        const p = r.payload || {}
+        return [r.user_id, p.reply_to_user_id].filter(Boolean)
+      }))]
       const nameMap = await fetchProfileNameMap(authorIds)
       return (data || []).map((row) => {
         const p = row.payload || {}
+        const replyToUserId = p.reply_to_user_id || null
         return {
           id: row.id,
           post_id: row.post_id,
           author_id: row.user_id,
-          author_name: nameMap.get(row.user_id) || 'Member',
-          content: row.content || p.content || '',
+          author_name: nameMap.get(row.user_id) || COMMUNITY_MEMBER_FALLBACK,
+          content: stripCommunitySeedMarker(row.content || p.content || ''),
           created_at: row.created_at,
           parent_comment_id: p.parent_id || null,
-          reply_to_user_id: p.reply_to_user_id || null,
-          reply_to_name: p.reply_to_name || null,
+          reply_to_user_id: replyToUserId,
+          reply_to_name: replyToUserId
+            ? (nameMap.get(replyToUserId) || COMMUNITY_MEMBER_FALLBACK)
+            : (p.reply_to_name || null),
         }
       })
     }
@@ -453,10 +552,22 @@ export async function fetchComments(postId) {
     .order('created_at', { ascending: true })
     .limit(200)
   if (error) throw error
-  return data || []
+  const authorIds = [...new Set((data || []).flatMap((row) => [
+    row.author_id,
+    row.reply_to_user_id,
+  ].filter(Boolean)))]
+  const nameMap = await fetchProfileNameMap(authorIds)
+  return (data || []).map((row) => ({
+    ...row,
+    author_name: nameMap.get(row.author_id) || COMMUNITY_MEMBER_FALLBACK,
+    reply_to_name: row.reply_to_user_id
+      ? (nameMap.get(row.reply_to_user_id) || COMMUNITY_MEMBER_FALLBACK)
+      : (row.reply_to_name || null),
+    content: stripCommunitySeedMarker(row.content || ''),
+  }))
 }
 
-export async function createPost({ userId, title, content, ticker = '', assetType = 'general', sentiment = 'neutral', tags = [], imageFiles = [] }) {
+export async function createPost({ userId, title, content, ticker = '', assetType = 'general', sentiment = 'neutral', tags = [], imageFiles = [], preferLounge = false }) {
   let imageUrls = []
   if (imageFiles?.length) {
     try {
@@ -466,7 +577,7 @@ export async function createPost({ userId, title, content, ticker = '', assetTyp
     }
   }
 
-  if (await hasCommunitySchema()) {
+  if (await hasCommunitySchema() && !preferLounge) {
     const payload = {
       user_id: userId,
       type: 'insight',
@@ -520,12 +631,16 @@ export async function createPost({ userId, title, content, ticker = '', assetTyp
   return data
 }
 
-export async function createComment({ postId, userId, content, parentCommentId = null, replyToUserId = null, replyToName = null }) {
-  if (await hasCommunitySchema()) {
+export async function createComment({ postId, userId, content, parentCommentId = null, replyToUserId = null, replyToName = null, preferLounge = false }) {
+  const resolvedReplyToName = replyToUserId
+    ? await getUserProfileName(replyToUserId)
+    : replyToName
+
+  if (await hasCommunitySchema() && !preferLounge) {
     const payload = { content }
     if (parentCommentId) payload.parent_id = parentCommentId
     if (replyToUserId) payload.reply_to_user_id = replyToUserId
-    if (replyToName) payload.reply_to_name = replyToName
+    if (resolvedReplyToName) payload.reply_to_name = resolvedReplyToName
 
     const rich = await supabase
       .from('post_engagements')
@@ -569,7 +684,7 @@ export async function createComment({ postId, userId, content, parentCommentId =
   }
   if (parentCommentId) insertPayload.parent_comment_id = parentCommentId
   if (replyToUserId) insertPayload.reply_to_user_id = replyToUserId
-  if (replyToName) insertPayload.reply_to_name = replyToName
+  if (resolvedReplyToName) insertPayload.reply_to_name = resolvedReplyToName
 
   const { data, error } = await supabase
     .from('lounge_comments')
@@ -581,8 +696,40 @@ export async function createComment({ postId, userId, content, parentCommentId =
   return data
 }
 
-export async function toggleLike({ postId, userId }) {
+export async function deleteOwnComment({ commentId, userId, postId }) {
   if (await hasCommunitySchema()) {
+    const { data, error } = await supabase
+      .from('post_engagements')
+      .delete()
+      .eq('id', commentId)
+      .eq('user_id', userId)
+      .eq('type', 'comment')
+      .select('id')
+    if (!error && data?.length > 0) return
+  }
+
+  // Soft-delete on lounge_comments
+  const { data, error } = await supabase
+    .from('lounge_comments')
+    .update({ status: 'deleted' })
+    .eq('id', commentId)
+    .eq('author_id', userId)
+    .select('id')
+  if (!error && data?.length > 0) return
+
+  // Fallback: hard delete
+  const { error: delErr } = await supabase
+    .from('lounge_comments')
+    .delete()
+    .eq('id', commentId)
+    .eq('author_id', userId)
+  if (delErr) throw delErr
+}
+
+export async function toggleLike({ postId, userId, preferLounge = false, desiredLiked = null } = {}) {
+  const wantLiked = desiredLiked == null ? null : Boolean(desiredLiked)
+
+  if (await hasCommunitySchema() && !preferLounge) {
     const { data: targetPost, error: postErr } = await supabase
       .from('community_posts')
       .select('user_id')
@@ -602,7 +749,11 @@ export async function toggleLike({ postId, userId }) {
       .maybeSingle()
     if (findErr) throw findErr
 
-    if (existing?.id) {
+    const isLiked = Boolean(existing?.id)
+    if (wantLiked === true && isLiked) return true
+    if (wantLiked === false && !isLiked) return false
+
+    if (isLiked) {
       const { error } = await supabase.from('post_engagements').delete().eq('id', existing.id)
       if (error) throw error
       return false
@@ -634,33 +785,51 @@ export async function toggleLike({ postId, userId }) {
     .maybeSingle()
   if (findErr) throw findErr
 
-  if (existing?.id) {
+  const isLiked = Boolean(existing?.id)
+  if (wantLiked === true && isLiked) return true
+  if (wantLiked === false && !isLiked) return false
+
+  if (isLiked) {
     const { error } = await supabase.from('lounge_post_likes').delete().eq('id', existing.id)
     if (error) throw error
     return false
   }
   const { error } = await supabase.from('lounge_post_likes').insert({ post_id: postId, user_id: userId })
-  if (error) throw error
+  if (error) {
+    const msg = String(error.message || '')
+    // Unique race: treat as liked
+    if (error.code === '23505' || /duplicate|unique/i.test(msg)) return true
+    if (/row-level security|rls/i.test(msg)) {
+      throw new Error('いいね保存に失敗しました（権限/通知トリガー）。管理者にDBパッチ適用を依頼してください。')
+    }
+    throw error
+  }
   await recordLevelBadgeNotificationIfEarned(userId)
   return true
 }
 
 export async function deleteOwnPost({ postId, userId }) {
-  if (await hasCommunitySchema()) {
-    const { error } = await supabase
-      .from('community_posts')
-      .delete()
-      .eq('id', postId)
-      .eq('user_id', userId)
-    if (!error) return
-    if (!isMissingTableError(error)) throw error
-  }
-
-  const { error } = await supabase
+  // Soft-delete: update status so fetchFeed (status='published') won't return it
+  const { data, error } = await supabase
     .from('lounge_posts')
-    .delete()
+    .update({ status: 'deleted', updated_at: new Date().toISOString() })
     .eq('id', postId)
     .eq('author_id', userId)
+    .select('id')
+  if (!error && data?.length > 0) return
+
+  // Fallback: try community_posts
+  if (await hasCommunitySchema()) {
+    const { data: cpData, error: cpError } = await supabase
+      .from('community_posts')
+      .update({ status: 'deleted' })
+      .eq('id', postId)
+      .eq('user_id', userId)
+      .select('id')
+    if (!cpError && cpData?.length > 0) return
+    if (cpError && !isMissingTableError(cpError)) throw cpError
+  }
+
   if (error) throw error
 }
 
@@ -721,8 +890,8 @@ export async function updateOwnPost({
   return data
 }
 
-export async function toggleBookmark({ postId, userId }) {
-  if (await hasCommunitySchema()) {
+export async function toggleBookmark({ postId, userId, preferLounge = false }) {
+  if (await hasCommunitySchema() && !preferLounge) {
     const { data: existing, error: findErr } = await supabase
       .from('post_engagements')
       .select('id')
@@ -776,7 +945,7 @@ export async function fetchSuggestedUsers({ userId = null, limit = 3 } = {}) {
         .order('created_at', { ascending: false })
         .limit(maxRows),
       followPromise,
-      supabase.from('user_profiles').select('user_id,nickname,full_name').limit(1000),
+      supabase.from('user_profiles').select('user_id,nickname').limit(1000),
     ])
     if (postsRes.error) throw postsRes.error
     if (followRes.error) throw followRes.error
@@ -784,7 +953,7 @@ export async function fetchSuggestedUsers({ userId = null, limit = 3 } = {}) {
     const followSet = new Set((followRes.data || []).map((row) => row.following_id))
     const profileMap = new Map((profileRes.data || []).map((row) => [
       row.user_id,
-      row.nickname || row.full_name || '',
+      pickCommunityDisplayName({ nickname: row.nickname }),
     ]))
     const aggregated = new Map()
 
@@ -814,7 +983,7 @@ export async function fetchSuggestedUsers({ userId = null, limit = 3 } = {}) {
       }))
   }
 
-  const [postsRes, followRes] = await Promise.all([
+  const [postsRes, followRes, profileRes] = await Promise.all([
     supabase
       .from('lounge_posts')
       .select('author_id,author_name,like_count,view_count,created_at')
@@ -822,10 +991,15 @@ export async function fetchSuggestedUsers({ userId = null, limit = 3 } = {}) {
       .order('created_at', { ascending: false })
       .limit(maxRows),
     followPromise,
+    supabase.from('user_profiles').select('user_id,nickname').limit(1000),
   ])
   if (postsRes.error) throw postsRes.error
   if (followRes.error) throw followRes.error
 
+  const profileMap = new Map((profileRes.data || []).map((row) => [
+    row.user_id,
+    pickCommunityDisplayName({ nickname: row.nickname }),
+  ]))
   const followSet = new Set((followRes.data || []).map((row) => row.following_id))
   const aggregated = new Map()
   for (const row of postsRes.data || []) {
@@ -833,7 +1007,7 @@ export async function fetchSuggestedUsers({ userId = null, limit = 3 } = {}) {
     if (!authorId || authorId === userId) continue
     const entry = aggregated.get(authorId) || {
       id: authorId,
-      name: row.author_name || 'Member',
+      name: profileMap.get(authorId) || COMMUNITY_MEMBER_FALLBACK,
       handle: '',
       postCount: 0,
       score: 0,
@@ -1000,12 +1174,16 @@ export async function fetchReactionCommentAlerts(userId, limit = 5) {
   if (!comments || comments.length === 0) return []
 
   const postIdSet = [...new Set(comments.map((c) => c.post_id))]
-  const { data: posts, error: postErr } = await supabase
-    .from('lounge_posts')
-    .select('id,title,status')
-    .in('id', postIdSet)
-  if (postErr) throw postErr
-  const titleMap = new Map((posts || []).map((p) => [p.id, p.title]))
+  const authorIds = [...new Set(comments.map((c) => c.author_id).filter(Boolean))]
+  const [postsRes, nameMap] = await Promise.all([
+    supabase
+      .from('lounge_posts')
+      .select('id,title,status')
+      .in('id', postIdSet),
+    fetchProfileNameMap(authorIds),
+  ])
+  if (postsRes.error) throw postsRes.error
+  const titleMap = new Map((postsRes.data || []).map((p) => [p.id, p.title]))
 
   return comments
     .filter((c) => titleMap.has(c.post_id))
@@ -1014,7 +1192,7 @@ export async function fetchReactionCommentAlerts(userId, limit = 5) {
       id: c.id,
       postId: c.post_id,
       postTitle: titleMap.get(c.post_id) || '投稿',
-      authorName: c.author_name || 'メンバー',
+      authorName: nameMap.get(c.author_id) || 'メンバー',
       content: c.content || '',
       createdAt: c.created_at,
     }))

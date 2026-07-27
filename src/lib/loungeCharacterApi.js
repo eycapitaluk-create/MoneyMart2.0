@@ -1,14 +1,10 @@
 import { supabase } from './supabase'
+import { COMMUNITY_EXP_LEVELS, COMMUNITY_TIERS } from './communityTiers'
 
-// Keep progression meaningful for power users.
-const EXP_LEVELS = [0, 300, 900, 2500, 6000] // 0→Lv1, 300→Lv2, ...
-const BADGE_BY_LEVEL = {
-  1: { id: 'rookie', label: 'Rookie' },
-  2: { id: 'active', label: 'Active' },
-  3: { id: 'core', label: 'Core Member' },
-  4: { id: 'veteran', label: 'Veteran' },
-  5: { id: 'legend', label: 'Legend' },
-}
+const EXP_LEVELS = COMMUNITY_EXP_LEVELS
+const BADGE_BY_LEVEL = Object.fromEntries(
+  COMMUNITY_TIERS.map((tier) => [tier.level, { id: tier.id, label: tier.labelJa }]),
+)
 
 export function expToLevel(totalExp) {
   const exp = Number(totalExp) || 0
@@ -111,10 +107,10 @@ export async function fetchCharacterLeaderboardWithNames(limit = 5) {
   const ids = rows.map((r) => r.user_id)
   const { data: profiles } = await supabase
     .from('user_profiles')
-    .select('user_id, nickname, full_name')
+    .select('user_id, nickname')
     .in('user_id', ids)
   const nameByUserId = new Map(
-    (profiles || []).map((p) => [p.user_id, p.nickname || p.full_name || 'メンバー'])
+    (profiles || []).map((p) => [p.user_id, String(p.nickname || '').trim() || 'メンバー'])
   )
   return rows.map((r) => ({
     ...r,

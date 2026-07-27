@@ -1130,9 +1130,6 @@ export default function LoungePageV2({ bootUser = undefined, authReady = false }
                         </div>
                       </div>
                       <div className="flex items-center gap-2 sm:gap-4 text-slate-400">
-                        <span className="text-[12px] font-bold flex items-center gap-1.5 mr-2">
-                          <BarChart2 size={16} /> {post.stats.views}
-                        </span>
                         <button onClick={(e) => { e.stopPropagation(); handleToggleBookmark(post) }} className="hover:text-orange-500 p-2 rounded-full hover:bg-orange-50 dark:hover:bg-orange-950/30 transition">
                           <Bookmark size={18} />
                         </button>

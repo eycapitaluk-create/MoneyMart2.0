@@ -1,26 +1,34 @@
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
-import { useEffect, useRef, useState, lazy, Suspense } from 'react'
+import { useEffect, useRef, useState, Suspense, useCallback } from 'react'
+import { flushSync } from 'react-dom'
+import { lazyWithRetry } from './lib/lazyWithRetry'
 import { supabase } from './lib/supabase'
-import { trackAnalyticsEvent } from './lib/analytics'
+import { trackAnalyticsEvent, backfillSignupAttributionIfEmpty, getSignupAttributionForProfile } from './lib/analytics'
 import { captureReferralFromUrl } from './lib/referralStorage'
-import { backfillSignupAttributionIfEmpty } from './lib/analytics'
-import { claimPendingReferralAttribution, fetchMyReferralCode } from './lib/referralApi'
 import Layout from './components/layout/Layout'
+import ErrorBoundary from './components/ErrorBoundary'
 import AdminIpGuard from './components/AdminIpGuard'
 import { ETF_SYMBOLS_FROM_XLSX } from './data/etfUniverseLite'
-import {
-  loadDbWatchlists,
-  addDbWatchlistItem,
-  removeDbWatchlistItem,
-  loadMyPageData,
-  loadUnreadPortfolioDropAlertCount,
-} from './lib/myPageApi'
-import { getCurrentMonthBudgetUsage } from './lib/mypageBudgetAlerts'
 import { sanitizeInternalRedirectPath } from './lib/navigationGuards'
-import { isPaidPlanTier } from './lib/membership'
+import { hasPremiumEntitlement } from './lib/membership'
+import { clearFundListPageSessionStorage } from './lib/fundPageSessionStorage'
+import { clearFundOptimizerWatchsetsLocal } from './lib/fundOptimizerWatchsets'
+import { scheduleIdleTask } from './lib/scheduleIdle'
+import {
+  buildCourtesyThanksMessage,
+  isCourtesyPremiumGiftActive,
+  markCourtesyThanksShown,
+  shouldShowCourtesyThanksOnLogin,
+} from './lib/premiumCourtesyGrant'
 
 const ALERT_EXPIRY_DAYS = 30
-const AUTH_IDLE_TIMEOUT_MINUTES = Number(import.meta.env.VITE_AUTH_IDLE_TIMEOUT_MINUTES || 30)
+const EMPTY_ALERT_SUMMARY = {
+  insuranceExpiringSoon: 0,
+  pointExpiringSoonCount: 0,
+  budgetOver80Pct: false,
+  portfolioDropAlertCount: 0,
+}
+const AUTH_IDLE_TIMEOUT_MINUTES = Number(import.meta.env.VITE_AUTH_IDLE_TIMEOUT_MINUTES || 60)
 const AUTH_IDLE_TIMEOUT_MS = Number.isFinite(AUTH_IDLE_TIMEOUT_MINUTES) && AUTH_IDLE_TIMEOUT_MINUTES > 0
   ? Math.floor(AUTH_IDLE_TIMEOUT_MINUTES * 60 * 1000)
   : 0
@@ -37,7 +45,7 @@ function isSameAlertSummary(a, b) {
   )
 }
 
-function buildMyPageAlertSummary(data) {
+function buildMyPageAlertSummary(data, getCurrentMonthBudgetUsage) {
   const insurances = data?.insurances || []
   const pointAccounts = data?.pointAccounts || []
   const insuranceExpiringSoon = insurances.filter((ins) => {
@@ -65,31 +73,50 @@ function buildMyPageAlertSummary(data) {
   }
 }
 
-const HomePage = lazy(() => import('./pages/HomePage'))
-const NewsPage = lazy(() => import('./pages/NewsPage'))
-const MarketPage = lazy(() => import('./pages/MarketPage'))
-const FundPage = lazy(() => import('./pages/FundPage'))
-const FundDetailPage = lazy(() => import('./pages/FundDetailPage'))
-const FundComparePage = lazy(() => import('./pages/FundComparePage'))
-const StockPage = lazy(() => import('./pages/StockPage'))
-const ProductsPage = lazy(() => import('./pages/ProductsPage'))
-const LoungePage = lazy(() => import('./pages/LoungePage'))
-const AdminPage = lazy(() => import('./pages/AdminPage'))
-const Login = lazy(() => import('./pages/Login'))
-const Signup = lazy(() => import('./pages/Signup'))
-const ForgotPassword = lazy(() => import('./pages/ForgotPassword'))
-const ResetPassword = lazy(() => import('./pages/ResetPassword'))
-const CompleteProfilePage = lazy(() => import('./pages/CompleteProfilePage'))
-const MyPage = lazy(() => import('./pages/MyPage'))
-const BriefArchivePage = lazy(() => import('./pages/BriefArchivePage'))
-const LegalPage = lazy(() => import('./pages/LegalPage'))
-const FAQPage = lazy(() => import('./pages/FAQPage'))
-const AboutPage = lazy(() => import('./pages/AboutPage'))
-const ToolsHubPage = lazy(() => import('./pages/ToolsHubPage'))
-const ToolLandingPage = lazy(() => import('./pages/ToolLandingPage'))
-const InsightPage = lazy(() => import('./pages/InsightPage'))
-const NotFoundPage = lazy(() => import('./pages/NotFoundPage'))
-const PremiumPage = lazy(() => import('./pages/PremiumPage'))
+async function loadMyPageAlertSummaryForNavbar(userId) {
+  const [{ loadNavbarAlertMyPageData, loadUnreadPortfolioDropAlertCount }, { getCurrentMonthBudgetUsage }] = await Promise.all([
+    import('./lib/myPageApi'),
+    import('./lib/mypageBudgetAlerts'),
+  ])
+  const [data, portfolioDropCountRes] = await Promise.all([
+    loadNavbarAlertMyPageData(userId),
+    loadUnreadPortfolioDropAlertCount(userId).catch(() => ({ count: 0 })),
+  ])
+  return {
+    ...buildMyPageAlertSummary(data, getCurrentMonthBudgetUsage),
+    portfolioDropAlertCount: Math.max(0, Number(portfolioDropCountRes?.count || 0)),
+  }
+}
+
+const HomePage = lazyWithRetry(() => import('./pages/HomePage'))
+const NewsPage = lazyWithRetry(() => import('./pages/NewsPage'))
+const MarketPage = lazyWithRetry(() => import('./pages/MarketPage'))
+const FundPage = lazyWithRetry(() => import('./pages/FundPage'))
+const FundDetailPage = lazyWithRetry(() => import('./pages/FundDetailPage'))
+const FundComparePage = lazyWithRetry(() => import('./pages/FundComparePage'))
+const StockPage = lazyWithRetry(() => import('./pages/StockPage'))
+const ProductsPage = lazyWithRetry(() => import('./pages/ProductsPage'))
+const CommunityPage = lazyWithRetry(() => import('./pages/CommunityPage'))
+const AdminPage = lazyWithRetry(() => import('./pages/AdminPage'))
+const Login = lazyWithRetry(() => import('./pages/Login'))
+const Signup = lazyWithRetry(() => import('./pages/Signup'))
+import SignupComplete from './pages/SignupComplete'
+const ForgotPassword = lazyWithRetry(() => import('./pages/ForgotPassword'))
+const ResetPassword = lazyWithRetry(() => import('./pages/ResetPassword'))
+const CompleteProfilePage = lazyWithRetry(() => import('./pages/CompleteProfilePage'))
+const MyPage = lazyWithRetry(() => import('./pages/MyPage'))
+const BriefArchivePage = lazyWithRetry(() => import('./pages/BriefArchivePage'))
+const LegalPage = lazyWithRetry(() => import('./pages/LegalPage'))
+const FAQPage = lazyWithRetry(() => import('./pages/FAQPage'))
+const AboutPage = lazyWithRetry(() => import('./pages/AboutPage'))
+const ToolsHubPage = lazyWithRetry(() => import('./pages/ToolsHubPage'))
+const ToolLandingPage = lazyWithRetry(() => import('./pages/ToolLandingPage'))
+const NisaEtfChecklistPage = lazyWithRetry(() => import('./pages/NisaEtfChecklistPage'))
+const InsightPage = lazyWithRetry(() => import('./pages/InsightPage'))
+const InsightResearchMockPage = lazyWithRetry(() => import('./pages/InsightResearchMockPage'))
+const NotFoundPage = lazyWithRetry(() => import('./pages/NotFoundPage'))
+const PremiumPage = lazyWithRetry(() => import('./pages/PremiumPage'))
+const CampaignCp2026SnsSepPage = lazyWithRetry(() => import('./pages/CampaignCp2026SnsSepPage'))
 
 const RouteSkeleton = ({ title = 'ページを読み込み中...' }) => (
   <div className="min-h-[50vh] max-w-5xl mx-auto px-4 py-8">
@@ -110,11 +137,16 @@ const FUND_ID_ALLOWLIST = new Set(ETF_SYMBOLS_FROM_XLSX)
 const ADMIN_EMAIL_ALLOWLIST = new Set([
   'justin.nam@moneymart.co.jp',
   'kelly.nam@moneymart.co.jp',
+  'test@moneymart.co.jp',
 ])
 const PREMIUM_EMAIL_ALLOWLIST = new Set([
   'justin.nam@moneymart.co.jp',
   'kelly.nam@moneymart.co.jp',
+  'ellen.nam@moneymart.co.jp',
+  'moneymartjp@gmail.com',
 ])
+/** QA용: 강제 프리미엄·프리트라이얼 없음（DB에 trial/prime이 있어도 무료 UX로 고정） */
+const PREMIUM_ENTITLEMENT_DENY_EMAILS = new Set(['test@moneymart.co.jp'])
 const FREE_FUND_WATCHLIST_LIMIT = 3
 
 /** /funds/compare?ids=… は /etf-compare へ統合するが、クエリ（ids/weights）を落とさない */
@@ -150,13 +182,17 @@ const App = () => {
   const [session, setSession] = useState(null)
   const [authReady, setAuthReady] = useState(false)
   const [currentUserProfile, setCurrentUserProfile] = useState(undefined)
+  /** localStorage 先行復元だけだと planTier が古く isPaidMember が誤って false になりうるため、DB 正規化まで無料向けナッジを出さない */
+  const [displayProfileResolved, setDisplayProfileResolved] = useState(false)
   const [role, setRole] = useState('viewer')
   const [roleReady, setRoleReady] = useState(false)
   const safeRouteReturnPath = sanitizeInternalRedirectPath(location.state?.from, '/')
-  const userEmailLower = String(session?.user?.email || '').trim().toLowerCase()
   const isPaidMember = Boolean(
-    PREMIUM_EMAIL_ALLOWLIST.has(userEmailLower)
-    || isPaidPlanTier(String(currentUserProfile?.planTier || '').toLowerCase())
+    currentUserProfile
+      && hasPremiumEntitlement({
+        planTier: String(currentUserProfile?.planTier || '').toLowerCase(),
+        premiumTrialEndsAt: currentUserProfile?.premiumTrialEndsAt ?? null,
+      }),
   )
 
   const applyFundWatchlistPlanLimit = (items = []) => {
@@ -173,6 +209,11 @@ const App = () => {
       return []
     }
   })
+  /** 同一イベント内で複数回 toggle されると（配分セット適用など）state クロージャが古く前の追加が消える。ref で直列化する。 */
+  const fundWatchlistRef = useRef(fundWatchlist)
+  useEffect(() => {
+    fundWatchlistRef.current = fundWatchlist
+  }, [fundWatchlist])
 
   useEffect(() => {
     localStorage.setItem('mm_fund_watchlist', JSON.stringify(fundWatchlist))
@@ -187,6 +228,10 @@ const App = () => {
     }
   }, [location.pathname, navigate])
 
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' })
+  }, [location.pathname])
+
   const [productInterests, setProductInterests] = useState(() => {
     try {
       const raw = localStorage.getItem('mm_product_interests')
@@ -197,12 +242,7 @@ const App = () => {
     }
   })
 
-  const [alertSummary, setAlertSummary] = useState({
-    insuranceExpiringSoon: 0,
-    pointExpiringSoonCount: 0,
-    budgetOver80Pct: false,
-    portfolioDropAlertCount: 0,
-  })
+  const [alertSummary, setAlertSummary] = useState(EMPTY_ALERT_SUMMARY)
   const [uiMessage, setUiMessage] = useState(null)
   const freeUserLockNudgeShownRef = useRef(false)
 
@@ -212,21 +252,35 @@ const App = () => {
 
   useEffect(() => {
     if (!uiMessage?.text) return undefined
-    const timer = window.setTimeout(() => setUiMessage(null), 2600)
+    const timer = window.setTimeout(() => setUiMessage(null), uiMessage.durationMs ?? 2600)
     return () => window.clearTimeout(timer)
   }, [uiMessage])
 
-  const showUiMessage = (text, tone = 'info') => {
+  const showUiMessage = useCallback((text, tone = 'info', durationMs) => {
     const safeText = String(text || '').trim()
     if (!safeText) return
-    setUiMessage({ text: safeText, tone })
-  }
+    setUiMessage({
+      text: safeText,
+      tone,
+      durationMs: Number.isFinite(durationMs) ? durationMs : undefined,
+    })
+  }, [])
 
   useEffect(() => {
-    if (!authReady || !session?.user?.id || isPaidMember || freeUserLockNudgeShownRef.current) return
+    if (!session?.user?.id) {
+      freeUserLockNudgeShownRef.current = false
+    }
+  }, [session?.user?.id])
+
+  useEffect(() => {
+    if (!authReady || !session?.user?.id) return
+    // user_profiles などを読むまで isPaidMember が false になりうるため、ロード完了後だけ判定する
+    if (currentUserProfile === undefined) return
+    if (!displayProfileResolved) return
+    if (isPaidMember || freeUserLockNudgeShownRef.current) return
     freeUserLockNudgeShownRef.current = true
     showUiMessage('税引後配当の表示と追加買いの詳細計算はプレミアム限定です。', 'premium')
-  }, [authReady, isPaidMember, session?.user?.id])
+  }, [authReady, currentUserProfile, displayProfileResolved, isPaidMember, session?.user?.id])
 
   useEffect(() => {
     captureReferralFromUrl(location.search || '')
@@ -234,10 +288,17 @@ const App = () => {
 
   useEffect(() => {
     if (!session?.user?.id) return
-    claimPendingReferralAttribution().catch(() => {})
-    // 기존 가입자는 auth 트리거 이전이라 referral_codes가 없음 → RPC로 1회 발급
-    fetchMyReferralCode().catch(() => {})
-    backfillSignupAttributionIfEmpty(supabase, session.user.id).catch(() => {})
+    const userId = session.user.id
+    return scheduleIdleTask(() => {
+      import('./lib/referralApi')
+        .then(({ claimPendingReferralAttribution, fetchMyReferralCode }) => {
+          claimPendingReferralAttribution().catch(() => {})
+          // 기존 가입자는 auth 트리거 이전이라 referral_codes가 없음 → RPC로 1회 발급
+          fetchMyReferralCode().catch(() => {})
+        })
+        .catch(() => {})
+      backfillSignupAttributionIfEmpty(supabase, userId).catch(() => {})
+    }, { timeoutMs: 2500 })
   }, [session?.user?.id])
 
   useEffect(() => {
@@ -245,39 +306,25 @@ const App = () => {
     const load = async () => {
       if (!session?.user?.id) {
         if (alive) {
-          setAlertSummary({
-            insuranceExpiringSoon: 0,
-            pointExpiringSoonCount: 0,
-            budgetOver80Pct: false,
-            portfolioDropAlertCount: 0,
-          })
+          setAlertSummary(EMPTY_ALERT_SUMMARY)
         }
         return
       }
       try {
-        const [data, portfolioDropCountRes] = await Promise.all([
-          loadMyPageData(session.user.id),
-          loadUnreadPortfolioDropAlertCount(session.user.id).catch(() => ({ count: 0 })),
-        ])
+        const next = await loadMyPageAlertSummaryForNavbar(session.user.id)
         if (!alive) return
-        const next = {
-          ...buildMyPageAlertSummary(data),
-          portfolioDropAlertCount: Math.max(0, Number(portfolioDropCountRes?.count || 0)),
-        }
         setAlertSummary((prev) => (isSameAlertSummary(prev, next) ? prev : next))
       } catch {
         if (alive) {
-          setAlertSummary({
-            insuranceExpiringSoon: 0,
-            pointExpiringSoonCount: 0,
-            budgetOver80Pct: false,
-            portfolioDropAlertCount: 0,
-          })
+          setAlertSummary(EMPTY_ALERT_SUMMARY)
         }
       }
     }
-    load()
-    return () => { alive = false }
+    const cancelIdle = scheduleIdleTask(load, { timeoutMs: 1800 })
+    return () => {
+      alive = false
+      cancelIdle()
+    }
   }, [session?.user?.id])
 
   /** 家計の支出・予算保存後のみ MyPage から発火。保有資産・タブ遷移とは無関係。 */
@@ -285,15 +332,8 @@ const App = () => {
     const userId = session?.user?.id
     if (!userId) return
     const onBudgetRefresh = () => {
-      Promise.all([
-        loadMyPageData(userId),
-        loadUnreadPortfolioDropAlertCount(userId).catch(() => ({ count: 0 })),
-      ])
-        .then(([data, portfolioDropCountRes]) => {
-          const next = {
-            ...buildMyPageAlertSummary(data),
-            portfolioDropAlertCount: Math.max(0, Number(portfolioDropCountRes?.count || 0)),
-          }
+      loadMyPageAlertSummaryForNavbar(userId)
+        .then((next) => {
           setAlertSummary((prev) => (isSameAlertSummary(prev, next) ? prev : next))
         })
         .catch(() => {})
@@ -306,7 +346,8 @@ const App = () => {
     const userId = session?.user?.id
     if (!userId) return
     const onPortfolioAlertRefresh = () => {
-      loadUnreadPortfolioDropAlertCount(userId)
+      import('./lib/myPageApi')
+        .then(({ loadUnreadPortfolioDropAlertCount }) => loadUnreadPortfolioDropAlertCount(userId))
         .then((res) => {
           const nextCount = Math.max(0, Number(res?.count || 0))
           setAlertSummary((prev) => {
@@ -326,6 +367,7 @@ const App = () => {
 
     const syncWatchlists = async () => {
       try {
+        const { loadDbWatchlists } = await import('./lib/myPageApi')
         const { fund, product, available } = await loadDbWatchlists(userId)
         if (!available) return
 
@@ -337,7 +379,8 @@ const App = () => {
       }
     }
 
-    syncWatchlists()
+    const cancelIdle = scheduleIdleTask(syncWatchlists, { timeoutMs: 2200 })
+    return () => cancelIdle()
   }, [session?.user?.id])
 
   // 別タブで mm_fund_watchlist / ファンドウォッチが更新されたら DB から再同期（同一タブでは storage が飛ばない）
@@ -347,7 +390,8 @@ const App = () => {
     const onStorage = (e) => {
       if (e.storageArea !== window.localStorage) return
       if (e.key !== 'mm_fund_watchlist') return
-      loadDbWatchlists(uid)
+      import('./lib/myPageApi')
+        .then(({ loadDbWatchlists }) => loadDbWatchlists(uid))
         .then(({ fund, product, available }) => {
           if (!available) return
           setFundWatchlist(applyFundWatchlistPlanLimit(fund))
@@ -361,25 +405,33 @@ const App = () => {
 
   useEffect(() => {
     let mounted = true
+    const sessionUserIdRef = { current: null }
 
     const loadDisplayProfile = async (nextSession) => {
       if (!nextSession?.user?.id) {
-        if (mounted) setCurrentUserProfile(null)
+        if (mounted) {
+          setCurrentUserProfile(null)
+          setDisplayProfileResolved(true)
+        }
         return
       }
 
       const cacheKey = `mm_user_profile:${nextSession.user.id}`
+      let hasWarmCache = false
       try {
         const cached = localStorage.getItem(cacheKey)
         if (cached && mounted) {
           const parsed = JSON.parse(cached)
           if (parsed?.id === nextSession.user.id && parsed?.displayName) {
             setCurrentUserProfile(parsed)
+            hasWarmCache = true
           }
         }
       } catch {
         // ignore cache parse errors
       }
+
+      if (mounted && !hasWarmCache) setDisplayProfileResolved(false)
 
       const { data: profile } = await supabase
         .from('user_profiles')
@@ -398,7 +450,8 @@ const App = () => {
           const oRisk = String(meta?.onboarding_risk_tolerance || '').trim()
           const oHorizon = String(meta?.onboarding_investment_horizon || '').trim()
           const onboardingComplete = Boolean(oAsset && oRisk && oHorizon)
-          const nowIso = new Date().toISOString()
+          const consentFromMeta = meta?.consent_acknowledged === true
+          const signupAttrProfile = getSignupAttributionForProfile()
           const upsertPayload = {
             user_id: nextSession.user.id,
             full_name: String(meta?.full_name || '').trim() || null,
@@ -406,11 +459,12 @@ const App = () => {
             phone: String(meta?.phone || '').trim() || null,
             marketing_opt_in: Boolean(meta?.marketing_opt_in),
             event_coupon_opt_in: Boolean(meta?.event_coupon_opt_in),
-            consent_acknowledged_at: nowIso,
+            consent_acknowledged_at: consentFromMeta ? new Date().toISOString() : null,
             onboarding_asset_mix: oAsset || null,
             onboarding_risk_tolerance: oRisk || null,
             onboarding_investment_horizon: oHorizon || null,
-            onboarding_answers_at: onboardingComplete ? nowIso : null,
+            onboarding_answers_at: onboardingComplete ? new Date().toISOString() : null,
+            ...signupAttrProfile,
           }
           const { data: backfilled, error: backfillErr } = await supabase
             .from('user_profiles')
@@ -423,23 +477,33 @@ const App = () => {
         }
       }
 
-      // Some users already have a profile row from earlier flows but without consent timestamp.
-      // Since signup step enforces legal agreement, backfill consent once to avoid duplicate prompt.
-      if (effectiveProfile && !effectiveProfile?.consent_acknowledged_at) {
-        try {
-          const nowIso = new Date().toISOString()
-          const { data: patched, error: patchErr } = await supabase
-            .from('user_profiles')
-            .upsert({
-              user_id: nextSession.user.id,
-              consent_acknowledged_at: nowIso,
-            }, { onConflict: 'user_id' })
-            .select('*')
-            .single()
-          if (!patchErr && patched) effectiveProfile = patched
-        } catch {
-          // ignore and continue; user may still be routed to complete-profile if patch fails
+      // Do not auto-set consent — Google OAuth and legacy users must confirm on /complete-profile.
+
+      const premiumUntilTs = effectiveProfile?.premium_until
+        ? new Date(effectiveProfile.premium_until).getTime()
+        : NaN
+      const premiumUntilActive =
+        Number.isFinite(premiumUntilTs) && premiumUntilTs > Date.now()
+
+      let hasActivePremiumEntitlement = false
+      try {
+        const { data: entRows, error: entErr } = await supabase
+          .from('user_premium_entitlements')
+          .select('status,current_period_end')
+          .eq('user_id', nextSession.user.id)
+          .eq('status', 'active')
+
+        if (!entErr && Array.isArray(entRows)) {
+          const now = Date.now()
+          hasActivePremiumEntitlement = entRows.some((r) => {
+            const end = r?.current_period_end
+            if (end == null || end === '') return true
+            const t = new Date(end).getTime()
+            return Number.isFinite(t) && t > now
+          })
         }
+      } catch {
+        // table missing / RLS — ignore (plan_tier / metadata のみで判定)
       }
 
       const metadataPlan = String(
@@ -461,48 +525,152 @@ const App = () => {
         || effectiveProfile?.is_premium
         || effectiveProfile?.prime_member
       )
-      const planTier = profilePlan || metadataPlan || (isProfilePrime ? 'prime' : 'free')
+      let planTier = profilePlan || metadataPlan || (isProfilePrime ? 'prime' : 'free')
+      // plan_tier が明示的に free でもフラグのみ立っているケースを救済（DB と hasPremium の整合）
+      const ptEarly = String(planTier || '').toLowerCase()
+      if (isProfilePrime && (!ptEarly || ptEarly === 'free')) {
+        planTier = 'prime'
+      }
+      const ptForEntitlement = String(planTier || '').toLowerCase()
+      if ((hasActivePremiumEntitlement || premiumUntilActive)
+        && (!ptForEntitlement || ptForEntitlement === 'free')) {
+        planTier = 'premium'
+      }
       const emailLower = String(nextSession.user?.email || '').trim().toLowerCase()
-      const forcedPremiumPlanTier = PREMIUM_EMAIL_ALLOWLIST.has(emailLower) ? 'prime' : planTier
+      let forcedPremiumPlanTier = PREMIUM_EMAIL_ALLOWLIST.has(emailLower) ? 'prime' : planTier
+      let premiumTrialEndsAt = effectiveProfile?.premium_trial_ends_at ?? null
+      if (PREMIUM_ENTITLEMENT_DENY_EMAILS.has(emailLower)) {
+        forcedPremiumPlanTier = 'free'
+        premiumTrialEndsAt = null
+      }
 
-      const displayName = effectiveProfile?.nickname
+      const profileNickname = String(effectiveProfile?.nickname || '').trim()
+      const metaNickname = String(nextSession.user?.user_metadata?.nickname || '').trim()
+      const hasRequiredNickname = Boolean(profileNickname || metaNickname)
+
+      const displayName = profileNickname
+        || metaNickname
         || effectiveProfile?.full_name
-        || nextSession.user?.user_metadata?.nickname
         || nextSession.user?.user_metadata?.full_name
         || (nextSession.user.email ? nextSession.user.email.split('@')[0] : 'Member')
+
+      const courtesyPremiumGiftActive = isCourtesyPremiumGiftActive({
+        premiumUntil: effectiveProfile?.premium_until,
+        premiumTrialEndsAt,
+        hasBillingEntitlement: hasActivePremiumEntitlement,
+        planTier: forcedPremiumPlanTier,
+      })
 
       const normalized = {
         id: nextSession.user.id,
         email: nextSession.user.email || '',
         displayName,
+        hasRequiredNickname,
         planTier: forcedPremiumPlanTier,
         consentAcknowledgedAt: effectiveProfile?.consent_acknowledged_at ?? null,
+        premiumTrialEndsAt,
+        premiumUntil: effectiveProfile?.premium_until ?? null,
+        courtesyPremiumGiftActive,
       }
 
-      if (mounted) setCurrentUserProfile(normalized)
+      if (mounted) {
+        setCurrentUserProfile(normalized)
+        setDisplayProfileResolved(true)
+      }
       localStorage.setItem(cacheKey, JSON.stringify(normalized))
+
+      if (
+        mounted
+        && courtesyPremiumGiftActive
+        && shouldShowCourtesyThanksOnLogin(nextSession.user.id, effectiveProfile?.premium_until)
+      ) {
+        markCourtesyThanksShown(nextSession.user.id, effectiveProfile?.premium_until)
+        window.setTimeout(() => {
+          showUiMessage(
+            buildCourtesyThanksMessage(effectiveProfile?.premium_until),
+            'premium',
+            5200,
+          )
+        }, 450)
+      }
     }
 
     const init = async () => {
       const { data } = await supabase.auth.getSession()
       if (!mounted) return
       const nextSession = data?.session ?? null
+      sessionUserIdRef.current = nextSession?.user?.id ?? null
       setSession(nextSession)
-      await loadDisplayProfile(nextSession)
       setAuthReady(true)
+      await loadDisplayProfile(nextSession)
     }
     init()
 
-    const { data: authListener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      setSession(nextSession ?? null)
-      setCurrentUserProfile(undefined)
-      loadDisplayProfile(nextSession ?? null)
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      const nextUserId = nextSession?.user?.id ?? null
+      const prevUserId = sessionUserIdRef.current
+
+      if (event === 'SIGNED_OUT') {
+        clearFundListPageSessionStorage()
+        clearFundOptimizerWatchsetsLocal()
+        sessionUserIdRef.current = null
+        setSession(null)
+        setCurrentUserProfile(null)
+        setDisplayProfileResolved(true)
+        return
+      }
+
+      // 別タブのトークン更新・初回 INITIAL_SESSION は init() で処理済み。プロフィールを消すと全画面が点滅する。
+      if (event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') {
+        return
+      }
+
+      // RequireAuth(/mypage など) がログイン直後に session=null のまま評価されて /login に戻されるのを防ぐ
+      if (event === 'SIGNED_IN') {
+        flushSync(() => {
+          setSession(nextSession ?? null)
+        })
+      } else {
+        setSession(nextSession ?? null)
+      }
+      sessionUserIdRef.current = nextUserId
+
+      const shouldReloadProfile =
+        event === 'SIGNED_IN'
+        || event === 'USER_UPDATED'
+        || nextUserId !== prevUserId
+
+      if (!shouldReloadProfile) return
+
+      setCurrentUserProfile((prev) => {
+        if (prev?.id === nextUserId && nextUserId) return prev
+        return undefined
+      })
+      void loadDisplayProfile(nextSession ?? null)
     })
 
     return () => {
       mounted = false
       authListener?.subscription?.unsubscribe()
     }
+  }, [])
+
+  useEffect(() => {
+    const onProfileUpdated = (event) => {
+      const detail = event?.detail && typeof event.detail === 'object' ? event.detail : {}
+      setCurrentUserProfile((prev) => {
+        if (!prev) return prev
+        return {
+          ...prev,
+          ...detail,
+          consentAcknowledgedAt: detail.consentAcknowledgedAt ?? prev.consentAcknowledgedAt,
+          hasRequiredNickname: detail.hasRequiredNickname ?? prev.hasRequiredNickname,
+          displayName: detail.displayName ?? prev.displayName,
+        }
+      })
+    }
+    window.addEventListener('mm-user-profile-updated', onProfileUpdated)
+    return () => window.removeEventListener('mm-user-profile-updated', onProfileUpdated)
   }, [])
 
   useEffect(() => {
@@ -545,12 +713,29 @@ const App = () => {
   }, [session?.user?.id])
 
   useEffect(() => {
-    if (!authReady || !session?.user?.id || !currentUserProfile) return
+    if (!authReady || !displayProfileResolved || !session?.user?.id || !currentUserProfile) return
     if (currentUserProfile.consentAcknowledgedAt) return
     const path = location.pathname
-    if (path === '/complete-profile' || path === '/login' || path === '/signup' || path === '/forgot-password' || path.startsWith('/reset-password') || path.startsWith('/legal')) return
-    navigate('/complete-profile', { replace: true })
-  }, [authReady, session?.user?.id, currentUserProfile?.consentAcknowledgedAt, location.pathname, navigate])
+    if (
+      path === '/complete-profile'
+      || path === '/login'
+      || path === '/signup'
+      || path === '/signup-complete'
+      || path === '/forgot-password'
+      || path.startsWith('/reset-password')
+      || path.startsWith('/legal')
+      || path.startsWith('/admin')
+    ) return
+    navigate('/complete-profile', { replace: true, state: { from: `${location.pathname}${location.search}` } })
+  }, [
+    authReady,
+    displayProfileResolved,
+    session?.user?.id,
+    currentUserProfile?.consentAcknowledgedAt,
+    location.pathname,
+    location.search,
+    navigate,
+  ])
 
   useEffect(() => {
     if (!authReady || !session?.user?.id || AUTH_IDLE_TIMEOUT_MS <= 0) return undefined
@@ -563,7 +748,10 @@ const App = () => {
         if (!alive) return
         try {
           await supabase.auth.signOut()
-          showUiMessage('一定時間操作がなかったため、自動でログアウトしました。', 'info')
+          showUiMessage(
+            `${AUTH_IDLE_TIMEOUT_MINUTES}分間操作がなかったため、自動でログアウトしました。`,
+            'info',
+          )
         } catch {
           // ignore transient auth errors
         }
@@ -603,8 +791,14 @@ const App = () => {
       redirectToLoginForWatchAction()
       return
     }
-    if (!fundWatchlist.some((item) => item.id === id) && FUND_ID_ALLOWLIST.size > 0 && !FUND_ID_ALLOWLIST.has(id)) return
-    const exists = fundWatchlist.some((item) => item.id === id)
+    const prev = fundWatchlistRef.current
+    const exists = prev.some((item) => item.id === id)
+    if (!exists && FUND_ID_ALLOWLIST.size > 0 && !FUND_ID_ALLOWLIST.has(id)) return
+    if (!exists && !isPaidMember && prev.length >= FREE_FUND_WATCHLIST_LIMIT) {
+      showUiMessage('無料プランのウォッチリストは3件までです。4件目以降はプレミアムで利用できます。', 'premium')
+      navigate('/premium')
+      return
+    }
     const sym = String(id || '')
     const label = meta.name || sym
     if (exists) {
@@ -624,15 +818,10 @@ const App = () => {
         product_type: 'fund',
       })
     }
-    if (!exists && !isPaidMember && fundWatchlist.length >= FREE_FUND_WATCHLIST_LIMIT) {
-      showUiMessage('無料プランのウォッチリストは3件までです。4件目以降はプレミアムで利用できます。', 'premium')
-      navigate('/premium')
-      return
-    }
-    const next = exists
-      ? fundWatchlist.filter((item) => item.id !== id)
+    const nextRaw = exists
+      ? prev.filter((item) => item.id !== id)
       : [
-        ...fundWatchlist,
+        ...prev,
         {
           id,
           name: label,
@@ -641,22 +830,26 @@ const App = () => {
           watchGroup: String(meta.watchGroup || '').trim(),
         },
       ]
-    setFundWatchlist(applyFundWatchlistPlanLimit(next))
+    const next = applyFundWatchlistPlanLimit(nextRaw)
+    fundWatchlistRef.current = next
+    setFundWatchlist(next)
 
     const userId = session?.user?.id
     if (!userId) return
-    const dbOp = exists
-      ? removeDbWatchlistItem({ userId, itemType: 'fund', itemId: id })
-      : addDbWatchlistItem({
-        userId,
-        itemType: 'fund',
-        itemId: id,
-        itemName: meta.name || String(id),
-        metadata: {
-          change: Number(meta.change || 0),
-          watchGroup: String(meta.watchGroup || '').trim(),
-        },
-      })
+    const dbOp = import('./lib/myPageApi').then(({ addDbWatchlistItem, removeDbWatchlistItem }) => (
+      exists
+        ? removeDbWatchlistItem({ userId, itemType: 'fund', itemId: id })
+        : addDbWatchlistItem({
+          userId,
+          itemType: 'fund',
+          itemId: id,
+          itemName: meta.name || String(id),
+          metadata: {
+            change: Number(meta.change || 0),
+            watchGroup: String(meta.watchGroup || '').trim(),
+          },
+        })
+    ))
     dbOp.catch((err) => console.warn('fund watchlist sync failed:', err?.message || err))
   }
 
@@ -664,20 +857,25 @@ const App = () => {
     const itemId = String(id || '').trim()
     if (!itemId || !session?.user?.id) return
     const nextGroup = String(meta.watchGroup || '').trim()
-    const existing = fundWatchlist.find((item) => item.id === itemId)
+    const prev = fundWatchlistRef.current
+    const existing = prev.find((item) => item.id === itemId)
     if (!existing) return
-    const next = fundWatchlist.map((item) => (item.id === itemId ? { ...item, watchGroup: nextGroup } : item))
-    setFundWatchlist(applyFundWatchlistPlanLimit(next))
-    addDbWatchlistItem({
-      userId: session.user.id,
-      itemType: 'fund',
-      itemId,
-      itemName: existing.name || itemId,
-      metadata: {
-        change: Number(existing.change || 0),
-        watchGroup: nextGroup,
-      },
-    }).catch((err) => console.warn('fund watchlist metadata sync failed:', err?.message || err))
+    const nextRaw = prev.map((item) => (item.id === itemId ? { ...item, watchGroup: nextGroup } : item))
+    const next = applyFundWatchlistPlanLimit(nextRaw)
+    fundWatchlistRef.current = next
+    setFundWatchlist(next)
+    import('./lib/myPageApi')
+      .then(({ addDbWatchlistItem }) => addDbWatchlistItem({
+        userId: session.user.id,
+        itemType: 'fund',
+        itemId,
+        itemName: existing.name || itemId,
+        metadata: {
+          change: Number(existing.change || 0),
+          watchGroup: nextGroup,
+        },
+      }))
+      .catch((err) => console.warn('fund watchlist metadata sync failed:', err?.message || err))
   }
 
   const toggleProductInterest = (id, meta = {}) => {
@@ -702,15 +900,17 @@ const App = () => {
 
     const userId = session?.user?.id
     if (!userId) return
-    const dbOp = exists
-      ? removeDbWatchlistItem({ userId, itemType: 'product', itemId: id })
-      : addDbWatchlistItem({
-        userId,
-        itemType: 'product',
-        itemId: id,
-        itemName: meta.name || String(id),
-        metadata: { provider: meta.provider || '', category: meta.category || '' },
-      })
+    const dbOp = import('./lib/myPageApi').then(({ addDbWatchlistItem, removeDbWatchlistItem }) => (
+      exists
+        ? removeDbWatchlistItem({ userId, itemType: 'product', itemId: id })
+        : addDbWatchlistItem({
+          userId,
+          itemType: 'product',
+          itemId: id,
+          itemName: meta.name || String(id),
+          metadata: { provider: meta.provider || '', category: meta.category || '' },
+        })
+    ))
     dbOp.catch((err) => console.warn('product interest sync failed:', err?.message || err))
   }
 
@@ -750,11 +950,20 @@ const App = () => {
         >
           <Route
             path="/"
-            element={<HomePage session={session} userProfile={currentUserProfile || null} alertSummary={alertSummary} />}
+            element={(
+              <HomePage
+                session={session}
+                authReady={authReady}
+                userProfile={currentUserProfile || null}
+                alertSummary={alertSummary}
+                showUiMessage={showUiMessage}
+              />
+            )}
           />
           <Route path="/news" element={<NewsPage session={session} />} />
           <Route path="/login" element={session ? <Navigate to={safeRouteReturnPath} replace /> : <Login />} />
           <Route path="/signup" element={session ? <Navigate to={safeRouteReturnPath} replace /> : <Signup />} />
+          <Route path="/signup-complete" element={<SignupComplete />} />
           <Route path="/complete-profile" element={session ? <CompleteProfilePage /> : <Navigate to="/login" state={{ from: '/complete-profile' }} replace />} />
           <Route path="/forgot-password" element={session ? <Navigate to="/" replace /> : <ForgotPassword />} />
           <Route path="/reset-password" element={<ResetPassword />} />
@@ -764,6 +973,7 @@ const App = () => {
             element={
               <FundPage
                 user={session?.user || null}
+                userProfile={currentUserProfile || null}
                 myWatchlist={fundWatchlist.map((item) => item.id)}
                 toggleWatchlist={toggleFundWatchlist}
                 onUiMessage={showUiMessage}
@@ -776,6 +986,7 @@ const App = () => {
             element={
               <FundComparePage
                 user={session?.user || null}
+                userProfile={currentUserProfile || null}
                 myWatchlist={fundWatchlist.map((item) => item.id)}
                 toggleWatchlist={toggleFundWatchlist}
                 onUiMessage={showUiMessage}
@@ -784,16 +995,27 @@ const App = () => {
           />
           <Route
             path="/funds/:id"
-            element={
+            element={(
               <RequireAuth>
                 <FundDetailPage
                   myWatchlist={fundWatchlist.map((item) => item.id)}
                   toggleWatchlist={toggleFundWatchlist}
                 />
               </RequireAuth>
-            }
+            )}
           />
-          <Route path="/stocks" element={<StockPage user={session?.user || null} />} />
+          <Route
+            path="/stocks"
+            element={(
+              <ErrorBoundary
+                boundaryScope="stock_page"
+                heading="株式ページの表示中に問題が発生しました"
+                hint="通信状況を確認のうえ、再読み込みするか、しばらく時間をおいて再度お試しください。"
+              >
+                <StockPage user={session?.user || null} />
+              </ErrorBoundary>
+            )}
+          />
           <Route
             path="/products"
             element={<ProductsPage />}
@@ -803,9 +1025,33 @@ const App = () => {
             element={<Navigate to="/products" replace />}
           />
           <Route path="/market-indicator" element={<MarketPage session={session} />} />
-          <Route path="/insights" element={<InsightPage />} />
-          <Route path="/insights/:slug" element={<InsightPage />} />
-          <Route path="/lounge" element={<LoungePage bootUser={currentUserProfile} authReady={authReady} />} />
+          <Route
+            path="/insights/category/:categoryKey"
+            element={<InsightPage session={session} />}
+          />
+          <Route
+            path="/insights"
+            element={<InsightPage session={session} />}
+          />
+          <Route
+            path="/insights/:slug"
+            element={<InsightPage session={session} />}
+          />
+          <Route
+            path="/admin/insights-mock"
+            element={
+              <RequireAdmin>
+                <AdminIpGuard>
+                  <InsightResearchMockPage />
+                </AdminIpGuard>
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="/community"
+            element={<CommunityPage bootUser={currentUserProfile} authReady={authReady} />}
+          />
+          <Route path="/lounge" element={<Navigate to="/community" replace />} />
           <Route path="/academy" element={<NotFoundPage />} />
           <Route path="/prime" element={<Navigate to="/" replace />} />
           <Route
@@ -814,6 +1060,15 @@ const App = () => {
               <PremiumPage
                 session={session}
                 userProfile={currentUserProfile || null}
+              />
+            )}
+          />
+          <Route
+            path="/campaign/sns-2026"
+            element={(
+              <CampaignCp2026SnsSepPage
+                session={session}
+                onUiMessage={showUiMessage}
               />
             )}
           />
@@ -878,6 +1133,8 @@ const App = () => {
           <Route path="/faq" element={<FAQPage />} />
           <Route path="/about" element={<AboutPage />} />
           <Route path="/tools" element={<ToolsHubPage session={session} />} />
+          <Route path="/tools/nisa-etf-checklist" element={<NisaEtfChecklistPage />} />
+          <Route path="/nisa-etf-checklist" element={<Navigate to="/tools/nisa-etf-checklist" replace />} />
           <Route
             path="/admin"
             element={
@@ -892,7 +1149,7 @@ const App = () => {
         </Route>
       </Routes>
       {uiMessage?.text ? (
-        <div className="pointer-events-none fixed inset-x-0 top-[max(1rem,env(safe-area-inset-top))] z-[220] flex justify-center px-4">
+        <div className="pointer-events-none fixed inset-x-0 top-[calc(env(safe-area-inset-top,0px)+4.5rem)] z-[220] flex justify-center px-4">
           <div
             className={`pointer-events-auto max-w-xl rounded-2xl border px-4 py-3 shadow-xl backdrop-blur ${
               uiMessage.tone === 'premium'

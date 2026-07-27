@@ -101,10 +101,10 @@ async function fetchProfileNames(userIds) {
   if (userIds.length === 0) return new Map()
   const { data } = await supabase
     .from('user_profiles')
-    .select('user_id,nickname,full_name')
+    .select('user_id,nickname')
     .in('user_id', userIds)
   return new Map(
-    (data || []).map((row) => [row.user_id, row.nickname || row.full_name || 'Member'])
+    (data || []).map((row) => [row.user_id, String(row.nickname || '').trim() || 'Member'])
   )
 }
 

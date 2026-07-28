@@ -16,6 +16,16 @@ struct SupabaseRESTClient {
         self.anonKey = anonKey
     }
 
+    /// PostgREST `in.(...)` values with `.` or `,` must be double-quoted (e.g. `1329.T`).
+    static func inFilter(_ values: [String]) -> String {
+        let quoted = values.map { value -> String in
+            let escaped = value.replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "\"", with: "\\\"")
+            return "\"\(escaped)\""
+        }
+        return "in.(\(quoted.joined(separator: ",")))"
+    }
+
     func select<T: Decodable>(
         table: String,
         select: String = "*",

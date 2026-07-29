@@ -124,6 +124,26 @@ export async function fetchPublishedInsights(limit = 24) {
   }
 }
 
+/**
+ * Lightweight public catalog for community sidebar / discovery surfaces.
+ * Returns newest published insights (same source as fetchPublishedInsights).
+ */
+export async function fetchInsightPublicCatalog(limit = 6) {
+  const rows = await fetchPublishedInsights(limit)
+  return (rows || []).map((row) => {
+    const doc = row?.document && typeof row.document === 'object' ? row.document : {}
+    const admin = doc.admin && typeof doc.admin === 'object' ? doc.admin : {}
+    const hero = doc.hero && typeof doc.hero === 'object' ? doc.hero : {}
+    return {
+      id: row.id,
+      slug: row.slug,
+      pageTitle: row.pageTitle,
+      publishedAt: row.publishedAt,
+      categoryLabel: String(admin.categoryLabel || admin.category || hero.badge || '').trim() || null,
+    }
+  })
+}
+
 /** Admin: all rows */
 export async function fetchAllInsightsAdmin() {
   const { data, error } = await supabase

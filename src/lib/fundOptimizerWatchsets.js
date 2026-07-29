@@ -84,6 +84,19 @@ export const saveFundOptimizerWatchsets = (sets = []) => {
   window.localStorage.setItem(PRIMARY_STORAGE_KEY, JSON.stringify(sets))
 }
 
+/** Clear local optimizer sets on logout so the next account cannot inherit them. */
+export const clearFundOptimizerWatchsetsLocal = () => {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.removeItem(PRIMARY_STORAGE_KEY)
+    for (const key of LEGACY_STORAGE_KEYS) {
+      window.localStorage.removeItem(key)
+    }
+  } catch {
+    // ignore
+  }
+}
+
 // ── Supabase 읽기 ─────────────────────────────────────────────────────────────
 export const loadFundOptimizerWatchsetsFromDb = async (userId) => {
   if (!userId) return { data: null, available: false }

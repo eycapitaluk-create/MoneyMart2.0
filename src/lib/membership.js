@@ -25,6 +25,28 @@ export function isPaidPlanTier(planTierLower) {
   return PREMIUM_PLAN_KEYS.some((key) => k.includes(key))
 }
 
+/**
+ * Client-side premium gate used by App/Navbar.
+ * planTier is already normalized by App profile loading (billing flags /
+ * premium_until / allowlist → paid tier). Active trials also count.
+ */
+export function hasPremiumEntitlement({
+  planTier,
+  premiumTrialEndsAt = null,
+  premiumUntil = null,
+  now = Date.now(),
+} = {}) {
+  if (isPaidPlanTier(planTier)) return true
+
+  const trialTs = premiumTrialEndsAt ? new Date(premiumTrialEndsAt).getTime() : NaN
+  if (Number.isFinite(trialTs) && trialTs > now) return true
+
+  const untilTs = premiumUntil ? new Date(premiumUntil).getTime() : NaN
+  if (Number.isFinite(untilTs) && untilTs > now) return true
+
+  return false
+}
+
 export function isPaidFromUserProfileRow(profile) {
   if (!profile) return false
   if (profile.is_premium || profile.is_prime || profile.prime_member) return true

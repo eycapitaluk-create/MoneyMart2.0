@@ -223,24 +223,16 @@ const materializeRecurringExpenses = async (userId) => {
   }
 }
 
-export const loadMyPageData = async (userId) => {
-  if (!userId) {
-    return {
-      expenses: [],
-      insurances: [],
-      assetPositions: [],
-      pointAccounts: [],
-      profile: { annual_income_manwon: 0, budget_target_yen: 0 },
-      available: false,
-    }
-  }
+const emptyMyPagePayload = (available = false) => ({
+  expenses: [],
+  insurances: [],
+  assetPositions: [],
+  pointAccounts: [],
+  profile: { annual_income_manwon: 0, budget_target_yen: 0, loan_remaining_yen: 0 },
+  available,
+})
 
-  try {
-    await materializeRecurringExpenses(userId)
-  } catch (error) {
-    if (!isMissingRecurringColumnError(error)) throw error
-  }
-
+const fetchMyPageCoreRows = async (userId) => {
   const [expenseRes, insuranceRes, assetRes, pointRes, profileRes] = await Promise.all([
     fetchExpensesRows(userId),
     supabase
@@ -267,16 +259,7 @@ export const loadMyPageData = async (userId) => {
 
   const firstErr = expenseRes.error || insuranceRes.error || assetRes.error || pointRes.error || profileRes.error
   if (firstErr) {
-    if (isTableMissingError(firstErr)) {
-      return {
-        expenses: [],
-        insurances: [],
-        assetPositions: [],
-        pointAccounts: [],
-        profile: { annual_income_manwon: 0, budget_target_yen: 0, loan_remaining_yen: 0 },
-        available: false,
-      }
-    }
+    if (isTableMissingError(firstErr)) return emptyMyPagePayload(false)
     throw firstErr
   }
 
@@ -288,6 +271,27 @@ export const loadMyPageData = async (userId) => {
     profile: profileRes.data || { annual_income_manwon: 0, budget_target_yen: 0, loan_remaining_yen: 0 },
     available: true,
   }
+}
+
+export const loadMyPageData = async (userId) => {
+  if (!userId) return emptyMyPagePayload(false)
+
+  try {
+    await materializeRecurringExpenses(userId)
+  } catch (error) {
+    if (!isMissingRecurringColumnError(error)) throw error
+  }
+
+  return fetchMyPageCoreRows(userId)
+}
+
+/**
+ * Navbar alert summary path — reads expenses/budget without materializing
+ * recurring children (avoids racing MyPage materialization).
+ */
+export const loadNavbarAlertMyPageData = async (userId) => {
+  if (!userId) return emptyMyPagePayload(false)
+  return fetchMyPageCoreRows(userId)
 }
 
 export const addExpense = async (payload) => {

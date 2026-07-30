@@ -6,6 +6,7 @@ import {
   FREE_OWNED_DISTINCT_FUND_SYMBOLS,
 } from './membership'
 import { decodeHtmlEntities } from './fundDisplayUtils'
+import { fetchAllRowsPaged } from './supabasePaginate'
 
 const TABLE_NOT_FOUND_CODE = '42P01'
 const COLUMN_NOT_FOUND_CODE = '42703'
@@ -518,17 +519,27 @@ export const loadOwnedAssetPositions = async (userId) => {
     return { ownedStocks: [], ownedFunds: [], available: false }
   }
 
+  // Paginate past PostgREST's silent ~1000-row cap. A truncated load followed by
+  // replaceOwnedAssetPositions would permanently delete lots/funds past page 1.
   const [stockRes, fundRes] = await Promise.all([
-    supabase
-      .from('user_owned_stocks')
-      .select('lot_id,symbol,buy_date,buy_price,qty,created_at')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: true }),
-    supabase
-      .from('user_owned_funds')
-      .select('fund_row_id,symbol,name,invest_amount,buy_date,buy_price,created_at')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: true }),
+    fetchAllRowsPaged((from, to) =>
+      supabase
+        .from('user_owned_stocks')
+        .select('lot_id,symbol,buy_date,buy_price,qty,created_at')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: true })
+        .order('lot_id', { ascending: true })
+        .range(from, to),
+    ),
+    fetchAllRowsPaged((from, to) =>
+      supabase
+        .from('user_owned_funds')
+        .select('fund_row_id,symbol,name,invest_amount,buy_date,buy_price,created_at')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: true })
+        .order('fund_row_id', { ascending: true })
+        .range(from, to),
+    ),
   ])
 
   const firstErr = stockRes.error || fundRes.error
@@ -720,10 +731,16 @@ export const replaceOwnedAssetPositions = async ({
   if (shouldWriteStocks) {
     tasks.push(
       runSerializedOwnedStocksReplace(async () => {
-        const { data: backupStockRows, error: backupStockErr } = await supabase
-          .from('user_owned_stocks')
-          .select('user_id,lot_id,symbol,buy_date,buy_price,qty')
-          .eq('user_id', userId)
+        // Backup must also paginate; a truncated backup cannot restore lots past page 1.
+        const { data: backupStockRows, error: backupStockErr } = await fetchAllRowsPaged((from, to) =>
+          supabase
+            .from('user_owned_stocks')
+            .select('user_id,lot_id,symbol,buy_date,buy_price,qty')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: true })
+            .order('lot_id', { ascending: true })
+            .range(from, to),
+        )
         if (backupStockErr) throw backupStockErr
         const backupStocks = Array.isArray(backupStockRows) ? backupStockRows : []
 
@@ -770,10 +787,15 @@ export const replaceOwnedAssetPositions = async ({
   if (shouldWriteFunds) {
     tasks.push(
       runSerializedOwnedFundsReplace(async () => {
-        const { data: backupFundRows, error: backupFundErr } = await supabase
-          .from('user_owned_funds')
-          .select('user_id,fund_row_id,symbol,name,invest_amount,buy_date,buy_price')
-          .eq('user_id', userId)
+        const { data: backupFundRows, error: backupFundErr } = await fetchAllRowsPaged((from, to) =>
+          supabase
+            .from('user_owned_funds')
+            .select('user_id,fund_row_id,symbol,name,invest_amount,buy_date,buy_price')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: true })
+            .order('fund_row_id', { ascending: true })
+            .range(from, to),
+        )
         if (backupFundErr) throw backupFundErr
         const backupFunds = Array.isArray(backupFundRows) ? backupFundRows : []
 

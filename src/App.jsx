@@ -20,6 +20,11 @@ import {
   markCourtesyThanksShown,
   shouldShowCourtesyThanksOnLogin,
 } from './lib/premiumCourtesyGrant'
+import {
+  FREE_FUND_WATCHLIST_LIMIT,
+  applyFundWatchlistPlanLimit as limitFundWatchlistForPlan,
+  shouldSyncFundWatchlistFromDb,
+} from './lib/fundWatchlistPlanLimit'
 
 const ALERT_EXPIRY_DAYS = 30
 const EMPTY_ALERT_SUMMARY = {
@@ -147,8 +152,6 @@ const PREMIUM_EMAIL_ALLOWLIST = new Set([
 ])
 /** QA용: 강제 프리미엄·프리트라이얼 없음（DB에 trial/prime이 있어도 무료 UX로 고정） */
 const PREMIUM_ENTITLEMENT_DENY_EMAILS = new Set(['test@moneymart.co.jp'])
-const FREE_FUND_WATCHLIST_LIMIT = 3
-
 /** /funds/compare?ids=… は /etf-compare へ統合するが、クエリ（ids/weights）を落とさない */
 function FundsCompareRedirect() {
   const { search, hash } = useLocation()
@@ -195,10 +198,9 @@ const App = () => {
       }),
   )
 
-  const applyFundWatchlistPlanLimit = (items = []) => {
-    const normalized = normalizeFundWatchlist(items)
-    return isPaidMember ? normalized : normalized.slice(0, FREE_FUND_WATCHLIST_LIMIT)
-  }
+  const applyFundWatchlistPlanLimit = (items = [], paid = isPaidMember) => (
+    limitFundWatchlistForPlan(normalizeFundWatchlist(items), Boolean(paid))
+  )
 
   const [fundWatchlist, setFundWatchlist] = useState(() => {
     try {
@@ -363,8 +365,11 @@ const App = () => {
 
   useEffect(() => {
     const userId = session?.user?.id
-    if (!userId) return
+    // Wait for entitlement resolution — otherwise paid users are capped to 3 funds
+    // by a stale isPaidMember=false closure for the rest of the session.
+    if (!shouldSyncFundWatchlistFromDb({ userId, displayProfileResolved })) return undefined
 
+    const paid = isPaidMember
     const syncWatchlists = async () => {
       try {
         const { loadDbWatchlists } = await import('./lib/myPageApi')
@@ -372,7 +377,7 @@ const App = () => {
         if (!available) return
 
         // DB is source of truth to prevent legacy local items from reappearing.
-        setFundWatchlist(applyFundWatchlistPlanLimit(fund))
+        setFundWatchlist(applyFundWatchlistPlanLimit(fund, paid))
         setProductInterests(Array.isArray(product) ? product : [])
       } catch (err) {
         console.warn('watchlist sync failed:', err?.message || err)
@@ -381,12 +386,13 @@ const App = () => {
 
     const cancelIdle = scheduleIdleTask(syncWatchlists, { timeoutMs: 2200 })
     return () => cancelIdle()
-  }, [session?.user?.id])
+  }, [session?.user?.id, displayProfileResolved, isPaidMember])
 
   // 別タブで mm_fund_watchlist / ファンドウォッチが更新されたら DB から再同期（同一タブでは storage が飛ばない）
   useEffect(() => {
     const uid = session?.user?.id
-    if (!uid) return undefined
+    if (!shouldSyncFundWatchlistFromDb({ userId: uid, displayProfileResolved })) return undefined
+    const paid = isPaidMember
     const onStorage = (e) => {
       if (e.storageArea !== window.localStorage) return
       if (e.key !== 'mm_fund_watchlist') return
@@ -394,14 +400,14 @@ const App = () => {
         .then(({ loadDbWatchlists }) => loadDbWatchlists(uid))
         .then(({ fund, product, available }) => {
           if (!available) return
-          setFundWatchlist(applyFundWatchlistPlanLimit(fund))
+          setFundWatchlist(applyFundWatchlistPlanLimit(fund, paid))
           setProductInterests(Array.isArray(product) ? product : [])
         })
         .catch((err) => console.warn('watchlist cross-tab sync failed:', err?.message || err))
     }
     window.addEventListener('storage', onStorage)
     return () => window.removeEventListener('storage', onStorage)
-  }, [session?.user?.id])
+  }, [session?.user?.id, displayProfileResolved, isPaidMember])
 
   useEffect(() => {
     let mounted = true

@@ -75,7 +75,7 @@ test('truncated existingDates (old .limit(500) behavior) re-plans duplicate week
 
 test('planRecurringChildRows inserts only missing future periods once', () => {
   const startIso = '2026-07-01'
-  const endIso = endOfMonthAfterMonthsIso(1, new Date('2026-08-02T00:00:00Z'))
+  const endIso = '2026-09-30'
   const template = {
     id: 'tpl-monthly',
     user_id: 'user-2',
@@ -94,13 +94,12 @@ test('planRecurringChildRows inserts only missing future periods once', () => {
     template,
     existingDates: existing,
   })
-  // endIso for Aug 2026 + 1 month ahead from fixed now in endOfMonthAfterMonthsIso call above
-  // is 2026-09-30, so Sep 1 should be planned once.
   assert.deepEqual(
     planned.map((r) => r.spent_on),
     ['2026-09-01'],
   )
   assert.equal(planned[0].recurring_parent_id, 'tpl-monthly')
+  assert.equal(endOfMonthAfterMonthsIso(0, new Date(Date.UTC(2026, 7, 15))).slice(0, 7), '2026-08')
 })
 
 test('fetchAllSpentOnDatesPaged merges pages past a 500-row silent cap', async () => {

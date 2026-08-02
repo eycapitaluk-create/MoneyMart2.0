@@ -152,7 +152,7 @@ const materializeRecurringExpenses = async (userId) => {
     const endIso = endIsoRaw && endIsoRaw < materializeUntilIso ? endIsoRaw : materializeUntilIso
     if (!startIso || startIso > endIso) continue
 
-    // Must page exhaustively: a hard .limit(500) silently drops older spent_on dates, and the
+    // Must page exhaustively: a hard 500-row cap silently drops older spent_on dates, and the
     // planner then re-inserts duplicates for weekly templates that span ~10+ years.
     const existingPaged = await fetchAllSpentOnDatesPaged(
       (from, to) => supabase

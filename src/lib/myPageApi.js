@@ -6,6 +6,15 @@ import {
   FREE_OWNED_DISTINCT_FUND_SYMBOLS,
 } from './membership'
 import { decodeHtmlEntities } from './fundDisplayUtils'
+import {
+  RECURRING_TYPES,
+  RECURRING_MATERIALIZE_AHEAD_MONTHS,
+  RECURRING_EXISTING_DATES_PAGE_SIZE,
+  toIsoDate,
+  endOfMonthAfterMonthsIso,
+  fetchAllSpentOnDatesPaged,
+  planRecurringChildRows,
+} from './recurringExpenseMaterialize'
 
 const TABLE_NOT_FOUND_CODE = '42P01'
 const COLUMN_NOT_FOUND_CODE = '42703'
@@ -13,8 +22,6 @@ const COLUMN_NOT_FOUND_CODE = '42703'
 const PG_UNIQUE_VIOLATION = '23505'
 const EXPENSE_SELECT_WITH_RECURRING = 'id,spent_on,category,merchant,amount,payment_method,notes,created_at,recurring_type,recurring_anchor_day,recurring_start_on,recurring_end_on,recurring_parent_id'
 const EXPENSE_SELECT_LEGACY = 'id,spent_on,category,merchant,amount,payment_method,notes,created_at'
-const RECURRING_TYPES = ['weekly', 'monthly']
-const RECURRING_MATERIALIZE_AHEAD_MONTHS = 1
 const DEFAULT_REVOLVING_PROFILE = {
   balance_yen: 0,
   apr: 15,
@@ -83,42 +90,6 @@ const omitExpenseRecurringKeys = (row) => {
   return o
 }
 
-const toIsoDate = (value) => {
-  const base = String(value || '').slice(0, 10)
-  if (!base) return ''
-  const date = new Date(`${base}T00:00:00Z`)
-  if (Number.isNaN(date.getTime())) return ''
-  return date.toISOString().slice(0, 10)
-}
-
-const addDaysIso = (isoDate, days) => {
-  const base = new Date(`${isoDate}T00:00:00Z`)
-  if (Number.isNaN(base.getTime())) return ''
-  base.setUTCDate(base.getUTCDate() + days)
-  return base.toISOString().slice(0, 10)
-}
-
-const daysInMonthUtc = (year, monthIndex0) => {
-  return new Date(Date.UTC(year, monthIndex0 + 1, 0)).getUTCDate()
-}
-
-const addMonthsAnchoredIso = (isoDate, months, anchorDay = 1) => {
-  const base = new Date(`${isoDate}T00:00:00Z`)
-  if (Number.isNaN(base.getTime())) return ''
-  const y = base.getUTCFullYear()
-  const m = base.getUTCMonth()
-  const next = new Date(Date.UTC(y, m + months, 1))
-  const dim = daysInMonthUtc(next.getUTCFullYear(), next.getUTCMonth())
-  next.setUTCDate(Math.max(1, Math.min(Number(anchorDay || 1), dim)))
-  return next.toISOString().slice(0, 10)
-}
-
-const endOfMonthAfterMonthsIso = (monthsAhead = 0) => {
-  const now = new Date()
-  const end = new Date(now.getFullYear(), now.getMonth() + Number(monthsAhead || 0) + 1, 0)
-  return end.toISOString().slice(0, 10)
-}
-
 const fetchExpensesRows = async (userId) => {
   const latest = await supabase
     .from('user_expenses')
@@ -181,40 +152,28 @@ const materializeRecurringExpenses = async (userId) => {
     const endIso = endIsoRaw && endIsoRaw < materializeUntilIso ? endIsoRaw : materializeUntilIso
     if (!startIso || startIso > endIso) continue
 
-    const existingRes = await supabase
-      .from('user_expenses')
-      .select('spent_on')
-      .eq('user_id', userId)
-      .or(`id.eq.${tpl.id},recurring_parent_id.eq.${tpl.id}`)
-      .limit(500)
-    if (existingRes.error) throw existingRes.error
+    // Must page exhaustively: a hard .limit(500) silently drops older spent_on dates, and the
+    // planner then re-inserts duplicates for weekly templates that span ~10+ years.
+    const existingPaged = await fetchAllSpentOnDatesPaged(
+      (from, to) => supabase
+        .from('user_expenses')
+        .select('spent_on')
+        .eq('user_id', userId)
+        .or(`id.eq.${tpl.id},recurring_parent_id.eq.${tpl.id}`)
+        .order('spent_on', { ascending: true })
+        .range(from, to),
+      { pageSize: RECURRING_EXISTING_DATES_PAGE_SIZE },
+    )
+    if (existingPaged.error) throw existingPaged.error
 
-    const existingDates = new Set((existingRes.data || []).map((row) => String(row.spent_on || '').slice(0, 10)).filter(Boolean))
-    let cursor = startIso
-    const anchorDay = Number(tpl.recurring_anchor_day || startIso.slice(8, 10) || 1)
-    let guard = 0
-
-    while (guard < 1000) {
-      guard += 1
-      cursor = type === 'weekly' ? addDaysIso(cursor, 7) : addMonthsAnchoredIso(cursor, 1, anchorDay)
-      if (!cursor || cursor > endIso) break
-      if (existingDates.has(cursor)) continue
-      pendingRows.push({
-        user_id: userId,
-        spent_on: cursor,
-        category: tpl.category || 'その他',
-        merchant: tpl.merchant || '',
-        amount: Math.max(0, Number(tpl.amount || 0)),
-        payment_method: tpl.payment_method || '',
-        notes: tpl.notes || '',
-        recurring_type: null,
-        recurring_anchor_day: null,
-        recurring_start_on: null,
-        recurring_end_on: null,
-        recurring_parent_id: tpl.id,
-      })
-      existingDates.add(cursor)
-    }
+    const planned = planRecurringChildRows({
+      type,
+      startIso,
+      endIso,
+      template: { ...tpl, user_id: userId },
+      existingDates: existingPaged.dates,
+    })
+    pendingRows.push(...planned)
   }
 
   if (pendingRows.length > 0) {

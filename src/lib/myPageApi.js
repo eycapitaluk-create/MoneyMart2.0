@@ -6,6 +6,11 @@ import {
   FREE_OWNED_DISTINCT_FUND_SYMBOLS,
 } from './membership'
 import { decodeHtmlEntities } from './fundDisplayUtils'
+import {
+  EXPENSE_LEDGER_LIMIT,
+  RECURRING_TEMPLATE_FETCH_LIMIT,
+  mergeExpenseLedgerRows,
+} from './expenseLedgerLoad'
 
 const TABLE_NOT_FOUND_CODE = '42P01'
 const COLUMN_NOT_FOUND_CODE = '42703'
@@ -126,9 +131,28 @@ const fetchExpensesRows = async (userId) => {
     .eq('user_id', userId)
     .order('spent_on', { ascending: false })
     .order('created_at', { ascending: false })
-    .limit(300)
+    .limit(EXPENSE_LEDGER_LIMIT)
 
-  if (!latest.error) return latest
+  if (!latest.error) {
+    // Recurring templates often keep an old spent_on (series start). With weekly
+    // materialization the child count easily exceeds EXPENSE_LEDGER_LIMIT, so the
+    // parent drops out of the newest-N window and the UI can no longer edit/end it.
+    const templates = await supabase
+      .from('user_expenses')
+      .select(EXPENSE_SELECT_WITH_RECURRING)
+      .eq('user_id', userId)
+      .in('recurring_type', RECURRING_TYPES)
+      .is('recurring_parent_id', null)
+      .limit(RECURRING_TEMPLATE_FETCH_LIMIT)
+    if (templates.error) {
+      if (isMissingRecurringColumnError(templates.error)) return latest
+      return templates
+    }
+    return {
+      data: mergeExpenseLedgerRows(latest.data || [], templates.data || []),
+      error: null,
+    }
+  }
   if (!isMissingRecurringColumnError(latest.error)) return latest
 
   const legacy = await supabase
@@ -137,7 +161,7 @@ const fetchExpensesRows = async (userId) => {
     .eq('user_id', userId)
     .order('spent_on', { ascending: false })
     .order('created_at', { ascending: false })
-    .limit(300)
+    .limit(EXPENSE_LEDGER_LIMIT)
 
   if (legacy.error) return legacy
   return {

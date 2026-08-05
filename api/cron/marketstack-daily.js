@@ -500,11 +500,25 @@ export default async function handler(req, res) {
     const etfUpper = new Set(
       ETF_SYMBOLS_FROM_XLSX.map((s) => String(s || '').toUpperCase())
     )
-    const allSymbols = rawAllSymbols
+    const isBlockedSymbol = (s) => (
+      MARKETSTACK_BLOCKLIST_EXPORT.has(s)
+      || MARKETSTACK_TEMP_BAD_SYMBOLS.has(String(s || '').toUpperCase())
+      || isEU(s)
+      || isUK(s)
+    )
+    const isJpEtfSymbol = (s) => (
+      etfUpper.has(String(s || '').toUpperCase())
+      && String(s || '').toUpperCase().endsWith('.T')
+    )
+    const jpEtfSymbols = uniqueSymbols(overrideSymbols.length > 0 ? overrideSymbols : ETF_SYMBOLS_FROM_XLSX)
+      .filter((s) => !isBlockedSymbol(s))
+      .filter(isJpEtfSymbol)
+    const stockSymbols = rawAllSymbols
       .filter((s) => !MARKETSTACK_BLOCKLIST_EXPORT.has(s))
       .filter((s) => !etfUpper.has(String(s || '').toUpperCase()))
       .filter((s) => !MARKETSTACK_TEMP_BAD_SYMBOLS.has(String(s || '').toUpperCase()))
       .filter((s) => !isEU(s) && !isUK(s))
+    const allSymbols = jpEtfOnly ? jpEtfSymbols : stockSymbols
 
     const { data: monthJobs, error: monthJobsErr } = await supabase
       .from('ingestion_jobs')
@@ -522,15 +536,19 @@ export default async function handler(req, res) {
     )
     const monthRemainingRequests = Math.max(0, monthlyBudgetRequests - monthUsedRequests)
 
+    const tier1Pool = jpEtfOnly
+      ? jpEtfSymbols
+      : tier1Symbols
+        .filter((s) => !MARKETSTACK_BLOCKLIST_EXPORT.has(s))
+        .filter((s) => !etfUpper.has(String(s || '').toUpperCase()))
+        .filter((s) => !isEU(s) && !isUK(s))
     const allSymbolsRequests = estimateChunkCount(allSymbols)
-    const tier1Requests = estimateChunkCount(tier1Symbols)
-    const tier1Pool = tier1Symbols
-      .filter((s) => !MARKETSTACK_BLOCKLIST_EXPORT.has(s))
-      .filter((s) => !etfUpper.has(String(s || '').toUpperCase()))
-      .filter((s) => !isEU(s) && !isUK(s))
+    const tier1Requests = estimateChunkCount(tier1Pool)
     const etfUpperStatic = new Set(ETF_SYMBOLS_FROM_XLSX.map((s) => String(s).toUpperCase()))
     const jpTier1List = tier1Pool.filter((s) => (s || '').toUpperCase().endsWith('.T'))
-    const jpEtfTier1List = jpTier1List.filter((s) => etfUpperStatic.has(String(s).toUpperCase()))
+    const jpEtfTier1List = jpEtfOnly
+      ? tier1Pool
+      : jpTier1List.filter((s) => etfUpperStatic.has(String(s).toUpperCase()))
     const usTier1List = tier1Pool.filter((s) => isUSSymbol(s))
     const jpTier1Requests = estimateChunkCount(jpTier1List)
     const jpEtfTier1Requests = estimateChunkCount(jpEtfTier1List)

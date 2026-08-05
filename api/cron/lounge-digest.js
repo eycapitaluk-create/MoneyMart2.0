@@ -262,16 +262,17 @@ export default async function handler(req, res) {
       },
     ]
 
-    const { error: delErr } = await adminClient
-      .from('news_manual')
-      .delete()
-      .eq('bucket', DIGEST_BUCKET)
-    if (delErr) throw delErr
-
     const { error: insErr } = await adminClient
       .from('news_manual')
       .insert(rows)
     if (insErr) throw insErr
+
+    const { error: delErr } = await adminClient
+      .from('news_manual')
+      .delete()
+      .eq('bucket', DIGEST_BUCKET)
+      .lt('updated_at', nowIso)
+    if (delErr) throw delErr
 
     return sendJson(res, 200, { ok: true, slot, inserted: rows.length })
   } catch (error) {

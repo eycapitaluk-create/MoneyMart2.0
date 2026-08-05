@@ -11,3 +11,51 @@ comment on column public.user_profiles.subscription_tier is '例: free, premium�
 comment on column public.user_profiles.is_premium is 'Stripe 等で有効な課金があるとき true';
 comment on column public.user_profiles.stripe_customer_id is 'Stripe Customer id（任意）';
 comment on column public.user_profiles.stripe_subscription_id is 'Stripe Subscription id（任意）';
+
+create or replace function public.prevent_client_entitlement_profile_changes()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if auth.role() = 'service_role' then
+    return new;
+  end if;
+
+  if exists (
+    select 1
+    from public.user_roles ur
+    where ur.user_id = auth.uid()
+      and ur.role = 'admin'
+  ) then
+    return new;
+  end if;
+
+  if tg_op = 'INSERT' then
+    if coalesce(new.is_premium, false) <> false
+      or new.subscription_tier is not null
+      or new.stripe_customer_id is not null
+      or new.stripe_subscription_id is not null
+    then
+      raise exception 'Only admins or service role may set billing entitlement fields';
+    end if;
+    return new;
+  end if;
+
+  if coalesce(new.is_premium, false) is distinct from coalesce(old.is_premium, false)
+    or new.subscription_tier is distinct from old.subscription_tier
+    or new.stripe_customer_id is distinct from old.stripe_customer_id
+    or new.stripe_subscription_id is distinct from old.stripe_subscription_id
+  then
+    raise exception 'Only admins or service role may change billing entitlement fields';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_prevent_client_entitlement_profile_changes on public.user_profiles;
+create trigger trg_prevent_client_entitlement_profile_changes
+before insert or update on public.user_profiles
+for each row execute function public.prevent_client_entitlement_profile_changes();

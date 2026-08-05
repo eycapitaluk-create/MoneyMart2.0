@@ -17,6 +17,11 @@ function bufferRequest(req) {
   })
 }
 
+function isActiveSubscriptionStatus(status) {
+  const s = String(status || '')
+  return s === 'active' || s === 'trialing'
+}
+
 async function setUserPremium(admin, userId, active, extra = {}) {
   const uid = String(userId || '').trim()
   if (!uid) return
@@ -33,7 +38,7 @@ async function setUserPremium(admin, userId, active, extra = {}) {
     .maybeSingle()
   if (selErr) {
     console.error('stripe-webhook profile select', selErr)
-    return
+    throw selErr
   }
   if (existing?.user_id) {
     const { error } = await admin
@@ -45,7 +50,10 @@ async function setUserPremium(admin, userId, active, extra = {}) {
         ...(extra.stripe_subscription_id != null ? { stripe_subscription_id: extra.stripe_subscription_id } : {}),
       })
       .eq('user_id', uid)
-    if (error) console.error('stripe-webhook profile update', error)
+    if (error) {
+      console.error('stripe-webhook profile update', error)
+      throw error
+    }
   } else {
     const ins = {
       user_id: uid,
@@ -57,7 +65,102 @@ async function setUserPremium(admin, userId, active, extra = {}) {
       ...(extra.stripe_subscription_id != null ? { stripe_subscription_id: extra.stripe_subscription_id } : {}),
     }
     const { error } = await admin.from('user_profiles').insert(ins)
-    if (error) console.error('stripe-webhook profile insert', error)
+    if (error) {
+      console.error('stripe-webhook profile insert', error)
+      throw error
+    }
+  }
+}
+
+async function getTrackedSubscriptionId(admin, userId) {
+  const uid = String(userId || '').trim()
+  if (!uid) return ''
+  const { data, error } = await admin
+    .from('user_profiles')
+    .select('stripe_subscription_id')
+    .eq('user_id', uid)
+    .maybeSingle()
+  if (error) {
+    console.error('stripe-webhook profile subscription select', error)
+    throw error
+  }
+  return String(data?.stripe_subscription_id || '').trim()
+}
+
+/**
+ * Apply a verified Stripe webhook event to user_profiles premium state.
+ * Exported for focused regression tests.
+ *
+ * Guards against Stripe's out-of-order / retried deliveries:
+ * - checkout.session.completed only grants when the subscription is still active/trialing
+ * - inactive subscription.updated / subscription.deleted are ignored when they do not match
+ *   the currently tracked stripe_subscription_id (a newer subscription may already be active)
+ */
+export async function applyStripeWebhookEvent(admin, stripe, event) {
+  switch (event.type) {
+    case 'checkout.session.completed': {
+      const session = event.data.object
+      if (session.mode !== 'subscription') {
+        return { applied: false, reason: 'not_subscription' }
+      }
+      const userId = String(session.metadata?.supabase_user_id || session.client_reference_id || '').trim()
+      const customerId = String(session.customer || '').trim()
+      const subId = String(session.subscription || '').trim()
+      if (!userId || !subId) {
+        return { applied: false, reason: 'missing_ids' }
+      }
+
+      const sub = await stripe.subscriptions.retrieve(subId)
+      if (!isActiveSubscriptionStatus(sub?.status)) {
+        return { applied: false, reason: 'subscription_not_active' }
+      }
+      const subUser = String(sub?.metadata?.supabase_user_id || '').trim()
+      if (subUser && subUser !== userId) {
+        return { applied: false, reason: 'user_mismatch' }
+      }
+
+      await setUserPremium(admin, userId, true, {
+        ...(customerId ? { stripe_customer_id: customerId } : {}),
+        stripe_subscription_id: subId,
+      })
+      return { applied: true, reason: 'checkout_granted' }
+    }
+    case 'customer.subscription.updated': {
+      const sub = event.data.object
+      const userId = String(sub.metadata?.supabase_user_id || '').trim()
+      if (!userId) return { applied: false, reason: 'missing_user' }
+      const subId = String(sub.id || '').trim()
+      const active = isActiveSubscriptionStatus(sub.status)
+
+      if (!active) {
+        const tracked = await getTrackedSubscriptionId(admin, userId)
+        if (tracked && subId && tracked !== subId) {
+          return { applied: false, reason: 'stale_inactive_event' }
+        }
+      }
+
+      await setUserPremium(admin, userId, active, {
+        stripe_customer_id: String(sub.customer || '').trim() || undefined,
+        stripe_subscription_id: subId || undefined,
+      })
+      return { applied: true, reason: active ? 'subscription_activated' : 'subscription_deactivated' }
+    }
+    case 'customer.subscription.deleted': {
+      const sub = event.data.object
+      const userId = String(sub.metadata?.supabase_user_id || '').trim()
+      const subId = String(sub.id || '').trim()
+      if (!userId) return { applied: false, reason: 'missing_user' }
+
+      const tracked = await getTrackedSubscriptionId(admin, userId)
+      if (tracked && subId && tracked !== subId) {
+        return { applied: false, reason: 'stale_delete_event' }
+      }
+
+      await setUserPremium(admin, userId, false, {})
+      return { applied: true, reason: 'subscription_deleted' }
+    }
+    default:
+      return { applied: false, reason: 'ignored_event' }
   }
 }
 
@@ -112,42 +215,7 @@ export default async function handler(req, res) {
   const admin = createClient(supabaseUrl, serviceKey)
 
   try {
-    switch (event.type) {
-      case 'checkout.session.completed': {
-        const session = event.data.object
-        if (session.mode !== 'subscription') break
-        const userId = String(session.metadata?.supabase_user_id || session.client_reference_id || '').trim()
-        const customerId = String(session.customer || '').trim()
-        const subId = String(session.subscription || '').trim()
-        if (userId) {
-          await setUserPremium(admin, userId, true, {
-            ...(customerId ? { stripe_customer_id: customerId } : {}),
-            ...(subId ? { stripe_subscription_id: subId } : {}),
-          })
-        }
-        break
-      }
-      case 'customer.subscription.updated': {
-        const sub = event.data.object
-        const userId = String(sub.metadata?.supabase_user_id || '').trim()
-        if (!userId) break
-        const status = String(sub.status || '')
-        const active = status === 'active' || status === 'trialing'
-        await setUserPremium(admin, userId, active, {
-          stripe_customer_id: String(sub.customer || '').trim() || undefined,
-          stripe_subscription_id: String(sub.id || '').trim() || undefined,
-        })
-        break
-      }
-      case 'customer.subscription.deleted': {
-        const sub = event.data.object
-        const userId = String(sub.metadata?.supabase_user_id || '').trim()
-        if (userId) await setUserPremium(admin, userId, false, {})
-        break
-      }
-      default:
-        break
-    }
+    await applyStripeWebhookEvent(admin, stripe, event)
   } catch (err) {
     console.error('stripe-webhook handler', err?.message || err)
     res.statusCode = 500

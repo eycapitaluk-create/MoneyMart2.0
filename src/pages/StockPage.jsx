@@ -8,7 +8,12 @@ import {
   ComposedChart, BarChart, Area, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Cell,
 } from 'recharts'
 import { supabase } from '../lib/supabase'
-import { loadStockWatchlistSymbolsFromDb, replaceStockWatchlistInDb } from '../lib/myPageApi'
+import {
+  loadStockWatchlistSymbolsFromDb,
+  replaceStockWatchlistInDb,
+  removeStockWatchlistSymbolInDb,
+  upsertStockWatchlistSymbolInDb,
+} from '../lib/myPageApi'
 import { bumpStockWatchlistSyncVersion } from '../lib/watchlistSyncEvents'
 import { trackAnalyticsEvent } from '../lib/analytics'
 import { REGION_BY_SYMBOL } from '../data/mockStocks'
@@ -1596,6 +1601,8 @@ export default function StockPage({ user = null }) {
       promptLogin()
       return
     }
+    // Avoid delete-then-insert from the empty pre-hydration state, which would wipe the cloud list.
+    if (!watchlistHydratedRef.current) return
     setWatchlist((prev) => {
       const wasOn = prev.includes(id)
       const sym = String(meta.symbol || meta.code || id)
@@ -1620,9 +1627,11 @@ export default function StockPage({ user = null }) {
       const next = wasOn ? prev.filter((x) => x !== id) : [...prev, id]
       const uid = user?.id ?? null
       if (uid) {
-        replaceStockWatchlistInDb({ userId: uid, symbols: next })
-          .then(() => bumpStockWatchlistSyncVersion())
-          .catch(() => {})
+        const symbol = String(id).trim().toUpperCase()
+        const op = wasOn
+          ? removeStockWatchlistSymbolInDb({ userId: uid, symbol })
+          : upsertStockWatchlistSymbolInDb({ userId: uid, symbol, itemName: label })
+        op.then(() => bumpStockWatchlistSyncVersion()).catch(() => {})
       } else {
         try {
           window.localStorage.setItem(getStockWatchlistStorageKey(null), JSON.stringify(next))

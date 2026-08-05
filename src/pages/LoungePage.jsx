@@ -1,1 +1,1 @@
-export { default } from './InsightsPage'
+export { default } from './LoungePageV2'

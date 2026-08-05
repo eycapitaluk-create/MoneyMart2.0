@@ -74,12 +74,23 @@ const MARKETSTACK_TEMP_BAD_SYMBOLS = new Set([
 // Always keep MarketPage heatmap/Fear&Greed symbols in tier1 so they are not dropped in budget mode.
 // EU/UK 제외 (EUNK.DE 등)
 const REQUIRED_HEATMAP_SYMBOLS = [
-  'ACWI', 'MCHI', '1329.T', '1475.T', 'AAXJ', 'EEM', 'IVV', 'IJH', 'IJR',
+  'ACWI', 'MCHI', '1329.T', '1475.T', '1478.T', '2854.T', 'AAXJ', 'EEM', 'IVV', 'IJH', 'IJR',
   'IYE', 'IYM', 'IYJ', 'IYC', 'IYK', 'IYH', 'IYF', 'IYW', 'IYZ', 'IDU', 'IYR',
   'TLT', '2621.T',
   // 원자재 (Commodities via ETF proxies, fallback when commodity_daily_prices empty)
   'GLD', 'SLV', 'CPER', 'USO',
 ]
+const REQUIRED_HEATMAP_SYMBOL_UPPER = new Set(
+  REQUIRED_HEATMAP_SYMBOLS.map((s) => String(s || '').toUpperCase())
+)
+const ETF_SYMBOL_UPPER = new Set(
+  ETF_SYMBOLS_FROM_XLSX.map((s) => String(s || '').toUpperCase())
+)
+
+export const shouldIncludeAutomaticMarketstackEtf = (symbol) => {
+  const normalized = String(symbol || '').toUpperCase()
+  return !ETF_SYMBOL_UPPER.has(normalized) || REQUIRED_HEATMAP_SYMBOL_UPPER.has(normalized)
+}
 
 const toDateOnly = (value) => {
   if (!value) return null
@@ -490,19 +501,16 @@ export default async function handler(req, res) {
     const tier1Symbols = uniqueSymbols([
       ...(configuredTier1Symbols.length >= 500 ? configuredTier1Symbols : baseFallbackSymbols),
       ...REQUIRED_HEATMAP_SYMBOLS,
-      // ETF는 자동 크론 수집 대상에서 제외한다.
-      // (JP/US 개별주식만 수집)
+      // Keep only the ETF proxies required by live market widgets in automatic runs.
+      // Other ETFs remain excluded to preserve the request budget.
     ])
     const tier2Symbols = uniqueSymbols(configuredTier2Symbols)
     const rawAllSymbols = overrideSymbols.length > 0 ? overrideSymbols : uniqueSymbols([...tier1Symbols, ...tier2Symbols])
     const isEU = (s) => /\.(PA|AS|DE|MI|MC|SW|BR|OL|HE|IR|CO|SE|ST|VX)$/i.test(s || '')
     const isUK = (s) => (s || '').endsWith('.L')
-    const etfUpper = new Set(
-      ETF_SYMBOLS_FROM_XLSX.map((s) => String(s || '').toUpperCase())
-    )
     const allSymbols = rawAllSymbols
       .filter((s) => !MARKETSTACK_BLOCKLIST_EXPORT.has(s))
-      .filter((s) => !etfUpper.has(String(s || '').toUpperCase()))
+      .filter((s) => shouldIncludeAutomaticMarketstackEtf(s))
       .filter((s) => !MARKETSTACK_TEMP_BAD_SYMBOLS.has(String(s || '').toUpperCase()))
       .filter((s) => !isEU(s) && !isUK(s))
 
@@ -526,9 +534,9 @@ export default async function handler(req, res) {
     const tier1Requests = estimateChunkCount(tier1Symbols)
     const tier1Pool = tier1Symbols
       .filter((s) => !MARKETSTACK_BLOCKLIST_EXPORT.has(s))
-      .filter((s) => !etfUpper.has(String(s || '').toUpperCase()))
+      .filter((s) => shouldIncludeAutomaticMarketstackEtf(s))
       .filter((s) => !isEU(s) && !isUK(s))
-    const etfUpperStatic = new Set(ETF_SYMBOLS_FROM_XLSX.map((s) => String(s).toUpperCase()))
+    const etfUpperStatic = ETF_SYMBOL_UPPER
     const jpTier1List = tier1Pool.filter((s) => (s || '').toUpperCase().endsWith('.T'))
     const jpEtfTier1List = jpTier1List.filter((s) => etfUpperStatic.has(String(s).toUpperCase()))
     const usTier1List = tier1Pool.filter((s) => isUSSymbol(s))

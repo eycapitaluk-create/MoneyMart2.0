@@ -408,11 +408,20 @@ export const refreshMarketNewsManualFeed = async () => {
   })
 
   const buckets = ['market_ticker', 'market_pickup', 'fund_pickup', 'daily_brief']
-  const { error: deleteErr } = await adminClient.from('news_manual').delete().in('bucket', buckets)
-  if (deleteErr) return { status: 500, body: { ok: false, error: deleteErr.message } }
+  const { data: existingRows, error: selectErr } = await adminClient
+    .from('news_manual')
+    .select('id')
+    .in('bucket', buckets)
+  if (selectErr) return { status: 500, body: { ok: false, error: selectErr.message } }
 
   const { error: insertErr } = await adminClient.from('news_manual').insert(rows)
   if (insertErr) return { status: 500, body: { ok: false, error: insertErr.message } }
+
+  const oldIds = (existingRows || []).map((row) => row.id).filter((id) => id != null)
+  if (oldIds.length > 0) {
+    const { error: deleteErr } = await adminClient.from('news_manual').delete().in('id', oldIds)
+    if (deleteErr) return { status: 500, body: { ok: false, error: deleteErr.message } }
+  }
 
   return {
     status: 200,

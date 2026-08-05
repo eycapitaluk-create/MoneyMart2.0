@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { replaceNewsManualBucketRows } from './newsManualReplace'
 
 const DIGEST_BUCKET = 'community_digest'
 
@@ -89,16 +90,7 @@ export async function generateAndSaveLoungeDigest() {
   const summary = buildDigestText(posts || [])
   const rows = toRows(slot, summary, posts || [])
 
-  const { error: deleteErr } = await supabase
-    .from('news_manual')
-    .delete()
-    .eq('bucket', DIGEST_BUCKET)
-  if (deleteErr) throw deleteErr
-
-  const { error: insertErr } = await supabase
-    .from('news_manual')
-    .insert(rows)
-  if (insertErr) throw insertErr
+  await replaceNewsManualBucketRows(supabase, DIGEST_BUCKET, rows)
 
   return { slot, summary, count: rows.length }
 }

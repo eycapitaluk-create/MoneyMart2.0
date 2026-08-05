@@ -47,16 +47,20 @@ export default async function handler(req, res) {
       'post_engagements',
     ]
 
-    for (const table of cleanupTables) {
-      const { error } = await admin.from(table).delete().eq('user_id', userId)
-      if (error && !String(error.message || '').toLowerCase().includes('does not exist')) {
-        // best-effort cleanup: continue to account deletion even if one table fails
-      }
-    }
-
+    // Delete the identity first. Most user-owned tables cascade from auth.users,
+    // and no personal data should be removed if Auth rejects the deletion.
     const { error: deleteErr } = await admin.auth.admin.deleteUser(userId)
     if (deleteErr) {
       return res.status(500).json({ ok: false, error: deleteErr.message || 'Failed to delete user' })
+    }
+
+    // Retain explicit cleanup for older deployments whose tables may predate
+    // the auth.users foreign keys.
+    for (const table of cleanupTables) {
+      const { error } = await admin.from(table).delete().eq('user_id', userId)
+      if (error && !String(error.message || '').toLowerCase().includes('does not exist')) {
+        // best-effort cleanup after the account is irreversibly deleted
+      }
     }
 
     return res.status(200).json({ ok: true })

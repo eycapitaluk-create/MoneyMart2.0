@@ -75,6 +75,10 @@ import { ETF_LIST_FROM_XLSX } from '../data/etfListFromXlsx'
 import { getEtfJpName } from '../data/etfJpNameMap'
 import { decodeHtmlEntities, normalizeFundDisplayName } from '../lib/fundDisplayUtils'
 import { lookupDividendStockBySymbol, fetchStockFromSupabase } from '../data/dividendStockUniverse'
+import {
+  normalizeAutofillDividendRows,
+  planDividendWatchlistLoad,
+} from '../lib/dividendAutofillNormalize'
 import { fetchNewsManualData, getFallbackNewsData } from '../lib/newsManualClient'
 import PortfolioDiagnosisPanel from '../components/mypage/PortfolioDiagnosisPanel'
 import {
@@ -12417,83 +12421,6 @@ export default function MyPage({
   const [divStockLookupLoading, setDivStockLookupLoading] = useState(false)
   const divStockIdFetchRef = useRef(null)
 
-  const normalizeAutofillDividendRows = useCallback((rows, detail) => {
-    const normalized = [...new Map(
-      (Array.isArray(rows) ? rows : [])
-        .map((d) => ({
-          month: Math.min(12, Math.max(1, Number(d?.month) || 1)),
-          amount: Math.max(0, Number(d?.amount) || 0),
-        }))
-        .filter((d) => Number.isFinite(d.month))
-        .sort((a, b) => a.month - b.month)
-        .map((d) => [d.month, d]),
-    ).values()]
-    if (normalized.length === 0) return []
-
-    // US quarterly names can drift by month boundary in source history (e.g. 1/2, 4/5, 7/8, 10/11).
-    // For auto-fill only, collapse 6-8 month "double-month quarter" patterns to one month per quarter.
-    const cat = String(detail?.category || '')
-    const isUs = cat.includes('米国') || String(detail?.symbol || '').toUpperCase().match(/^[A-Z]/)
-    if (!isUs || normalized.length < 6 || normalized.length > 8) return normalized
-
-    const byQuarter = [[], [], [], []]
-    normalized.forEach((row) => {
-      const q = Math.floor((row.month - 1) / 3)
-      if (q >= 0 && q <= 3) byQuarter[q].push(row)
-    })
-    const looksLikeQuarterDrift = byQuarter.every((qRows) => qRows.length >= 1 && qRows.length <= 2) && byQuarter.some((qRows) => qRows.length === 2)
-    if (!looksLikeQuarterDrift) return normalized
-
-    const quarterlyRows = byQuarter
-      .map((qRows) => qRows.sort((a, b) => Number(b.amount || 0) - Number(a.amount || 0))[0])
-      .filter(Boolean)
-      .sort((a, b) => a.month - b.month)
-    if (quarterlyRows.length !== 4) return quarterlyRows
-
-    // For quarter-boundary drift patterns, use current run-rate amount across quarters
-    // so users don't get stale mixed values like 0.5875/0.675/0.745 in one schedule.
-    const runRate = Math.max(...quarterlyRows.map((r) => Number(r.amount || 0)), 0)
-    const normalizedRunRate = Math.round(runRate * 10000) / 10000
-    return quarterlyRows.map((r) => ({ ...r, amount: normalizedRunRate }))
-  }, [])
-
-  const toCanonicalDividendRows = useCallback((rows) => (
-    [...new Map(
-      (Array.isArray(rows) ? rows : [])
-        .map((d) => ({
-          month: Math.min(12, Math.max(1, Number(d?.month) || 1)),
-          amount: Math.round(Math.max(0, Number(d?.amount) || 0) * 10000) / 10000,
-        }))
-        .filter((d) => Number.isFinite(d.month))
-        .sort((a, b) => a.month - b.month)
-        .map((d) => [d.month, d]),
-    ).values()]
-  ), [])
-
-  const normalizePersistedDividendItem = useCallback((row) => {
-    if (!row) return { item: row, changed: false }
-    const stockId = String(row.stock_id || '').trim().toUpperCase()
-    if (!stockId) return { item: row, changed: false }
-    const detail = getDividendCalendarDetailRecord(stockId)
-      || lookupDividendStockBySymbol(stockId)
-      || { symbol: stockId, category: row.sector || '' }
-    const normalizedDividends = normalizeAutofillDividendRows(row.dividends, detail)
-    if (normalizedDividends.length === 0) {
-      return { item: { ...row, stock_id: stockId }, changed: false }
-    }
-    const before = JSON.stringify(toCanonicalDividendRows(row.dividends))
-    const after = JSON.stringify(toCanonicalDividendRows(normalizedDividends))
-    const changed = before !== after
-    return {
-      item: {
-        ...row,
-        stock_id: stockId,
-        dividends: changed ? normalizedDividends : row.dividends,
-      },
-      changed,
-    }
-  }, [normalizeAutofillDividendRows, toCanonicalDividendRows])
-
   const applyDividendMasterDetail = useCallback((detail) => {
     if (!detail) return
     if (detail.name) setNewDivStockName(detail.name)
@@ -12503,11 +12430,13 @@ export default function MyPage({
     else if (cat.includes('日本')) setNewDivStockFlag('🇯🇵')
     else setNewDivStockFlag('🌏')
     if (Number(detail.price) > 0) setNewDivStockPrice(Number(detail.price))
+    // Autofill-only: collapse/run-rate applies when picking master data for the add form,
+    // never when loading already-saved user_dividend_watchlist rows.
     const normalizedDividends = normalizeAutofillDividendRows(detail.dividends, detail)
     if (normalizedDividends.length > 0) {
       setNewDivDividends(normalizedDividends)
     }
-  }, [normalizeAutofillDividendRows])
+  }, [])
 
   const handlePickDividendDetailRecord = useCallback((detail) => {
     if (!detail?.symbol) return
@@ -12611,30 +12540,15 @@ export default function MyPage({
     if (activeTab !== 'dividend' || !user?.id) return
     setDividendLoading(true)
     loadDividendWatchlist(user.id)
-      .then(async (rows) => {
-        const loadedRows = Array.isArray(rows) ? rows : []
-        const normalized = loadedRows.map((row) => normalizePersistedDividendItem(row))
-        const normalizedRows = normalized.map((r) => r.item)
-        const changedRows = normalized.filter((r) => r.changed).map((r) => r.item)
-        setDividendWatchlist(normalizedRows)
-
-        if (changedRows.length === 0) return
-        try {
-          await Promise.all(changedRows.map((item) => upsertDividendWatchlistItem(user.id, item)))
-          setDividendStatus(`既存データを自動補正しました（${changedRows.length}件）`)
-          try {
-            window.dispatchEvent(new CustomEvent('mm-dividend-bell-refresh'))
-          } catch {
-            // ignore
-          }
-          setTimeout(() => setDividendStatus(''), 2800)
-        } catch {
-          // Keep UI responsive even if a subset of auto-fixes fail.
-        }
+      .then((rows) => {
+        // Display stored schedules as-is. Never upsert autofill collapse/run-rate on load —
+        // that permanently drops months and rewrites amounts without user consent.
+        const { displayRows } = planDividendWatchlistLoad(rows)
+        setDividendWatchlist(displayRows)
       })
       .catch(() => setDividendStatus('データの読み込みに失敗しました'))
       .finally(() => setDividendLoading(false))
-  }, [activeTab, normalizePersistedDividendItem, user?.id])
+  }, [activeTab, user?.id])
 
   const handleDividendQtyChange = async (stockId, newQty) => {
     setDividendWatchlist(prev => prev.map(r => r.stock_id === stockId ? { ...r, qty: newQty } : r))

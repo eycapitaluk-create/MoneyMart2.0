@@ -62,6 +62,11 @@ import {
   acknowledgePortfolioDropAlerts,
 } from '../lib/myPageApi'
 import { shouldReloadStockWatchlistFromStorageKey } from '../lib/watchlistSyncEvents'
+import {
+  OWNED_ASSET_HYDRATE_BUSY_MESSAGE,
+  canMutateOwnedAssets,
+  mergeLocalOwnedRowsOntoDb,
+} from '../lib/ownedAssetHydrateSafety'
 import { rankRefinanceOffers } from '../lib/refinanceCalc'
 import { evaluateTaxShield } from '../lib/taxShieldCalc'
 import { evaluateCashFlowOptimizer } from '../lib/cashFlowOptimizerCalc'
@@ -10804,6 +10809,10 @@ export default function MyPage({
       ownedFundCloudTouchedRef.current = false
       userExplicitlyClearedAllStocksRef.current = false
       userExplicitlyClearedAllFundsRef.current = false
+      setOwnedStocks([])
+      setOwnedFunds([])
+      setOwnedStockItems([])
+      setOwnedFundItems([])
     }
     const syncFromDb = async () => {
       if (!user?.id) {
@@ -10817,7 +10826,8 @@ export default function MyPage({
         return
       }
       try {
-        // Keep current snapshot while syncing to avoid value flicker.
+        // Snapshot is kept for the same user; user switches clear lots above so
+        // in-flight edits cannot merge the previous account into the next one.
         setOwnedAssetDbReady(false)
         const result = await loadOwnedAssetPositions(user.id)
         if (!alive) return
@@ -10826,10 +10836,18 @@ export default function MyPage({
         const dbFunds = normalizeOwnedFundAmounts(result?.ownedFunds || [])
         const hasDbData = dbStocks.length > 0 || dbFunds.length > 0
         if (hasDbData) {
-          setOwnedStocks(dbStocks)
-          setOwnedFunds(dbFunds)
-          userExplicitlyClearedAllStocksRef.current = false
-          userExplicitlyClearedAllFundsRef.current = false
+          setOwnedStocks((prev) => (
+            ownedStockCloudTouchedRef.current
+              ? mergeLocalOwnedRowsOntoDb(dbStocks, prev, 'lotId')
+              : dbStocks
+          ))
+          setOwnedFunds((prev) => (
+            ownedFundCloudTouchedRef.current
+              ? mergeLocalOwnedRowsOntoDb(dbFunds, prev, 'id')
+              : dbFunds
+          ))
+          if (!ownedStockCloudTouchedRef.current) userExplicitlyClearedAllStocksRef.current = false
+          if (!ownedFundCloudTouchedRef.current) userExplicitlyClearedAllFundsRef.current = false
           clearLegacyOwnedPortfolioLocalStorage(user.id)
           setDataStatus('保有株式・ファンドをクラウドから同期しました。')
         } else {
@@ -11135,6 +11153,11 @@ export default function MyPage({
   }
 
   const handleAddOwnedStock = async ({ symbol, buyDate, buyPrice, qty }) => {
+    if (!canMutateOwnedAssets({ userId: user?.id, ownedAssetDbReady })) {
+      setDataStatus(OWNED_ASSET_HYDRATE_BUSY_MESSAGE)
+      return false
+    }
+    const expectedUserId = user?.id ?? null
     const input = String(symbol || '').trim()
     if (!input) {
       setDataStatus('銘柄コードまたは会社名を入力してください。')
@@ -11165,6 +11188,7 @@ export default function MyPage({
         // Keep manual input path when price lookup fails.
       }
     }
+    if (lastOwnedSyncUserIdRef.current !== expectedUserId) return false
     userExplicitlyClearedAllStocksRef.current = false
     ownedStockCloudTouchedRef.current = true
     setOwnedStocks((prev) => [
@@ -11186,6 +11210,10 @@ export default function MyPage({
 
   const handleUpdateOwnedStock = (lotId, patch = {}) => {
     if (!lotId) return
+    if (!canMutateOwnedAssets({ userId: user?.id, ownedAssetDbReady })) {
+      setDataStatus(OWNED_ASSET_HYDRATE_BUSY_MESSAGE)
+      return
+    }
     ownedStockCloudTouchedRef.current = true
     setOwnedStocks((prev) => prev.map((item) => (
       item.lotId === lotId
@@ -11196,6 +11224,10 @@ export default function MyPage({
 
   const handleRemoveOwnedStock = (lotId) => {
     if (!lotId) return
+    if (!canMutateOwnedAssets({ userId: user?.id, ownedAssetDbReady })) {
+      setDataStatus(OWNED_ASSET_HYDRATE_BUSY_MESSAGE)
+      return
+    }
     ownedStockCloudTouchedRef.current = true
     setOwnedStocks((prev) => {
       const next = prev.filter((item) => item.lotId !== lotId)
@@ -11232,6 +11264,11 @@ export default function MyPage({
     }
   }
   const handleAddOwnedFund = async ({ symbol, investAmount, buyDate, buyPrice }) => {
+    if (!canMutateOwnedAssets({ userId: user?.id, ownedAssetDbReady })) {
+      setDataStatus(OWNED_ASSET_HYDRATE_BUSY_MESSAGE)
+      return false
+    }
+    const expectedUserId = user?.id ?? null
     const input = String(symbol || '').trim()
     if (!input) {
       setDataStatus('ファンドコードまたは名称を入力してください。')
@@ -11262,6 +11299,7 @@ export default function MyPage({
       setDataStatus('買付価格を入力するか、買付日を設定して終値を反映してください。')
       return false
     }
+    if (lastOwnedSyncUserIdRef.current !== expectedUserId) return false
     userExplicitlyClearedAllFundsRef.current = false
     ownedFundCloudTouchedRef.current = true
     setOwnedFunds((prev) => [
@@ -11281,6 +11319,10 @@ export default function MyPage({
 
   const handleUpdateOwnedFund = (id, patch = {}) => {
     if (!id) return
+    if (!canMutateOwnedAssets({ userId: user?.id, ownedAssetDbReady })) {
+      setDataStatus(OWNED_ASSET_HYDRATE_BUSY_MESSAGE)
+      return
+    }
     ownedFundCloudTouchedRef.current = true
     setOwnedFunds((prev) => prev.map((item) => (
       item.id === id
@@ -11297,6 +11339,10 @@ export default function MyPage({
 
   const handleRemoveOwnedFund = (id) => {
     if (!id) return
+    if (!canMutateOwnedAssets({ userId: user?.id, ownedAssetDbReady })) {
+      setDataStatus(OWNED_ASSET_HYDRATE_BUSY_MESSAGE)
+      return
+    }
     ownedFundCloudTouchedRef.current = true
     setOwnedFunds((prev) => {
       const next = prev.filter((item) => item.id !== id)

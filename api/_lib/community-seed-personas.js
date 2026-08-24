@@ -1,6 +1,8 @@
 /**
  * Community seed personas — display as nicknames only (never legal-style names).
  */
+import { randomBytes } from 'node:crypto'
+
 export const COMMUNITY_SEED_PERSONAS = [
   { email: 'mm-seed-01@community.seed', nickname: 'ケンタ@積立', exp: 4200 },
   { email: 'mm-seed-02@community.seed', nickname: 'みき_nisa', exp: 3100 },
@@ -21,4 +23,21 @@ export const COMMUNITY_SEED_EMAILS = COMMUNITY_SEED_PERSONAS.map((p) => p.email.
 export function getSeedPersonaByEmail(email) {
   const norm = String(email || '').toLowerCase()
   return COMMUNITY_SEED_PERSONAS.find((p) => p.email.toLowerCase() === norm) || null
+}
+
+/** Historic formula that was committed in this public repo. Do not reuse. */
+export function legacyDeterministicSeedPassword(nickname) {
+  return `MmSeed!${String(nickname || '').length}99`
+}
+
+export function isLegacyDeterministicSeedPassword(password, nickname) {
+  return String(password || '') === legacyDeterministicSeedPassword(nickname)
+}
+
+/**
+ * Unguessable password for seed bot accounts.
+ * The hourly cron uses the service role and never signs in as these users.
+ */
+export function generateSeedPersonaPassword() {
+  return `Mm.${randomBytes(24).toString('base64url')}`
 }

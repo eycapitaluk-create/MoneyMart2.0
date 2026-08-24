@@ -9,7 +9,10 @@ import { createClient } from '@supabase/supabase-js'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { COMMUNITY_SEED_PERSONAS } from '../api/_lib/community-seed-personas.js'
+import {
+  COMMUNITY_SEED_PERSONAS,
+  generateSeedPersonaPassword,
+} from '../api/_lib/community-seed-personas.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const PERSONAS = COMMUNITY_SEED_PERSONAS
@@ -180,12 +183,17 @@ async function ensurePersona(persona) {
   if (!userId) {
     const { data, error } = await admin.auth.admin.createUser({
       email,
-      password: `MmSeed!${nickname.length}99`,
+      password: generateSeedPersonaPassword(),
       email_confirm: true,
       user_metadata: { nickname, display_name: nickname },
     })
     if (error) throw error
     userId = data.user.id
+  } else {
+    const { error: rotateErr } = await admin.auth.admin.updateUserById(userId, {
+      password: generateSeedPersonaPassword(),
+    })
+    if (rotateErr) throw rotateErr
   }
   await admin.from('user_profiles').upsert({
     user_id: userId,

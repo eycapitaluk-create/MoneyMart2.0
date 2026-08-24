@@ -3,9 +3,12 @@
  * Uses real index/stock closes from DB when available; no fabricated prices.
  */
 
-import { COMMUNITY_SEED_PERSONAS } from './community-seed-personas.js'
+import {
+  COMMUNITY_SEED_PERSONAS,
+  generateSeedPersonaPassword,
+} from './community-seed-personas.js'
 
-export { COMMUNITY_SEED_PERSONAS } from './community-seed-personas.js'
+export { COMMUNITY_SEED_PERSONAS, generateSeedPersonaPassword } from './community-seed-personas.js'
 
 export const COMMUNITY_HOURLY_JST_START = 5
 export const COMMUNITY_HOURLY_JST_END = 22
@@ -114,6 +117,20 @@ async function findUserIdByEmail(admin, emailNorm) {
   }
 }
 
+async function setSeedPersonaPassword(admin, userId) {
+  const password = generateSeedPersonaPassword()
+  const { error } = await admin.auth.admin.updateUserById(userId, { password })
+  if (error) throw error
+  // Drop any sessions opened with the old public password.
+  if (typeof admin.auth.admin.signOut === 'function') {
+    try {
+      await admin.auth.admin.signOut(userId, 'global')
+    } catch {
+      // Password is already rotated; older Auth clients may lack signOut.
+    }
+  }
+}
+
 export async function ensureSeedPersona(admin, persona) {
   const email = persona.email.toLowerCase()
   const nickname = String(persona.nickname || '').trim()
@@ -122,12 +139,14 @@ export async function ensureSeedPersona(admin, persona) {
   if (!userId) {
     const { data, error } = await admin.auth.admin.createUser({
       email,
-      password: `MmSeed!${nickname.length}99`,
+      password: generateSeedPersonaPassword(),
       email_confirm: true,
       user_metadata: { nickname, display_name: nickname },
     })
     if (error) throw error
     userId = data.user.id
+  } else {
+    await setSeedPersonaPassword(admin, userId)
   }
   await admin.from('user_profiles').upsert({
     user_id: userId,

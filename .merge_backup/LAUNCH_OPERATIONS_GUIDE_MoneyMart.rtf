@@ -1,0 +1,158 @@
+{\rtf1\ansi\deff0
+{\fonttbl{\f0 Arial;}}
+\fs22
+\b MoneyMart 2.0 - Launch Operations Guide\b0\par
+Version: 1.0\par
+Date: 2026-02-10\par
+\par
+\b 1) Purpose\b0\par
+This document is a practical operator guide for launch readiness and daily operations:\par
+- What to manage per page\par
+- Which data is in database vs fallback\par
+- How to update products, academy videos, and admin rights\par
+- What to verify before production release\par
+\par
+\b 2) Admin Access\b0\par
+Route: /admin\par
+Auth rule: only users with role=admin in user_roles table\par
+\par
+How to grant admin:\par
+1. Open Supabase SQL editor\par
+2. Insert or update user_roles for target user_id\par
+3. Set role to admin\par
+\par
+Recommended query pattern:\par
+insert into user_roles (user_id, role) values ('USER_UUID', 'admin')\par
+on conflict (user_id) do update set role='admin';\par
+\par
+\b 3) Page-by-page Operations\b0\par
+\par
+\b Home / Market / Stock\b0\par
+- Home: presentation + links + quick navigation\par
+- Market: rankings + sentiment + sector board\par
+- Stock: symbol list + OHLCV + simulation widgets\par
+\par
+Data source order:\par
+- Stock: v_stock_latest + stock_symbols -> fallback mock\par
+- Market rankings: funds/fund_prices or quick_* -> empty-state message\par
+\par
+Operator checks:\par
+- Data badge should indicate LIVE / QUICK / FALLBACK clearly\par
+- No blank section when data is empty\par
+- Error messages visible and understandable\par
+\par
+\b Fund Page (/funds)\b0\par
+Main sections:\par
+- Category flow, risk-return bubble, fund list\par
+- Compare up to 3\par
+\par
+Data source order:\par
+1) funds + fund_prices\par
+2) quick_fund_master + v_quick_fund_latest_price\par
+3) fallback\par
+\par
+Operator checks:\par
+- Data badge displayed (LIVE/QUICK/FALLBACK)\par
+- Watchlist state updates correctly\par
+- Compare button works for selected funds\par
+\par
+\b Fund Detail (/funds/:id)\b0\par
+- Verify ID mapping consistency from list and compare pages\par
+- Confirm fee display and watchlist action\par
+\par
+\b Product Page (/products)\b0\par
+Management intent:\par
+- User can search/filter/compare/interest-list products\par
+- Best values highlighted in compare table\par
+\par
+Critical data rule:\par
+- Product interest IDs must be normalized (string-safe compare)\par
+\par
+\b Product Detail (/products/:id)\b0\par
+- Shows specs, warning text, related products, external apply link\par
+- Handle missing image safely\par
+\par
+\b Academy (/academy)\b0\par
+Primary mode:\par
+- YouTube-based catalog from academy_courses\par
+- Fallback catalog only when no live data\par
+\par
+Required fields for admin input:\par
+- title\par
+- youtube_url\par
+- category\par
+- level\par
+- is_featured\par
+\par
+Operator checks:\par
+- Invalid or empty youtube_url must show clear feedback\par
+- Featured card opens valid video URL\par
+\par
+\b Lounge (/lounge)\b0\par
+- Community posts/comments/likes/bookmarks\par
+- Verify owner actions (delete own post) and auth behavior\par
+\par
+\b MyPage (/mypage)\b0\par
+Persisted tables:\par
+- user_watchlists\par
+- user_expenses\par
+- user_insurances\par
+- user_finance_profiles\par
+- user_asset_positions\par
+- user_point_accounts\par
+\par
+Operator checks:\par
+- Add/edit/delete persists after refresh\par
+- Empty states show correctly (no fake re-appearance)\par
+- Summary DTI reflects saved annual income\par
+\par
+\b Legal / FAQ / About\b0\par
+- Ensure legal copy is accessible and routes render correctly\par
+- FAQ search and category tabs should not error on invalid state\par
+\par
+\b 4) Database Change Guide\b0\par
+\par
+\b Product update\b0\par
+Preferred: Admin page CRUD\par
+Alternative: direct SQL update with change log and reviewer\par
+\par
+\b Academy course update\b0\par
+Preferred: Admin page\par
+Validate youtube_url before publishing\par
+\par
+\b User data schema update\b0\par
+1. Apply SQL migration in Supabase\par
+2. Check RLS policies\par
+3. Validate with 2 accounts (owner vs non-owner)\par
+\par
+\b 5) Security and Launch Rules\b0\par
+- Do not use client-exposed admin email list as production authority\par
+- Source of truth for admin: user_roles table\par
+- Keep RLS enabled for all user-owned tables\par
+- Never allow null user_id insert for user-owned records\par
+\par
+\b 6) Pre-Launch Final Test (execute last)\b0\par
+1. Auth and role guard\par
+2. Admin access and product CRUD\par
+3. Academy live data and video links\par
+4. Fund/Stock live pipeline sanity\par
+5. MyPage CRUD + refresh persistence\par
+6. Cross-account RLS isolation test\par
+7. Empty/error state checks for all major pages\par
+8. Build and production deploy verification\par
+\par
+\b 7) Quick Troubleshooting\b0\par
+Issue: blank page after route move\par
+Check: auth/role loading guard, not-found route, runtime console errors\par
+\par
+Issue: product interest not highlighted\par
+Check: ID type normalization string vs number\par
+\par
+Issue: academy click does nothing\par
+Check: youtube_url validity and empty-link feedback\par
+\par
+Issue: rankings empty\par
+Check: market/fund data fetch status and fallback indicators\par
+\par
+\b End of Document\b0\par
+}

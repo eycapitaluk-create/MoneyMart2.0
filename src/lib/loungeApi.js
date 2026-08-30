@@ -6,6 +6,7 @@ import {
   getCommunityPostTitle,
   stripCommunitySeedMarker,
 } from './communitySeed'
+import { isOwnedStorageObjectPath, loungeImageObjectPath } from './storageObjectPathOwner'
 
 const FEED_LIMIT = 30
 const COMMUNITY_MEMBER_FALLBACK = 'Member'
@@ -66,11 +67,15 @@ const LOUNGE_IMAGES_BUCKET = 'lounge-images'
 
 export async function uploadLoungeImages(userId, files) {
   if (!files?.length) return []
+  const { data: authData } = await supabase.auth.getUser()
+  const uid = String(authData?.user?.id || '').trim()
+  if (!uid || uid !== String(userId || '').trim()) return []
   const urls = []
   for (let i = 0; i < files.length; i++) {
     const file = files[i]
     const ext = (file.name?.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z]/g, 'jpg')
-    const path = `${userId}/${Date.now()}-${i}.${ext}`
+    const path = loungeImageObjectPath(uid, `${Date.now()}-${i}.${ext}`)
+    if (!isOwnedStorageObjectPath(path, uid)) continue
     const { data, error } = await supabase.storage.from(LOUNGE_IMAGES_BUCKET).upload(path, file, {
       cacheControl: '3600',
       upsert: false,

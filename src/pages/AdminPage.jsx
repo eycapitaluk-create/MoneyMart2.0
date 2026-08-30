@@ -21,6 +21,7 @@ import {
   updateDividendMasterRow,
   deleteDividendMasterRow,
 } from '../lib/dividendMasterScheduleApi'
+import { insightCoverObjectPath, isOwnedStorageObjectPath } from '../lib/storageObjectPathOwner'
 
 const formatAnalyticsDuration = (value) => {
   const ms = Number(value || 0)
@@ -1311,7 +1312,13 @@ export default function AdminPage() {
       }
       const rawExt = (file.name?.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg'
       const safeExt = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(rawExt) ? rawExt : 'jpg'
-      const path = `insights/covers/${auth.user.id}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${safeExt}`
+      const path = insightCoverObjectPath(
+        auth.user.id,
+        `${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${safeExt}`,
+      )
+      if (!isOwnedStorageObjectPath(path, auth.user.id)) {
+        throw new Error('カバー画像の保存先が不正です。')
+      }
       const { data, error } = await supabase.storage.from(INSIGHT_COVER_IMAGE_BUCKET).upload(path, file, {
         cacheControl: '3600',
         upsert: false,

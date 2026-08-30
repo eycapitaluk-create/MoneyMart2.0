@@ -27,19 +27,32 @@ drop policy if exists "Authenticated upload lounge images" on storage.objects;
 create policy "Authenticated upload lounge images"
 on storage.objects for insert
 to authenticated
-with check (bucket_id = 'lounge-images');
+with check (
+  bucket_id = 'lounge-images'
+  and (storage.foldername(name))[1] = auth.uid()::text
+);
 
 drop policy if exists "Authenticated update lounge images" on storage.objects;
 create policy "Authenticated update lounge images"
 on storage.objects for update
 to authenticated
-using (bucket_id = 'lounge-images');
+using (
+  bucket_id = 'lounge-images'
+  and (storage.foldername(name))[1] = auth.uid()::text
+)
+with check (
+  bucket_id = 'lounge-images'
+  and (storage.foldername(name))[1] = auth.uid()::text
+);
 
 drop policy if exists "Authenticated delete lounge images" on storage.objects;
 create policy "Authenticated delete lounge images"
 on storage.objects for delete
 to authenticated
-using (bucket_id = 'lounge-images');
+using (
+  bucket_id = 'lounge-images'
+  and (storage.foldername(name))[1] = auth.uid()::text
+);
 
 -- Add image_urls to community_posts (if exists)
 do $$

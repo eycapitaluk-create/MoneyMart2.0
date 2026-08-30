@@ -1,27 +1,40 @@
--- MoneyMart 2.0 - News images storage bucket
--- Run in Supabase SQL Editor.
--- Creates a public bucket for news page manual images.
+-- Fix: authenticated users could overwrite/delete any lounge-images or news-images object.
+-- Cause: storage.objects write policies only checked bucket_id.
+-- Run once in Supabase SQL Editor after the original bucket setup SQL.
 
-insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-values (
-  'news-images',
-  'news-images',
-  true,
-  5242880,
-  ARRAY['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+-- lounge-images: writes only under {auth.uid()}/…
+drop policy if exists "Authenticated upload lounge images" on storage.objects;
+create policy "Authenticated upload lounge images"
+on storage.objects for insert
+to authenticated
+with check (
+  bucket_id = 'lounge-images'
+  and (storage.foldername(name))[1] = auth.uid()::text
+);
+
+drop policy if exists "Authenticated update lounge images" on storage.objects;
+create policy "Authenticated update lounge images"
+on storage.objects for update
+to authenticated
+using (
+  bucket_id = 'lounge-images'
+  and (storage.foldername(name))[1] = auth.uid()::text
 )
-on conflict (id) do update set
-  public = true,
-  file_size_limit = 5242880,
-  allowed_mime_types = ARRAY['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+with check (
+  bucket_id = 'lounge-images'
+  and (storage.foldername(name))[1] = auth.uid()::text
+);
 
--- Allow public read (images are displayed on news page)
-create policy "Public read news images"
-on storage.objects for select
-using (bucket_id = 'news-images');
+drop policy if exists "Authenticated delete lounge images" on storage.objects;
+create policy "Authenticated delete lounge images"
+on storage.objects for delete
+to authenticated
+using (
+  bucket_id = 'lounge-images'
+  and (storage.foldername(name))[1] = auth.uid()::text
+);
 
--- Writes: admins (user_roles) or insights/covers/{auth.uid()}/… only.
--- Do not use bucket-only checks — any authenticated user could overwrite objects.
+-- news-images: admins retain full write; everyone else only insights/covers/{auth.uid()}/…
 drop policy if exists "Authenticated upload news images" on storage.objects;
 create policy "Authenticated upload news images"
 on storage.objects for insert

@@ -72,6 +72,8 @@ alter table public.lounge_posts
 create or replace function public.refresh_portfolio_follower_count()
 returns trigger
 language plpgsql
+security definer
+set search_path = public
 as $$
 begin
   update public.portfolios p

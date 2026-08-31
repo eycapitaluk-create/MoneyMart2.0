@@ -165,6 +165,8 @@ for each row execute function public.set_updated_at_lounge();
 create or replace function public.refresh_lounge_post_stats()
 returns trigger
 language plpgsql
+security definer
+set search_path = public
 as $$
 declare
   target_post uuid;
@@ -243,6 +245,8 @@ for each row execute function public.refresh_lounge_post_stats();
 create or replace function public.create_lounge_notification_like()
 returns trigger
 language plpgsql
+security definer
+set search_path = public
 as $$
 declare
   target_user uuid;
@@ -264,6 +268,8 @@ for each row execute function public.create_lounge_notification_like();
 create or replace function public.create_lounge_notification_comment()
 returns trigger
 language plpgsql
+security definer
+set search_path = public
 as $$
 declare
   target_user uuid;
@@ -285,6 +291,8 @@ for each row execute function public.create_lounge_notification_comment();
 create or replace function public.create_lounge_notification_follow()
 returns trigger
 language plpgsql
+security definer
+set search_path = public
 as $$
 begin
   if new.follower_id <> new.following_id then
@@ -490,6 +498,13 @@ on public.lounge_notifications
 for select
 to authenticated
 using (user_id = auth.uid() or public.is_admin(auth.uid()));
+
+drop policy if exists "lounge_notifications_owner_insert" on public.lounge_notifications;
+create policy "lounge_notifications_owner_insert"
+on public.lounge_notifications
+for insert
+to authenticated
+with check (user_id = auth.uid());
 
 drop policy if exists "lounge_notifications_owner_update" on public.lounge_notifications;
 create policy "lounge_notifications_owner_update"

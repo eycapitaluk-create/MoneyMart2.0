@@ -9,6 +9,7 @@ import { acknowledgeDividendBellForCurrentMonth } from '../../lib/dividendBellAc
 import { hasPremiumEntitlement } from '../../lib/membership'
 import { scheduleIdleTask } from '../../lib/scheduleIdle'
 import BrandLogoMark from '../BrandLogoMark'
+import CampaignCp2026NavLink from '../campaign/CampaignCp2026NavLink'
 import CommunityTierBadge from '../community/CommunityTierBadge'
 import { useCommunityTier } from '../../hooks/useCommunityTier'
 
@@ -302,6 +303,7 @@ export default function Navbar({
             >
               インサイト
             </Link>
+            <CampaignCp2026NavLink userEmail={session?.user?.email} />
             {session ? (
               <Link
                 to="/mypage?tab=wealth"
@@ -742,6 +744,11 @@ export default function Navbar({
             ) : null}
           </Link>
           <Link to="/tools" onClick={() => { notifyToolsHubReset(); setIsMobileMenuOpen(false) }} className={mobileNavRowClass(isMainNavActive(pathname, 'tools'))}>ツール</Link>
+          <CampaignCp2026NavLink
+            userEmail={session?.user?.email}
+            variant="mobile"
+            onClick={() => setIsMobileMenuOpen(false)}
+          />
 
           <div className="space-y-2">
             <button

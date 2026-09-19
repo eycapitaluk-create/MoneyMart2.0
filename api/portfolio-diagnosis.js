@@ -206,7 +206,10 @@ function buildDeterministicDiagnosis({ holdings, scopeLabel }) {
       level: top1Weight >= 55 ? '高' : '中',
       desc: '最大保有銘柄の値動きがポートフォリオ全体を大きく左右します。',
     })
-    actions.push({ priority: '即時', action: '最大保有銘柄の比率を段階的に圧縮し、複数銘柄へ分散してください。' })
+    actions.push({
+      priority: '即時',
+      action: '最大保有銘柄の比率が高い場合、比率を引き下げて他銘柄へ配分を広げることで、個別銘柄集中リスクの低減につながる可能性があります。',
+    })
   }
 
   if (sectorDist.length <= 2) {
@@ -216,7 +219,10 @@ function buildDeterministicDiagnosis({ holdings, scopeLabel }) {
       level: '中',
       desc: '同一業種の悪材料が同時に効くと、下落幅が拡大しやすくなります。',
     })
-    actions.push({ priority: '短期', action: '相関の低いセクターを1-2つ追加し、業種分散を強化してください。' })
+    actions.push({
+      priority: '短期',
+      action: '相関の低いセクターを組み入れると、業種分散の観点で選択肢が広がる場合があります。',
+    })
   }
 
   if (geoDist.length <= 1) {
@@ -226,7 +232,10 @@ function buildDeterministicDiagnosis({ holdings, scopeLabel }) {
       level: '中',
       desc: '単一地域の金利・為替・景気イベントにパフォーマンスが偏ります。',
     })
-    actions.push({ priority: '短期', action: '投資先地域を分け、国内外の比率バランスを再調整してください。' })
+    actions.push({
+      priority: '短期',
+      action: '日本株や新興国株などを組み入れると、地域分散の観点で選択肢が広がります。',
+    })
   }
 
   if (assetDist.length <= 1) {
@@ -236,7 +245,10 @@ function buildDeterministicDiagnosis({ holdings, scopeLabel }) {
       level: '中',
       desc: '同じ資産クラスの下落局面で逃げ場が少なくなる可能性があります。',
     })
-    actions.push({ priority: '長期', action: '株式・ファンドなど異なる資産クラスの比率を設計して維持してください。' })
+    actions.push({
+      priority: '長期',
+      action: '債券やREITなど異なる資産クラスを加えることで、値動きの異なる資産による分散効果が期待される場合があります。',
+    })
   }
 
   if (strengths.length === 0) strengths.push('保有データを継続的に更新している点は、改善サイクル構築に有効です。')
@@ -249,7 +261,10 @@ function buildDeterministicDiagnosis({ holdings, scopeLabel }) {
     })
   }
   if (actions.length === 0) {
-    actions.push({ priority: '長期', action: '四半期ごとに比率を点検し、目標配分からの乖離を補正してください。' })
+    actions.push({
+      priority: '長期',
+      action: '四半期ごとに比率を点検し、目標配分からの乖離を柔らかく補正することも、検討しうる選択肢のひとつです。',
+    })
   }
 
   return {
@@ -288,10 +303,15 @@ Write all user-facing strings in Japanese.
 Important:
 - Do NOT change numeric scores, grade, or diversification numbers.
 - Rewrite only user-facing qualitative text so it is clearer and practical.
+- Tone: informational only (not investment advice). Avoid imperatives like 「〜しなさい」「〜してください」「must」「immediately」.
+  Prefer: 可能性があります / 場合があります / 選択肢として考えられます / 検討しうる / 〜の観点で、など.
+- Never instruct the user to buy or sell a specific security. No promises of returns.
+- If you mention a company or ticker (e.g. from holdings), do so only to describe the current allocation, not to recommend a trade.
+- For "actions", treat each item as a hypothetical option or perspective (想定される選択肢), not a directive.
 
 Scope: ${diagnosis.scopeLabel}
 Portfolio: ${summary}
-Total market value: ${Math.round(diagnosis.totalValue).toLocaleString()} JPY
+Total market value: ${Math.round(diagnosis.totalValue).toLocaleString('ja-JP')} JPY
 
 Locked metrics:
 - score: ${diagnosis.score}
@@ -314,7 +334,7 @@ Return exactly this shape:
     {"type": "リスク名", "level": "高/中/低", "desc": "説明1文"}
   ],
   "actions": [
-    {"priority": "即時/短期/長期", "action": "具体的な改善行動1文"}
+    {"priority": "即時/短期/長期", "action": "命令ではなく、検討しうる観点・想定される選択肢を1文（婉曲表現）"}
   ],
   "comment": "2-3文の総評"
 }
@@ -329,7 +349,7 @@ function sanitizeQualitative(payload) {
   })) : []
   const actions = Array.isArray(payload?.actions) ? payload.actions.slice(0, 4).map((row) => ({
     priority: ['即時', '短期', '長期'].includes(String(row?.priority || '')) ? String(row.priority) : '短期',
-    action: String(row?.action || '').slice(0, 140),
+    action: String(row?.action || '').slice(0, 220),
   })) : []
 
   return {
@@ -360,7 +380,7 @@ function softenTone(value = '') {
     s = s.replace(pattern, (m) => {
       if (/urgent|至急|今すぐ|immediately/i.test(m)) return '優先'
       if (/danger|危険|catastrophic/i.test(m)) return '注意'
-      if (/must|必須/i.test(m)) return '推奨'
+      if (/must|必須/i.test(m)) return '検討余地があります'
       return m
     })
   })
@@ -449,10 +469,14 @@ async function callAnthropicQualitative({ apiKey, prompt }) {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return sendJson(res, 405, { error: 'Method not allowed' })
 
-  const SUPABASE_URL = process.env.SUPABASE_URL
-  const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
+  const SUPABASE_URL = String(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '').trim()
+  const SUPABASE_SERVICE_ROLE_KEY = String(
+    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || '',
+  ).trim()
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-    return sendJson(res, 500, { error: 'Server misconfigured' })
+    return sendJson(res, 500, {
+      error: 'サーバー設定エラー（SUPABASE_URL と SUPABASE_SERVICE_ROLE_KEY または SUPABASE_SECRET_KEY を確認してください）',
+    })
   }
   const authHeader = String(req.headers.authorization || '')
   const accessToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : ''

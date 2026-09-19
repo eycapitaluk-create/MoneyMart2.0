@@ -1,8 +1,9 @@
-import { buildHeadBlock, escapeHtml, getSiteOrigin, webApplicationLd } from './seoHead.js'
+import { ETF_UNIVERSE_COUNT } from '../../../src/data/etfUniverseLite.js'
+import { breadcrumbListJsonLd, buildHeadBlock, escapeHtml, getSiteOrigin, webApplicationLd } from './seoHead.js'
 
-const TITLE = '日本上場ETF比較（344本対応）| 信託報酬・出来高・終値 | MoneyMart'
+const TITLE = `国内上場ETF比較（${ETF_UNIVERSE_COUNT}本）｜信託報酬・NISA | MoneyMart`
 const DESCRIPTION_BASE =
-  '国内上場ETFを手数料・配当利回り・規模などで「比較」できる「無料」の「ツール」です。NISA・つみたて投資の銘柄選びに。ページ内の一覧表はサーバーで生成され、検索エンジンが本文を読み取れます。344本超をアプリで一覧・チャート表示できます。'
+  `国内上場ETF ${ETF_UNIVERSE_COUNT}本を信託報酬・NISA区分・値動きで横並び比較。投信との重複確認の前に使えます。情報提供のみで、売買の推奨ではありません。`
 
 /**
  * @param {Array<{ symbol: string, name: string, trustFee: string|null, category: string|null, country: string|null, close: number|null, tradeDate: string|null, volume: number|null }>} rows
@@ -54,10 +55,13 @@ export function buildEtfCompareSsrHtml(opts) {
   const snapshot = opts.snapshot || {}
   const rows = Array.isArray(snapshot.rows) ? snapshot.rows : []
   const dataDate = snapshot.dataDate || null
-  const fetchError = snapshot.error || null
 
   const jsonLd = [
     webApplicationLd({ name: 'MoneyMart ETF比較', url: canonicalPath }),
+    breadcrumbListJsonLd(getSiteOrigin(), [
+      { name: 'ホーム', path: '/' },
+      { name: 'ETF比較', path: '/etf-compare' },
+    ]),
     ...(rows.length > 0 ? [buildItemListJsonLd(rows, canonicalPath)] : []),
   ]
 
@@ -72,16 +76,13 @@ export function buildEtfCompareSsrHtml(opts) {
     jsonLd,
   })
 
-  const other = canonicalPath === '/etf-compare' ? '/funds/compare' : '/etf-compare'
-  const otherLabel = other
-
   const tableBlock =
     rows.length > 0
       ? `
       <section aria-labelledby="etf-ssr-table-title" style="margin-top:20px;border:1px solid #e2e8f0;border-radius:16px;background:#fff;padding:0;overflow-x:auto;box-shadow:0 1px 2px rgba(15,23,42,.05);">
         <h2 id="etf-ssr-table-title" style="margin:0;padding:16px 18px 8px 18px;font-size:18px;font-weight:900;color:#0f172a;">直近出来高が大きいETF（抜粋・${rows.length}本）</h2>
         <p style="margin:0;padding:0 18px 14px 18px;font-size:12px;line-height:1.6;color:#64748b;">
-          次の表はサーバーで生成した静的HTMLです（JavaScript不要）。全${rows.length}行は代表的な銘柄のみで、344本超の一覧・チャート・ウォッチリストはアプリ内で提供します。
+          次の表は直近出来高が大きい銘柄の抜粋です。全${ETF_UNIVERSE_COUNT}本の一覧・チャートはアプリ内で確認できます。
           ${dataDate ? `データ基準日（表内の最新）: <strong>${escapeHtml(dataDate)}</strong>。` : ''}
         </p>
         <table style="width:100%;border-collapse:collapse;font-size:13px;">
@@ -117,8 +118,7 @@ export function buildEtfCompareSsrHtml(opts) {
       : `
       <section style="margin-top:20px;border:1px solid #fed7aa;border-radius:16px;background:#fffbeb;padding:16px 18px;">
         <p style="margin:0;font-size:14px;line-height:1.75;color:#78350f;">
-          現在、サーバー側でETF一覧表を生成できません（データ未取得${fetchError ? `：${escapeHtml(fetchError)}` : ''}）。
-          アプリ内の比較画面ではJavaScript有効時に最新データを読み込みます。
+          現在、抜粋一覧を表示できません。アプリ内の比較画面で最新データをご確認ください。
         </p>
       </section>`
 
@@ -140,7 +140,7 @@ export function buildEtfCompareSsrHtml(opts) {
           インタラクティブなチャート・ウォッチリスト連携などのフル機能は、ブラウザでJavaScriptを有効にしたうえでアプリ内UIからご利用ください。
         </p>
         <p style="margin:14px 0 0 0;font-size:13px;color:#64748b;">
-          関連: <a href="${other}" style="color:#ea580c;font-weight:700;">${escapeHtml(otherLabel)}</a>（同一ツールの別URL） / <a href="/insights" style="color:#ea580c;font-weight:700;">投資インサイト</a>
+          関連: <a href="/tools/nisa-etf-checklist" style="color:#ea580c;font-weight:700;">NISAの確認項目</a> / <a href="/insights" style="color:#ea580c;font-weight:700;">投資インサイト</a> / <a href="/legal/methodology" style="color:#ea580c;font-weight:700;">編集・データ方針</a>
         </p>
       </section>
       ${tableBlock}

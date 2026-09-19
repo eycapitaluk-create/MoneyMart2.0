@@ -1,5 +1,6 @@
 import pack from '../data/dividendCalendarDetail.generated.json'
 import { DIVIDEND_STOCK_UNIVERSE } from '../data/dividendStockUniverse'
+import { isRetiredStockSymbol } from './retiredStockSymbols'
 
 const records = Array.isArray(pack?.records) ? pack.records : []
 const isDividendEligibleCategory = (category) => {
@@ -22,7 +23,7 @@ const bySymbol = new Map()
 for (const r of records) {
     if (!isDividendEligibleCategory(r?.category)) continue
   const sym = String(r?.symbol || '').trim().toUpperCase()
-  if (!sym) continue
+  if (!sym || isRetiredStockSymbol(sym)) continue
   bySymbol.set(sym, r)
   if (sym.endsWith('.T')) {
     const code = sym.slice(0, -2)
@@ -40,6 +41,7 @@ export function normalizeDividendDetailSymbol(input = '') {
 export function getDividendCalendarDetailRecord(inputSymbol) {
   const k = normalizeDividendDetailSymbol(inputSymbol)
   if (!k) return null
+  if (isRetiredStockSymbol(k)) return null
   return bySymbol.get(k) || null
 }
 
@@ -51,6 +53,7 @@ export function getDividendCalendarDetailRecord(inputSymbol) {
 export function searchDividendCalendarRecords(query, limit = 12) {
   const raw = String(query || '').trim()
   if (!raw) return []
+  if (isRetiredStockSymbol(raw)) return []
   const nq = normalizeSearchText(raw)
   const parts = nq.split(/\s+/).filter(Boolean)
   if (parts.length < 1) return []
@@ -65,7 +68,7 @@ export function searchDividendCalendarRecords(query, limit = 12) {
 
   const pushRec = (r, score) => {
     const sym = String(r?.symbol || '').trim().toUpperCase()
-    if (!sym) return
+    if (!sym || isRetiredStockSymbol(sym)) return
     const prev = seen.get(sym)
     if (prev != null && prev >= score) return
     seen.set(sym, score)
@@ -74,6 +77,7 @@ export function searchDividendCalendarRecords(query, limit = 12) {
 
   for (const r of records) {
     if (!isDividendEligibleCategory(r?.category)) continue
+    if (isRetiredStockSymbol(r?.symbol)) continue
     const sym = normalizeSearchText(r.symbol)
     const name = normalizeSearchText(r.name)
     const cat = normalizeSearchText(r.category)

@@ -39,9 +39,13 @@ File: `api/cron/marketstack-daily.js`
 
 Configured in `vercel.json` (실제 값은 파일 참고):
 
-- `marketstack-daily?us_only=1`: 평일 **00:00 UTC** (`1-5`) — 미국 주식 위주
-- `marketstack-daily?jp_only=1&us_only=0`: 평일 **07:00 UTC** (`1-5`) — **한국 시간 16:00**에 일본 주식·펀드(`.T`) EOD 반영
-- `marketstack-commodities`: 평일 **22:00 UTC** (`1-5`)
+- **`/api/cron/marketstack-commodities`**: 평일 **22:00 UTC** (`0 22 * * 1-5`) — MarketStack `/commodities` → `commodity_daily_prices`（Professional+・分 commodity 約1分レート制限のため順次取得）
+- `marketstack-daily` は本番で使う場合は `vercel.json` の `crons` に同様に追加する（例: `us_only` / `jp_only` 用に複数エントリ）
+
+補足（過去メモ）:
+
+- `marketstack-daily?us_only=1`: 평일 **00:00 UTC** — 미국 주식 위주
+- `marketstack-daily?jp_only=1&us_only=0`: 평일 **07:00 UTC** — 일본 주식·펀드(`.T`) EOD
 
 **같은 구간(8시간) 안에서는 `jp` / `us` / `all` scope별로만** 중복 성공 스킵합니다. US 직후 JP 크론이 막히지 않습니다.  
 강제 실행이 필요하면 `?force=true`를 붙여 호출합니다.

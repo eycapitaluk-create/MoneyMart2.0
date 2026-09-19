@@ -52,7 +52,7 @@ struct HomeFeatureView: View {
                     HStack {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("マーケット速報").font(.headline)
-                            Text("リアルタイム反映").font(.caption).foregroundStyle(.secondary)
+                            Text("取得データを反映（遅延・欠損があり得ます）").font(.caption).foregroundStyle(.secondary)
                         }
                         Spacer()
                         NavigationLink("ヒートマップ") { MarketView() }

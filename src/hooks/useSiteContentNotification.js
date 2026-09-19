@@ -9,9 +9,10 @@ import {
   normalizeRemoteContentMarks,
   persistMergedHomeContentMarks,
 } from '../lib/homeContentNotificationStorage'
-import { NEWS_PAGE_MANUAL_BUCKET } from '../lib/aiNewsClient'
+import { scheduleIdleTask } from '../lib/scheduleIdle'
 
 const SITE_CONTENT_SYNC = 'mm-site-content-marks-sync'
+const NEWS_PAGE_MANUAL_BUCKET = 'news_page_manual'
 
 async function fetchProfileContentMarks(userId) {
   if (!userId) return null
@@ -43,7 +44,7 @@ function pushContentMarksToProfile(userId, marks) {
  * ログイン時は user_profiles.site_content_notify_marks と localStorage をマージ（端末間でベル状態を揃える）。
  * 既読保存後は Supabase 更新＋ mm-site-content-marks-sync／フォアグラウンド復帰で再フェッチ。
  */
-export function useSiteContentNotification(userId = null) {
+export function useSiteContentNotification(userId = null, enabled = true) {
   const [insightNew, setInsightNew] = useState(false)
   const [newsNew, setNewsNew] = useState(false)
   const [insightLatest, setInsightLatest] = useState(null)
@@ -74,13 +75,14 @@ export function useSiteContentNotification(userId = null) {
 
   /** 他タブでの既読 / 別端末で user_profiles 更新後、フォアグラウンド復帰で再取得 */
   useEffect(() => {
+    if (!enabled) return undefined
     const bump = () => setMarksSyncTick((t) => t + 1)
     window.addEventListener(SITE_CONTENT_SYNC, bump)
     return () => window.removeEventListener(SITE_CONTENT_SYNC, bump)
-  }, [])
+  }, [enabled])
 
   useEffect(() => {
-    if (!userId) return undefined
+    if (!enabled || !userId) return undefined
     let timer = null
     const onVis = () => {
       if (document.visibilityState !== 'visible') return
@@ -92,10 +94,10 @@ export function useSiteContentNotification(userId = null) {
       clearTimeout(timer)
       document.removeEventListener('visibilitychange', onVis)
     }
-  }, [userId])
+  }, [enabled, userId])
 
   useEffect(() => {
-    if (!userId) {
+    if (!enabled || !userId) {
       setInsightNew(false)
       setNewsNew(false)
       setInsightLatest(null)
@@ -223,11 +225,12 @@ export function useSiteContentNotification(userId = null) {
         /* silent */
       }
     }
-    run()
+    const cancelIdle = scheduleIdleTask(run, { timeoutMs: 2200 })
     return () => {
       cancelled = true
+      cancelIdle()
     }
-  }, [userId, marksSyncTick])
+  }, [enabled, userId, marksSyncTick])
 
   const acknowledgeInsight = useCallback(() => {
     const at = insightLatestRef.current?.at || null

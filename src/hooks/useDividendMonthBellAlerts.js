@@ -1,9 +1,6 @@
 import { useEffect, useState } from 'react'
-import { fetchDividendMasterScheduleForMonth } from '../lib/dividendMasterScheduleApi'
-import { loadDividendWatchlist } from '../lib/myPageApi'
-import { getDividendCalendarDetailRecord } from '../lib/dividendCalendarDetailLookup'
 import { isDividendBellAckedForUserMonth } from '../lib/dividendBellAck'
-import { getDividendNetJpyApprox } from '../lib/dividendCalendar'
+import { scheduleIdleTask } from '../lib/scheduleIdle'
 
 function userSchedulesPayoutThisMonth(w, month) {
   return (w?.dividends || []).some(
@@ -29,12 +26,13 @@ function userMonthAmountMatchesJsonMaster(rec, w, month, eps = 0.03) {
  *
  * Listen for `mm-dividend-bell-refresh` (e.g. after MyPage save) to re-fetch.
  */
-export function useDividendMonthBellAlerts(session) {
+export function useDividendMonthBellAlerts(session, enabled = true) {
   const [alerts, setAlerts] = useState([])
   const [refreshTick, setRefreshTick] = useState(0)
   const userId = session?.user?.id ?? null
 
   useEffect(() => {
+    if (!enabled) return undefined
     const bump = () => setRefreshTick((t) => t + 1)
     window.addEventListener('mm-dividend-bell-refresh', bump)
     window.addEventListener('mm-dividend-bell-ack', bump)
@@ -42,14 +40,15 @@ export function useDividendMonthBellAlerts(session) {
       window.removeEventListener('mm-dividend-bell-refresh', bump)
       window.removeEventListener('mm-dividend-bell-ack', bump)
     }
-  }, [])
+  }, [enabled])
 
   useEffect(() => {
-    if (!userId) {
+    if (!enabled || !userId) {
       setAlerts([])
       return
     }
     let cancelled = false
+    const cancelIdle = scheduleIdleTask(() => {
     ;(async () => {
       try {
         const now = new Date()
@@ -59,6 +58,17 @@ export function useDividendMonthBellAlerts(session) {
           setAlerts([])
           return
         }
+        const [
+          { fetchDividendMasterScheduleForMonth },
+          { loadDividendWatchlist },
+          { getDividendCalendarDetailRecord },
+          { dividendNetTotalJpyFromPerShare },
+        ] = await Promise.all([
+          import('../lib/dividendMasterScheduleApi'),
+          import('../lib/myPageApi'),
+          import('../lib/dividendCalendarDetailLookup'),
+          import('../lib/dividendCalendar'),
+        ])
         const [masterRows, watchlist] = await Promise.all([
           fetchDividendMasterScheduleForMonth(year, month),
           loadDividendWatchlist(userId),
@@ -82,7 +92,7 @@ export function useDividendMonthBellAlerts(session) {
           const rowThisMonth = (w?.dividends || []).find((d) => Number(d?.month) === month)
           const perShare = Math.max(0, Number(rowThisMonth?.amount || 0))
           const qty = Math.max(1, Number(w?.qty || 10))
-          monthNetJpyTotal += getDividendNetJpyApprox(perShare * qty, w, 150)
+          monthNetJpyTotal += dividendNetTotalJpyFromPerShare(perShare, qty, w, 150)
           out.push({
             stock_id: sid,
             title,
@@ -106,7 +116,7 @@ export function useDividendMonthBellAlerts(session) {
           const rowThisMonth = (w?.dividends || []).find((d) => Number(d?.month) === month)
           const perShare = Math.max(0, Number(rowThisMonth?.amount || 0))
           const qty = Math.max(1, Number(w?.qty || 10))
-          monthNetJpyTotal += getDividendNetJpyApprox(perShare * qty, w, 150)
+          monthNetJpyTotal += dividendNetTotalJpyFromPerShare(perShare, qty, w, 150)
           let assetKind = 'us_stock'
           const cat = String(rec?.category || '')
           if (cat.includes('日本')) assetKind = cat.includes('ETF') ? 'jp_fund' : 'jp_stock'
@@ -121,7 +131,7 @@ export function useDividendMonthBellAlerts(session) {
         // Add summary alert first for premium-only rendering in navbar.
         out.unshift({
           stock_id: '__MONTH_NET_SUMMARY__',
-          title: `今月の配当税引後入金予定額は ¥${Math.round(monthNetJpyTotal).toLocaleString()} です。`,
+          title: `今月の配当税引後入金予定額は ¥${Math.round(monthNetJpyTotal).toLocaleString('ja-JP')} です。`,
           asset_kind: 'summary',
         })
         const nextKey = out.map((r) => `${r.stock_id}\t${r.title}\t${r.asset_kind || ''}`).join('\n')
@@ -135,10 +145,12 @@ export function useDividendMonthBellAlerts(session) {
         setAlerts([])
       }
     })()
+    }, { timeoutMs: 2200 })
     return () => {
       cancelled = true
+      cancelIdle()
     }
-  }, [userId, refreshTick])
+  }, [enabled, userId, refreshTick])
 
   return alerts
 }

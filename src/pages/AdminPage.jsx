@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import Button from '../components/ui/Button'
@@ -10,8 +10,24 @@ import {
   splitInsightMainCombined,
   isEmptyInsightBodyHtml,
 } from '../lib/insightHtml'
+import { parseInsightKeywordsText } from '../lib/insightKeywords'
+import { aggregateDwellStats, avgCappedDwellMs, capDwellMsForReport, medianDwellMs } from '../lib/analyticsDwellStats'
 import { fetchAdminReports, updateCommentStatus, updatePostStatus, updateReportStatus } from '../lib/loungeApi'
-import { Activity, AlertTriangle, BookOpen, Database, Download, Globe2, LayoutDashboard, MousePointerClick, Package, Search, Timer, Users } from 'lucide-react'
+import {
+  Activity,
+  AlertTriangle,
+  BookOpen,
+  Database,
+  Download,
+  Globe2,
+  LayoutDashboard,
+  MousePointerClick,
+  Package,
+  Search,
+  Timer,
+  TrendingUp,
+  Users,
+} from 'lucide-react'
 import { ETF_LIST_FROM_XLSX, ETF_SYMBOLS_FROM_XLSX } from '../data/etfListFromXlsx'
 import { Bar, BarChart, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { publishedAtNoonTokyoFromDateOnly, publishedAtNowIso } from '../lib/newsPublishedAt'
@@ -21,12 +37,60 @@ import {
   updateDividendMasterRow,
   deleteDividendMasterRow,
 } from '../lib/dividendMasterScheduleApi'
+import {
+  crmUserSegment,
+  hasPremiumIntent,
+  isActivatedSignup,
+  isCrmInternalEmail,
+  isCrmInternalUser,
+  isInternalReferrerDomain,
+  buildInternalUserIdSet,
+  filterStaffAnalyticsEvents,
+  isSmartNewsSignup,
+} from '../lib/crmInternalUsers'
+import {
+  aggregateSignupReferrerChannels,
+  aggregateTrafficReferrerChannels,
+  formatTrafficReferrerLabel,
+  REFERRER_CHANNEL_NOTES,
+} from '../lib/referrerBuckets'
+
+import { MARKET_MAJOR_REGION_OPTIONS } from '../lib/marketMajorNewsBoard'
+import { buildCrmExecutiveSummary } from '../lib/crmExecutiveSummary'
+import { buildCrmAdvancedAnalysis } from '../lib/crmAdvancedAnalysis'
+import { buildSiteAdvancedAnalysis } from '../lib/siteAdvancedAnalysis'
+import CrmWorkbench from '../components/admin/crm/CrmWorkbench'
+import AnalyticsWorkbench from '../components/admin/analytics/AnalyticsWorkbench'
+import AdminExecutiveDashboard from '../components/admin/dashboard/AdminExecutiveDashboard'
+import {
+  aggregateAudienceFromEvents,
+  buildOnboardingAudienceFromCrmRows,
+  emptyCrmAudience,
+  mapAudienceRpcPayload,
+  mergeAudienceWithOnboarding,
+} from '../lib/crmAudienceAggregate'
 
 const formatAnalyticsDuration = (value) => {
   const ms = Number(value || 0)
-  if (!Number.isFinite(ms) || ms <= 0) return '-'
+  if (!Number.isFinite(ms) || ms <= 0) return '—'
   if (ms >= 60000) return `${(ms / 60000).toFixed(1)} min`
   return `${Math.round(ms / 1000)} sec`
+}
+
+const analyticsDataSourceBadge = ({ loading, error, dataSource }) => {
+  if (loading) {
+    return { label: 'Loading', className: 'border-gray-300 bg-gray-100 text-gray-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300' }
+  }
+  if (error) {
+    const timeout = /timeout|タイムアウト|57014/i.test(String(error))
+    return timeout
+      ? { label: 'SQL required', className: 'border-rose-300 bg-rose-50 text-rose-800 dark:border-rose-800 dark:bg-rose-950/50 dark:text-rose-200' }
+      : { label: 'Load error', className: 'border-rose-300 bg-rose-50 text-rose-800 dark:border-rose-800 dark:bg-rose-950/50 dark:text-rose-200' }
+  }
+  if (dataSource === 'client') {
+    return { label: 'Browser summary', className: 'border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100' }
+  }
+  return { label: 'RPC aggregate', className: 'border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200' }
 }
 
 const formatAnalyticsLoadError = (err) => {
@@ -36,13 +100,20 @@ const formatAnalyticsLoadError = (err) => {
     || message.includes("relation \"public.site_analytics_events\" does not exist")
     || message.includes("Could not find the table 'public.site_analytics_top_pages_30d' in the schema cache")
   ) {
-    return 'Supabase analytics テーブル/ビューがまだありません。`SUPABASE_SETUP_SITE_ANALYTICS.sql` を先に実行してから再読み込みしてください。'
+    return 'Supabase analytics tables/views are missing. Run `SUPABASE_SETUP_SITE_ANALYTICS.sql` first, then reload.'
   }
   if (
     message.toLowerCase().includes('admin_site_analytics_dashboard')
     && (message.includes('does not exist') || message.includes('Could not find') || message.includes('schema cache'))
   ) {
-    return '集計RPCがありません。`SUPABASE_ADMIN_SITE_ANALYTICS_DASHBOARD_RPC.sql` を Supabase SQL Editor で実行してから再読み込みしてください。（未適用時は最大2万件までブラウザで要約します。）'
+    return 'Analytics RPC is missing. Run `SUPABASE_ADMIN_SITE_ANALYTICS_DASHBOARD_RPC.sql` in the Supabase SQL editor, then reload. (Without it, the browser summarizes up to 20k rows.)'
+  }
+  if (
+    String(err?.code || '') === '57014'
+    || message.toLowerCase().includes('statement timeout')
+    || message.toLowerCase().includes('canceling statement due to statement timeout')
+  ) {
+    return 'Analytics RPC timed out. Run `SUPABASE_FIX_ANALYTICS_VIEW_PERF.sql` in Supabase, or use the browser summary fallback.'
   }
   return message || 'Failed to load analytics.'
 }
@@ -61,13 +132,16 @@ const isAnalyticsRpcMissingError = (err) => {
   )
 }
 
-const formatAnalyticsDeltaPct = (current, prev) => {
-  const c = Number(current || 0)
-  const p = Number(prev || 0)
-  if (c === 0 && p === 0) return null
-  if (p === 0) return c > 0 ? '+ (prior 0)' : null
-  const pct = ((c - p) / p) * 100
-  return `${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%`
+const isAnalyticsRpcFallbackError = (err) => {
+  if (isAnalyticsRpcMissingError(err)) return true
+  const m = String(err?.message || err || '').toLowerCase()
+  const c = String(err?.code || '')
+  return (
+    c === '57014'
+    || m.includes('statement timeout')
+    || m.includes('canceling statement due to statement timeout')
+    || m.includes('v_customer_site_analytics_events')
+  )
 }
 
 const emptyAnalyticsActivity = () => ({
@@ -265,6 +339,7 @@ const mapAnalyticsRpcPayload = (payload) => {
     landingViews: n(s.landing_view_events),
     uniqueLandingSessions: n(s.unique_landing_sessions),
     avgDwellMs: n(s.avg_dwell_ms),
+    medianDwellMs: n(s.median_dwell_ms),
     summaryPrev: {
       pageViews: n(sp.page_views),
       uniqueSessionsPageView: n(sp.unique_sessions_page_view),
@@ -275,6 +350,7 @@ const mapAnalyticsRpcPayload = (payload) => {
       landingViews: n(sp.landing_view_events),
       uniqueLandingSessions: n(sp.unique_landing_sessions),
       avgDwellMs: n(sp.avg_dwell_ms),
+      medianDwellMs: n(sp.median_dwell_ms),
     },
     topPages: Array.isArray(payload?.top_pages) ? payload.top_pages : [],
     topProducts: Array.isArray(payload?.top_products) ? payload.top_products : [],
@@ -286,6 +362,8 @@ const mapAnalyticsRpcPayload = (payload) => {
     eventBreakdown: Array.isArray(payload?.event_breakdown) ? payload.event_breakdown : [],
     engagement: Array.isArray(payload?.engagement) ? payload.engagement : [],
     activity: mapActivityFromRpc(payload?.activity),
+    rangeDays: Number(payload?.meta?.days) || null,
+    metaSince: payload?.meta?.since || null,
   }
 }
 
@@ -319,22 +397,34 @@ const bucketPagePath = (pathRaw) => {
   if (path.startsWith('/market')) return 'market'
   if (path.startsWith('/insights')) return 'insights'
   if (path.startsWith('/products')) return 'products'
+  if (path.startsWith('/news')) return 'news'
+  if (path.startsWith('/community') || path.startsWith('/lounge')) return 'community'
+  if (path.startsWith('/premium')) return 'premium'
+  if (path.startsWith('/dividend')) return 'dividend'
+  if (path.startsWith('/login') || path.startsWith('/signup') || path.startsWith('/forgot-password') || path.startsWith('/reset-password')) return 'auth'
+  if (path.startsWith('/legal') || path === '/faq' || path === '/about' || path === '/careers') return 'legal'
   if (path === '/' || path === '') return 'home'
   return 'other'
 }
 
 const PAGE_BUCKET_LABELS = {
-  funds_list: 'Funds / ETF list (/funds)',
-  fund_detail: 'Fund detail (/funds/:id)',
-  fund_compare: 'Fund compare (/funds/compare, /etf-compare)',
-  stocks: 'Stocks (/stocks)',
-  mypage: 'My page (/mypage)',
-  tools: 'Tools hub (/tools)',
-  market: 'Market (/market)',
-  insights: 'Insights (/insights)',
-  products: 'Products (/products)',
-  home: 'Home (/)',
-  other: 'Other routes',
+  funds_list: 'Funds / ETF list',
+  fund_detail: 'Fund detail',
+  fund_compare: 'Fund compare',
+  stocks: 'Stocks',
+  mypage: 'My page',
+  tools: 'Tools',
+  market: 'Market',
+  insights: 'Insights',
+  products: 'Products',
+  news: 'News',
+  community: 'Community',
+  premium: 'Premium',
+  dividend: 'Dividend calendar',
+  auth: 'Login / signup',
+  legal: 'Legal / FAQ',
+  home: 'Home',
+  other: 'Other pages',
 }
 
 const buildProductDashboardRollups = (analytics) => {
@@ -342,10 +432,14 @@ const buildProductDashboardRollups = (analytics) => {
   const buckets = new Map()
   for (const row of topPages) {
     const key = bucketPagePath(row.page_path)
-    const cur = buckets.get(key) || { views: 0, uniqueSessionsSum: 0, dwellWeighted: 0, dwellWeight: 0 }
+    const cur = buckets.get(key) || { views: 0, uniqueSessionsSum: 0, dwellWeighted: 0, dwellWeight: 0, samplePaths: [] }
     const views = Number(row.views || 0)
     cur.views += views
     cur.uniqueSessionsSum += Number(row.unique_sessions || 0)
+    const path = String(row.page_path || '').split('?')[0]
+    if (key === 'other' && path && cur.samplePaths.length < 4 && !cur.samplePaths.includes(path)) {
+      cur.samplePaths.push(path)
+    }
     const d = Number(row.avg_dwell_ms || 0)
     if (d > 0 && views > 0) {
       cur.dwellWeighted += d * views
@@ -359,6 +453,7 @@ const buildProductDashboardRollups = (analytics) => {
     views: v.views,
     unique_sessions_sum: v.uniqueSessionsSum,
     avg_dwell_ms: v.dwellWeight > 0 ? Math.round(v.dwellWeighted / v.dwellWeight) : 0,
+    samplePaths: v.samplePaths || [],
   }))
   rollups.sort((a, b) => b.views - a.views)
 
@@ -372,7 +467,24 @@ const buildProductDashboardRollups = (analytics) => {
   const events = Array.isArray(analytics?.eventBreakdown) ? analytics.eventBreakdown : []
   const watchHints = events.filter((e) => /watchlist|watch_list|ウォッチ/i.test(String(e.event_name || '')))
 
-  return { rollups, fundClicks, watchHints }
+  const totalAreaViews = rollups.reduce((sum, row) => sum + Number(row.views || 0), 0)
+  const fundClickTotal = fundClicks.reduce((sum, row) => sum + Number(row.clicks || 0), 0)
+
+  return {
+    rollups,
+    fundClicks,
+    watchHints,
+    summary: {
+      totalAreaViews,
+      uniqueSessions: Number(analytics?.uniqueSessionsPageView || 0),
+      avgDwellMs: Number(analytics?.avgDwellMs || 0),
+      medianDwellMs: Number(analytics?.medianDwellMs || 0),
+      productClicks: Number(analytics?.productClicks || 0),
+      fundClickTotal,
+    },
+    maxAreaViews: rollups.reduce((max, row) => Math.max(max, Number(row.views || 0)), 0),
+    maxFundClicks: fundClicks.reduce((max, row) => Math.max(max, Number(row.clicks || 0)), 0),
+  }
 }
 
 const formatCrmLoadError = (err) => {
@@ -383,6 +495,12 @@ const formatCrmLoadError = (err) => {
   ) {
     return 'CRM is not set up yet: the `admin_crm_users` RPC is missing. Run `SUPABASE_CRM_SIGNUP_ATTRIBUTION.sql` in the Supabase SQL editor, then reload.'
   }
+  if (
+    message.includes('admin_crm_traffic_dashboard')
+    && (message.includes('does not exist') || message.includes('schema cache') || message.includes('Could not find'))
+  ) {
+    return 'Visitor traffic RPC is missing. Run `SUPABASE_ADMIN_CRM_ENHANCED.sql` in Supabase SQL editor, then reload.'
+  }
   if (message.toLowerCase().includes('not allowed')) return 'Admin access required.'
   if (message.includes('signup_referrer_domain')) {
     return 'Signup attribution columns are missing on `user_profiles`. Run `SUPABASE_CRM_SIGNUP_ATTRIBUTION.sql` in Supabase.'
@@ -390,7 +508,339 @@ const formatCrmLoadError = (err) => {
   return message || 'Failed to load CRM data.'
 }
 
+const emptyCrmTraffic = () => ({
+  dataSource: '',
+  summary: {
+    pageViews: 0,
+    uniqueSessions: 0,
+    anonymousSessions: 0,
+    loggedInSessions: 0,
+    attributedSessions: 0,
+    directUnknownSessions: 0,
+    signupsInWindow: 0,
+    signupConversionPct: 0,
+  },
+  cohort: {
+    anonymousSessions: 0,
+    loggedInSessions: 0,
+    newSessions: 0,
+    returningSessions: 0,
+  },
+  topReferrers: [],
+  topLandingPaths: [],
+  topUtmSources: [],
+  dailyTrend: [],
+  recentSessions: [],
+  meta: { days: 30 },
+})
+
+const isInternalTrafficSession = (session) => (
+  isInternalReferrerDomain(session?.referrer_domain)
+  || isCrmInternalEmail(session?.email)
+)
+
+const filterExternalCrmTraffic = (traffic) => {
+  if (!traffic) return emptyCrmTraffic()
+  const topReferrers = (traffic.topReferrers || []).filter(
+    (row) => !isInternalReferrerDomain(row.referrer_domain),
+  )
+  const recentSessions = (traffic.recentSessions || []).filter(
+    (row) => !isInternalTrafficSession(row),
+  )
+  return {
+    ...traffic,
+    topReferrers,
+    recentSessions,
+  }
+}
+
+const filterExternalAnalyticsReferrers = (rows) => (
+  (Array.isArray(rows) ? rows : []).filter((row) => !isInternalReferrerDomain(row.referrer_domain))
+)
+
+const mapCrmTrafficPayload = (payload) => {
+  const s = payload?.summary || {}
+  const c = payload?.cohort || {}
+  const n = (v) => Number(v || 0)
+  const dailyRaw = Array.isArray(payload?.daily_trend) ? payload.daily_trend : []
+  return {
+    dataSource: 'rpc',
+    summary: {
+      pageViews: n(s.page_views),
+      uniqueSessions: n(s.unique_sessions),
+      anonymousSessions: n(s.anonymous_sessions),
+      loggedInSessions: n(s.logged_in_sessions),
+      attributedSessions: n(s.attributed_sessions),
+      directUnknownSessions: n(s.direct_unknown_sessions),
+      signupsInWindow: n(s.signups_in_window),
+      signupConversionPct: n(s.signup_conversion_pct),
+    },
+    cohort: {
+      anonymousSessions: n(c.anonymous_sessions),
+      loggedInSessions: n(c.logged_in_sessions),
+      newSessions: n(c.new_sessions),
+      returningSessions: n(c.returning_sessions),
+    },
+    topReferrers: Array.isArray(payload?.top_referrers) ? payload.top_referrers : [],
+    topLandingPaths: Array.isArray(payload?.top_landing_paths) ? payload.top_landing_paths : [],
+    topUtmSources: Array.isArray(payload?.top_utm_sources) ? payload.top_utm_sources : [],
+    dailyTrend: dailyRaw.map((row) => ({
+      day: String(row?.day || ''),
+      sessions: n(row?.sessions),
+      anonymousSessions: n(row?.anonymous_sessions),
+      loggedInSessions: n(row?.logged_in_sessions),
+      pageViews: n(row?.page_views),
+    })),
+    recentSessions: Array.isArray(payload?.recent_sessions) ? payload.recent_sessions : [],
+    meta: payload?.meta || { days: 30 },
+  }
+}
+
+
+const crmHasAttribution = (row) => {
+  if (row?.has_attribution != null) return Boolean(row.has_attribution)
+  return Boolean(
+    String(row?.signup_referrer_domain || '').trim()
+    || String(row?.signup_utm_source || '').trim()
+    || String(row?.signup_utm_medium || '').trim()
+    || String(row?.signup_utm_campaign || '').trim()
+    || String(row?.signup_ref || '').trim()
+    || String(row?.signup_landing_path || '').trim(),
+  )
+}
+
+
+const sortCountEntries = (map, limit) => (
+  [...map.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([key, count]) => ({ key: String(key).slice(0, 200), count: Number(count) || 0 }))
+)
+
+function buildCrmAcquisitionSummary(rows) {
+  const list = Array.isArray(rows) ? rows : []
+  const refCounts = new Map()
+  const landingCounts = new Map()
+  const utmCounts = new Map()
+  const utmSourceOnly = new Map()
+
+  for (const r of list) {
+    const ref = String(r.signup_referrer_domain || '').trim() || '(direct / unknown)'
+    if (!isInternalReferrerDomain(ref)) {
+      refCounts.set(ref, (refCounts.get(ref) || 0) + 1)
+    }
+
+    const land = String(r.signup_landing_path || '').trim() || '(unknown)'
+    landingCounts.set(land, (landingCounts.get(land) || 0) + 1)
+
+    const utmParts = [r.signup_utm_source, r.signup_utm_medium, r.signup_utm_campaign].filter(Boolean)
+    const utmKey = utmParts.length ? utmParts.join(' · ') : '(no UTM)'
+    utmCounts.set(utmKey, (utmCounts.get(utmKey) || 0) + 1)
+
+    const srcOnly = String(r.signup_utm_source || '').trim() || '(none)'
+    utmSourceOnly.set(srcOnly, (utmSourceOnly.get(srcOnly) || 0) + 1)
+  }
+
+  const today = new Date()
+  const signupsByDayLast14 = []
+  for (let i = 13; i >= 0; i -= 1) {
+    const d = new Date(today)
+    d.setDate(d.getDate() - i)
+    signupsByDayLast14.push({ day: d.toISOString().slice(0, 10), count: 0 })
+  }
+  const dayIndex = new Map(signupsByDayLast14.map((x) => [x.day, x]))
+  for (const r of list) {
+    const raw = r.user_created_at
+    if (!raw) continue
+    const day = String(raw).slice(0, 10)
+    const slot = dayIndex.get(day)
+    if (slot) slot.count += 1
+  }
+
+  const totalRows = list.length
+  const topReferrersSorted = sortCountEntries(refCounts, 15)
+  const topRef0 = topReferrersSorted[0]
+  const directRaw = refCounts.get('(direct / unknown)') || 0
+  const topReferrerSharePct = totalRows && topRef0
+    ? Math.round(((topRef0.count / totalRows) * 1000)) / 10
+    : 0
+  const directUnknownSharePct = totalRows
+    ? Math.round(((directRaw / totalRows) * 1000)) / 10
+    : 0
+
+  let signupPeakDay = null
+  let signupPeakCount = 0
+  for (const d of signupsByDayLast14) {
+    if (d.count > signupPeakCount) {
+      signupPeakCount = d.count
+      signupPeakDay = d.day
+    }
+  }
+  const sum14 = signupsByDayLast14.reduce((acc, d) => acc + Number(d.count || 0), 0)
+  const avgDailySignupsLast14 = Math.round((sum14 / 14) * 100) / 100
+  const sumLast7 = signupsByDayLast14.slice(-7).reduce((acc, d) => acc + Number(d.count || 0), 0)
+
+  const withUtm = list.filter((r) =>
+    Boolean(String(r.signup_utm_source || '').trim()
+      || String(r.signup_utm_medium || '').trim()
+      || String(r.signup_utm_campaign || '').trim()),
+  ).length
+  const utmTaggedSharePct = totalRows
+    ? Math.round(((withUtm / totalRows) * 1000)) / 10
+    : 0
+  const missingAttributionCount = list.filter((r) => !crmHasAttribution(r)).length
+  const missingAttributionSharePct = totalRows
+    ? Math.round(((missingAttributionCount / totalRows) * 1000)) / 10
+    : 0
+
+  return {
+    rowCount: list.length,
+    uniqueReferrerDomains: refCounts.size,
+    uniqueLandingPaths: landingCounts.size,
+    uniqueUtmCombinations: utmCounts.size,
+    topReferrers: topReferrersSorted,
+    topLandings: sortCountEntries(landingCounts, 15),
+    topUtms: sortCountEntries(utmCounts, 15),
+    topUtmSources: sortCountEntries(utmSourceOnly, 12),
+    signupsByDayLast14,
+    topReferrerSharePct,
+    directUnknownSharePct,
+    utmTaggedSharePct,
+    missingAttributionCount,
+    missingAttributionSharePct,
+    signupPeakDay,
+    signupPeakCount,
+    avgDailySignupsLast14,
+    signupsLast7Days: sumLast7,
+  }
+}
+
+function escapeCsvCell(value) {
+  const s = String(value ?? '')
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`
+  return s
+}
+
+function downloadCrmCsv(rows, filenameBase = 'crm-users') {
+  const list = Array.isArray(rows) ? rows : []
+  const headers = [
+    'user_created_at',
+    'email',
+    'email_confirmed_at',
+    'last_sign_in_at',
+    'display_name',
+    'is_premium',
+    'plan_tier',
+    'crm_segment',
+    'is_internal',
+    'has_attribution',
+    'signup_referrer_domain',
+    'signup_utm_source',
+    'signup_utm_medium',
+    'signup_utm_campaign',
+    'signup_ref',
+    'signup_landing_path',
+    'logged_in_within_7d',
+    'has_search_7d',
+    'has_product_view_7d',
+    'has_watchlist_add_7d',
+    'visited_premium_page',
+    'premium_checkout_click',
+    'page_views_30d',
+    'sessions_30d',
+    'last_seen_at',
+  ]
+  const lines = [headers.join(',')]
+  for (const r of list) {
+    const display = String(r.nickname || r.full_name || '').trim()
+    lines.push([
+      escapeCsvCell(r.user_created_at ? new Date(r.user_created_at).toISOString() : ''),
+      escapeCsvCell(r.email),
+      escapeCsvCell(r.email_confirmed_at ? new Date(r.email_confirmed_at).toISOString() : ''),
+      escapeCsvCell(r.last_sign_in_at ? new Date(r.last_sign_in_at).toISOString() : ''),
+      escapeCsvCell(display),
+      escapeCsvCell(r.is_premium ? 'yes' : 'no'),
+      escapeCsvCell(r.plan_tier),
+      escapeCsvCell(crmUserSegment(r)),
+      escapeCsvCell(isCrmInternalUser(r) ? 'yes' : 'no'),
+      escapeCsvCell(crmHasAttribution(r) ? 'yes' : 'no'),
+      escapeCsvCell(r.signup_referrer_domain),
+      escapeCsvCell(r.signup_utm_source),
+      escapeCsvCell(r.signup_utm_medium),
+      escapeCsvCell(r.signup_utm_campaign),
+      escapeCsvCell(r.signup_ref),
+      escapeCsvCell(r.signup_landing_path),
+      escapeCsvCell(r.logged_in_within_7d ? 'yes' : 'no'),
+      escapeCsvCell(r.has_search_7d ? 'yes' : 'no'),
+      escapeCsvCell(r.has_product_view_7d ? 'yes' : 'no'),
+      escapeCsvCell(r.has_watchlist_add_7d ? 'yes' : 'no'),
+      escapeCsvCell(r.visited_premium_page ? 'yes' : 'no'),
+      escapeCsvCell(r.premium_checkout_click ? 'yes' : 'no'),
+      escapeCsvCell(r.page_views_30d),
+      escapeCsvCell(r.sessions_30d),
+      escapeCsvCell(r.last_seen_at ? new Date(r.last_seen_at).toISOString() : ''),
+    ].join(','))
+  }
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${filenameBase}-${new Date().toISOString().slice(0, 10)}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+function buildAdminGrowthSnapshot({ dashboard, analytics, analyticsRangeDays }) {
+  return {
+    analyticsRangeDays,
+    business: {
+      dauToday: Number(dashboard?.dauToday || 0),
+      signupsToday: Number(dashboard?.signupsToday || 0),
+      openReports: Number(dashboard?.openReports || 0),
+      saveSuccessRate: Number(dashboard?.saveSuccessRate || 0),
+      totalProducts: Number(dashboard?.totalProducts || 0),
+      activeProducts: Number(dashboard?.activeProducts || 0),
+    },
+    analyticsSummary: {
+      dataSource: analytics?.dataSource || '',
+      pageViews: Number(analytics?.pageViews || 0),
+      uniqueSessionsPageView: Number(analytics?.uniqueSessionsPageView || 0),
+      searches: Number(analytics?.searches || 0),
+      uniqueSearchSessions: Number(analytics?.uniqueSearchSessions || 0),
+      productClicks: Number(analytics?.productClicks || 0),
+      uniqueProductClickSessions: Number(analytics?.uniqueProductClickSessions || 0),
+      avgDwellMs: Number(analytics?.avgDwellMs || 0),
+      medianDwellMs: Number(analytics?.medianDwellMs || 0),
+      landingViews: Number(analytics?.landingViews || 0),
+      uniqueLandingSessions: Number(analytics?.uniqueLandingSessions || 0),
+    },
+    topPages: (Array.isArray(analytics?.topPages) ? analytics.topPages : []).slice(0, 12).map((r) => ({
+      path: r.page_path,
+      views: Number(r.views || 0),
+      unique_sessions: Number(r.unique_sessions || 0),
+      avg_dwell_ms: Number(r.avg_dwell_ms || 0),
+    })),
+    topReferrers: filterExternalAnalyticsReferrers(analytics?.topReferrers).slice(0, 12),
+    topCampaigns: (Array.isArray(analytics?.topCampaigns) ? analytics.topCampaigns : []).slice(0, 12),
+    topSearches: (Array.isArray(analytics?.topSearches) ? analytics.topSearches : []).slice(0, 12),
+    funnel: (Array.isArray(analytics?.funnel) ? analytics.funnel : []).slice(0, 14),
+    activity: {
+      rolling: analytics?.activity?.rolling || {},
+      cohortSessions: analytics?.activity?.cohortSessions || {},
+      attributionSignups: analytics?.activity?.attributionSignups || {},
+      watchlist: analytics?.activity?.watchlist || {},
+    },
+  }
+}
+
 const ADMIN_TAB_VALID = new Set(['dashboard', 'operations', 'analytics', 'crm'])
+const ADMIN_TAB_LEGACY = new Set(['insights'])
+
+function resolveAdminTab(raw) {
+  const t = String(raw || '').trim()
+  if (ADMIN_TAB_LEGACY.has(t)) return 'dashboard'
+  return ADMIN_TAB_VALID.has(t) ? t : 'dashboard'
+}
 const ADMIN_TAB_STORAGE_KEY = 'mm_admin_active_tab'
 const ADMIN_ANALYTICS_SECTION_KEY = 'mm_admin_analytics_section'
 const NEWS_MANUAL_DRAFT_KEY = 'mm_admin_news_manual_draft'
@@ -398,12 +848,18 @@ const INSIGHT_DRAFT_KEY = 'mm_admin_insight_draft'
 const INSIGHTS_DEFAULT_READ_TIME = '5分'
 /** かんたん入力：本文内で「テーゼ」と「根拠」を分ける区切り（プレーンテキスト時・1行） */
 const INSIGHT_BODY_DELIM = INSIGHT_BODY_DELIM_PLAIN
-const INSIGHT_CATEGORY_OPTIONS = ['インサイト', 'マーケット', 'ETF分析']
+const INSIGHT_CATEGORY_OPTIONS = [
+  { value: 'インサイト', label: 'Insight' },
+  { value: 'マーケット', label: 'Market' },
+  { value: 'ETF分析', label: 'ETF analysis' },
+]
 /** ニュース画像と同じ公開バケット（`SUPABASE_SETUP_NEWS_IMAGES_STORAGE.sql`） */
 const INSIGHT_COVER_IMAGE_BUCKET = 'news-images'
 
 const buildDefaultInsightSimpleForm = () => ({
   headline: '',
+  /** 公開URL `/insights/{slug}` — 英小文字・数字・ハイフンのみ推奨 */
+  urlSlug: '',
   category: 'インサイト',
   target: '',
   summary: '',
@@ -451,6 +907,7 @@ const simpleToInsightForm = (simple) => {
   return {
     ...base,
     headline: String(simple?.headline || '').trim(),
+    urlSlug: String(simple?.urlSlug ?? simple?.slug ?? '').trim(),
     category: String(simple?.category || '').trim() || base.category,
     target: String(simple?.target || '').trim(),
     summary: String(simple?.summary || '').trim(),
@@ -497,6 +954,7 @@ const insightFormToSimple = (form) => {
   return {
     ...buildDefaultInsightSimpleForm(),
     headline: String(form?.headline || '').trim(),
+    urlSlug: String(form?.urlSlug ?? '').trim(),
     category: String(form?.category || '').trim() || 'インサイト',
     target: String(form?.target || '').trim(),
     summary: String(form?.summary || '').trim(),
@@ -521,6 +979,7 @@ const buildDefaultInsightForm = () => ({
   target: '',
   category: 'インサイト',
   headline: '',
+  urlSlug: '',
   summary: '',
   coverImageUrl: '',
   idea: '',
@@ -550,22 +1009,47 @@ const parseRelatedToolsText = (value) => (
     .filter(Boolean)
 )
 
-const parseInsightKeywordsText = (value) => (
-  String(value || '')
-    .split(/[,、\n]/g)
-    .map((item) => item.trim())
-    .filter(Boolean)
-)
-
-const slugifyInsightHeadline = (value) => {
-  const base = String(value || '')
-    .toLowerCase()
+/** `/insights/...` 用。URL・SEO・共有のため ASCII のみに正規化する */
+function normalizeInsightUrlSlug(raw) {
+  const s = String(raw || '')
+    .normalize('NFKC')
     .trim()
-    .replace(/[^a-z0-9가-힣ぁ-んァ-ン一-龯\s-]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 96)
+  return s
+}
+
+/** 見出しに英字が含まれる場合だけスラッグ候補を作る（日本語のみなら空） */
+function latinSlugFromHeadline(headline) {
+  const stripped = String(headline || '')
+    .normalize('NFKC')
+    .replace(/[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/g, ' ')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, ' ')
+    .trim()
     .replace(/\s+/g, '-')
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '')
-  return base || 'insight'
+    .slice(0, 72)
+  return stripped
+}
+
+function suggestAsciiInsightSlug(headline) {
+  const fromLatin = latinSlugFromHeadline(headline)
+  if (fromLatin.length >= 6) return fromLatin
+  const rand = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
+  return `insight-${rand}`
+}
+
+function resolveInsightSlugForSave({ editingId, editingRowSlug, headline, manualSlug }) {
+  const normalizedManual = normalizeInsightUrlSlug(manualSlug)
+  if (normalizedManual) return normalizedManual
+  const legacy = String(editingRowSlug || '').trim()
+  if (editingId && legacy) return legacy
+  return suggestAsciiInsightSlug(headline)
 }
 
 const buildInsightDocumentFromForm = (form) => {
@@ -592,11 +1076,21 @@ const buildInsightDocumentFromForm = (form) => {
   const relatedTools = parseRelatedToolsText(form?.relatedToolsText)
   const keywords = parseInsightKeywordsText(form?.keywordsText)
   const coverImageUrl = String(form?.coverImageUrl || '').trim()
+  const categoryKey = /マーケット|market/i.test(category)
+    ? 'market'
+    : /etf|投資信託/i.test(category)
+      ? 'etf'
+      : 'editorial'
+  const proseKicker = categoryKey === 'market'
+    ? '// MARKET BRIEF'
+    : categoryKey === 'etf'
+      ? '// ETF ANALYSIS'
+      : '// MARKET INSIGHT'
 
   const sections = [
     {
       type: 'prose',
-      kicker: '// MARKET INSIGHT',
+      kicker: proseKicker,
       title: headline,
       lead: summary,
       paragraphs: [idea, rationale].filter(Boolean),
@@ -627,6 +1121,8 @@ const buildInsightDocumentFromForm = (form) => {
     sub: summary || '市場インサイト',
     meta: ['By MoneyMart', publishedAt, readTime],
   }
+  if (categoryKey === 'market') hero.bgFigure = 'MARKET'
+  if (categoryKey === 'etf') hero.bgFigure = 'ETF'
   if (coverImageUrl) hero.coverImageUrl = coverImageUrl
 
   return {
@@ -795,21 +1291,26 @@ export default function AdminPage() {
     } catch { return null }
   })()
   const resolvedTab = tabFromUrl || tabFromStorage || 'dashboard'
-  const initialTab = ADMIN_TAB_VALID.has(resolvedTab) ? resolvedTab : 'dashboard'
+  const initialTab = resolveAdminTab(resolvedTab)
   const [activeTab, setActiveTab] = useState(initialTab)
 
   useEffect(() => {
-    const t = searchParams.get('tab') || tabFromStorage || 'dashboard'
-    const validTab = ADMIN_TAB_VALID.has(t) ? t : 'dashboard'
-    setActiveTab(validTab)
-    if (!searchParams.get('tab') && validTab !== 'dashboard') {
+    let stored = null
+    try {
+      stored = sessionStorage.getItem(ADMIN_TAB_STORAGE_KEY)
+    } catch { /* ignore */ }
+    const rawTab = searchParams.get('tab')
+    const t = rawTab || stored || 'dashboard'
+    const validTab = resolveAdminTab(t)
+    setActiveTab((prev) => (prev === validTab ? prev : validTab))
+    if (rawTab && rawTab !== validTab) {
       setSearchParams((prev) => {
         const next = new URLSearchParams(prev)
         next.set('tab', validTab)
         return next
-      })
+      }, { replace: true })
     }
-  }, [searchParams])
+  }, [searchParams, setSearchParams])
 
   const handleTabChange = (tab) => {
     setActiveTab(tab)
@@ -830,6 +1331,8 @@ export default function AdminPage() {
     academyCourses: 0,
     openReports: 0,
     dauToday: 0,
+    dauHasRow: false,
+    dauMetricDate: null,
     signupsToday: 0,
     saveSuccessRate: 0,
     latestStockDate: null,
@@ -839,6 +1342,7 @@ export default function AdminPage() {
   const [analyticsLoading, setAnalyticsLoading] = useState(false)
   const [analyticsError, setAnalyticsError] = useState('')
   const [analyticsRangeDays, setAnalyticsRangeDays] = useState(30)
+  const analyticsLoadGenRef = useRef(0)
   const [showAdvancedOperations, setShowAdvancedOperations] = useState(false)
   const [analyticsSection, setAnalyticsSectionState] = useState(() => {
     try {
@@ -864,6 +1368,7 @@ export default function AdminPage() {
     landingViews: 0,
     uniqueLandingSessions: 0,
     avgDwellMs: 0,
+    medianDwellMs: 0,
     summaryPrev: null,
     topPages: [],
     topProducts: [],
@@ -875,12 +1380,32 @@ export default function AdminPage() {
     eventBreakdown: [],
     engagement: [],
     activity: emptyAnalyticsActivity(),
+    rangeDays: null,
+    metaSince: null,
   })
   const productDashboard = useMemo(() => buildProductDashboardRollups(analytics), [analytics])
+  const analyticsSourceBadge = useMemo(
+    () => analyticsDataSourceBadge({
+      loading: analyticsLoading,
+      error: analyticsError,
+      dataSource: analytics.dataSource,
+    }),
+    [analyticsLoading, analyticsError, analytics.dataSource],
+  )
   const [crmLoading, setCrmLoading] = useState(false)
   const [crmError, setCrmError] = useState('')
   const [crmRows, setCrmRows] = useState([])
-  const [crmFilter, setCrmFilter] = useState('')
+  const [crmRangeDays, setCrmRangeDays] = useState(30)
+  const [crmTraffic, setCrmTraffic] = useState(emptyCrmTraffic())
+  const [crmTrafficLoading, setCrmTrafficLoading] = useState(false)
+  const [crmTrafficError, setCrmTrafficError] = useState('')
+  const [crmAiLoading, setCrmAiLoading] = useState(false)
+  const [crmAiError, setCrmAiError] = useState('')
+  const [crmAiResult, setCrmAiResult] = useState(null)
+  const [crmAiGeneratedAt, setCrmAiGeneratedAt] = useState(null)
+  const [crmAudience, setCrmAudience] = useState(emptyCrmAudience())
+  const [crmAudienceLoading, setCrmAudienceLoading] = useState(false)
+  const [crmAudienceError, setCrmAudienceError] = useState('')
   const [formData, setFormData] = useState({
     category: 'cards',
     name: '',
@@ -958,6 +1483,7 @@ export default function AdminPage() {
   const [newsPageManualImageFile, setNewsPageManualImageFile] = useState(null)
   const [marketMajorNewsForm, setMarketMajorNewsForm] = useState({
     section: 'market_major_event',
+    marketRegion: 'global',
     title: '',
     publishedAt: new Date().toISOString().slice(0, 10),
     content: '',
@@ -1209,17 +1735,17 @@ export default function AdminPage() {
       }
       if (!resp.ok) {
         if (resp.status === 404) {
-          throw new Error('要約APIが見つかりません。開発サーバーを再起動してください。')
+          throw new Error('Digest API not found. Restart the dev server.')
         }
-        throw new Error(json?.error || `要約の更新に失敗しました。(HTTP ${resp.status})`)
+        throw new Error(json?.error || `Failed to refresh digest (HTTP ${resp.status})`)
       }
-      if (!json?.ok) throw new Error(json?.error || '要約の更新に失敗しました。')
+      if (!json?.ok) throw new Error(json?.error || 'Failed to refresh digest.')
       setDigestRefreshMessage({
         type: 'success',
-        text: `要約を更新しました（${json.slot === 'pm' ? '午後' : '午前'}スロット）`,
+        text: `Digest updated (${json.slot === 'pm' ? 'PM' : 'AM'} slot)`,
       })
     } catch (err) {
-      setDigestRefreshMessage({ type: 'error', text: err.message || '要約の更新に失敗しました。' })
+      setDigestRefreshMessage({ type: 'error', text: err.message || 'Failed to refresh digest.' })
     } finally {
       setDigestRefreshLoading(false)
     }
@@ -1249,7 +1775,7 @@ export default function AdminPage() {
     try {
       const { data, error } = await supabase
         .from('news_manual')
-        .select('id,bucket,title,description,published_at,source,sort_order,is_active,updated_at')
+        .select('id,bucket,title,description,published_at,source,sort_order,is_active,updated_at,market_region')
         .in('bucket', ['market_major_event', 'market_weekly_summary'])
         .order('bucket', { ascending: true })
         .order('sort_order', { ascending: true })
@@ -1274,7 +1800,7 @@ export default function AdminPage() {
       setDividendMasterMessage({
         type: 'error',
         text: msg.includes('dividend_master_schedule') || msg.includes('schema cache')
-          ? 'テーブルがありません。Supabase で `SUPABASE_SETUP_DIVIDEND_MASTER_SCHEDULE.sql` を実行してください。'
+          ? 'Table missing. Run `SUPABASE_SETUP_DIVIDEND_MASTER_SCHEDULE.sql` in Supabase.'
           : msg,
       })
       setDividendMasterRows([])
@@ -1298,7 +1824,7 @@ export default function AdminPage() {
     const file = input?.files?.[0]
     if (input) input.value = ''
     if (!file?.type?.startsWith('image/')) {
-      if (file) setInsightsMessage({ type: 'error', text: '画像ファイル（JPEG/PNG/WebP 等）を選んでください。' })
+      if (file) setInsightsMessage({ type: 'error', text: 'Choose an image file (JPEG, PNG, WebP, etc.).' })
       return
     }
     setInsightCoverUploading(true)
@@ -1306,7 +1832,7 @@ export default function AdminPage() {
     try {
       const { data: auth, error: authErr } = await supabase.auth.getUser()
       if (authErr || !auth?.user) {
-        setInsightsMessage({ type: 'error', text: 'ログインが必要です（Storage にアップロードするため）。' })
+        setInsightsMessage({ type: 'error', text: 'Login required to upload to Storage.' })
         return
       }
       const rawExt = (file.name?.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg'
@@ -1319,7 +1845,7 @@ export default function AdminPage() {
       if (error) throw error
       const { data: urlData } = supabase.storage.from(INSIGHT_COVER_IMAGE_BUCKET).getPublicUrl(data.path)
       const url = String(urlData?.publicUrl || '').trim()
-      if (!url) throw new Error('公開URLを取得できませんでした')
+      if (!url) throw new Error('Could not get public URL')
       setInsightSimpleForm((p) => ({ ...p, coverImageUrl: url }))
       setInsightForm((p) => ({ ...p, coverImageUrl: url }))
       if (insightEditorMode === 'json') {
@@ -1331,9 +1857,9 @@ export default function AdminPage() {
           /* keep JSON draft as-is */
         }
       }
-      setInsightsMessage({ type: 'success', text: 'カバー画像をアップロードしました。Create/Update で保存してください。' })
+      setInsightsMessage({ type: 'success', text: 'Cover image uploaded. Click Create/Update to save.' })
     } catch (err) {
-      setInsightsMessage({ type: 'error', text: err?.message || 'アップロードに失敗しました。' })
+      setInsightsMessage({ type: 'error', text: err?.message || 'Upload failed.' })
     } finally {
       setInsightCoverUploading(false)
     }
@@ -1373,7 +1899,7 @@ export default function AdminPage() {
         }
         setInsightForm(workingForm)
       } catch {
-        setInsightsMessage({ type: 'error', text: 'JSONモードの内容が不正です。JSON形式を確認してください。' })
+        setInsightsMessage({ type: 'error', text: 'Invalid JSON. Check the JSON format.' })
         return
       }
     }
@@ -1386,9 +1912,14 @@ export default function AdminPage() {
     }
 
     const editingRow = insightsRows.find((row) => String(row?.id) === String(editingInsightId))
-    const slugBase = slugifyInsightHeadline(headline)
+    const slug = resolveInsightSlugForSave({
+      editingId: editingInsightId,
+      editingRowSlug: editingRow?.slug,
+      headline,
+      manualSlug: workingForm.urlSlug,
+    })
     const payload = {
-      slug: editingRow?.slug || `${slugBase}-${Date.now().toString().slice(-6)}`,
+      slug,
       page_title: headline,
       document: buildInsightDocumentFromForm(workingForm),
       is_published: Boolean(workingForm.isActive),
@@ -1408,7 +1939,12 @@ export default function AdminPage() {
       resetInsightForm()
       loadInsights()
     } catch (err) {
-      setInsightsMessage({ type: 'error', text: err?.message || 'Failed to save insight.' })
+      const msg = String(err?.message || err || '')
+      if (/duplicate key|unique constraint|23505/i.test(msg)) {
+        setInsightsMessage({ type: 'error', text: 'This URL slug is already in use. Choose another ASCII slug.' })
+        return
+      }
+      setInsightsMessage({ type: 'error', text: msg || 'Failed to save insight.' })
     }
   }
 
@@ -1420,6 +1956,7 @@ export default function AdminPage() {
       target: String(row.target || ''),
       category: String(row.category || ''),
       headline: String(row.headline || ''),
+      urlSlug: String(row.slug || ''),
       summary: String(row.summary || ''),
       idea: String(row.idea || ''),
       rationale: String(row.rationale || ''),
@@ -1822,10 +2359,10 @@ export default function AdminPage() {
           const hasTrustFee = Number.isFinite(Number(profile?.trust_fee)) || Number.isFinite(Number(meta?.trustFee))
           const hasNisa = Boolean((profile?.nisa_category || meta?.nisaCategory || '').trim())
           const issues = []
-          if (!hasVLatest) issues.push('v_stock_latestなし')
-          if (historyCount < 100) issues.push(`履歴${historyCount}件`)
-          if (!hasTrustFee) issues.push('信託報酬なし')
-          if (!hasNisa) issues.push('NISA区分なし')
+          if (!hasVLatest) issues.push('no v_stock_latest')
+          if (historyCount < 100) issues.push(`history ${historyCount} rows`)
+          if (!hasTrustFee) issues.push('no trust fee')
+          if (!hasNisa) issues.push('no NISA category')
           if (issues.length === 0) return null
           return { symbol, name: meta?.jpName || symbol, issues }
         })
@@ -1878,6 +2415,8 @@ export default function AdminPage() {
         reports: reportsByDay.get(day) || 0,
       }))
       let dauToday = 0
+      let dauMetricDate = null
+      let dauHasRow = false
       let signupsToday = 0
       let saveSuccessRate = 0
       const { data: adminDailyMetrics, error: dailyMetricErr } = await supabase
@@ -1887,6 +2426,8 @@ export default function AdminPage() {
         .limit(7)
       if (!dailyMetricErr && Array.isArray(adminDailyMetrics) && adminDailyMetrics.length > 0) {
         const latest = adminDailyMetrics[0]
+        dauHasRow = true
+        dauMetricDate = latest.metric_date || null
         dauToday = Number(latest.dau || 0)
         signupsToday = Number(latest.signup_count || 0)
         saveSuccessRate = Number(latest.mypage_save_success_rate || 0)
@@ -1898,6 +2439,8 @@ export default function AdminPage() {
         academyCourses: academyCountRes.count || 0,
         openReports: reportsOpenRes.count || 0,
         dauToday,
+        dauHasRow,
+        dauMetricDate,
         signupsToday,
         saveSuccessRate,
         latestStockDate: latestStockRes.data?.[0]?.trade_date || null,
@@ -1911,18 +2454,39 @@ export default function AdminPage() {
     }
   }
 
-  const loadAnalyticsClientFallback = async (safeRangeDays) => {
-    const sinceIso = new Date(Date.now() - (safeRangeDays * 24 * 60 * 60 * 1000)).toISOString()
+  const fetchAdminAnalyticsEventRows = async (sinceIso, internalUserIds) => {
+    const columns = 'event_name,page_path,session_id,user_id,referrer_domain,source,medium,campaign,dwell_ms,event_meta,created_at'
+    const pageSize = 1000
+    const maxRows = 60000
+    const fromView = []
+    for (let offset = 0; offset < maxRows; offset += pageSize) {
+      const { data, error } = await supabase
+        .from('v_customer_site_analytics_events')
+        .select(columns)
+        .gte('created_at', sinceIso)
+        .order('created_at', { ascending: false })
+        .range(offset, offset + pageSize - 1)
+      if (error) break
+      if (!data?.length) break
+      fromView.push(...data)
+      if (data.length < pageSize) break
+    }
+    if (fromView.length > 0) return fromView
+
     const { data, error } = await supabase
       .from('site_analytics_events')
-      .select('event_name,page_path,session_id,user_id,referrer_domain,source,medium,campaign,dwell_ms,event_meta,created_at')
+      .select(columns)
       .gte('created_at', sinceIso)
       .order('created_at', { ascending: false })
       .limit(20000)
-
     if (error) throw error
+    return filterStaffAnalyticsEvents(Array.isArray(data) ? data : [], internalUserIds)
+  }
 
-    const rows = Array.isArray(data) ? data : []
+  const loadAnalyticsClientFallback = async (safeRangeDays, requestId = null) => {
+    const sinceIso = new Date(Date.now() - (safeRangeDays * 24 * 60 * 60 * 1000)).toISOString()
+    const internalUserIds = buildInternalUserIdSet(crmRows)
+    const rows = await fetchAdminAnalyticsEventRows(sinceIso, internalUserIds)
     const pageViewEvents = rows.filter((row) => row.event_name === 'page_view')
     const searchEvents = rows.filter((row) => row.event_name === 'search')
     const productEvents = rows.filter((row) => ANALYTICS_CLICK_EVENTS.has(row.event_name))
@@ -1932,16 +2496,16 @@ export default function AdminPage() {
     const topPagesMap = new Map()
     pageViewEvents.forEach((row) => {
       const key = row.page_path || '/'
-      const entry = topPagesMap.get(key) || { page_path: key, views: 0, uniqueSessions: new Set(), dwellTotal: 0, dwellCount: 0 }
+      const entry = topPagesMap.get(key) || { page_path: key, views: 0, uniqueSessions: new Set(), dwellValues: [] }
       entry.views += 1
       if (row.session_id) entry.uniqueSessions.add(row.session_id)
       topPagesMap.set(key, entry)
     })
     pageExitEvents.forEach((row) => {
       const key = row.page_path || '/'
-      const entry = topPagesMap.get(key) || { page_path: key, views: 0, uniqueSessions: new Set(), dwellTotal: 0, dwellCount: 0 }
-      entry.dwellTotal += Number(row.dwell_ms || 0)
-      entry.dwellCount += 1
+      const entry = topPagesMap.get(key) || { page_path: key, views: 0, uniqueSessions: new Set(), dwellValues: [] }
+      const capped = capDwellMsForReport(row.dwell_ms)
+      if (capped > 0) entry.dwellValues.push(capped)
       topPagesMap.set(key, entry)
     })
     const topPages = [...topPagesMap.values()]
@@ -1949,7 +2513,8 @@ export default function AdminPage() {
         page_path: entry.page_path,
         views: entry.views,
         unique_sessions: entry.uniqueSessions.size,
-        avg_dwell_ms: entry.dwellCount > 0 ? entry.dwellTotal / entry.dwellCount : 0,
+        avg_dwell_ms: avgCappedDwellMs(entry.dwellValues),
+        median_dwell_ms: medianDwellMs(entry.dwellValues),
       }))
       .sort((a, b) => Number(b.views || 0) - Number(a.views || 0))
       .slice(0, 15)
@@ -2153,11 +2718,13 @@ export default function AdminPage() {
       }))
 
     const dwellValues = pageExitEvents
-      .map((row) => Number(row.dwell_ms || 0))
-      .filter((value) => Number.isFinite(value) && value > 0)
-    const avgDwellMs = dwellValues.length > 0
-      ? dwellValues.reduce((sum, value) => sum + value, 0) / dwellValues.length
-      : 0
+      .map((row) => capDwellMsForReport(row.dwell_ms))
+      .filter((value) => value > 0)
+    const dwellStats = aggregateDwellStats(dwellValues)
+    const avgDwellMs = dwellStats.avg_dwell_ms
+    const medianDwellMsValue = dwellStats.median_dwell_ms
+
+    if (requestId != null && requestId !== analyticsLoadGenRef.current) return
 
     setAnalytics({
       dataSource: 'client',
@@ -2170,6 +2737,7 @@ export default function AdminPage() {
       landingViews: landingEvents.length,
       uniqueLandingSessions,
       avgDwellMs,
+      medianDwellMs: medianDwellMsValue,
       summaryPrev: null,
       topPages,
       topProducts,
@@ -2181,30 +2749,52 @@ export default function AdminPage() {
       eventBreakdown,
       engagement,
       activity,
+      rangeDays: safeRangeDays,
+      metaSince: sinceIso,
     })
   }
 
   const loadAnalytics = async (rangeDays = analyticsRangeDays) => {
+    const requestId = ++analyticsLoadGenRef.current
     setAnalyticsLoading(true)
     setAnalyticsError('')
     const clamped = Math.max(1, Math.min(366, Number(rangeDays || 30)))
     try {
       const { data, error } = await supabase.rpc('admin_site_analytics_dashboard', { p_days: clamped })
+      if (requestId !== analyticsLoadGenRef.current) return
       if (error) throw error
       if (data == null || typeof data !== 'object') throw new Error('Empty analytics response')
-      setAnalytics(mapAnalyticsRpcPayload(data))
+      const mapped = mapAnalyticsRpcPayload(data)
+      const rpcDays = Number(mapped.rangeDays)
+      if (Number.isFinite(rpcDays) && rpcDays !== clamped) {
+        console.warn(`admin_site_analytics_dashboard returned meta.days=${rpcDays} but requested p_days=${clamped}`)
+      }
+      setAnalytics(mapped)
     } catch (err) {
-      if (isAnalyticsRpcMissingError(err)) {
+      if (requestId !== analyticsLoadGenRef.current) return
+      if (isAnalyticsRpcFallbackError(err)) {
         try {
-          await loadAnalyticsClientFallback(clamped)
+          await loadAnalyticsClientFallback(clamped, requestId)
+          if (requestId === analyticsLoadGenRef.current && isAnalyticsRpcMissingError(err)) {
+            setAnalyticsError(
+              'Showing browser summary (up to 20k rows) because the aggregate RPC is not deployed. Apply `SUPABASE_ADMIN_SITE_ANALYTICS_DASHBOARD_RPC.sql` and reload.',
+            )
+          } else if (requestId === analyticsLoadGenRef.current && String(err?.code || '') === '57014') {
+            setAnalyticsError(
+              'RPC timed out — showing browser summary. Permanent fix: run `SUPABASE_FIX_ANALYTICS_VIEW_PERF.sql` in Supabase.',
+            )
+          }
         } catch (e2) {
+          if (requestId !== analyticsLoadGenRef.current) return
           setAnalyticsError(formatAnalyticsLoadError(e2))
         }
       } else {
         setAnalyticsError(formatAnalyticsLoadError(err))
       }
     } finally {
-      setAnalyticsLoading(false)
+      if (requestId === analyticsLoadGenRef.current) {
+        setAnalyticsLoading(false)
+      }
     }
   }
 
@@ -2214,13 +2804,114 @@ export default function AdminPage() {
     try {
       const { data, error } = await supabase.rpc('admin_crm_users', { p_limit: 300 })
       if (error) throw error
-      setCrmRows(Array.isArray(data) ? data : [])
+      const rows = Array.isArray(data) ? data : []
+      setCrmRows(rows)
+      return rows
     } catch (err) {
       setCrmError(formatCrmLoadError(err))
       setCrmRows([])
+      return []
     } finally {
       setCrmLoading(false)
     }
+  }
+
+  const loadCrmTraffic = async (rangeDays = crmRangeDays) => {
+    setCrmTrafficLoading(true)
+    setCrmTrafficError('')
+    const clamped = Math.max(1, Math.min(366, Number(rangeDays || 30)))
+    try {
+      const { data, error } = await supabase.rpc('admin_crm_traffic_dashboard', { p_days: clamped })
+      if (error) throw error
+      if (data == null || typeof data !== 'object') throw new Error('Empty CRM traffic response')
+      setCrmTraffic(mapCrmTrafficPayload(data))
+    } catch (err) {
+      setCrmTrafficError(formatCrmLoadError(err))
+      setCrmTraffic(emptyCrmTraffic())
+    } finally {
+      setCrmTrafficLoading(false)
+    }
+  }
+
+  const loadCrmAudience = async (rangeDays = crmRangeDays, crmRowsSnapshot = crmRows) => {
+    setCrmAudienceLoading(true)
+    setCrmAudienceError('')
+    const clamped = Math.max(1, Math.min(366, Number(rangeDays || 28)))
+    const internalUserIds = buildInternalUserIdSet(crmRowsSnapshot)
+    try {
+      const { data, error } = await supabase.rpc('admin_crm_audience_dashboard', { p_days: clamped })
+      if (!error && data && typeof data === 'object') {
+        setCrmAudience(mapAudienceRpcPayload(data))
+        return
+      }
+
+      const since = new Date(Date.now() - clamped * 86400000).toISOString()
+      const internalUserIds = buildInternalUserIdSet(crmRowsSnapshot)
+      let events = []
+      const pageSize = 1000
+      for (let offset = 0; offset < 30000; offset += pageSize) {
+        const { data, error } = await supabase
+          .from('v_customer_site_analytics_events')
+          .select('created_at,event_meta,event_name,referrer_domain,user_id,session_id,page_path')
+          .gte('created_at', since)
+          .eq('event_name', 'page_view')
+          .order('created_at', { ascending: false })
+          .range(offset, offset + pageSize - 1)
+        if (error) break
+        if (!data?.length) break
+        events.push(...data)
+        if (data.length < pageSize) break
+      }
+      if (events.length === 0) {
+        const { data: rawEvents, error: evErr } = await supabase
+          .from('site_analytics_events')
+          .select('created_at,event_meta,event_name,referrer_domain,user_id,session_id,page_path')
+          .gte('created_at', since)
+          .eq('event_name', 'page_view')
+          .order('created_at', { ascending: false })
+          .limit(12000)
+        if (evErr) throw evErr
+        events = filterStaffAnalyticsEvents(rawEvents || [], internalUserIds)
+      }
+
+      let audience = aggregateAudienceFromEvents(events, { internalUserIds })
+      audience.meta = { ...audience.meta, days: clamped }
+
+      const { data: profiles } = await supabase
+        .from('user_profiles')
+        .select('user_id, onboarding_asset_mix, onboarding_risk_tolerance, onboarding_investment_horizon')
+
+      const emailByUser = new Map(
+        (Array.isArray(crmRowsSnapshot) ? crmRowsSnapshot : []).map((r) => [r.user_id, r.email]),
+      )
+      const profileRows = (profiles || []).map((p) => ({
+        ...p,
+        email: emailByUser.get(p.user_id) || '',
+      }))
+      audience = mergeAudienceWithOnboarding(
+        audience,
+        buildOnboardingAudienceFromCrmRows(profileRows),
+      )
+      setCrmAudience(audience)
+      if (error) {
+        setCrmAudienceError(
+          'Audience RPC not deployed — using live query. Run SUPABASE_PATCH_CRM_AUDIENCE_ANALYTICS.sql in Supabase.',
+        )
+      }
+    } catch (err) {
+      setCrmAudienceError(formatCrmLoadError(err))
+      setCrmAudience(emptyCrmAudience())
+    } finally {
+      setCrmAudienceLoading(false)
+    }
+  }
+
+  const reloadCrmAll = async () => {
+    const rows = await loadCrm()
+    await Promise.all([
+      loadCrmTraffic(crmRangeDays),
+      loadCrmAudience(crmRangeDays, rows),
+    ])
   }
 
   useEffect(() => {
@@ -2238,43 +2929,228 @@ export default function AdminPage() {
   }, [])
 
   useEffect(() => {
-    if (activeTab !== 'analytics') return
+    if (activeTab !== 'analytics' && activeTab !== 'dashboard') return
     loadAnalytics(analyticsRangeDays)
   }, [analyticsRangeDays, activeTab])
 
   useEffect(() => {
-    if (activeTab !== 'crm') return
-    loadCrm()
-  }, [activeTab])
+    if (activeTab !== 'crm' && activeTab !== 'dashboard') return
+    let cancelled = false
+    ;(async () => {
+      const rows = await loadCrm()
+      if (cancelled) return
+      await Promise.all([
+        loadCrmTraffic(crmRangeDays),
+        loadCrmAudience(crmRangeDays, rows),
+      ])
+    })()
+    return () => { cancelled = true }
+  }, [activeTab, crmRangeDays])
 
-  const crmFiltered = crmRows.filter((r) => {
-    const q = crmFilter.trim().toLowerCase()
-    if (!q) return true
-    const hay = [
-      r.email,
-      r.full_name,
-      r.nickname,
-      r.signup_referrer_domain,
-      r.signup_utm_source,
-      r.signup_utm_medium,
-      r.signup_utm_campaign,
-      r.signup_landing_path,
-    ]
-      .filter(Boolean)
-      .join(' ')
-      .toLowerCase()
-    return hay.includes(q)
-  })
+  const crmTrafficExternal = useMemo(() => filterExternalCrmTraffic(crmTraffic), [crmTraffic])
+
+  const crmCustomerSignupsInRange = useMemo(() => {
+    const sinceMs = Date.now() - crmRangeDays * 86400000
+    return crmRows.filter((r) => {
+      if (isCrmInternalUser(r)) return false
+      const createdMs = r.user_created_at ? new Date(r.user_created_at).getTime() : 0
+      return createdMs >= sinceMs
+    })
+  }, [crmRows, crmRangeDays])
+
+  const crmAcquisitionSummary = useMemo(
+    () => buildCrmAcquisitionSummary(crmCustomerSignupsInRange),
+    [crmCustomerSignupsInRange],
+  )
+  const crmTrafficChannelSummary = useMemo(
+    () => aggregateTrafficReferrerChannels(
+      (crmTrafficExternal.topReferrers || []).map((row) => ({
+        ...row,
+        sessions: Number(row.sessions || row.unique_sessions || row.landing_views || 0),
+      })),
+    ),
+    [crmTrafficExternal.topReferrers],
+  )
+  const crmSignupChannelSummary = useMemo(
+    () => aggregateSignupReferrerChannels(crmCustomerSignupsInRange),
+    [crmCustomerSignupsInRange],
+  )
+  const crmGrowthKpis = useMemo(() => {
+    const list = crmCustomerSignupsInRange
+    const activated = list.filter((r) => isActivatedSignup(r)).length
+    const premiumIntent = list.filter((r) => hasPremiumIntent(r)).length
+    const smartnews = list.filter((r) => isSmartNewsSignup(r)).length
+    return {
+      activated,
+      activatedPct: list.length ? Math.round((activated / list.length) * 1000) / 10 : 0,
+      premiumIntent,
+      smartnews,
+    }
+  }, [crmCustomerSignupsInRange])
+
+  const crmSalesSummary = useMemo(() => {
+    const list = crmCustomerSignupsInRange
+    const withAttr = list.filter((r) => crmHasAttribution(r)).length
+    const activated = list.filter((r) => isActivatedSignup(r)).length
+    const withUtm = list.filter((r) =>
+      Boolean(String(r.signup_utm_source || '').trim()
+        || String(r.signup_utm_medium || '').trim()
+        || String(r.signup_utm_campaign || '').trim()),
+    ).length
+    return {
+      signups: list.length,
+      withAttr,
+      attributionPct: list.length ? Math.round((withAttr / list.length) * 1000) / 10 : 0,
+      activated,
+      activatedPct: list.length ? Math.round((activated / list.length) * 1000) / 10 : 0,
+      withUtm,
+      utmPct: list.length ? Math.round((withUtm / list.length) * 1000) / 10 : 0,
+      missingAttribution: list.length - withAttr,
+    }
+  }, [crmCustomerSignupsInRange])
+
+  const crmAdvancedAnalysis = useMemo(() => buildCrmAdvancedAnalysis({
+    allRows: crmRows,
+    rangeDays: crmRangeDays,
+    trafficByChannel: crmTrafficChannelSummary,
+    sessions: Number(crmTrafficExternal.summary.uniqueSessions || 0),
+  }), [crmRows, crmRangeDays, crmTrafficChannelSummary, crmTrafficExternal.summary.uniqueSessions])
+
+  const crmDecisionMetrics = useMemo(() => {
+    const sessions = Number(crmTrafficExternal.summary.uniqueSessions || 0)
+    const signups = crmSalesSummary.signups
+    const activated = crmSalesSummary.activated
+    const premiumIntent = crmGrowthKpis.premiumIntent
+    const visitToSignupPct = sessions > 0 ? Math.round((signups / sessions) * 1000) / 10 : 0
+    const signupToActivationPct = signups > 0 ? Math.round((activated / signups) * 1000) / 10 : 0
+    const activationToIntentPct = activated > 0 ? Math.round((premiumIntent / activated) * 1000) / 10 : 0
+    const dataQualityScore = Math.round(
+      (crmSalesSummary.attributionPct * 0.5)
+      + (crmSalesSummary.utmPct * 0.3)
+      + (Math.min(100, signupToActivationPct) * 0.2),
+    )
+    const trafficById = new Map(crmTrafficChannelSummary.map((row) => [row.id || row.label, Number(row.count || 0)]))
+    const channelPerformance = crmSignupChannelSummary.map((row) => {
+      const traffic = trafficById.get(row.id || row.label) || 0
+      const channelSignups = Number(row.count || 0)
+      return {
+        ...row,
+        traffic,
+        signups: channelSignups,
+        conversionPct: traffic > 0 ? Math.round((channelSignups / traffic) * 1000) / 10 : null,
+      }
+    }).sort((a, b) => (b.signups - a.signups) || ((b.conversionPct || 0) - (a.conversionPct || 0)))
+    return {
+      sessions,
+      signups,
+      activated,
+      premiumIntent,
+      visitToSignupPct,
+      signupToActivationPct,
+      activationToIntentPct,
+      visitToSignupDropoffPct: Math.max(0, Math.round((100 - visitToSignupPct) * 10) / 10),
+      signupToActivationDropoffPct: Math.max(0, Math.round((100 - signupToActivationPct) * 10) / 10),
+      dataQualityScore,
+      channelPerformance: channelPerformance.slice(0, 12),
+    }
+  }, [crmTrafficExternal.summary.uniqueSessions, crmSalesSummary, crmGrowthKpis.premiumIntent, crmTrafficChannelSummary, crmSignupChannelSummary])
+
+  const crmUserCreatedAtById = useMemo(() => {
+    const map = new Map()
+    for (const row of crmRows) {
+      if (row?.user_id) map.set(row.user_id, row.user_created_at)
+    }
+    return map
+  }, [crmRows])
+
+  const crmExecutiveSummary = useMemo(() => buildCrmExecutiveSummary({
+    rangeDays: crmRangeDays,
+    sales: crmSalesSummary,
+    signupChannels: crmSignupChannelSummary,
+    trafficSummary: crmTrafficExternal.summary,
+    analysis: crmAdvancedAnalysis,
+  }), [
+    crmRangeDays,
+    crmSalesSummary,
+    crmSignupChannelSummary,
+    crmTrafficExternal.summary,
+    crmAdvancedAnalysis,
+  ])
+
+  const siteAdvancedAnalysis = useMemo(
+    () => buildSiteAdvancedAnalysis(analytics),
+    [analytics],
+  )
+
+  const analyticsTopReferrersExternal = useMemo(
+    () => filterExternalAnalyticsReferrers(analytics.topReferrers),
+    [analytics.topReferrers],
+  )
+  const analyticsTrafficChannels = useMemo(
+    () => aggregateTrafficReferrerChannels(
+      analyticsTopReferrersExternal.map((row) => ({
+        referrer_domain: row.referrer_domain,
+        utm_source: row.utm_source,
+        utm_medium: row.utm_medium,
+        sessions: Number(row.unique_sessions || row.landing_views || 0),
+      })),
+    ),
+    [analyticsTopReferrersExternal],
+  )
+
+  const runCrmAiInsights = async () => {
+    setCrmAiLoading(true)
+    setCrmAiError('')
+    try {
+      const cred = typeof window !== 'undefined' ? sessionStorage.getItem('mm_admin_auth') : null
+      if (!cred) throw new Error('Admin session missing. Reload and sign in again.')
+      const snapshot = {
+        generatedAt: new Date().toISOString(),
+        note: 'CRM aggregates: customer signups in range + filtered cohort. No raw emails sent to the model.',
+        sales: crmSalesSummary,
+        customerSignupsInRange: crmCustomerSignupsInRange.length,
+        signupChannels: crmSignupChannelSummary.slice(0, 8),
+        executive: crmExecutiveSummary,
+        crm: crmAcquisitionSummary,
+        traffic: {
+          rangeDays: crmRangeDays,
+          summary: crmTrafficExternal.summary,
+          cohort: crmTrafficExternal.cohort,
+          topReferrers: (crmTrafficExternal.topReferrers || []).slice(0, 10),
+          topLandingPaths: (crmTrafficExternal.topLandingPaths || []).slice(0, 10),
+        },
+        growth: buildAdminGrowthSnapshot({ dashboard, analytics, analyticsRangeDays }),
+      }
+      const res = await fetch('/api/admin-crm-insights', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Basic ${cred}`,
+        },
+        body: JSON.stringify({ snapshot }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.error || `Failed to fetch AI insights (${res.status})`)
+      setCrmAiResult(data.insights || null)
+      setCrmAiGeneratedAt(data.generatedAt || new Date().toISOString())
+    } catch (e) {
+      setCrmAiError(String(e?.message || e || 'failed'))
+      setCrmAiResult(null)
+      setCrmAiGeneratedAt(null)
+    } finally {
+      setCrmAiLoading(false)
+    }
+  }
 
   const tabBtn = (id, label) => (
     <button
       key={id}
       type="button"
       onClick={() => handleTabChange(id)}
-      className={`px-3 py-1.5 rounded-lg text-xs sm:text-sm font-bold border transition ${
+      className={`px-2.5 py-1 rounded-full text-[12px] transition ${
         activeTab === id
-          ? 'bg-gray-900 text-white border-gray-900 dark:bg-white dark:text-gray-900 dark:border-white'
-          : 'bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700'
+          ? 'bg-slate-900 text-white'
+          : 'text-slate-400 hover:text-slate-700'
       }`}
     >
       {label}
@@ -2282,938 +3158,100 @@ export default function AdminPage() {
   )
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 font-sans pb-12">
-      <div className="sticky top-14 z-[80] border-b border-gray-200/90 dark:border-gray-800 bg-gray-50/90 dark:bg-gray-950/90 backdrop-blur-md">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 space-y-3">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <h1 className="text-lg sm:text-xl font-black text-gray-900 dark:text-white tracking-tight">
-              Admin
-            </h1>
-            <div className="flex flex-wrap gap-1.5">
-              {tabBtn('dashboard', 'Business')}
-              {tabBtn('operations', 'Operations')}
-              {tabBtn('analytics', 'Analytics')}
-              {tabBtn('crm', 'CRM')}
-            </div>
-          </div>
-          {activeTab === 'analytics' ? (
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between pt-1 border-t border-gray-200/80 dark:border-gray-800">
-              <div className="flex flex-wrap gap-1">
-                {[
-                  { id: 'traffic', label: 'Traffic & tables' },
-                  { id: 'users', label: 'Users & DAU' },
-                  { id: 'product', label: 'Product map' },
-                ].map(({ id, label }) => (
-                  <button
-                    key={id}
-                    type="button"
-                    onClick={() => setAnalyticsSection(id)}
-                    className={`px-2.5 py-1 rounded-md text-xs font-bold border transition ${
-                      analyticsSection === id
-                        ? 'border-indigo-500 bg-indigo-50 text-indigo-800 dark:bg-indigo-950/50 dark:text-indigo-200 dark:border-indigo-500'
-                        : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-900'
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                {[7, 30, 90].map((days) => (
-                  <button
-                    key={days}
-                    type="button"
-                    onClick={() => setAnalyticsRangeDays(days)}
-                    className={`px-2.5 py-1 rounded-md text-xs font-bold border transition ${
-                      analyticsRangeDays === days
-                        ? 'bg-gray-900 text-white border-gray-900 dark:bg-white dark:text-gray-900 dark:border-white'
-                        : 'bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700'
-                    }`}
-                  >
-                    {days}d
-                  </button>
-                ))}
-                <Button type="button" variant="ghost" size="sm" onClick={() => loadAnalytics(analyticsRangeDays)}>
-                  Refresh
-                </Button>
-              </div>
-            </div>
-          ) : null}
+    <div className="min-h-screen bg-[#f7f8fa] font-sans">
+      <div className="sticky top-0 z-[80] border-b border-slate-100 bg-[#f7f8fa]/90 backdrop-blur-md">
+        <div className="mx-auto flex max-w-[1280px] flex-wrap items-center justify-end gap-1.5 px-6 py-3">
+          {tabBtn('dashboard', 'Dashboard')}
+          {tabBtn('crm', 'CRM')}
+          {tabBtn('analytics', 'Analytics')}
+          {tabBtn('operations', 'Ops')}
         </div>
       </div>
-
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 space-y-4">
+      <div className={`${activeTab === 'dashboard' ? 'max-w-[1280px]' : 'max-w-7xl'} mx-auto px-6 py-6 space-y-4`}>
 
         {activeTab === 'dashboard' && (
-          <>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-2 sm:gap-3">
-              <Card className="p-3 sm:p-4">
-                <p className="text-[10px] sm:text-xs font-bold text-gray-500 mb-1 flex items-center gap-1"><Package size={14} /> Products</p>
-                <p className="text-xl sm:text-2xl font-black text-gray-900 dark:text-white">{dashboard.totalProducts}</p>
-              </Card>
-              <Card className="p-3 sm:p-4">
-                <p className="text-[10px] sm:text-xs font-bold text-gray-500 mb-1 flex items-center gap-1"><Activity size={14} /> Active</p>
-                <p className="text-xl sm:text-2xl font-black text-emerald-600 dark:text-emerald-400">{dashboard.activeProducts}</p>
-              </Card>
-              <Card className="p-3 sm:p-4">
-                <p className="text-[10px] sm:text-xs font-bold text-gray-500 mb-1 flex items-center gap-1"><BookOpen size={14} /> Academy</p>
-                <p className="text-xl sm:text-2xl font-black text-gray-900 dark:text-white">{dashboard.academyCourses}</p>
-              </Card>
-              <Card className="p-3 sm:p-4">
-                <p className="text-[10px] sm:text-xs font-bold text-gray-500 mb-1 flex items-center gap-1"><AlertTriangle size={14} /> Reports</p>
-                <p className="text-xl sm:text-2xl font-black text-rose-600 dark:text-rose-400">{dashboard.openReports}</p>
-              </Card>
-              <Card className="p-3 sm:p-4">
-                <p className="text-[10px] sm:text-xs font-bold text-gray-500 mb-1">DAU (today)</p>
-                <p className="text-xl sm:text-2xl font-black text-gray-900 dark:text-white">{dashboard.dauToday.toLocaleString()}</p>
-              </Card>
-              <Card className="p-3 sm:p-4">
-                <p className="text-[10px] sm:text-xs font-bold text-gray-500 mb-1">Signups</p>
-                <p className="text-xl sm:text-2xl font-black text-gray-900 dark:text-white">{dashboard.signupsToday.toLocaleString()}</p>
-              </Card>
-              <Card className="p-3 sm:p-4 col-span-2 sm:col-span-1 lg:col-span-1 xl:col-span-1">
-                <p className="text-[10px] sm:text-xs font-bold text-gray-500 mb-1">MyPage save OK</p>
-                <p className="text-xl sm:text-2xl font-black text-emerald-600 dark:text-emerald-400">{dashboard.saveSuccessRate.toFixed(1)}%</p>
-              </Card>
-            </div>
-
-            <Card className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-bold text-gray-900 dark:text-white">7-Day Operations Trend</h2>
-                <Button type="button" variant="ghost" onClick={loadDashboard}>Refresh</Button>
-              </div>
-              {dashboardLoading ? (
-                <p className="text-sm text-gray-500">Loading dashboard...</p>
-              ) : dashboardError ? (
-                <p className="text-sm text-red-600 dark:text-red-400">{dashboardError}</p>
-              ) : (
-                <div className="h-56 sm:h-64">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={dashboard.daily} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                      <XAxis dataKey="day" tick={{ fontSize: 11 }} />
-                      <YAxis tick={{ fontSize: 11 }} />
-                      <Tooltip />
-                      <Bar dataKey="products" name="Products" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                      <Bar dataKey="academy" name="Academy" fill="#10b981" radius={[4, 4, 0, 0]} />
-                      <Bar dataKey="reports" name="Reports" fill="#f97316" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              )}
-            </Card>
-
-            <Card className="p-4">
-              <p className="text-xs font-bold text-gray-500 mb-2 flex items-center gap-1"><Database size={14} /> Data Freshness</p>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-3">
-                  <p className="text-xs text-gray-500">Latest Stock Trade Date</p>
-                  <p className="text-sm font-black text-gray-900 dark:text-white">{dashboard.latestStockDate || '-'}</p>
-                </div>
-                <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-3">
-                  <p className="text-xs text-gray-500">Latest Fund Standard Date</p>
-                  <p className="text-sm font-black text-gray-900 dark:text-white">{dashboard.latestFundDate || '-'}</p>
-                </div>
-              </div>
-            </Card>
-          </>
+          <AdminExecutiveDashboard
+            rangeDays={crmRangeDays}
+            onRangeDays={(days) => {
+              setCrmRangeDays(days)
+              setAnalyticsRangeDays(days)
+              loadAnalytics(days)
+            }}
+            dashboard={dashboard}
+            crmRows={crmRows}
+            crmLoading={crmLoading}
+            crmError={crmError}
+            crmAcquisitionSummary={crmAcquisitionSummary}
+            crmSalesSummary={crmSalesSummary}
+            crmGrowthKpis={crmGrowthKpis}
+            crmAdvancedAnalysis={crmAdvancedAnalysis}
+            crmTrafficChannelSummary={crmTrafficChannelSummary}
+            crmSignupChannelSummary={crmSignupChannelSummary}
+            crmTrafficSummary={crmTrafficExternal.summary}
+            crmCustomerSignups={crmCustomerSignupsInRange}
+            analytics={analytics}
+            analyticsLoading={analyticsLoading}
+            analyticsError={analyticsError}
+            productDashboard={productDashboard}
+          />
         )}
 
         {activeTab === 'analytics' && (
-          <>
-            {analyticsSection === 'product' ? (
-            <Card className="p-6 border-indigo-200/80 dark:border-indigo-900/50 bg-gradient-to-br from-indigo-50/50 to-white dark:from-indigo-950/25 dark:to-gray-900">
-              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-4">
-                <div className="flex items-start gap-3">
-                  <div className="rounded-xl bg-indigo-500/15 dark:bg-indigo-400/10 p-2.5 shrink-0">
-                    <LayoutDashboard className="w-6 h-6 text-indigo-600 dark:text-indigo-400" aria-hidden />
-                  </div>
-                  <div>
-                    <h2 className="text-lg font-black text-gray-900 dark:text-white">Product dashboard</h2>
-                    <p className="text-sm text-gray-600 dark:text-gray-400 mt-1 max-w-3xl leading-relaxed">
-                      Maps the “Dashboard data” brief to what this admin can show today. Green = available from{' '}
-                      <code className="text-xs bg-white/80 dark:bg-gray-800 px-1 rounded">site_analytics_events</code>
-                      {' '}and the Analytics RPC. Amber = partial proxy. Gray = needs new events or billing joins.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <details className="group mb-5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white/40 dark:bg-gray-900/30 open:shadow-sm">
-                <summary className="cursor-pointer list-none px-4 py-3 text-sm font-bold text-gray-700 dark:text-gray-200 flex items-center justify-between gap-2">
-                  <span>데이터 커버리지 범례 (펼치기)</span>
-                  <span className="text-xs font-normal text-gray-500 group-open:hidden">▼</span>
-                  <span className="text-xs font-normal text-gray-500 hidden group-open:inline">▲</span>
-                </summary>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 px-4 pb-4 text-sm border-t border-gray-100 dark:border-gray-800 pt-3">
-                  <div className="rounded-xl border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/60 dark:bg-emerald-950/20 px-4 py-3">
-                    <p className="text-xs font-black text-emerald-800 dark:text-emerald-200 uppercase tracking-wide mb-2">Available now</p>
-                    <ul className="space-y-1 text-gray-800 dark:text-gray-200 list-disc list-inside">
-                      <li>Top pages, views, avg dwell (page_exit)</li>
-                      <li>Search terms, product / fund click ranking</li>
-                      <li>Referrers, UTM campaigns</li>
-                      <li>Funnel (landing → search → detail view → click → apply)</li>
-                      <li>Daily trend of views / searches / clicks / sessions</li>
-                    </ul>
-                  </div>
-                  <div className="rounded-xl border border-amber-200 dark:border-amber-900/50 bg-amber-50/50 dark:bg-amber-950/15 px-4 py-3">
-                    <p className="text-xs font-black text-amber-900 dark:text-amber-200 uppercase tracking-wide mb-2">Partial / not in brief form</p>
-                    <ul className="space-y-1 text-gray-800 dark:text-gray-200 list-disc list-inside">
-                      <li>
-                        <strong>DAU / WAU / MAU</strong> — use “Unique sessions” as a proxy; true DAU needs per-day user/session SQL.
-                      </li>
-                      <li>
-                        <strong>New vs returning</strong> — CRM tab has signups + first-touch; returning cohort not automated here.
-                      </li>
-                      <li>
-                        <strong>Watchlist adds / premium retention</strong> — only if you add{' '}
-                        <code className="text-xs">trackAnalyticsEvent</code> hooks (and optional Stripe RPC).
-                      </li>
-                      <li>
-                        <strong>Demographics</strong> — not collected (privacy); country can sometimes be inferred from referrer only.
-                      </li>
-                    </ul>
-                  </div>
-                </div>
-              </details>
-
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4 bg-white/70 dark:bg-gray-900/40">
-                  <div className="flex items-center justify-between gap-2 mb-2">
-                    <h3 className="text-sm font-black text-gray-900 dark:text-white">Page areas (rolled up)</h3>
-                    <button
-                      type="button"
-                      className="inline-flex items-center gap-1 text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline"
-                      onClick={() => downloadAnalyticsCsv(
-                        `analytics-page-areas-${analyticsRangeDays}d.csv`,
-                        productDashboard.rollups,
-                        [
-                          { header: 'area_id', key: 'id' },
-                          { header: 'label', key: 'label' },
-                          { header: 'views', key: 'views' },
-                          { header: 'unique_sessions_sum_non_deduped', key: 'unique_sessions_sum' },
-                          { header: 'avg_dwell_ms', key: 'avg_dwell_ms' },
-                        ],
-                      )}
-                    >
-                      <Download size={14} /> CSV
-                    </button>
-                  </div>
-                  <p className="text-xs text-gray-500 mb-3">
-                    Aggregated from “Top pages” paths. Session column sums per-route uniques — same user across pages is counted more than once.
-                  </p>
-                  <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-                    {productDashboard.rollups.map((row) => (
-                      <div key={row.id} className="flex items-center justify-between gap-3 text-sm border-b border-gray-100 dark:border-gray-800 pb-2">
-                        <div className="min-w-0">
-                          <p className="font-bold text-gray-900 dark:text-white truncate">{row.label}</p>
-                          <p className="text-xs text-gray-500">
-                            Σ sessions {Number(row.unique_sessions_sum || 0).toLocaleString()} · Avg dwell {formatAnalyticsDuration(row.avg_dwell_ms)}
-                          </p>
-                        </div>
-                        <p className="font-black text-indigo-600 dark:text-indigo-400 shrink-0">{Number(row.views || 0).toLocaleString()}</p>
-                      </div>
-                    ))}
-                    {productDashboard.rollups.length === 0 ? (
-                      <p className="text-sm text-gray-500">No page data in range.</p>
-                    ) : null}
-                  </div>
-                </div>
-
-                <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4 bg-white/70 dark:bg-gray-900/40">
-                  <div className="flex items-center justify-between gap-2 mb-2">
-                    <h3 className="text-sm font-black text-gray-900 dark:text-white">Fund / ETF click interest</h3>
-                    <button
-                      type="button"
-                      className="inline-flex items-center gap-1 text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline"
-                      onClick={() => downloadAnalyticsCsv(
-                        `analytics-fund-clicks-${analyticsRangeDays}d.csv`,
-                        productDashboard.fundClicks,
-                        [
-                          { header: 'product_type', key: 'product_type' },
-                          { header: 'product_id', key: 'product_id' },
-                          { header: 'product_name', key: 'product_name' },
-                          { header: 'clicks', key: 'clicks' },
-                          { header: 'unique_sessions', key: 'unique_sessions' },
-                        ],
-                      )}
-                    >
-                      <Download size={14} /> CSV
-                    </button>
-                  </div>
-                  <p className="text-xs text-gray-500 mb-3">
-                    Subset of “Top products” where type looks like fund/ETF or id ends with .T
-                  </p>
-                  <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-                    {productDashboard.fundClicks.map((row) => (
-                      <div
-                        key={`${row.product_type}-${row.product_id}`}
-                        className="flex items-center justify-between gap-3 text-sm border-b border-gray-100 dark:border-gray-800 pb-2"
-                      >
-                        <div className="min-w-0">
-                          <p className="font-bold text-gray-900 dark:text-white truncate">{row.product_name || row.product_id}</p>
-                          <p className="text-xs text-gray-500">
-                            {row.product_type} · Sessions {Number(row.unique_sessions || 0).toLocaleString()}
-                          </p>
-                        </div>
-                        <p className="font-black text-orange-600 dark:text-orange-400 shrink-0">{Number(row.clicks || 0).toLocaleString()}</p>
-                      </div>
-                    ))}
-                    {productDashboard.fundClicks.length === 0 ? (
-                      <p className="text-sm text-gray-500">No fund-like clicks in range (check product_type metadata on events).</p>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-
-              {productDashboard.watchHints.length > 0 ? (
-                <div className="mt-4 rounded-xl border border-teal-200 dark:border-teal-900/50 bg-teal-50/40 dark:bg-teal-950/20 p-4">
-                  <h3 className="text-sm font-black text-gray-900 dark:text-white mb-2">Watchlist-related events (auto-detected names)</h3>
-                  <div className="flex flex-wrap gap-2">
-                    {productDashboard.watchHints.map((row) => (
-                      <span
-                        key={row.event_name}
-                        className="inline-flex items-center gap-1 rounded-full bg-white dark:bg-gray-900 border border-teal-200 dark:border-teal-800 px-2.5 py-1 text-xs font-mono"
-                      >
-                        {row.event_name}
-                        <span className="text-teal-700 dark:text-teal-300 font-sans font-bold">{Number(row.events || 0).toLocaleString()}</span>
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <p className="mt-4 text-xs text-gray-500 dark:text-gray-400">
-                  No watchlist event names matched yet. Add e.g.{' '}
-                  <code className="text-[10px] bg-gray-100 dark:bg-gray-800 px-1 rounded">trackAnalyticsEvent(&apos;fund_watchlist_add&apos;, …)</code>{' '}
-                  in the app to populate this section.
-                </p>
-              )}
-            </Card>
-            ) : null}
-
-            {analyticsSection === 'users' ? (
-            <Card className="p-6">
-              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
-                <div>
-                  <h2 className="text-lg font-black text-gray-900 dark:text-white flex items-center gap-2">
-                    <Users className="w-5 h-5 text-violet-600 dark:text-violet-400" aria-hidden />
-                    Activity &amp; conversion
-                  </h2>
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-1 max-w-3xl">
-                    <strong>DAU</strong> = calendar-day unique sessions (page_view). <strong>WAU</strong> = last 7 days rolling.
-                    <strong> MAU (window)</strong> = unique sessions in the selected range. Logged-in new vs returning uses first
-                    <code className="mx-1 text-xs bg-gray-100 dark:bg-gray-800 px-1 rounded">page_view</code>
-                    timestamp per user. Signup rows use <code className="mx-1 text-xs bg-gray-100 dark:bg-gray-800 px-1 rounded">auth.users</code>
-                    + first-touch landing on profile (not pre-login anonymous tool sessions).
-                  </p>
-                  {analytics.dataSource === 'client' ? (
-                    <p className="text-xs text-amber-700 dark:text-amber-300 mt-2 font-bold">
-                      Client mode: cohorts &amp; DAU use at most 20k recent rows; signup/premium counts are 0. Apply the extended RPC SQL for full accuracy.
-                    </p>
-                  ) : null}
-                </div>
-                <button
-                  type="button"
-                  className="shrink-0 inline-flex items-center gap-1 text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline"
-                  onClick={() => downloadAnalyticsCsv(
-                    `analytics-dau-daily-${analyticsRangeDays}d.csv`,
-                    analytics.activity.dauDaily,
-                    [
-                      { header: 'day', key: 'day' },
-                      { header: 'active_sessions', key: 'activeSessions' },
-                      { header: 'active_users', key: 'activeUsers' },
-                    ],
-                  )}
-                >
-                  <Download size={14} /> DAU CSV
-                </button>
-              </div>
-
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-                <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-3 bg-gray-50/80 dark:bg-gray-900/50">
-                  <p className="text-[10px] font-black text-gray-500 uppercase">WAU (7d sessions)</p>
-                  <p className="text-xl font-black text-violet-600 dark:text-violet-400">{Number(analytics.activity.rolling.wauSessions || 0).toLocaleString()}</p>
-                </div>
-                <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-3 bg-gray-50/80 dark:bg-gray-900/50">
-                  <p className="text-[10px] font-black text-gray-500 uppercase">MAU (range sessions)</p>
-                  <p className="text-xl font-black text-violet-600 dark:text-violet-400">{Number(analytics.activity.rolling.mauSessionsWindow || 0).toLocaleString()}</p>
-                </div>
-                <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-3 bg-gray-50/80 dark:bg-gray-900/50">
-                  <p className="text-[10px] font-black text-gray-500 uppercase">Avg DAU (sessions)</p>
-                  <p className="text-xl font-black text-gray-900 dark:text-white">
-                    {analytics.activity.dauDaily.length > 0
-                      ? (analytics.activity.dauDaily.reduce((s, r) => s + Number(r.activeSessions || 0), 0) / analytics.activity.dauDaily.length).toFixed(1)
-                      : '—'}
-                  </p>
-                </div>
-                <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-3 bg-gray-50/80 dark:bg-gray-900/50">
-                  <p className="text-[10px] font-black text-gray-500 uppercase">Premium sessions (range)</p>
-                  <p className="text-xl font-black text-amber-600 dark:text-amber-400">{Number(analytics.activity.attributionSignups.premiumSessionsPageview || 0).toLocaleString()}</p>
-                  <p className="text-[10px] text-gray-500 mt-0.5">page_view + is_premium</p>
-                </div>
-              </div>
-
-              {analytics.activity.dauDaily.length > 0 ? (
-                <div className="h-64 mb-6">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <ComposedChart data={analytics.activity.dauDaily} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                      <XAxis dataKey="dayShort" tick={{ fontSize: 10 }} />
-                      <YAxis tick={{ fontSize: 10 }} />
-                      <Tooltip />
-                      <Line type="monotone" dataKey="activeSessions" name="DAU sessions" stroke="#6366f1" strokeWidth={2} dot={false} />
-                      <Line type="monotone" dataKey="activeUsers" name="DAU logged-in users" stroke="#10b981" strokeWidth={2} dot={false} />
-                    </ComposedChart>
-                  </ResponsiveContainer>
-                </div>
-              ) : analyticsLoading ? null : (
-                <p className="text-sm text-gray-500 mb-4">No DAU series yet. Run extended analytics RPC on Supabase.</p>
-              )}
-
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-                  <h3 className="text-sm font-black text-gray-900 dark:text-white mb-3">Logged-in sessions (range)</h3>
-                  <div className="grid grid-cols-2 gap-2 text-sm">
-                    <div className="rounded-lg bg-slate-50 dark:bg-slate-800/60 p-2">
-                      <p className="text-[10px] font-bold text-gray-500">Total w/ user_id</p>
-                      <p className="font-black text-lg">{Number(analytics.activity.cohortSessions.loggedInSessions || 0).toLocaleString()}</p>
-                    </div>
-                    <div className="rounded-lg bg-emerald-50/80 dark:bg-emerald-950/30 p-2">
-                      <p className="text-[10px] font-bold text-emerald-800 dark:text-emerald-200">New (first PV in window)</p>
-                      <p className="font-black text-lg text-emerald-700 dark:text-emerald-300">{Number(analytics.activity.cohortSessions.newUserSessions || 0).toLocaleString()}</p>
-                    </div>
-                    <div className="rounded-lg bg-indigo-50/80 dark:bg-indigo-950/30 p-2">
-                      <p className="text-[10px] font-bold text-indigo-800 dark:text-indigo-200">Returning</p>
-                      <p className="font-black text-lg text-indigo-700 dark:text-indigo-300">{Number(analytics.activity.cohortSessions.returningUserSessions || 0).toLocaleString()}</p>
-                    </div>
-                    <div className="rounded-lg bg-slate-100 dark:bg-slate-800/80 p-2">
-                      <p className="text-[10px] font-bold text-gray-500">Anonymous sessions</p>
-                      <p className="font-black text-lg">{Number(analytics.activity.cohortSessions.anonymousSessions || 0).toLocaleString()}</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-                  <h3 className="text-sm font-black text-gray-900 dark:text-white mb-3">Watchlist events (add / remove)</h3>
-                  <div className="grid grid-cols-2 gap-2 text-xs mb-3">
-                    <p className="font-bold">Fund +{Number(analytics.activity.watchlist.fundAdds || 0)} / −{Number(analytics.activity.watchlist.fundRemoves || 0)}</p>
-                    <p className="font-bold">Stock +{Number(analytics.activity.watchlist.stockAdds || 0)} / −{Number(analytics.activity.watchlist.stockRemoves || 0)}</p>
-                  </div>
-                  <p className="text-[10px] text-gray-500 mb-2">Top symbols (adds only)</p>
-                  <div className="space-y-1.5 max-h-40 overflow-y-auto">
-                    {(analytics.activity.watchlist.topAddSymbols || []).map((row) => (
-                      <div key={String(row.symbol)} className="flex justify-between text-sm border-b border-gray-100 dark:border-gray-800 pb-1">
-                        <span className="font-mono text-xs truncate">{row.symbol}</span>
-                        <span className="font-black text-orange-600 dark:text-orange-400">{Number(row.adds || 0).toLocaleString()}</span>
-                      </div>
-                    ))}
-                    {(analytics.activity.watchlist.topAddSymbols || []).length === 0 ? (
-                      <p className="text-xs text-gray-500">No add events in range.</p>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-4 rounded-xl border border-cyan-200 dark:border-cyan-900/50 bg-cyan-50/40 dark:bg-cyan-950/20 p-4">
-                <h3 className="text-sm font-black text-gray-900 dark:text-white mb-2">Signup attribution (first-touch landing path)</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
-                  <div>
-                    <p className="text-[10px] font-bold text-gray-500">Signups in range</p>
-                    <p className="text-xl font-black text-cyan-700 dark:text-cyan-300">{Number(analytics.activity.attributionSignups.signupsInWindow || 0).toLocaleString()}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-bold text-gray-500">Landing: funds / tools / stocks / market / insights</p>
-                    <p className="text-xl font-black text-cyan-700 dark:text-cyan-300">{Number(analytics.activity.attributionSignups.signupsLandingFundsOrTools || 0).toLocaleString()}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-bold text-gray-500">Landing: compare pages</p>
-                    <p className="text-xl font-black text-cyan-700 dark:text-cyan-300">{Number(analytics.activity.attributionSignups.signupsLandingCompare || 0).toLocaleString()}</p>
-                  </div>
-                </div>
-                <p className="text-[10px] text-gray-500 mt-2">
-                  “Tool → signup” before login is not in this table; use landing path at registration. Full funnel needs server RPC + this SQL applied.
-                </p>
-              </div>
-            </Card>
-            ) : null}
-
-            {analyticsSection === 'traffic' ? (
-            <>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-              <Card className="p-4">
-                <p className="text-xs font-bold text-gray-500 mb-1 flex items-center gap-1"><Activity size={14} /> Page Views</p>
-                <p className="text-2xl font-black text-gray-900 dark:text-white">{analytics.pageViews.toLocaleString()}</p>
-                <p className="text-xs text-gray-500 mt-0.5">Sessions {Number(analytics.uniqueSessionsPageView || 0).toLocaleString()}</p>
-                {analytics.dataSource === 'rpc' && analytics.summaryPrev ? (() => {
-                  const d = formatAnalyticsDeltaPct(analytics.pageViews, analytics.summaryPrev.pageViews)
-                  return d ? (
-                    <p className={`text-xs mt-1 font-bold ${String(d).startsWith('-') ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                      vs prior {analyticsRangeDays}d: {d}
-                    </p>
-                  ) : null
-                })() : null}
-              </Card>
-              <Card className="p-4">
-                <p className="text-xs font-bold text-gray-500 mb-1 flex items-center gap-1"><MousePointerClick size={14} /> Product Clicks</p>
-                <p className="text-2xl font-black text-gray-900 dark:text-white">{analytics.productClicks.toLocaleString()}</p>
-                <p className="text-xs text-gray-500 mt-0.5">Sessions {Number(analytics.uniqueProductClickSessions || 0).toLocaleString()}</p>
-                {analytics.dataSource === 'rpc' && analytics.summaryPrev ? (() => {
-                  const d = formatAnalyticsDeltaPct(analytics.productClicks, analytics.summaryPrev.productClicks)
-                  return d ? (
-                    <p className={`text-xs mt-1 font-bold ${String(d).startsWith('-') ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                      vs prior {analyticsRangeDays}d: {d}
-                    </p>
-                  ) : null
-                })() : null}
-              </Card>
-              <Card className="p-4">
-                <p className="text-xs font-bold text-gray-500 mb-1 flex items-center gap-1"><Search size={14} /> Searches</p>
-                <p className="text-2xl font-black text-gray-900 dark:text-white">{analytics.searches.toLocaleString()}</p>
-                <p className="text-xs text-gray-500 mt-0.5">Sessions {Number(analytics.uniqueSearchSessions || 0).toLocaleString()}</p>
-                {analytics.dataSource === 'rpc' && analytics.summaryPrev ? (() => {
-                  const d = formatAnalyticsDeltaPct(analytics.searches, analytics.summaryPrev.searches)
-                  return d ? (
-                    <p className={`text-xs mt-1 font-bold ${String(d).startsWith('-') ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                      vs prior {analyticsRangeDays}d: {d}
-                    </p>
-                  ) : null
-                })() : null}
-              </Card>
-              <Card className="p-4">
-                <p className="text-xs font-bold text-gray-500 mb-1 flex items-center gap-1"><Globe2 size={14} /> Referrer Landings</p>
-                <p className="text-2xl font-black text-gray-900 dark:text-white">{analytics.landingViews.toLocaleString()}</p>
-                <p className="text-xs text-gray-500 mt-0.5">Sessions {Number(analytics.uniqueLandingSessions || 0).toLocaleString()}</p>
-                {analytics.dataSource === 'rpc' && analytics.summaryPrev ? (() => {
-                  const d = formatAnalyticsDeltaPct(analytics.landingViews, analytics.summaryPrev.landingViews)
-                  return d ? (
-                    <p className={`text-xs mt-1 font-bold ${String(d).startsWith('-') ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                      vs prior {analyticsRangeDays}d: {d}
-                    </p>
-                  ) : null
-                })() : null}
-              </Card>
-              <Card className="p-4">
-                <p className="text-xs font-bold text-gray-500 mb-1 flex items-center gap-1"><Timer size={14} /> Avg Dwell</p>
-                <p className="text-2xl font-black text-gray-900 dark:text-white">{formatAnalyticsDuration(analytics.avgDwellMs)}</p>
-                <p className="text-xs text-gray-500 mt-0.5">{'page_exit, dwell > 0ms'}</p>
-                {analytics.dataSource === 'rpc' && analytics.summaryPrev ? (() => {
-                  const d = formatAnalyticsDeltaPct(analytics.avgDwellMs, analytics.summaryPrev.avgDwellMs)
-                  return d ? (
-                    <p className={`text-xs mt-1 font-bold ${String(d).startsWith('-') ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                      vs prior {analyticsRangeDays}d: {d}
-                    </p>
-                  ) : null
-                })() : null}
-              </Card>
-            </div>
-
-            <Card className="p-6">
-              <div className="mb-4">
-                <h2 className="text-lg font-bold text-gray-900 dark:text-white">Site Analytics Snapshot</h2>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">期間・更新は上部のAnalyticsバーで選択します。</p>
-              </div>
-              {analyticsLoading ? (
-                <p className="text-sm text-gray-500">Loading analytics...</p>
-              ) : analyticsError ? (
-                <p className="text-sm text-red-600 dark:text-red-400">{analyticsError}</p>
-              ) : (
-                <div className="space-y-4">
-                  {analytics.dataSource === 'client' ? (
-                    <div className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/40 px-4 py-3 text-sm text-amber-900 dark:text-amber-100">
-                      ブラウザでは最大2万件まで要約中です。全期間集計と前期間比較は Supabase の{' '}
-                      <code className="text-xs font-mono bg-amber-100/80 dark:bg-amber-900/50 px-1 rounded">admin_site_analytics_dashboard</code>{' '}
-                      RPC を適用してから再読み込みしてください。
-                    </div>
-                  ) : null}
-
-                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                    <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-                      <h3 className="text-sm font-black text-gray-900 dark:text-white mb-3">Conversion Funnel</h3>
-                      <div className="space-y-3">
-                        {analytics.funnel.map((row, idx) => {
-                          const maxSessions = Math.max(...analytics.funnel.map((item) => Number(item.sessions || 0)), 1)
-                          const width = maxSessions > 0 ? (Number(row.sessions || 0) / maxSessions) * 100 : 0
-                          return (
-                            <div key={row.step}>
-                              <div className="flex items-center justify-between mb-1">
-                                <p className="text-sm font-bold text-gray-900 dark:text-white">{idx + 1}. {row.step}</p>
-                                <p className="text-sm font-black text-indigo-600 dark:text-indigo-400">{Number(row.sessions || 0).toLocaleString()}</p>
-                              </div>
-                              <div className="w-full h-2 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
-                                <div className="h-full rounded-full bg-indigo-500" style={{ width: `${width.toFixed(1)}%` }} />
-                              </div>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    </div>
-
-                    <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-                      <div className="flex items-center justify-between mb-3">
-                        <h3 className="text-sm font-black text-gray-900 dark:text-white">Daily Trend</h3>
-                        <p className="text-xs text-gray-500">Bars: views / searches / clicks · Line: unique sessions (page_view)</p>
-                      </div>
-                      {analytics.dailyTrend.length > 0 ? (
-                        <div className="h-72">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <ComposedChart data={analytics.dailyTrend} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-                              <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                              <XAxis dataKey="day" tick={{ fontSize: 11 }} />
-                              <YAxis yAxisId="left" tick={{ fontSize: 11 }} />
-                              <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} width={36} />
-                              <Tooltip />
-                              <Bar yAxisId="left" dataKey="pageViews" name="Page Views" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                              <Bar yAxisId="left" dataKey="searches" name="Searches" fill="#10b981" radius={[4, 4, 0, 0]} />
-                              <Bar yAxisId="left" dataKey="productClicks" name="Clicks" fill="#f97316" radius={[4, 4, 0, 0]} />
-                              <Line yAxisId="right" type="monotone" dataKey="uniqueSessions" name="Unique sessions" stroke="#8b5cf6" strokeWidth={2} dot={false} />
-                            </ComposedChart>
-                          </ResponsiveContainer>
-                        </div>
-                      ) : (
-                        <p className="text-sm text-gray-500">No trend data yet.</p>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                    <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-                      <div className="flex items-center justify-between gap-2 mb-3">
-                        <h3 className="text-sm font-black text-gray-900 dark:text-white">Top Pages</h3>
-                        <button
-                          type="button"
-                          className="inline-flex items-center gap-1 text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline"
-                          onClick={() => downloadAnalyticsCsv(
-                            `analytics-top-pages-${analyticsRangeDays}d.csv`,
-                            analytics.topPages,
-                            [
-                              { header: 'page_path', key: 'page_path' },
-                              { header: 'views', key: 'views' },
-                              { header: 'unique_sessions', key: 'unique_sessions' },
-                              { header: 'avg_dwell_ms', key: 'avg_dwell_ms' },
-                            ],
-                          )}
-                        >
-                          <Download size={14} /> CSV
-                        </button>
-                      </div>
-                      <div className="space-y-2">
-                        {analytics.topPages.map((row) => (
-                          <div key={row.page_path} className="flex items-center justify-between gap-3 text-sm">
-                            <div className="min-w-0">
-                              <p className="font-bold text-gray-900 dark:text-white truncate">{row.page_path}</p>
-                              <p className="text-xs text-gray-500">Sessions {Number(row.unique_sessions || 0).toLocaleString()} · Avg dwell {formatAnalyticsDuration(row.avg_dwell_ms)}</p>
-                            </div>
-                            <p className="font-black text-blue-600 dark:text-blue-400 shrink-0">{Number(row.views || 0).toLocaleString()}</p>
-                          </div>
-                        ))}
-                        {analytics.topPages.length === 0 ? <p className="text-sm text-gray-500">No page data yet.</p> : null}
-                      </div>
-                    </div>
-
-                    <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-                      <div className="flex items-center justify-between gap-2 mb-3">
-                        <h3 className="text-sm font-black text-gray-900 dark:text-white">Top Products / Items</h3>
-                        <button
-                          type="button"
-                          className="inline-flex items-center gap-1 text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline"
-                          onClick={() => downloadAnalyticsCsv(
-                            `analytics-top-products-${analyticsRangeDays}d.csv`,
-                            analytics.topProducts,
-                            [
-                              { header: 'product_type', key: 'product_type' },
-                              { header: 'product_id', key: 'product_id' },
-                              { header: 'product_name', key: 'product_name' },
-                              { header: 'clicks', key: 'clicks' },
-                              { header: 'unique_sessions', key: 'unique_sessions' },
-                            ],
-                          )}
-                        >
-                          <Download size={14} /> CSV
-                        </button>
-                      </div>
-                      <div className="space-y-2">
-                        {analytics.topProducts.map((row) => (
-                          <div key={`${row.product_type}-${row.product_id}`} className="flex items-center justify-between gap-3 text-sm">
-                            <div className="min-w-0">
-                              <p className="font-bold text-gray-900 dark:text-white truncate">{row.product_name || row.product_id}</p>
-                              <p className="text-xs text-gray-500">{row.product_type} · Sessions {Number(row.unique_sessions || 0).toLocaleString()}</p>
-                            </div>
-                            <p className="font-black text-orange-600 dark:text-orange-400 shrink-0">{Number(row.clicks || 0).toLocaleString()}</p>
-                          </div>
-                        ))}
-                        {analytics.topProducts.length === 0 ? <p className="text-sm text-gray-500">No click data yet.</p> : null}
-                      </div>
-                    </div>
-
-                    <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-                      <div className="flex items-center justify-between gap-2 mb-3">
-                        <h3 className="text-sm font-black text-gray-900 dark:text-white">Top Search Terms</h3>
-                        <button
-                          type="button"
-                          className="inline-flex items-center gap-1 text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline"
-                          onClick={() => downloadAnalyticsCsv(
-                            `analytics-top-searches-${analyticsRangeDays}d.csv`,
-                            analytics.topSearches,
-                            [
-                              { header: 'page_path', key: 'page_path' },
-                              { header: 'query', key: 'query' },
-                              { header: 'searches', key: 'searches' },
-                              { header: 'avg_result_count', key: 'avg_result_count' },
-                            ],
-                          )}
-                        >
-                          <Download size={14} /> CSV
-                        </button>
-                      </div>
-                      <div className="space-y-2">
-                        {analytics.topSearches.map((row) => (
-                          <div key={`${row.page_path}-${row.query}`} className="flex items-center justify-between gap-3 text-sm">
-                            <div className="min-w-0">
-                              <p className="font-bold text-gray-900 dark:text-white truncate">{row.query}</p>
-                              <p className="text-xs text-gray-500">{row.page_path} · Avg results {Number(row.avg_result_count || 0).toLocaleString()}</p>
-                            </div>
-                            <p className="font-black text-emerald-600 dark:text-emerald-400 shrink-0">{Number(row.searches || 0).toLocaleString()}</p>
-                          </div>
-                        ))}
-                        {analytics.topSearches.length === 0 ? <p className="text-sm text-gray-500">No search data yet.</p> : null}
-                      </div>
-                    </div>
-
-                    <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-                      <div className="flex items-center justify-between gap-2 mb-3">
-                        <h3 className="text-sm font-black text-gray-900 dark:text-white">Top Referrers</h3>
-                        <button
-                          type="button"
-                          className="inline-flex items-center gap-1 text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline"
-                          onClick={() => downloadAnalyticsCsv(
-                            `analytics-top-referrers-${analyticsRangeDays}d.csv`,
-                            analytics.topReferrers,
-                            [
-                              { header: 'referrer_domain', key: 'referrer_domain' },
-                              { header: 'utm_source', key: 'utm_source' },
-                              { header: 'utm_medium', key: 'utm_medium' },
-                              { header: 'landing_views', key: 'landing_views' },
-                              { header: 'unique_sessions', key: 'unique_sessions' },
-                            ],
-                          )}
-                        >
-                          <Download size={14} /> CSV
-                        </button>
-                      </div>
-                      <div className="space-y-2">
-                        {analytics.topReferrers.map((row, idx) => (
-                          <div key={`${row.referrer_domain || row.utm_source || 'direct'}-${idx}`} className="flex items-center justify-between gap-3 text-sm">
-                            <div className="min-w-0">
-                              <p className="font-bold text-gray-900 dark:text-white truncate">{row.referrer_domain || row.utm_source || 'direct / none'}</p>
-                              <p className="text-xs text-gray-500">{row.utm_medium || '-'} · Sessions {Number(row.unique_sessions || 0).toLocaleString()}</p>
-                            </div>
-                            <p className="font-black text-violet-600 dark:text-violet-400 shrink-0">{Number(row.landing_views || 0).toLocaleString()}</p>
-                          </div>
-                        ))}
-                        {analytics.topReferrers.length === 0 ? <p className="text-sm text-gray-500">No referrer data yet.</p> : null}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                    <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-                      <div className="flex items-center justify-between gap-2 mb-3">
-                        <h3 className="text-sm font-black text-gray-900 dark:text-white">Top UTM Campaigns</h3>
-                        <button
-                          type="button"
-                          className="inline-flex items-center gap-1 text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline"
-                          onClick={() => downloadAnalyticsCsv(
-                            `analytics-top-campaigns-${analyticsRangeDays}d.csv`,
-                            analytics.topCampaigns,
-                            [
-                              { header: 'campaign', key: 'campaign' },
-                              { header: 'utm_source', key: 'utm_source' },
-                              { header: 'utm_medium', key: 'utm_medium' },
-                              { header: 'page_views', key: 'page_views' },
-                              { header: 'unique_sessions', key: 'unique_sessions' },
-                            ],
-                          )}
-                        >
-                          <Download size={14} /> CSV
-                        </button>
-                      </div>
-                      <div className="space-y-2">
-                        {analytics.topCampaigns.map((row, idx) => (
-                          <div key={`${row.campaign || 'c'}-${row.utm_source || ''}-${idx}`} className="flex items-center justify-between gap-3 text-sm">
-                            <div className="min-w-0">
-                              <p className="font-bold text-gray-900 dark:text-white truncate">{row.campaign || '—'}</p>
-                              <p className="text-xs text-gray-500">
-                                {row.utm_source || '—'} / {row.utm_medium || '—'} · Sessions {Number(row.unique_sessions || 0).toLocaleString()}
-                              </p>
-                            </div>
-                            <p className="font-black text-cyan-600 dark:text-cyan-400 shrink-0">{Number(row.page_views || 0).toLocaleString()}</p>
-                          </div>
-                        ))}
-                        {analytics.topCampaigns.length === 0 ? <p className="text-sm text-gray-500">No campaign-tagged page views yet.</p> : null}
-                      </div>
-                    </div>
-
-                    <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-                      <div className="flex items-center justify-between gap-2 mb-3">
-                        <h3 className="text-sm font-black text-gray-900 dark:text-white">Engagement (subset)</h3>
-                        <button
-                          type="button"
-                          className="inline-flex items-center gap-1 text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline"
-                          onClick={() => downloadAnalyticsCsv(
-                            `analytics-engagement-${analyticsRangeDays}d.csv`,
-                            analytics.engagement,
-                            [
-                              { header: 'event_name', key: 'event_name' },
-                              { header: 'events', key: 'events' },
-                              { header: 'unique_sessions', key: 'unique_sessions' },
-                            ],
-                          )}
-                        >
-                          <Download size={14} /> CSV
-                        </button>
-                      </div>
-                      <p className="text-xs text-gray-500 mb-2">Nav clicks, referral actions, fund/product detail views.</p>
-                      <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-                        {analytics.engagement.map((row) => (
-                          <div key={row.event_name} className="flex items-center justify-between gap-3 text-sm">
-                            <p className="font-mono text-xs font-bold text-gray-900 dark:text-white truncate">{row.event_name}</p>
-                            <div className="text-right shrink-0">
-                              <p className="font-black text-teal-600 dark:text-teal-400">{Number(row.events || 0).toLocaleString()}</p>
-                              <p className="text-[10px] text-gray-500">sess {Number(row.unique_sessions || 0).toLocaleString()}</p>
-                            </div>
-                          </div>
-                        ))}
-                        {analytics.engagement.length === 0 ? <p className="text-sm text-gray-500">No engagement events in range.</p> : null}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-                    <div className="flex items-center justify-between gap-2 mb-3">
-                      <h3 className="text-sm font-black text-gray-900 dark:text-white">Event breakdown</h3>
-                      <button
-                        type="button"
-                        className="inline-flex items-center gap-1 text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline"
-                        onClick={() => downloadAnalyticsCsv(
-                          `analytics-events-${analyticsRangeDays}d.csv`,
-                          analytics.eventBreakdown,
-                          [
-                            { header: 'event_name', key: 'event_name' },
-                            { header: 'events', key: 'events' },
-                            { header: 'unique_sessions', key: 'unique_sessions' },
-                          ],
-                        )}
-                      >
-                        <Download size={14} /> CSV
-                      </button>
-                    </div>
-                    <div className="max-h-80 overflow-y-auto space-y-1.5 pr-1">
-                      {analytics.eventBreakdown.map((row) => (
-                        <div key={row.event_name} className="flex items-center justify-between gap-3 text-sm border-b border-gray-100 dark:border-gray-800 pb-1.5">
-                          <p className="font-mono text-xs text-gray-800 dark:text-gray-200 truncate">{row.event_name}</p>
-                          <div className="text-right shrink-0 text-xs">
-                            <span className="font-black text-gray-900 dark:text-white">{Number(row.events || 0).toLocaleString()}</span>
-                            <span className="text-gray-500 ml-2">sess {Number(row.unique_sessions || 0).toLocaleString()}</span>
-                          </div>
-                        </div>
-                      ))}
-                      {analytics.eventBreakdown.length === 0 ? <p className="text-sm text-gray-500">No events in range.</p> : null}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </Card>
-            </>
-            ) : null}
-          </>
+          <AnalyticsWorkbench
+            section={analyticsSection}
+            onSectionChange={setAnalyticsSection}
+            rangeDays={analyticsRangeDays}
+            onRangeDaysChange={(days) => {
+              setAnalyticsRangeDays(days)
+              loadAnalytics(days)
+            }}
+            onRefresh={() => loadAnalytics(analyticsRangeDays)}
+            loading={analyticsLoading}
+            error={analyticsError}
+            sourceBadge={analyticsSourceBadge}
+            analytics={analytics}
+            productDashboard={productDashboard}
+            trafficChannels={analyticsTrafficChannels}
+            topReferrers={analyticsTopReferrersExternal}
+            onDownloadCsv={downloadAnalyticsCsv}
+            onOpenCrm={() => handleTabChange('crm')}
+            analysis={siteAdvancedAnalysis}
+          />
         )}
 
         {activeTab === 'crm' && (
-          <>
-            <Card className="p-6">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
-                <div className="flex items-center gap-2">
-                  <Users className="w-5 h-5 text-gray-600 dark:text-gray-400" />
-                  <div>
-                    <h2 className="text-xl font-bold text-gray-900 dark:text-white">User CRM</h2>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-                      Latest 300 registered users with first-touch acquisition (referrer, UTM, landing). Rows created before email verification are backfilled on the user&apos;s first login after they verify.
-                    </p>
-                  </div>
-                </div>
-                <Button type="button" variant="ghost" onClick={() => loadCrm()}>
-                  Reload
-                </Button>
-              </div>
-              <div className="mb-4">
-                <label className="block text-xs font-bold text-gray-500 mb-1" htmlFor="crm-filter">
-                  Search (email, name, referrer, UTM, landing)
-                </label>
-                <input
-                  id="crm-filter"
-                  type="search"
-                  value={crmFilter}
-                  onChange={(e) => setCrmFilter(e.target.value)}
-                  className="w-full max-w-md rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-white"
-                  placeholder="google / t.co / utm / ..."
-                />
-              </div>
-              {crmLoading ? (
-                <p className="text-sm text-gray-500">Loading…</p>
-              ) : crmError ? (
-                <p className="text-sm text-red-600 dark:text-red-400">{crmError}</p>
-              ) : (
-                <div className="overflow-x-auto overflow-y-auto max-h-[min(70vh,560px)] rounded-lg border border-gray-200 dark:border-gray-700">
-                  <table className="min-w-[920px] w-full text-left text-xs">
-                    <thead className="bg-gray-50 dark:bg-gray-900/80 border-b border-gray-200 dark:border-gray-700">
-                      <tr>
-                        <th className="px-3 py-2 font-bold text-gray-600 dark:text-gray-400">Signed up</th>
-                        <th className="px-3 py-2 font-bold text-gray-600 dark:text-gray-400">Email</th>
-                        <th className="px-3 py-2 font-bold text-gray-600 dark:text-gray-400">Display name</th>
-                        <th className="px-3 py-2 font-bold text-gray-600 dark:text-gray-400">Referrer</th>
-                        <th className="px-3 py-2 font-bold text-gray-600 dark:text-gray-400">UTM</th>
-                        <th className="px-3 py-2 font-bold text-gray-600 dark:text-gray-400">Landing</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {crmFiltered.map((r) => (
-                        <tr
-                          key={r.user_id}
-                          className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50/80 dark:hover:bg-gray-900/50"
-                        >
-                          <td className="px-3 py-2 whitespace-nowrap text-gray-600 dark:text-gray-400">
-                            {r.user_created_at
-                              ? new Date(r.user_created_at).toLocaleString('en-US')
-                              : '-'}
-                          </td>
-                          <td className="px-3 py-2 font-mono text-[11px] text-gray-900 dark:text-gray-100 max-w-[200px] truncate" title={r.email || ''}>
-                            {r.email || '-'}
-                          </td>
-                          <td className="px-3 py-2 text-gray-800 dark:text-gray-200 max-w-[140px] truncate" title={r.nickname || r.full_name || ''}>
-                            {r.nickname || r.full_name || '-'}
-                          </td>
-                          <td className="px-3 py-2 text-gray-700 dark:text-gray-300 max-w-[160px] truncate" title={r.signup_referrer_domain || ''}>
-                            {r.signup_referrer_domain || '—'}
-                          </td>
-                          <td className="px-3 py-2 text-gray-600 dark:text-gray-400 max-w-[220px]">
-                            <span className="block truncate" title={[r.signup_utm_source, r.signup_utm_medium, r.signup_utm_campaign].filter(Boolean).join(' / ')}>
-                              {[r.signup_utm_source, r.signup_utm_medium].filter(Boolean).join(' · ') || '—'}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2 font-mono text-[10px] text-gray-600 dark:text-gray-400 max-w-[200px] truncate" title={`${r.signup_landing_path || ''}${r.signup_landing_query || ''}`}>
-                            {r.signup_landing_path || '—'}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  {crmFiltered.length === 0 ? (
-                    <p className="p-4 text-sm text-gray-500">No matching users.</p>
-                  ) : null}
-                </div>
-              )}
-            </Card>
-          </>
+          <CrmWorkbench
+            rangeDays={crmRangeDays}
+            onRangeDaysChange={setCrmRangeDays}
+            loading={crmLoading}
+            error={crmError}
+            trafficError={crmTrafficError}
+            trafficLoading={crmTrafficLoading}
+            audienceLoading={crmAudienceLoading}
+            onRefresh={() => reloadCrmAll()}
+            onDownloadCsv={() => downloadCrmCsv(crmCustomerSignupsInRange, 'crm-signups-range')}
+            csvDisabled={crmLoading || crmCustomerSignupsInRange.length === 0}
+            decisionMetrics={crmDecisionMetrics}
+            salesSummary={crmSalesSummary}
+            growthKpis={crmGrowthKpis}
+            executiveSummary={crmExecutiveSummary}
+            acquisitionSummary={crmAcquisitionSummary}
+            analysis={crmAdvancedAnalysis}
+            trafficChannels={crmTrafficChannelSummary}
+            signupChannels={crmSignupChannelSummary}
+            trafficSummary={crmTrafficExternal.summary}
+            trafficSessions={crmTrafficExternal.recentSessions}
+            userCreatedAtById={crmUserCreatedAtById}
+            customerSignups={crmCustomerSignupsInRange}
+            audience={crmAudience}
+            audienceError={crmAudienceError}
+            aiLoading={crmAiLoading}
+            aiError={crmAiError}
+            aiResult={crmAiResult}
+            aiGeneratedAt={crmAiGeneratedAt}
+            onRunAi={() => runCrmAiInsights()}
+            aiDisabled={crmLoading || Boolean(crmError)}
+          />
         )}
 
         {activeTab === 'operations' && (
@@ -3232,6 +3270,33 @@ export default function AdminPage() {
           </div>
         </Card>
 
+        <Card className="p-4">
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <p className="text-xs font-bold text-gray-500 flex items-center gap-1"><Database size={14} /> Data freshness</p>
+            <Button type="button" variant="ghost" size="sm" onClick={loadDashboard} disabled={dashboardLoading}>
+              {dashboardLoading ? 'Updating…' : 'Refresh'}
+            </Button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-3">
+              <p className="text-xs text-gray-500">Latest stock trade date</p>
+              <p className="text-sm font-black text-gray-900 dark:text-white">{dashboard.latestStockDate || '-'}</p>
+            </div>
+            <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-3">
+              <p className="text-xs text-gray-500">Latest fund standard date</p>
+              <p className="text-sm font-black text-gray-900 dark:text-white">{dashboard.latestFundDate || '-'}</p>
+            </div>
+            <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-3">
+              <p className="text-xs text-gray-500">DAU (today)</p>
+              <p className="text-sm font-black text-gray-900 dark:text-white">{dashboard.dauToday.toLocaleString('en-US')}</p>
+            </div>
+            <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-3">
+              <p className="text-xs text-gray-500">Signups (today)</p>
+              <p className="text-sm font-black text-gray-900 dark:text-white">{dashboard.signupsToday.toLocaleString('en-US')}</p>
+            </div>
+          </div>
+        </Card>
+
         <Card className="p-6">
           <div className="flex items-center justify-between mb-4 gap-3">
             <h2 className="text-xl font-bold text-gray-900 dark:text-white">Market News (Auto)</h2>
@@ -3240,22 +3305,22 @@ export default function AdminPage() {
             </span>
           </div>
           <p className="text-sm text-gray-600 dark:text-gray-300">
-            MarketPageニュースは `TheNewsAPI → cron → news_manual` の流れで自動更新されます。管理画面の手動更新・手動入力UIは削除済みです。
+            Market page news is auto-updated via `TheNewsAPI → cron → news_manual`. Manual refresh/input UI was removed from admin.
           </p>
           <p className="text-xs text-gray-500 mt-2">
-            Last updated: {newsLastUpdatedAt ? new Date(newsLastUpdatedAt).toLocaleString('ja-JP') : '-'}
+            Last updated: {newsLastUpdatedAt ? new Date(newsLastUpdatedAt).toLocaleString('en-US') : '-'}
           </p>
         </Card>
 
         <Card className="p-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white">データ不足リスト（ファンド/ETF）</h2>
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white">Missing data (funds / ETF)</h2>
             <Button type="button" variant="ghost" onClick={loadMissingDataList} disabled={missingDataLoading}>
-              {missingDataLoading ? 'Loading...' : '照会'}
+              {missingDataLoading ? 'Loading...' : 'Check'}
             </Button>
           </div>
             <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
-            ETF一覧のうち、v_stock_latest・履歴・信託報酬・NISA区分が不足している項目を表示します。
+            Lists ETF symbols missing v_stock_latest, history, trust fee, or NISA category.
           </p>
           {missingDataError && <p className="text-sm text-red-600 dark:text-red-400 mb-2">{missingDataError}</p>}
           {missingDataList.length > 0 ? (
@@ -3280,19 +3345,19 @@ export default function AdminPage() {
               </table>
             </div>
           ) : missingDataLoading ? null : !missingDataLoaded ? (
-            <p className="text-sm text-gray-500">「照会」ボタンを押して確認してください。</p>
+            <p className="text-sm text-gray-500">Click Check to load the list.</p>
           ) : (
-            <p className="text-sm text-emerald-600 dark:text-emerald-400 font-bold">全項目でデータあり</p>
+            <p className="text-sm text-emerald-600 dark:text-emerald-400 font-bold">All items have required data</p>
           )}
         </Card>
 
         <Card className="p-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
             <div>
-              <h2 className="text-xl font-bold text-gray-900 dark:text-white">配当マスター（月ベース）</h2>
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white">Dividend master (by month)</h2>
               <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">
-                銘柄コードはマイページ・配当カレンダーの <code className="text-xs font-mono bg-gray-100 dark:bg-gray-800 px-1 rounded">stock_id</code> と同一（例: <span className="font-mono">AAPL</span>, <span className="font-mono">8306</span>, <span className="font-mono">2558.T</span>）。
-                配当がある<strong>暦月</strong>を登録。年を空欄にすると毎年その月に通知ロジックが当たります。
+                <code className="text-xs font-mono bg-gray-100 dark:bg-gray-800 px-1 rounded">stock_id</code> matches My Page / dividend calendar (e.g. <span className="font-mono">AAPL</span>, <span className="font-mono">8306</span>, <span className="font-mono">2558.T</span>).
+                Register calendar <strong>months</strong> with dividends. Leave year empty for every-year recurrence.
               </p>
             </div>
             <Button type="button" variant="ghost" onClick={loadDividendMaster} disabled={dividendMasterLoading}>
@@ -3320,10 +3385,10 @@ export default function AdminPage() {
                 }
                 if (editingDividendMasterId) {
                   await updateDividendMasterRow(editingDividendMasterId, payload)
-                  setDividendMasterMessage({ type: 'success', text: '更新しました。' })
+                  setDividendMasterMessage({ type: 'success', text: 'Updated.' })
                 } else {
                   await insertDividendMasterRow(payload)
-                  setDividendMasterMessage({ type: 'success', text: '追加しました。' })
+                  setDividendMasterMessage({ type: 'success', text: 'Added.' })
                 }
                 setEditingDividendMasterId(null)
                 setDividendMasterForm({
@@ -3336,7 +3401,7 @@ export default function AdminPage() {
                 })
                 await loadDividendMaster()
               } catch (err) {
-                setDividendMasterMessage({ type: 'error', text: err?.message || '保存に失敗しました。' })
+                setDividendMasterMessage({ type: 'error', text: err?.message || 'Save failed.' })
               }
             }}
           >
@@ -3344,7 +3409,7 @@ export default function AdminPage() {
               value={dividendMasterForm.stock_id}
               onChange={(e) => setDividendMasterForm((p) => ({ ...p, stock_id: e.target.value }))}
               className="md:col-span-2 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm font-mono"
-              placeholder="stock_id (例: AAPL, 2558.T)"
+              placeholder="stock_id (e.g. AAPL, 2558.T)"
               required
             />
             <select
@@ -3352,9 +3417,9 @@ export default function AdminPage() {
               onChange={(e) => setDividendMasterForm((p) => ({ ...p, asset_kind: e.target.value }))}
               className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm"
             >
-              <option value="us_stock">米国株</option>
-              <option value="jp_stock">日本株</option>
-              <option value="jp_fund">日本投信/ETF</option>
+              <option value="us_stock">US stock</option>
+              <option value="jp_stock">JP stock</option>
+              <option value="jp_fund">JP fund / ETF</option>
             </select>
             <select
               value={dividendMasterForm.dividend_month}
@@ -3362,7 +3427,7 @@ export default function AdminPage() {
               className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm"
             >
               {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
-                <option key={m} value={m}>{m}月</option>
+                <option key={m} value={m}>Month {m}</option>
               ))}
             </select>
             <input
@@ -3372,22 +3437,22 @@ export default function AdminPage() {
               value={dividendMasterForm.calendar_year}
               onChange={(e) => setDividendMasterForm((p) => ({ ...p, calendar_year: e.target.value }))}
               className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm"
-              placeholder="年(任意・空=毎年)"
+              placeholder="Year (optional, blank = every year)"
             />
             <input
               value={dividendMasterForm.name_hint}
               onChange={(e) => setDividendMasterForm((p) => ({ ...p, name_hint: e.target.value }))}
               className="md:col-span-3 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm"
-              placeholder="名称メモ(任意)"
+              placeholder="Name note (optional)"
             />
             <input
               value={dividendMasterForm.notes}
               onChange={(e) => setDividendMasterForm((p) => ({ ...p, notes: e.target.value }))}
               className="md:col-span-3 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm"
-              placeholder="備考(任意)"
+              placeholder="Notes (optional)"
             />
             <div className="md:col-span-6 flex flex-wrap gap-2">
-              <Button type="submit" size="sm">{editingDividendMasterId ? '更新' : '追加'}</Button>
+              <Button type="submit" size="sm">{editingDividendMasterId ? 'Update' : 'Add'}</Button>
               {editingDividendMasterId && (
                 <Button
                   type="button"
@@ -3405,7 +3470,7 @@ export default function AdminPage() {
                     })
                   }}
                 >
-                  キャンセル
+                  Cancel
                 </Button>
               )}
             </div>
@@ -3413,17 +3478,17 @@ export default function AdminPage() {
           {dividendMasterLoading ? (
             <p className="text-sm text-gray-500">Loading…</p>
           ) : dividendMasterRows.length === 0 ? (
-            <p className="text-sm text-gray-500">行がありません。上のフォームから追加するか、SQLで一括投入してください。</p>
+            <p className="text-sm text-gray-500">No rows yet. Add via the form above or bulk SQL import.</p>
           ) : (
             <div className="max-h-80 overflow-auto rounded-lg border border-gray-200 dark:border-gray-700">
               <table className="min-w-full text-sm">
                 <thead className="bg-gray-50 dark:bg-gray-800 sticky top-0">
                   <tr>
                     <th className="px-3 py-2 text-left font-bold text-gray-700 dark:text-gray-300">stock_id</th>
-                    <th className="px-3 py-2 text-left font-bold text-gray-700 dark:text-gray-300">種別</th>
-                    <th className="px-3 py-2 text-right font-bold text-gray-700 dark:text-gray-300">月</th>
-                    <th className="px-3 py-2 text-right font-bold text-gray-700 dark:text-gray-300">年</th>
-                    <th className="px-3 py-2 text-left font-bold text-gray-700 dark:text-gray-300">名称メモ</th>
+                    <th className="px-3 py-2 text-left font-bold text-gray-700 dark:text-gray-300">Type</th>
+                    <th className="px-3 py-2 text-right font-bold text-gray-700 dark:text-gray-300">Month</th>
+                    <th className="px-3 py-2 text-right font-bold text-gray-700 dark:text-gray-300">Year</th>
+                    <th className="px-3 py-2 text-left font-bold text-gray-700 dark:text-gray-300">Name note</th>
                     <th className="px-3 py-2 text-right font-bold text-gray-700 dark:text-gray-300" />
                   </tr>
                 </thead>
@@ -3451,7 +3516,7 @@ export default function AdminPage() {
                             })
                           }}
                         >
-                          編集
+                          Edit
                         </Button>
                         <Button
                           type="button"
@@ -3459,17 +3524,17 @@ export default function AdminPage() {
                           variant="ghost"
                           onClick={async () => {
                             setDividendMasterMessage(null)
-                            if (!window.confirm('この行を削除しますか？')) return
+                            if (!window.confirm('Delete this row?')) return
                             try {
                               await deleteDividendMasterRow(row.id)
-                              setDividendMasterMessage({ type: 'success', text: '削除しました。' })
+                              setDividendMasterMessage({ type: 'success', text: 'Deleted.' })
                               await loadDividendMaster()
                             } catch (err) {
-                              setDividendMasterMessage({ type: 'error', text: err?.message || '削除に失敗しました。' })
+                              setDividendMasterMessage({ type: 'error', text: err?.message || 'Delete failed.' })
                             }
                           }}
                         >
-                          削除
+                          Delete
                         </Button>
                       </td>
                     </tr>
@@ -3483,12 +3548,12 @@ export default function AdminPage() {
         
         <Card className="p-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white">News Page 手動ニュース</h2>
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white">News page — manual items</h2>
             <Button type="button" variant="ghost" onClick={loadNewsPageManual}>Refresh</Button>
           </div>
           <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
-            ニュースページ上部に表示される手動ニュース。エディターは固定で MoneyMart。画像は「画像URL」欄に直接URLを入力（例: https://example.com/image.jpg）。
-            <span className="block mt-1 text-gray-500 dark:text-gray-400">掲載の日時は Create / Update を押したときの時刻が保存されます。</span>
+            Manual news shown at the top of the News page. Editor is fixed to MoneyMart. Paste a direct image URL in the image field (e.g. https://example.com/image.jpg).
+            <span className="block mt-1 text-gray-500 dark:text-gray-400">Published timestamp is set when you click Create / Update.</span>
           </p>
           <form onSubmit={async (e) => {
             e.preventDefault()
@@ -3538,7 +3603,7 @@ export default function AdminPage() {
               value={newsPageManualForm.title}
               onChange={(e) => setNewsPageManualForm((p) => ({ ...p, title: e.target.value }))}
               className="md:col-span-2 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm"
-              placeholder="タイトル (例: 日経平均、1,100円超の急落)"
+              placeholder="Title (JP copy for the public site)"
               required
             />
             <input
@@ -3546,28 +3611,28 @@ export default function AdminPage() {
               value={newsPageManualForm.publishedAt}
               onChange={(e) => setNewsPageManualForm((p) => ({ ...p, publishedAt: e.target.value }))}
               className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm"
-              title="参考用（下書き・メモ）。DBの掲載時刻は保存ボタンを押した瞬間。"
+              title="Draft memo only — DB publish time is set on save"
             />
             <textarea
               value={newsPageManualForm.content}
               onChange={(e) => setNewsPageManualForm((p) => ({ ...p, content: e.target.value }))}
               rows={3}
               className="md:col-span-4 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm"
-              placeholder="内容"
+              placeholder="Body (shown on site — Japanese OK)"
               required
             />
             <input
               value={newsPageManualForm.imageUrl}
               onChange={(e) => setNewsPageManualForm((p) => ({ ...p, imageUrl: e.target.value }))}
               className="md:col-span-4 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm"
-              placeholder="画像URL（任意）例: https://example.com/image.jpg"
+              placeholder="Image URL (optional) e.g. https://example.com/image.jpg"
             />
             <input
               type="url"
               value={newsPageManualForm.linkUrl}
               onChange={(e) => setNewsPageManualForm((p) => ({ ...p, linkUrl: e.target.value }))}
               className="md:col-span-4 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm"
-              placeholder="記事リンクURL（任意）例: https://example.com/news-article"
+              placeholder="Article link URL (optional) e.g. https://example.com/news-article"
             />
             <div className="md:col-span-4 flex gap-2">
               <Button type="submit" size="sm">{editingNewsPageManualId ? 'Update' : 'Create'}</Button>
@@ -3591,7 +3656,7 @@ export default function AdminPage() {
                 <div key={row.id} className="rounded-lg border border-gray-200 dark:border-gray-700 p-3 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
                   <div className="text-xs min-w-0">
                     <p className="font-bold text-gray-900 dark:text-gray-100 truncate">{row.title}</p>
-                    <p className="text-gray-500">{row.published_at ? new Date(row.published_at).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : '-'} · {row.source || 'MoneyMart'}</p>
+                    <p className="text-gray-500">{row.published_at ? new Date(row.published_at).toLocaleString('en-US', { timeZone: 'Asia/Tokyo', year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : '-'} · {row.source || 'MoneyMart'}</p>
                     {row.url ? <p className="text-gray-500 truncate">Link: {row.url}</p> : null}
                   </div>
                   <div className="flex gap-2 shrink-0">
@@ -3606,12 +3671,12 @@ export default function AdminPage() {
 
         <Card className="p-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white">MarketPage 市場主要ニュース（手動）</h2>
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white">Market page — major news (manual)</h2>
             <Button type="button" variant="ghost" onClick={loadMarketMajorNewsManual}>Refresh</Button>
           </div>
           <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
-            MarketPageの「市場主要ニュース」電光パネルを手動編集します。「メジャー企業・イベント」「今週の主要結果サマリー」はそれぞれ大きなパネル1枚ずつにまとまり、自動で切り替わります（項目は sort_order）。本文は◆付き行として並びます。
-            <span className="block mt-1 text-gray-500 dark:text-gray-400">掲載の日時は Create / Update を押したときの時刻が保存されます。</span>
+            Edit the Market page ticker panels manually. Choose one panel (グローバル / 米国 / 日本) per row — each item appears only on that panel. Title and body are the headline text; do not use region labels as the title anymore.
+            <span className="block mt-1 text-gray-500 dark:text-gray-400">Published timestamp is set when you click Create / Update.</span>
           </p>
           <form
             onSubmit={async (e) => {
@@ -3620,9 +3685,14 @@ export default function AdminPage() {
               const title = String(marketMajorNewsForm.title || '').trim()
               const content = String(marketMajorNewsForm.content || '').trim()
               const section = String(marketMajorNewsForm.section || 'market_major_event')
+              const marketRegion = String(marketMajorNewsForm.marketRegion || '').trim()
               const sortOrder = Number(marketMajorNewsForm.sortOrder || 0)
               if (!title || !content) {
                 setMarketMajorNewsMessage({ type: 'error', text: 'Title and content are required.' })
+                return
+              }
+              if (!['global', 'us', 'jp'].includes(marketRegion)) {
+                setMarketMajorNewsMessage({ type: 'error', text: 'Panel (region) is required.' })
                 return
               }
               try {
@@ -3631,6 +3701,7 @@ export default function AdminPage() {
                   source: 'MoneyMart',
                   title,
                   description: content,
+                  market_region: marketRegion,
                   published_at: publishedAtNowIso(),
                   sort_order: Number.isFinite(sortOrder) ? sortOrder : 0,
                   is_active: Boolean(marketMajorNewsForm.isActive),
@@ -3647,6 +3718,7 @@ export default function AdminPage() {
                 setEditingMarketMajorNewsId(null)
                 setMarketMajorNewsForm({
                   section: 'market_major_event',
+                  marketRegion: 'global',
                   title: '',
                   publishedAt: new Date().toISOString().slice(0, 10),
                   content: '',
@@ -3665,14 +3737,24 @@ export default function AdminPage() {
               onChange={(e) => setMarketMajorNewsForm((p) => ({ ...p, section: e.target.value }))}
               className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm"
             >
-              <option value="market_major_event">メジャー企業・イベント</option>
-              <option value="market_weekly_summary">今週の主要結果サマリー</option>
+              <option value="market_major_event">Major corporate / events</option>
+              <option value="market_weekly_summary">Weekly results summary</option>
+            </select>
+            <select
+              value={marketMajorNewsForm.marketRegion}
+              onChange={(e) => setMarketMajorNewsForm((p) => ({ ...p, marketRegion: e.target.value }))}
+              className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm"
+              required
+            >
+              {MARKET_MAJOR_REGION_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
             </select>
             <input
               value={marketMajorNewsForm.title}
               onChange={(e) => setMarketMajorNewsForm((p) => ({ ...p, title: e.target.value }))}
-              className="md:col-span-3 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm"
-              placeholder="タイトル"
+              className="md:col-span-2 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm"
+              placeholder="Title (headline)"
               required
             />
             <input
@@ -3680,7 +3762,7 @@ export default function AdminPage() {
               value={marketMajorNewsForm.publishedAt}
               onChange={(e) => setMarketMajorNewsForm((p) => ({ ...p, publishedAt: e.target.value }))}
               className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm"
-              title="参考用（メモ）。DBの掲載時刻は保存ボタンを押した瞬間。"
+              title="Memo only — DB publish time is set on save"
             />
             <input
               type="number"
@@ -3694,7 +3776,7 @@ export default function AdminPage() {
               onChange={(e) => setMarketMajorNewsForm((p) => ({ ...p, content: e.target.value }))}
               rows={3}
               className="md:col-span-6 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm"
-              placeholder="内容"
+              placeholder="Body (shown on site — Japanese OK)"
               required
             />
             <label className="md:col-span-2 inline-flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
@@ -3716,6 +3798,7 @@ export default function AdminPage() {
                     setEditingMarketMajorNewsId(null)
                     setMarketMajorNewsForm({
                       section: 'market_major_event',
+                      marketRegion: 'global',
                       title: '',
                       publishedAt: new Date().toISOString().slice(0, 10),
                       content: '',
@@ -3745,9 +3828,11 @@ export default function AdminPage() {
                   <div className="text-xs min-w-0">
                     <p className="font-bold text-gray-900 dark:text-gray-100 truncate">{row.title}</p>
                     <p className="text-gray-500">
-                      {(row.bucket === 'market_weekly_summary') ? '今週の主要結果サマリー' : 'メジャー企業・イベント'}
+                      {(row.bucket === 'market_weekly_summary') ? 'Weekly results summary' : 'Major corporate / events'}
                       {' · '}
-                      {row.published_at ? new Date(row.published_at).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : '-'}
+                      {MARKET_MAJOR_REGION_OPTIONS.find((o) => o.value === row.market_region)?.label || row.market_region || '—'}
+                      {' · '}
+                      {row.published_at ? new Date(row.published_at).toLocaleString('en-US', { timeZone: 'Asia/Tokyo', year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : '-'}
                       {' · sort '}
                       {Number(row.sort_order || 0)}
                     </p>
@@ -3760,6 +3845,7 @@ export default function AdminPage() {
                         setEditingMarketMajorNewsId(row.id)
                         setMarketMajorNewsForm({
                           section: row.bucket || 'market_major_event',
+                          marketRegion: row.market_region || 'global',
                           title: row.title || '',
                           publishedAt: (row.published_at || '').slice(0, 10) || new Date().toISOString().slice(0, 10),
                           content: row.description || '',
@@ -3797,13 +3883,13 @@ export default function AdminPage() {
 
         <Card className="p-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white">Insights 編集</h2>
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white">Insights editor</h2>
             <Button type="button" variant="ghost" onClick={loadInsights} disabled={insightsLoading}>
               {insightsLoading ? 'Loading...' : 'Refresh'}
             </Button>
           </div>
           <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
-            インサイト記事を作成・修正します。公開中の記事は `is_published=true` のものが `/insights` に表示されます。
+            Create and edit insight articles. Published rows (`is_published=true`) appear on `/insights`. Article body/category text can stay Japanese for the public site.
           </p>
           <div className="flex flex-wrap items-center gap-2 mb-3">
             <button
@@ -3816,7 +3902,7 @@ export default function AdminPage() {
                     setInsightForm(next)
                     setInsightSimpleForm(insightFormToSimple(next))
                   } catch {
-                    setInsightsMessage({ type: 'error', text: 'JSONの形式が不正なため、かんたん入力に戻せません。' })
+                    setInsightsMessage({ type: 'error', text: 'Invalid JSON — cannot switch back to simple editor.' })
                     return
                   }
                 }
@@ -3828,7 +3914,7 @@ export default function AdminPage() {
                   : 'bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700'
               }`}
             >
-              かんたん入力
+              Simple editor
             </button>
             <button
               type="button"
@@ -3846,7 +3932,7 @@ export default function AdminPage() {
                   : 'bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700'
               }`}
             >
-              JSONモード
+              JSON mode
             </button>
           </div>
 
@@ -3865,36 +3951,65 @@ export default function AdminPage() {
                       value={insightSimpleForm.headline}
                       onChange={(e) => setInsightSimpleForm((p) => ({ ...p, headline: e.target.value }))}
                       className="flex-1 min-w-0 rounded-xl border border-slate-600 bg-slate-800 px-3 py-2.5 text-sm font-bold text-white placeholder:text-slate-500"
-                      placeholder="タイトル"
+                      placeholder="Title"
                       required
                     />
                     <select
                       value={insightSimpleForm.category}
                       onChange={(e) => setInsightSimpleForm((p) => ({ ...p, category: e.target.value }))}
                       className="shrink-0 rounded-xl border border-slate-600 bg-slate-800 px-3 py-2.5 text-sm font-bold text-white sm:min-w-[11rem]"
-                      aria-label="カテゴリ"
+                      aria-label="Category"
                     >
-                      {[...INSIGHT_CATEGORY_OPTIONS, ...(insightSimpleForm.category && !INSIGHT_CATEGORY_OPTIONS.includes(insightSimpleForm.category) ? [insightSimpleForm.category] : [])].map((opt) => (
-                        <option key={opt} value={opt} className="bg-slate-900 text-white">
-                          {opt}
+                      {[
+                        ...INSIGHT_CATEGORY_OPTIONS,
+                        ...(insightSimpleForm.category
+                          && !INSIGHT_CATEGORY_OPTIONS.some((o) => o.value === insightSimpleForm.category)
+                          ? [{ value: insightSimpleForm.category, label: insightSimpleForm.category }]
+                          : []),
+                      ].map((opt) => (
+                        <option key={opt.value} value={opt.value} className="bg-slate-900 text-white">
+                          {opt.label}
                         </option>
                       ))}
                     </select>
+                  </div>
+                  <div className="mt-3 space-y-1">
+                    <label className="block text-[11px] font-bold tracking-wide text-slate-400" htmlFor="mm-insight-url-slug">
+                      URL slug (public path — lowercase ASCII, digits, hyphens)
+                    </label>
+                    <input
+                      id="mm-insight-url-slug"
+                      type="text"
+                      autoComplete="off"
+                      spellCheck={false}
+                      value={insightSimpleForm.urlSlug}
+                      onChange={(e) => setInsightSimpleForm((p) => ({ ...p, urlSlug: e.target.value }))}
+                      className="w-full rounded-xl border border-slate-600 bg-slate-800 px-3 py-2 text-sm font-mono text-slate-100 placeholder:text-slate-500"
+                      placeholder="e.g. fragmented-world-investors-part-2"
+                    />
+                    <p className="text-[10px] leading-relaxed text-slate-500">
+                      Public URL{' '}
+                      <span className="text-amber-300/90">
+                        /insights/
+                        {normalizeInsightUrlSlug(insightSimpleForm.urlSlug)
+                          || '(blank: auto on create, keep existing when editing)'}
+                      </span>
+                    </p>
                   </div>
                   <textarea
                     rows={3}
                     value={insightSimpleForm.summary}
                     onChange={(e) => setInsightSimpleForm((p) => ({ ...p, summary: e.target.value }))}
                     className="mt-3 w-full resize-y rounded-xl border border-slate-600 bg-slate-800 px-3 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 leading-relaxed"
-                    placeholder="一覧・プレビュー用の短い要約（必須）"
+                    placeholder="Short summary for list / preview (required)"
                     required
                   />
                   <div className="mt-4 space-y-2">
                     <label className="block text-[11px] font-bold tracking-wide text-slate-400">
-                      一覧・記事ヘッダー用カバー画像（任意）
+                      Cover image for list / article header (optional)
                     </label>
                     <p className="text-[10px] leading-relaxed text-slate-500">
-                      Storage バケット「{INSIGHT_COVER_IMAGE_BUCKET}」へアップロードします（ニュース画像と共通）。手元の公開 URL を貼ることもできます。
+                      Uploads to Storage bucket &quot;{INSIGHT_COVER_IMAGE_BUCKET}&quot; (shared with news images). You can also paste a public URL.
                     </p>
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                       <input
@@ -3904,13 +4019,13 @@ export default function AdminPage() {
                         disabled={insightCoverUploading}
                         onChange={handleInsightCoverFileChange}
                       />
-                      {insightCoverUploading ? <span className="text-xs text-amber-300">アップロード中…</span> : null}
+                      {insightCoverUploading ? <span className="text-xs text-amber-300">Uploading…</span> : null}
                     </div>
                     <input
                       value={insightSimpleForm.coverImageUrl}
                       onChange={(e) => setInsightSimpleForm((p) => ({ ...p, coverImageUrl: e.target.value }))}
                       className="w-full rounded-xl border border-slate-600 bg-slate-800 px-3 py-2 text-xs font-mono text-slate-200 placeholder:text-slate-500"
-                      placeholder="https://… （公開画像URL）"
+                      placeholder="https://… (public image URL)"
                     />
                     {insightSimpleForm.coverImageUrl ? (
                       <div className="overflow-hidden rounded-lg border border-slate-600 bg-slate-950/50">
@@ -3929,15 +4044,15 @@ export default function AdminPage() {
 
                 <div className="rounded-2xl border-2 border-slate-800 dark:border-slate-500 bg-white dark:bg-gray-900 overflow-hidden">
                   <div className="bg-slate-900 text-white px-4 py-2.5">
-                    <div className="text-xs font-black tracking-wider">main · 本文（リッチ編集）</div>
+                    <div className="text-xs font-black tracking-wider">main · body (rich editor)</div>
                     <p className="mt-1 text-[10px] leading-relaxed text-slate-400">
-                      すぐ下の<span className="text-amber-300 font-bold">オレンジ色の帯</span>に太字・番号リストなどのボタンがあります。ここがテキストエリアだけの場合は、未デプロイまたは別ブランチのビルドを見ています。
+                      Use the <span className="text-amber-300 font-bold">orange toolbar</span> below for bold, lists, etc. If you only see a plain textarea, deploy the latest build.
                     </p>
                   </div>
                   <InsightRichEditor
                     value={insightSimpleForm.mainCombined}
                     onChange={(html) => setInsightSimpleForm((p) => ({ ...p, mainCombined: html }))}
-                    placeholder="本文（投資テーゼ・分析本文）。テーゼと根拠を分けるときはツールバーの「テーゼ/根拠の区切り」を使うか、プレーンテキストのときは1行に --- とだけ入力。"
+                    placeholder="Article body (thesis / analysis). Use the thesis/evidence divider in the toolbar, or a lone --- line in plain text."
                   />
                 </div>
 
@@ -3947,42 +4062,42 @@ export default function AdminPage() {
                     value={insightSimpleForm.keywordsText}
                     onChange={(e) => setInsightSimpleForm((p) => ({ ...p, keywordsText: e.target.value }))}
                     className="w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2.5 text-sm"
-                    placeholder="例: NISA, 金利, 為替（カンマ・読点・改行で区切り）"
+                    placeholder="e.g. NISA, rates, FX — comma / space / newline separated (#tags OK)"
                   />
                 </div>
 
                 <div className="rounded-2xl border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/50 p-4">
-                  <label className="block text-xs font-black text-gray-700 dark:text-gray-300 tracking-wide mb-1.5">MM 関連コンテンツ</label>
+                  <label className="block text-xs font-black text-gray-700 dark:text-gray-300 tracking-wide mb-1.5">Related MoneyMart links</label>
                   <textarea
                     rows={4}
                     value={insightSimpleForm.relatedToolsText}
                     onChange={(e) => setInsightSimpleForm((p) => ({ ...p, relatedToolsText: e.target.value }))}
                     className="w-full resize-y rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2.5 text-sm leading-relaxed"
-                    placeholder={'関連ツール・内部リンク（1行に1つ）。例: ETF比較ツール、/etf-compare、https://…\nラベルを指定したい場合は「表示名 | URL」形式（例: ETF比較 | https://moneymart.co.jp/etf-compare）。'}
+                    placeholder={'One internal link per line. e.g. /etf-compare, https://…\nOptional label: Display name | URL'}
                   />
                 </div>
 
                 <details className="rounded-xl border border-dashed border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-4 py-3">
-                  <summary className="cursor-pointer text-sm font-bold text-gray-700 dark:text-gray-300">詳細設定（ターゲット・リスク・データ・公開）</summary>
+                  <summary className="cursor-pointer text-sm font-bold text-gray-700 dark:text-gray-300">Advanced (target, risk, data notes, publish)</summary>
                   <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
                     <input
                       value={insightSimpleForm.target}
                       onChange={(e) => setInsightSimpleForm((p) => ({ ...p, target: e.target.value }))}
                       className="md:col-span-2 px-3 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm"
-                      placeholder="Target（任意・バッジ用）"
+                      placeholder="Target badge (optional)"
                     />
                     <textarea
                       rows={4}
                       value={insightSimpleForm.risk}
                       onChange={(e) => setInsightSimpleForm((p) => ({ ...p, risk: e.target.value }))}
                       className="min-h-[100px] resize-y px-3 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm leading-relaxed"
-                      placeholder="リスク要因"
+                      placeholder="Risk factors (JP for public site)"
                     />
                     <input
                       value={insightSimpleForm.dataNote}
                       onChange={(e) => setInsightSimpleForm((p) => ({ ...p, dataNote: e.target.value }))}
                       className="px-3 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm"
-                      placeholder="データ注記"
+                      placeholder="Data notes (JP for public site)"
                     />
                     <label className="md:col-span-2 inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm">
                       <input
@@ -3990,7 +4105,7 @@ export default function AdminPage() {
                         checked={insightSimpleForm.tickerEnabled}
                         onChange={(e) => setInsightSimpleForm((p) => ({ ...p, tickerEnabled: e.target.checked }))}
                       />
-                      ティッカー表示（1行: ラベル|値|変動|up/down）
+                      Tickers (one line: label|value|change|up/down)
                     </label>
                     <textarea
                       rows={4}
@@ -4011,7 +4126,7 @@ export default function AdminPage() {
                       value={insightSimpleForm.readTime}
                       onChange={(e) => setInsightSimpleForm((p) => ({ ...p, readTime: e.target.value }))}
                       className="px-3 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm"
-                      placeholder="読了時間 (例: 5分)"
+                      placeholder="Read time e.g. 5 min (JP: 5分 on site)"
                     />
                     <input
                       type="number"
@@ -4072,8 +4187,11 @@ export default function AdminPage() {
                 <div key={row.id} className="rounded-lg border border-gray-200 dark:border-gray-700 p-3 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
                   <div className="text-xs min-w-0">
                     <p className="font-bold text-gray-900 dark:text-gray-100 truncate">{row.headline}</p>
+                    <p className="text-[10px] font-mono text-gray-500 dark:text-gray-400 truncate" title={row.slug}>
+                      /insights/{row.slug || '—'}
+                    </p>
                     <p className="text-gray-500">
-                      {row.published_at ? new Date(row.published_at).toLocaleDateString('ja-JP') : '-'}
+                      {row.published_at ? new Date(row.published_at).toLocaleDateString('en-US') : '-'}
                       {' · '}
                       {row.category || '-'}
                       {row.featured ? ' · FEATURED' : ''}
@@ -4092,13 +4210,13 @@ export default function AdminPage() {
 
 <Card className="p-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white">ラウンジ キー要約</h2>
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white">Lounge — key digest</h2>
             <Button type="button" onClick={handleRefreshDigest} disabled={digestRefreshLoading}>
-              {digestRefreshLoading ? '更新中...' : 'キー要約を更新'}
+              {digestRefreshLoading ? 'Refreshing…' : 'Refresh digest'}
             </Button>
           </div>
           <p className="text-sm text-gray-600 dark:text-gray-300">
-            ラウンジ上部の「その日のキー要約」カードを即時再生成します。
+            Regenerates the &quot;today&apos;s key digest&quot; card at the top of Lounge immediately.
           </p>
           {digestRefreshMessage ? (
             <p className={`text-sm mt-3 ${digestRefreshMessage.type === 'success' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
@@ -4109,11 +4227,11 @@ export default function AdminPage() {
 
         <Card className="p-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white">カリカエ金利マスター</h2>
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white">Refinance rate master</h2>
             <Button type="button" variant="ghost" onClick={loadRefinanceProducts}>Refresh</Button>
           </div>
           <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
-            AIカリカエエージェント向けに、銀行別の借り換え候補金利を管理します。
+            Manage bank refinance candidate rates for the AI refinance agent.
           </p>
           <form onSubmit={handleSaveRefinance} className="grid grid-cols-1 md:grid-cols-6 gap-2 mb-3">
             <input
@@ -4245,8 +4363,8 @@ export default function AdminPage() {
                     <span className="font-bold text-gray-900 dark:text-gray-100">{row.bank_name}</span>
                     <span className="ml-2 text-gray-600 dark:text-gray-300">{row.product_name}</span>
                     <span className="ml-2 text-blue-600 dark:text-blue-300">{Number(row.apr_min || 0).toFixed(3)}% - {Number(row.apr_max || 0).toFixed(3)}%</span>
-                    <span className="ml-2 text-gray-500">fee ¥{Number(row.fees_yen || 0).toLocaleString()}</span>
-                    <span className="ml-2 text-gray-500">range ¥{Number(row.min_amount_yen || 0).toLocaleString()} - ¥{Number(row.max_amount_yen || 0).toLocaleString()}</span>
+                    <span className="ml-2 text-gray-500">fee ¥{Number(row.fees_yen || 0).toLocaleString('en-US')}</span>
+                    <span className="ml-2 text-gray-500">range ¥{Number(row.min_amount_yen || 0).toLocaleString('en-US')} - ¥{Number(row.max_amount_yen || 0).toLocaleString('en-US')}</span>
                     <span className="ml-2 text-gray-400">order {row.sort_order}</span>
                     <span className={`ml-2 font-bold ${row.is_active ? 'text-emerald-600' : 'text-rose-600'}`}>{row.is_active ? 'active' : 'inactive'}</span>
                   </div>
@@ -4388,6 +4506,7 @@ export default function AdminPage() {
                 <option value="loans">Loans</option>
                 <option value="insurance">Insurance</option>
                 <option value="points">Points</option>
+                <option value="brokerage">Brokerage (stock page execution compare)</option>
               </select>
             </div>
             <div>
@@ -4484,7 +4603,7 @@ export default function AdminPage() {
                       <span className={`text-xs font-bold px-2 py-1 rounded ${product.is_active ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300' : 'bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300'}`}>
                         {product.is_active ? 'Published' : 'Hidden'}
                       </span>
-                      <span className="text-xs text-gray-500">{new Date(product.created_at).toLocaleString()}</span>
+                      <span className="text-xs text-gray-500">{new Date(product.created_at).toLocaleString('en-US')}</span>
                     </div>
 
                     {editing ? (
@@ -4501,6 +4620,7 @@ export default function AdminPage() {
                             <option value="loans">Loans</option>
                             <option value="insurance">Insurance</option>
                             <option value="points">Points</option>
+                            <option value="brokerage">Brokerage (stock page execution compare)</option>
                           </select>
                           <input
                             name="name"
@@ -4696,7 +4816,7 @@ export default function AdminPage() {
                     <span className="text-xs font-bold px-2 py-1 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
                       {report.status}
                     </span>
-                    <span className="text-xs text-gray-500">{new Date(report.created_at).toLocaleString()}</span>
+                    <span className="text-xs text-gray-500">{new Date(report.created_at).toLocaleString('en-US')}</span>
                   </div>
                   <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">Reason: {report.reason}</p>
                   {report.details ? (

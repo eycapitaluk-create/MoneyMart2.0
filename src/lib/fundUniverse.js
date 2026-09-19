@@ -1,10 +1,13 @@
 import { supabase } from './supabase'
 import { ETF_LIST_FROM_XLSX } from '../data/etfListFromXlsx'
-import { getEtfJpName } from '../data/etfJpNameMap'
-import { normalizeFundDisplayName } from './fundDisplayUtils'
+import { resolveFundDisplayName, resolveFundNisaCategory, normalizeFundSymbolKey } from './fundDisplayUtils'
 import { normalizeNisaCategoryField } from './textEncodingUtils'
 import { findBaseCloseByCalendarOffset } from './calendarDateUtils'
-import { buildSplitAdjustedCloses, skipEodSplitHeuristicForSymbol } from './fundAdjustedCloses'
+import {
+  buildSplitAdjustedCloses,
+  resolveSpotCloseAndSessionChange,
+  skipEodSplitHeuristicForSymbol,
+} from './fundAdjustedCloses'
 import { fetchStockDailyHistoryBySymbolMap } from './stockDailyHistory'
 
 const FUND_UNIVERSE_CACHE_KEY = 'moneymart.fund.universe.snapshot.v1'
@@ -71,7 +74,7 @@ const detectCategory = (symbol, name) => {
   if (n.includes('TOPIX') || n.includes('日経') || n.includes('日本') || symbol.endsWith('.T')) return '国内株式'
   if (n.includes('REIT') || n.includes('リート')) return 'REIT'
   if (n.includes('債券') || n.includes('BOND')) return '債券'
-  if (n.includes('金') || n.includes('GOLD') || n.includes('銀') || n.includes('原油') || n.includes('COMMODITY')) return 'コモディティ'
+  if (n.includes('金') || n.includes('GOLD') || n.includes('銀') || n.includes('原油') || n.includes('COMMODITY')) return '原材料'
   if (n.includes('高配当') || n.includes('DIVIDEND')) return '配当'
   if (n.includes('半導体') || n.includes('TECH')) return 'テクノロジー'
   if (n.includes('銀行') || n.includes('金融') || n.includes('BANK')) return '金融'
@@ -95,7 +98,7 @@ const buildLocalFallbackSnapshot = () => {
     .map((item) => {
       const symbol = String(item?.symbol || '').trim()
       if (!symbol) return null
-      const displayName = normalizeFundDisplayName(item?.jpName || getEtfJpName(symbol) || symbol)
+      const displayName = resolveFundDisplayName(symbol, {}, item)
       const trustFeeValue = Number(item?.trustFee)
       return {
         id: symbol,
@@ -136,9 +139,32 @@ export const fetchFundUniverseSnapshot = async () => {
       .limit(5000)
     if (symbolErr) throw symbolErr
 
-    const symbolMap = new Map((symbolRows || []).map((row) => [row.symbol, row]))
+    const symbolMap = new Map()
+    for (const row of symbolRows || []) {
+      const rawSym = String(row?.symbol || '').trim()
+      if (!rawSym) continue
+      const normSym = normalizeFundSymbolKey(rawSym)
+      if (!symbolMap.has(normSym)) symbolMap.set(normSym, { ...row, symbol: normSym })
+    }
+    const profileMap = new Map()
+    for (let i = 0; i < ETF_SYMBOLS.length; i += 100) {
+      const batch = ETF_SYMBOLS.slice(i, i + 100)
+      const { data, error } = await supabase
+        .from('stock_symbol_profiles')
+        .select('symbol,name_jp,name_en')
+        .in('symbol', batch)
+      if (error) continue
+      for (const row of data || []) {
+        const norm = normalizeFundSymbolKey(String(row?.symbol || ''))
+        if (norm) profileMap.set(norm, row)
+      }
+    }
     const latestMap = new Map(
       (latestRows || [])
+        .map((row) => {
+          const norm = normalizeFundSymbolKey(String(row?.symbol || ''))
+          return norm ? { ...row, symbol: norm } : null
+        })
         .filter((row) => row?.symbol && ETF_META_MAP.has(row.symbol))
         .map((row) => [row.symbol, row])
     )
@@ -165,13 +191,12 @@ export const fetchFundUniverseSnapshot = async () => {
       const meta = symbolMap.get(symbol) || {}
       const xlsxMeta = ETF_META_MAP.get(symbol)
       const history = historyBySymbol.get(symbol) || []
-      const rawClose = Number(latest.close || 0)
       const open = Number(latest.open || 0)
       const adjustedClosesRaw = buildSplitAdjustedCloses(history, {
         skipSplitHeuristic: skipEodSplitHeuristicForSymbol(symbol),
       })
+      const { close } = resolveSpotCloseAndSessionChange(history, adjustedClosesRaw, latest)
       const closes = adjustedClosesRaw.filter((value) => Number.isFinite(value) && value > 0)
-      const close = Number(adjustedClosesRaw[adjustedClosesRaw.length - 1] || rawClose || 0)
       const volumes = history.map((row) => Number(row.volume)).filter((value) => Number.isFinite(value) && value >= 0)
       const historyCount = closes.length
       const oneYearBaseClose = findBaseCloseByCalendarOffset(history, { years: 1 }, adjustedClosesRaw)
@@ -195,7 +220,7 @@ export const fetchFundUniverseSnapshot = async () => {
       const avgVolume = volumes.length > 0
         ? volumes.slice(-30).reduce((sum, value) => sum + value, 0) / Math.min(30, volumes.length)
         : Math.max(0, Number(latest.volume || 0))
-      const displayName = normalizeFundDisplayName(xlsxMeta?.jpName || getEtfJpName(symbol) || meta.name || symbol)
+      const displayName = resolveFundDisplayName(symbol, meta, xlsxMeta, profileMap.get(symbol) || null)
 
       return {
         id: symbol,
@@ -204,7 +229,7 @@ export const fetchFundUniverseSnapshot = async () => {
         exchange: String(meta.exchange || (symbol.endsWith('.T') ? 'TSE' : 'US')).trim(),
         category: detectCategory(symbol, displayName),
         trustFee: Number.isFinite(trustFeeValue) ? trustFeeValue : null,
-        nisaCategory: normalizeNisaCategoryField(meta.nisa_category || xlsxMeta?.nisaCategory),
+        nisaCategory: resolveFundNisaCategory(symbol, meta.nisa_category, xlsxMeta?.nisaCategory),
         returnRate1Y: Number.isFinite(return1y) ? Number(return1y) : null,
         avgVolume,
         basePrice: close,

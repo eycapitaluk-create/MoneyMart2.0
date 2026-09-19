@@ -1,6 +1,10 @@
 import { createClient } from '@supabase/supabase-js'
 import { buildHeadBlock, escapeHtml, webApplicationLd } from './lib/seoHead.js'
 
+/** Keep in sync with src/lib/aiNewsClient.js isAiNewsJapaneseRow (SSR must not import browser supabase bundle). */
+const JP_CHAR_RE = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/
+const isJapaneseNewsProbe = (parts) => JP_CHAR_RE.test(parts.map((s) => String(s || '')).join(' '))
+
 const toTimeLabel = (value) => {
   if (!value) return '--:--'
   const d = new Date(value)
@@ -38,7 +42,7 @@ export default async function handler(_req, res) {
   const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.VITE_SUPABASE_ANON_KEY
   if (!supabaseUrl || !supabaseKey) {
-    return sendHtml(res, 500, '<h1>News unavailable</h1><p>Missing Supabase environment variables.</p>')
+    return sendHtml(res, 500, '<h1>ニュースを表示できません</h1><p>しばらくしてから再度お試しください。</p>')
   }
 
   try {
@@ -64,8 +68,12 @@ export default async function handler(_req, res) {
     if (aiErr) throw aiErr
     if (manualErr) throw manualErr
 
-    const ai = (aiRows || []).map(normalizeAiRow).filter((row) => row.headline)
-    const manual = (manualRows || []).map(normalizeManualRow).filter((row) => row.title)
+    const ai = (aiRows || [])
+      .map(normalizeAiRow)
+      .filter((row) => row.headline && isJapaneseNewsProbe([row.headline, row.summary]))
+    const manual = (manualRows || [])
+      .map(normalizeManualRow)
+      .filter((row) => row.title && isJapaneseNewsProbe([row.title, row.description]))
     const updatedAt = ai[0]?.updatedAt || manual[0]?.publishedAt || new Date().toISOString()
 
     const aiCards = ai.map((item) => `
@@ -134,9 +142,8 @@ export default async function handler(_req, res) {
 </html>`
 
     return sendHtml(res, 200, html)
-  } catch (e) {
-    const message = escapeHtml(e?.message || 'Unknown error')
-    return sendHtml(res, 500, `<!doctype html><html lang="ja"><body><h1>News unavailable</h1><p>${message}</p></body></html>`)
+  } catch {
+    return sendHtml(res, 500, `<!doctype html><html lang="ja"><body><h1>ニュースを表示できません</h1><p>しばらくしてから再度お試しください。</p></body></html>`)
   }
 }
 

@@ -1,17 +1,21 @@
 import SwiftUI
 import Combine
 
+/// Matches web `user_watchlists` (`SUPABASE_SETUP_MYPAGE_CORE` + stock ALTER): item_id / item_type / item_name — no legacy `symbol` column.
 private struct WatchlistRow: Decodable, Identifiable {
     let id: String
     let userId: String
-    let symbol: String
+    let itemType: String
+    let itemId: String
+    let itemName: String?
 }
 
+/// Matches web `user_dividend_watchlist`: stock_id / stock_name — no `symbol`, no `target_date` column.
 private struct DividendWatchRow: Decodable, Identifiable {
     let id: String
     let userId: String
-    let symbol: String
-    let targetDate: String?
+    let stockId: String
+    let stockName: String?
 }
 
 private struct SymbolRow: Decodable {
@@ -39,15 +43,15 @@ private final class WatchlistRepository {
     func fetch(userId: String) async throws -> [WatchItem] {
         async let watchlistsTask: [WatchlistRow] = client.select(
             table: "user_watchlists",
-            select: "id,user_id,symbol",
+            select: "id,user_id,item_type,item_id,item_name",
             filters: [URLQueryItem(name: "user_id", value: "eq.\(userId)")],
             limit: 300
         )
         async let dividendsTask: [DividendWatchRow] = client.select(
             table: "user_dividend_watchlist",
-            select: "id,user_id,symbol,target_date",
+            select: "id,user_id,stock_id,stock_name",
             filters: [URLQueryItem(name: "user_id", value: "eq.\(userId)")],
-            order: "target_date.asc",
+            order: "updated_at.desc",
             limit: 300
         )
         async let symbolsTask: [SymbolRow] = client.select(
@@ -69,29 +73,65 @@ private final class WatchlistRepository {
         let stockSymbolMap = Dictionary(uniqueKeysWithValues: stockSymbols.map { ($0.symbol.uppercased(), $0) })
 
         var nameMap: [String: String] = [:]
-        for symbol in (watchlists.map(\.symbol) + dividends.map(\.symbol)) {
-            let key = symbol.uppercased()
-            if nameMap[key] == nil {
-                nameMap[key] = profileMap[key]?.nameJp ?? profileMap[key]?.nameEn ?? stockSymbolMap[key]?.name ?? symbol
-            }
+        func cacheDisplayKey(_ raw: String, fallbackName: String?) {
+            let key = raw.uppercased()
+            if nameMap[key] != nil { return }
+            let resolved = profileMap[key]?.nameJp ?? profileMap[key]?.nameEn ?? stockSymbolMap[key]?.name ?? fallbackName ?? raw
+            nameMap[key] = resolved
+        }
+        for row in watchlists {
+            let code = String(row.itemId).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !code.isEmpty else { continue }
+            cacheDisplayKey(code, fallbackName: row.itemName)
+        }
+        for row in dividends {
+            let code = String(row.stockId).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !code.isEmpty else { continue }
+            cacheDisplayKey(code, fallbackName: row.stockName)
         }
 
-        let a = watchlists.map {
-            WatchItem(
-                id: "wl-\($0.id)",
-                symbol: $0.symbol,
-                name: nameMap[$0.symbol.uppercased()] ?? $0.symbol,
+        let a = watchlists.compactMap { row -> WatchItem? in
+            let kind = String(row.itemType).lowercased()
+            let code = String(row.itemId).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !code.isEmpty else { return nil }
+            let upper = code.uppercased()
+            let trimmedMeta = row.itemName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let defaultName = trimmedMeta.isEmpty ? code : trimmedMeta
+            let displayName: String
+            let badge: String
+            switch kind {
+            case "stock":
+                displayName = nameMap[upper] ?? defaultName
+                badge = "株式WL"
+            case "fund":
+                displayName = defaultName
+                badge = "ファンドWL"
+            case "product":
+                displayName = defaultName
+                badge = "商品関心"
+            default:
+                displayName = defaultName
+                badge = "WL"
+            }
+            return WatchItem(
+                id: "wl-\(row.id)",
+                symbol: code,
+                name: displayName,
                 targetDate: nil,
-                type: "Watchlist"
+                type: badge
             )
         }
         let b = dividends.map {
-            WatchItem(
+            let code = String($0.stockId).trimmingCharacters(in: .whitespacesAndNewlines)
+            let upper = code.uppercased()
+            let meta = $0.stockName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let fallback = meta.isEmpty ? code : meta
+            return WatchItem(
                 id: "dv-\($0.id)",
-                symbol: $0.symbol,
-                name: nameMap[$0.symbol.uppercased()] ?? $0.symbol,
-                targetDate: $0.targetDate,
-                type: "Dividend"
+                symbol: code,
+                name: nameMap[upper] ?? fallback,
+                targetDate: nil,
+                type: "配当カレンダー"
             )
         }
         return (a + b).sorted { $0.symbol < $1.symbol }
@@ -178,7 +218,7 @@ struct WatchlistDividendView: View {
                                     }
                                     Spacer()
                                     VStack(alignment: .trailing, spacing: 6) {
-                                        MMBadge(text: row.type, tint: row.type == "Dividend" ? .green : .blue)
+                                        MMBadge(text: row.type, tint: row.type.contains("配当") ? .green : .blue)
                                         if let target = row.targetDate, !target.isEmpty {
                                             Text(target).font(.caption2).foregroundStyle(.secondary)
                                         }

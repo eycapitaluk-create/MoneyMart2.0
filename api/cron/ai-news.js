@@ -579,9 +579,9 @@ function extractJsonObject(text = '') {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
-/** Sonnet 3.5 が JSON 指示に強い。環境で上書き可。 */
-const AI_NEWS_DEFAULT_MODEL = 'claude-3-5-sonnet-20241022'
-const AI_NEWS_FALLBACK_MODEL = 'claude-3-5-haiku-20241022'
+/** 未指定時は Sonnet 4.6 → Haiku 4.5。環境で上書き可。 */
+const AI_NEWS_DEFAULT_MODEL = 'claude-sonnet-4-6'
+const AI_NEWS_FALLBACK_MODEL = 'claude-haiku-4-5-20251001'
 
 const isRetriableAnthropicError = (status, message = '') => {
   const m = String(message || '').toLowerCase()
@@ -730,7 +730,7 @@ function inferFallbackSentiment(article, snippet = '') {
 }
 
 /**
- * 本番は要約成功率優先: 未指定時は Sonnet → Haiku。軽量優先なら AI_NEWS_MODEL=claude-3-5-haiku-20241022 等。
+ * 本番は要約成功率優先: 未指定時は Sonnet → Haiku。軽量優先なら AI_NEWS_MODEL=claude-haiku-4-5-20251001 等。
  */
 async function summarizeWithClaude(article, apiKey, timeoutMs = 45000) {
   const fromEnv = String(env('AI_NEWS_MODEL') || '').trim()

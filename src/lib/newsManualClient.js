@@ -1,18 +1,29 @@
 import { supabase } from './supabase'
 import { isMarketRelevantManualNews } from './marketNewsRelevance'
+import {
+  isValidManualNewsTimestamp,
+  manualNewsRowRecencyMs,
+  stripJapaneseCalendarPhrasesFromTitle,
+} from './newsManualRecency'
 
-/** 手動ニュースの更新日表示に使う下限（null→Date(null)→1970年問題の除外） */
-const MIN_VALID_MANUAL_NEWS_MS = Date.UTC(2000, 0, 1)
-
-export const isValidManualNewsTimestamp = (value) => {
-  if (value == null || value === '') return false
-  const t = new Date(value).getTime()
-  return Number.isFinite(t) && t >= MIN_VALID_MANUAL_NEWS_MS
-}
+export {
+  MIN_VALID_MANUAL_NEWS_MS,
+  isValidManualNewsTimestamp,
+  manualNewsRowRecencyMs,
+  stripJapaneseCalendarPhrasesFromTitle,
+} from './newsManualRecency'
 
 export const formatManualNewsUpdatedAtJa = (value) => {
   if (!isValidManualNewsTimestamp(value)) return null
-  return new Date(value).toLocaleString('ja-JP')
+  return new Intl.DateTimeFormat('ja-JP', {
+    timeZone: 'Asia/Tokyo',
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: false,
+  }).format(new Date(value))
 }
 
 /** 配信元名が見出し末尾に重複して付くケースを整理（例: 「… All About」「… | All About」） */
@@ -44,14 +55,16 @@ const toTimeText = (value) => {
 
 const normalizeRow = (row) => ({
   source: row?.source || 'Unknown',
-  title: stripTrailingPublisherFromNewsTitle(row?.title || ''),
+  title: stripJapaneseCalendarPhrasesFromTitle(stripTrailingPublisherFromNewsTitle(row?.title || '')),
   time: row?.time_text || toTimeText(row?.published_at),
   topic: row?.topic || 'News',
   url: row?.url || '',
   imageUrl: row?.image_url || '',
   publishedAt: row?.published_at || '',
+  updatedAt: row?.updated_at || '',
   description: row?.description || '',
   language: String(row?.language || '').toLowerCase() || 'ja',
+  marketRegion: row?.market_region || null,
 })
 
 export const getFallbackNewsData = () => ({
@@ -69,7 +82,7 @@ export const fetchNewsManualData = async () => {
   const fallback = getFallbackNewsData()
   const { data, error } = await supabase
     .from('news_manual')
-    .select('bucket,source,title,description,url,image_url,topic,time_text,language,published_at,updated_at,tone')
+    .select('bucket,source,title,description,url,image_url,topic,time_text,language,published_at,updated_at,tone,market_region')
     .eq('is_active', true)
     .order('sort_order', { ascending: true })
     .order('published_at', { ascending: false })
@@ -95,19 +108,13 @@ export const fetchNewsManualData = async () => {
     }
   }
 
+  const dailyBriefRows = []
   for (const row of data) {
     bumpLatestTimestamp(row?.updated_at)
     bumpLatestTimestamp(row?.published_at)
     if (row?.bucket === 'daily_brief') {
       if (!isMarketRelevantManualNews(row)) continue
-      if (!dailyBrief) {
-        dailyBrief = {
-          tone: row?.tone || '中立',
-          headline: row?.title || '',
-          note: row?.description || '',
-          source: row?.source || 'TheNewsAPI',
-        }
-      }
+      dailyBriefRows.push(row)
       continue
     }
     if (!byBucket[row?.bucket]) continue
@@ -115,9 +122,33 @@ export const fetchNewsManualData = async () => {
     byBucket[row.bucket].push(normalizeRow(row))
   }
 
+  if (dailyBriefRows.length > 0) {
+    dailyBriefRows.sort(
+      (a, b) =>
+        manualNewsRowRecencyMs(b?.published_at, b?.updated_at)
+        - manualNewsRowRecencyMs(a?.published_at, a?.updated_at),
+    )
+    const row = dailyBriefRows[0]
+    dailyBrief = {
+      tone: row?.tone || '中立',
+      headline: stripJapaneseCalendarPhrasesFromTitle(stripTrailingPublisherFromNewsTitle(row?.title || '')),
+      note: row?.description || '',
+      source: row?.source || 'TheNewsAPI',
+      publishedAt: row?.published_at || '',
+      updatedAt: row?.updated_at || '',
+    }
+  }
+
+  const sortTickerLikeByRecency = (rows) =>
+    [...rows].sort(
+      (a, b) =>
+        manualNewsRowRecencyMs(b?.publishedAt, b?.updatedAt)
+        - manualNewsRowRecencyMs(a?.publishedAt, a?.updatedAt),
+    )
+
   return {
     updatedAt: latestUpdated || null,
-    marketTicker: byBucket.market_ticker,
+    marketTicker: sortTickerLikeByRecency(byBucket.market_ticker),
     marketPickup: byBucket.market_pickup,
     fundPickup: byBucket.fund_pickup,
     stockDisclosures: byBucket.stock_disclosures,

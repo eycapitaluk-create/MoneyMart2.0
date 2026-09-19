@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useLocation, Link } from 'react-router-dom'
 import {
   PieChart, Wallet, CreditCard, TrendingUp, TrendingDown,
@@ -6,7 +6,10 @@ import {
   ArrowUpRight, Zap, Coins,
   FileText, Home, PiggyBank, Smartphone, Star, X, Loader2, Trash2, Pencil, Plus, Lock,
   Sparkles, Target, ArrowRight, Calculator,
-  UtensilsCrossed, Bus, ShoppingCart
+  UtensilsCrossed, Bus, ShoppingCart, Gift,   ChevronLeft,
+  ForkKnifeCrossed, Gamepad2, Stethoscope, GraduationCap, Plane, Shirt, Dog, MoreHorizontal,
+  ChevronDown,
+  HelpCircle,
 } from 'lucide-react'
 import {
   Cell, Pie, ResponsiveContainer, Tooltip,
@@ -14,7 +17,6 @@ import {
   ComposedChart, Legend,
   AreaChart, Area, LabelList
 } from 'recharts'
-import { createWorker } from 'tesseract.js'
 import { supabase } from '../lib/supabase'
 import { signedReturnTextClassStrong } from '../lib/marketDirectionColors'
 import {
@@ -67,16 +69,18 @@ import { evaluateTaxShield } from '../lib/taxShieldCalc'
 import { evaluateCashFlowOptimizer } from '../lib/cashFlowOptimizerCalc'
 import { calculateRiskScore } from '../simulators/engine/riskEngine'
 import { LEGAL_NOTICE_TEMPLATES } from '../constants/legalNoticeTemplates'
-import { MM_SIMULATION_PAST_PERFORMANCE_JA } from '../lib/moneymartSimulationDisclaimer'
+import { MM_SIMULATION_PAST_PERFORMANCE_JA, MM_DEBT_SIMULATION_DISCLAIMER_JA } from '../lib/moneymartSimulationDisclaimer'
 import { MOCK_STOCKS } from '../data/mockStocks'
 import { STOCK_LIST_400 } from '../data/stockList400'
 import { getStockNameFallback } from '../data/stockNameFallback'
 import { ETF_LIST_FROM_XLSX } from '../data/etfListFromXlsx'
-import { getEtfJpName } from '../data/etfJpNameMap'
-import { decodeHtmlEntities, normalizeFundDisplayName } from '../lib/fundDisplayUtils'
+import { decodeHtmlEntities, normalizeFundDisplayName, resolveFundDisplayName } from '../lib/fundDisplayUtils'
 import { lookupDividendStockBySymbol, fetchStockFromSupabase } from '../data/dividendStockUniverse'
+import { isRetiredStockSymbol } from '../lib/retiredStockSymbols'
 import { fetchNewsManualData, getFallbackNewsData } from '../lib/newsManualClient'
-import PortfolioDiagnosisPanel from '../components/mypage/PortfolioDiagnosisPanel'
+const PortfolioDiagnosisPanel = lazy(() => import('../components/mypage/PortfolioDiagnosisPanel'))
+const DividendCalendarSection = lazy(() => import('./mypage/DividendCalendarSection'))
+const SellHistorySection = lazy(() => import('./mypage/SellHistorySection'))
 import {
   buildFundOptimizerCompareUrl,
   loadFundOptimizerWatchsets,
@@ -96,11 +100,14 @@ import {
   PREMIUM_DISCOUNT_YEN,
   PREMIUM_LIST_PRICE_YEN,
   PREMIUM_SALE_PRICE_YEN,
-  isPaidPlanTier,
+  hasPremiumEntitlement,
 } from '../lib/membership'
 import { fetchMyReferralCode } from '../lib/referralApi'
 import { REFERRAL_INVITE_UI_ENABLED } from '../lib/referralUiFlags'
-import { ReferralShareMenu } from '../components/ReferralShareMenu'
+import MyPagePromotionsSection from '../components/mypage/MyPagePromotionsSection'
+import PortfolioRelatedPanel from '../components/news/PortfolioRelatedPanel'
+import { usePortfolioExposureProfile } from '../hooks/usePortfolioExposureProfile'
+import { fetchAiNewsData } from '../lib/aiNewsClient'
 import {
   getAnnualDividendPerShare,
   getDividendCadenceMeta,
@@ -108,10 +115,9 @@ import {
   getFirstDividendMonth,
   formatDividendCash,
   isLikelyUsdDivStock,
-  dividendCashToJpyApprox,
   getDividendNetCashInNative,
-  getDividendNetJpyApprox,
   getDividendItemIsNisa,
+  normalizeDividendStockFlag,
 } from '../lib/dividendCalendar'
 import {
   getDividendCalendarDetailRecord,
@@ -119,6 +125,7 @@ import {
   isHighYieldDetailSymbol,
   dividendDetailMatchesUserInput,
 } from '../lib/dividendCalendarDetailLookup'
+import { isMisclassifiedStockHeldAsFundSymbol } from '../lib/ownedFundSymbolGuard'
 
 const STOCK_WATCHLIST_STORAGE_KEY_PREFIX = 'mm_stock_watchlist_v1'
 const FREE_FUND_WATCHLIST_LIMIT = 3
@@ -128,49 +135,113 @@ const MY_PAGE_ETF_META_BY_SYMBOL = new Map(
   (Array.isArray(ETF_LIST_FROM_XLSX) ? ETF_LIST_FROM_XLSX : []).map((r) => [String(r.symbol || '').toUpperCase(), r])
 )
 
-/** stock_symbols / DB に正式名称が無いとき ETF マスタ・米系マップで表示名を補う */
+/** 保有の symbol（例: 7203）と配当ウォッチの stock_id（7203 / 7203.T）を同一銘柄として扱う */
+const ownedSymbolMatchesDividendStockId = (ownedSym, divStockId) => {
+  const o = String(ownedSym || '').trim().toUpperCase()
+  const d = String(divStockId || '').trim().toUpperCase()
+  if (!o || !d) return false
+  if (o === d) return true
+  const jpCode = (x) => {
+    const m = String(x || '').match(/^(\d{4})(\.T)?$/i)
+    return m ? m[1] : ''
+  }
+  const oC = jpCode(o)
+  const dC = jpCode(d)
+  return Boolean(oC && dC && oC === dC)
+}
+
+/** stock_symbols がティッカーのみでも、JP上場CSV・ETFマスタ等で表示名を補う（resolveFundDisplayName に委譲） */
 const resolveOwnedFundDisplayName = (symbol, stockSymbolName, storedName) => {
   const sym = String(symbol || '').trim().toUpperCase()
   if (!sym) return ''
   const sn = decodeHtmlEntities(String(stockSymbolName || '').trim())
   const dbn = decodeHtmlEntities(String(storedName || '').trim())
   const tickerOnly = (x) => !x || String(x).trim().toUpperCase() === sym
-  const meta = MY_PAGE_ETF_META_BY_SYMBOL.get(sym)
-  const etfJp = meta?.jpName ? normalizeFundDisplayName(String(meta.jpName)) : ''
-  const usRaw = getEtfJpName(sym)
-  const usJp = usRaw ? normalizeFundDisplayName(String(usRaw)) : ''
   if (!tickerOnly(dbn)) return normalizeFundDisplayName(dbn)
-  if (!tickerOnly(sn)) return normalizeFundDisplayName(sn)
-  if (etfJp) return etfJp
-  if (usJp) return usJp
-  return normalizeFundDisplayName(sn || dbn || sym)
+  const meta = MY_PAGE_ETF_META_BY_SYMBOL.get(sym)
+  return resolveFundDisplayName(sym, { name: sn }, meta || null, null)
 }
 
+const normalizeOwnedStockLabelToken = (value) => {
+  const s = decodeHtmlEntities(String(value || '').trim()).replace(/\s+/g, ' ').trim()
+  return s
+}
+
+const isTickerOnlyStockLabel = (sym, candidate) => {
+  const c = String(candidate || '').trim()
+  if (!c) return true
+  return c.toUpperCase() === String(sym || '').trim().toUpperCase()
+}
+
+/** プロフィールに和名・英名があるときは「和名 / 英名」で併記（株タブで英語も見えるように） */
 const resolveOwnedStockDisplayName = (symbol, stockSymbolName, profileNameJp, profileNameEn, fallbackName = '') => {
   const sym = String(symbol || '').trim().toUpperCase()
   if (!sym) return ''
-  const candidates = [
-    decodeHtmlEntities(String(profileNameJp || '').trim()),
-    decodeHtmlEntities(String(profileNameEn || '').trim()),
-    decodeHtmlEntities(String(stockSymbolName || '').trim()),
-    decodeHtmlEntities(String(fallbackName || '').trim()),
-    decodeHtmlEntities(String(getStockNameFallback(sym) || '').trim()),
-  ]
-  for (const candidate of candidates) {
-    if (!candidate) continue
-    if (candidate.toUpperCase() === sym) continue
-    return candidate
+  const jp = normalizeOwnedStockLabelToken(profileNameJp)
+  const en = normalizeOwnedStockLabelToken(profileNameEn)
+  const stockN = normalizeOwnedStockLabelToken(stockSymbolName)
+  const fb = normalizeOwnedStockLabelToken(fallbackName)
+  const mapFallback = normalizeOwnedStockLabelToken(getStockNameFallback(sym) || '')
+
+  const jpOk = jp && !isTickerOnlyStockLabel(sym, jp)
+  const enOk = en && !isTickerOnlyStockLabel(sym, en)
+
+  const dupOfProfile = (c) => {
+    if (!c) return false
+    const x = c.normalize('NFKC').toLowerCase()
+    if (jpOk && x === jp.normalize('NFKC').toLowerCase()) return true
+    if (enOk && x === en.normalize('NFKC').toLowerCase()) return true
+    return false
+  }
+
+  if (jpOk && enOk) {
+    const j = jp.normalize('NFKC').toLowerCase()
+    const e = en.normalize('NFKC').toLowerCase()
+    if (j === e) return normalizeFundDisplayName(jp)
+    return `${normalizeFundDisplayName(jp)} / ${normalizeFundDisplayName(en)}`
+  }
+  if (jpOk) {
+    const extras = [stockN, fb, mapFallback]
+    for (const raw of extras) {
+      if (!raw || isTickerOnlyStockLabel(sym, raw) || dupOfProfile(raw)) continue
+      const j = jp.normalize('NFKC').toLowerCase()
+      const e = raw.normalize('NFKC').toLowerCase()
+      if (j !== e) return `${normalizeFundDisplayName(jp)} / ${normalizeFundDisplayName(raw)}`
+    }
+    return normalizeFundDisplayName(jp)
+  }
+  if (enOk) return normalizeFundDisplayName(en)
+
+  // stock_symbols は英名のみのことが多い。マスタ側で「和 / 英」を持つときはそちらを優先（例: VRT）
+  if (mapFallback && /\s+\/\s+/.test(mapFallback)) {
+    return normalizeFundDisplayName(mapFallback)
+  }
+
+  const singles = [stockN, fb, mapFallback]
+  for (const raw of singles) {
+    if (!raw || isTickerOnlyStockLabel(sym, raw) || dupOfProfile(raw)) continue
+    return normalizeFundDisplayName(raw)
   }
   return sym
 }
 
 const OWNED_STOCKS_STORAGE_KEY_PREFIX = 'mm_owned_stocks_v1'
 const OWNED_FUNDS_STORAGE_KEY_PREFIX = 'mm_owned_funds_v1'
+const OWNED_REALIZED_STOCKS_STORAGE_KEY_PREFIX = 'mm_owned_realized_stock_v1'
+const OWNED_REALIZED_FUNDS_STORAGE_KEY_PREFIX = 'mm_owned_realized_fund_v1'
 const LOCAL_FUND_POSITIONS_STORAGE_KEY_PREFIX = 'mm_local_fund_positions_v1'
 const getOwnedStocksStorageKey = (userId) =>
   (userId ? `${OWNED_STOCKS_STORAGE_KEY_PREFIX}_${userId}` : `${OWNED_STOCKS_STORAGE_KEY_PREFIX}_guest`)
 const getOwnedFundsStorageKey = (userId) =>
   (userId ? `${OWNED_FUNDS_STORAGE_KEY_PREFIX}_${userId}` : `${OWNED_FUNDS_STORAGE_KEY_PREFIX}_guest`)
+const getOwnedRealizedStockTradesStorageKey = (userId) =>
+  (userId
+    ? `${OWNED_REALIZED_STOCKS_STORAGE_KEY_PREFIX}_${userId}`
+    : `${OWNED_REALIZED_STOCKS_STORAGE_KEY_PREFIX}_guest`)
+const getOwnedRealizedFundTradesStorageKey = (userId) =>
+  (userId
+    ? `${OWNED_REALIZED_FUNDS_STORAGE_KEY_PREFIX}_${userId}`
+    : `${OWNED_REALIZED_FUNDS_STORAGE_KEY_PREFIX}_guest`)
 const getLocalFundPositionsStorageKey = (userId) =>
   (userId ? `${LOCAL_FUND_POSITIONS_STORAGE_KEY_PREFIX}_${userId}` : `${LOCAL_FUND_POSITIONS_STORAGE_KEY_PREFIX}_guest`)
 
@@ -181,6 +252,53 @@ const clearLegacyOwnedPortfolioLocalStorage = (userId) => {
     localStorage.removeItem(getOwnedFundsStorageKey(userId))
   } catch {
     // ignore
+  }
+}
+
+const normalizeRealizedStockTrades = (rows = []) => (
+  (Array.isArray(rows) ? rows : [])
+    .map((row) => {
+      const symbol = String(row?.symbol || '').trim().toUpperCase()
+      const tradeId = String(row?.tradeId || row?.trade_id || '').trim()
+      if (!symbol || !tradeId) return null
+      const qty = Number(row?.qty || 0)
+      const sellPrice = Number(row?.sellPrice ?? row?.sell_price ?? 0)
+      const costBasisJpy = Number(row?.costBasisJpy ?? row?.cost_basis_jpy ?? 0)
+      const proceedsJpy = Number(row?.proceedsJpy ?? row?.proceeds_jpy ?? 0)
+      const realizedPnlJpy = Number(row?.realizedPnlJpy ?? row?.realized_pnl_jpy ?? (proceedsJpy - costBasisJpy))
+      return {
+        tradeId,
+        symbol,
+        sellDate: String(row?.sellDate || row?.sell_date || ''),
+        qty: Number.isFinite(qty) && qty >= 0 ? qty : 0,
+        sellPrice: Number.isFinite(sellPrice) && sellPrice >= 0 ? sellPrice : 0,
+        costBasisJpy: Number.isFinite(costBasisJpy) ? costBasisJpy : 0,
+        proceedsJpy: Number.isFinite(proceedsJpy) ? proceedsJpy : 0,
+        realizedPnlJpy: Number.isFinite(realizedPnlJpy) ? realizedPnlJpy : 0,
+      }
+    })
+    .filter(Boolean)
+)
+
+const normalizeRealizedFundTrades = normalizeRealizedStockTrades
+
+const loadLocalRealizedStockTradesList = (userId) => {
+  try {
+    const raw = localStorage.getItem(getOwnedRealizedStockTradesStorageKey(userId))
+    const parsed = raw ? JSON.parse(raw) : []
+    return normalizeRealizedStockTrades(parsed)
+  } catch {
+    return []
+  }
+}
+
+const loadLocalRealizedFundTradesList = (userId) => {
+  try {
+    const raw = localStorage.getItem(getOwnedRealizedFundTradesStorageKey(userId))
+    const parsed = raw ? JSON.parse(raw) : []
+    return normalizeRealizedFundTrades(parsed)
+  } catch {
+    return []
   }
 }
 
@@ -206,7 +324,7 @@ const getFundWatchlistMemoStorageKey = (userId) =>
   (userId ? `${FUND_WATCHLIST_MEMO_STORAGE_KEY_PREFIX}_${userId}` : `${FUND_WATCHLIST_MEMO_STORAGE_KEY_PREFIX}_guest`)
 const AI_REPORT_DRAFT_STORAGE_KEY = 'mm_ai_report_draft_v1'
 const MYPAGE_TAB_STORAGE_KEY = 'mm_mypage_active_tab_v1'
-const MYPAGE_ALLOWED_TABS = ['wealth', 'stock', 'fund', 'point', 'debt', 'coach', 'dividend']
+const MYPAGE_ALLOWED_TABS = ['wealth', 'stock', 'fund', 'related', 'sellhistory', 'point', 'debt', 'coach', 'dividend']
 const normalizeMyPageTab = (value = '') => {
   const raw = String(value || '').trim().toLowerCase()
   if (!raw) return 'wealth'
@@ -215,6 +333,8 @@ const normalizeMyPageTab = (value = '') => {
   if (raw === 'stocks') return 'stock'
   if (raw === 'funds') return 'fund'
   if (raw === 'coach') return 'debt'
+  if (raw === 'history' || raw === 'sell-history' || raw === 'sell_history') return 'sellhistory'
+  if (raw === 'impact' || raw === 'exposure' || raw === 'kanren') return 'related'
   return raw
 }
 /** App の通知バッジのみ更新。家計の保存成功時だけ呼ぶ（レンダー連動の useEffect では呼ばない）。 */
@@ -226,6 +346,9 @@ const notifyBudgetAlertRefresh = () => {
   }
 }
 const DAILY_REFRESH_MS = 24 * 60 * 60 * 1000
+/** Supabase 応答が止まったとき、マイページ全体がスピナー固定にならないよう上限 */
+const PORTFOLIO_QUOTES_HYDRATE_TIMEOUT_MS = 25_000
+const OWNED_ASSET_SYNC_TIMEOUT_MS = 20_000
 const POINT_EXPIRY_ALERT_DAYS = 30
 const PRICE_STALE_ALERT_DAYS = 3
 const TARGET_STOCK_RATIO_PCT = 60
@@ -270,6 +393,33 @@ const sanitizeDecimalOneInput = (raw = '') => {
   const [intPart = '', decimalPart = ''] = normalized.split('.')
   if (normalized.includes('.')) return `${intPart}.${decimalPart.slice(0, 1)}`
   return intPart
+}
+/** 株式・配当ウォッチの保有株数入力（小数第3位まで） */
+const STOCK_SHARE_FRAC_DIGITS = 3
+const sanitizeStockShareQtyInput = (raw = '') => sanitizeDecimalManyInput(raw, STOCK_SHARE_FRAC_DIGITS)
+const roundStockShareQty = (raw) => {
+  const n = Number(raw)
+  if (!Number.isFinite(n) || n <= 0) return 0
+  const p = 10 ** STOCK_SHARE_FRAC_DIGITS
+  return Math.round(n * p) / p
+}
+/** 売却口数・小数株など。既定 10 桁まで（投資元本÷基準価額の桁あふれ対策） */
+const sanitizeDecimalManyInput = (raw = '', maxFracDigits = 10) => {
+  const n = Math.max(0, Math.min(16, Number(maxFracDigits) || 10))
+  const normalized = sanitizeDecimalInput(raw)
+  if (!normalized) return ''
+  const [intPart = '', decimalPart = ''] = normalized.split('.')
+  if (normalized.includes('.')) {
+    const d = n > 0 ? decimalPart.slice(0, n) : ''
+    if (d.length === 0 && normalized.endsWith('.')) return `${intPart}.`
+    return d.length > 0 ? `${intPart}.${d}` : intPart
+  }
+  return intPart
+}
+const formatMaxSellUnitsInput = (u) => {
+  const n = Number(u)
+  if (!Number.isFinite(n) || n <= 0) return ''
+  return n.toFixed(16).replace(/\.?0+$/, '')
 }
 const DEFAULT_REVOLVING_PROFILE = {
   balance_yen: 0,
@@ -440,9 +590,65 @@ const ownedFieldInputClass = 'w-full min-h-[44px] sm:min-h-0 text-base sm:text-s
 const ownedFieldInputRightClass = `${ownedFieldInputClass} text-right`
 const ownedMobileFieldLabelClass = 'block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1 sm:hidden'
 
+/** 保有ポジション表（株・ファンド）PC: ヘッダー強調・行ホバー・銘柄列アクセント */
+const ownedPortfolioTableScrollWrapClass =
+  'hidden lg:block overflow-x-auto touch-pan-x rounded-xl border border-slate-200/90 dark:border-slate-700/90 bg-white dark:bg-slate-900 shadow-md shadow-slate-900/[0.06] dark:shadow-none ring-1 ring-slate-900/[0.04] dark:ring-white/[0.06]'
+const ownedPortfolioTableBaseClass = 'w-full text-base lg:text-sm tabular-nums'
+const ownedPortfolioTheadRowClass =
+  'bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 dark:from-slate-950 dark:via-slate-900 dark:to-indigo-950 text-white shadow-[inset_0_-1px_0_rgba(255,255,255,0.07)]'
+const ownedPortfolioThBaseClass =
+  'px-3 py-3.5 lg:px-5 lg:py-3.5 font-extrabold text-[11px] sm:text-xs text-white/95 tracking-wide align-bottom whitespace-nowrap'
+const ownedPortfolioTbodyRowClass =
+  'border-t border-slate-100 dark:border-slate-800/90 transition-[background-color] duration-150 hover:bg-orange-50/40 dark:hover:bg-orange-950/25'
+const ownedPortfolioNameCellClass =
+  'px-3 py-4 sm:px-5 border-l-[3px] border-l-orange-500 dark:border-l-orange-400 align-top min-w-0 max-w-[14rem] xl:max-w-[18rem]'
+const ownedPortfolioTickerPillClass =
+  'inline-flex mt-1 px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800/80 border border-slate-200/90 dark:border-slate-600 text-[11px] font-mono font-bold text-slate-700 dark:text-slate-200'
+const ownedPortfolioLotRowClass =
+  'border-t border-slate-100 dark:border-slate-800/90 bg-slate-50/80 dark:bg-slate-900/40'
+const ownedPortfolioTfootClass =
+  'bg-gradient-to-r from-slate-100 via-orange-50/45 to-amber-50/35 dark:from-slate-800/90 dark:via-slate-900 dark:to-slate-900 border-t-2 border-orange-200/70 dark:border-orange-900/45'
+const ownedPortfolioMobileCardClass =
+  'rounded-xl border border-slate-200/90 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 shadow-md shadow-slate-900/[0.05] dark:shadow-none ring-1 ring-orange-500/12 dark:ring-orange-400/10 space-y-3'
+const ownedPortfolioMobileTotalsClass =
+  'rounded-xl border-2 border-orange-200/80 dark:border-orange-900/50 bg-gradient-to-br from-slate-50 to-orange-50/40 dark:from-slate-800/60 dark:to-orange-950/25 p-3 space-y-2 text-sm shadow-sm'
+
 /** MyPage ネイティブ date: 44px タップ・16px ベース（iOS ズーム回避）、sm 以上は text-sm */
 const myPageNativeDateInputTouchClass =
   'min-h-[44px] touch-manipulation text-base sm:min-h-0 sm:text-sm [color-scheme:light] dark:[color-scheme:dark]'
+
+/** 家計簿: 表示は YYYY/MM/DD、API は YYYY-MM-DD */
+const HOUSEHOLD_ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+function formatHouseholdDateSlash(iso) {
+  const s = String(iso || '').slice(0, 10)
+  if (!HOUSEHOLD_ISO_DATE_RE.test(s)) return ''
+  const [y, m, d] = s.split('-')
+  return `${y}/${m}/${d}`
+}
+function parseHouseholdDateSlash(raw) {
+  const s = String(raw || '').trim()
+  if (!s) return ''
+  if (HOUSEHOLD_ISO_DATE_RE.test(s)) return s
+  const norm = s.replace(/\./g, '/').replace(/-/g, '/')
+  const parts = norm.split('/').map((p) => p.trim()).filter(Boolean)
+  if (parts.length !== 3 || parts[0].length !== 4) return ''
+  const y = Number(parts[0])
+  const mo = Number(parts[1])
+  const da = Number(parts[2])
+  if (!Number.isFinite(y) || !Number.isFinite(mo) || !Number.isFinite(da)) return ''
+  if (y < 1900 || y > 2100 || mo < 1 || mo > 12 || da < 1 || da > 31) return ''
+  const out = `${y}-${String(mo).padStart(2, '0')}-${String(da).padStart(2, '0')}`
+  const check = new Date(`${out}T12:00:00`)
+  if (
+    Number.isNaN(check.getTime())
+    || check.getFullYear() !== y
+    || check.getMonth() + 1 !== mo
+    || check.getDate() !== da
+  ) {
+    return ''
+  }
+  return out
+}
 
 const createOwnedLotId = () => `lot_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
 
@@ -526,7 +732,7 @@ const inferWatchFundCategoryLabel = (row = {}) => {
   const name = String(row?.name || '').toUpperCase()
   if (FUND_WATCH_REIT_SET.has(code) || /REIT|リート/.test(name)) return 'REIT'
   if (FUND_WATCH_BOND_SET.has(code) || /債券|BOND|TREASURY|国債|社債/.test(name)) return '債券'
-  if (FUND_WATCH_COMMODITY_SET.has(code) || /COMMODITY|原油|金|銀|GOLD|SILVER/.test(name)) return 'Commodity'
+  if (FUND_WATCH_COMMODITY_SET.has(code) || /COMMODITY|原油|金|銀|GOLD|SILVER/.test(name)) return '原材料'
   return '株式'
 }
 
@@ -576,6 +782,40 @@ const toJpy = (value, currency = 'JPY') => {
   return n * rate
 }
 
+const formatStockNativePrice = (value, currency = 'JPY') => {
+  const n = Number(value)
+  if (!Number.isFinite(n)) return '--'
+  const cur = String(currency || 'JPY').toUpperCase()
+  if (cur === 'JPY') return `¥${n.toLocaleString('ja-JP', { maximumFractionDigits: 2 })}`
+  try {
+    return new Intl.NumberFormat(cur === 'USD' ? 'en-US' : 'ja-JP', {
+      style: 'currency',
+      currency: cur,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(n)
+  } catch {
+    return `${n.toLocaleString('ja-JP', { maximumFractionDigits: 2 })} ${cur}`
+  }
+}
+
+const formatStockNativeMoney = (value, currency = 'JPY') => {
+  const n = Number(value)
+  if (!Number.isFinite(n)) return '--'
+  const cur = String(currency || 'JPY').toUpperCase()
+  if (cur === 'JPY') return `¥${Math.round(n).toLocaleString('ja-JP')}`
+  try {
+    return new Intl.NumberFormat(cur === 'USD' ? 'en-US' : 'ja-JP', {
+      style: 'currency',
+      currency: cur,
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(Math.round(n))
+  } catch {
+    return `${Math.round(n).toLocaleString('ja-JP')} ${cur}`
+  }
+}
+
 const inferStockSector = (name = '', symbol = '', extraHints = '') => {
   const sym = String(symbol || '').trim().toUpperCase()
   const n = `${name} ${sym} ${extraHints}`.toLowerCase()
@@ -591,9 +831,9 @@ const inferStockSector = (name = '', symbol = '', extraHints = '') => {
   if (/(energy|エネルギー|oil|petroleum|gas\b|原油|石油|天然ガス|chevron|exxon|conocophillips|shell|bp\b)/i.test(n)) {
     return 'エネルギー'
   }
-  // 公益（電力ガス水道）
+  // 電力・ガス（旧ラベル「公益」／水道・送配電も含む）
   if (/(utility|utilities|公益|電力|ガス事業|水道|送配電|next.?era|southern\s*company|関西電力|東京電力|中部電力)/i.test(n)) {
-    return '公益'
+    return '電力・ガス'
   }
   // 自動車
   if (/(auto|自動車|mobility|toyota|トヨタ|tesla|テスラ|ford|gm\b|honda|ホンダ|マツダ|スズキ|スバル|日産|nissan|isuzu|デンソー|アイシン)/i.test(n)) {
@@ -612,7 +852,7 @@ const inferStockSector = (name = '', symbol = '', extraHints = '') => {
     return '消費財'
   }
   // 産業・運輸・建設・防衛（社名に industrial が無くてもティーカー・製品で寄せる）
-  if (/(industrial|産業|industrials|machinery|機械|建設|重工|造船|航空宇宙|aerospace|defense|防衛|ボーイング|lockheed|キャタピラー|caterpillar|deere|vernova|\bgev\b|物流|運輸|運送|郵便|logistics|freight|railway|鉄道|海運|空運|倉庫|三菱重工|川崎重工|いすゞ)/i.test(n)) {
+  if (/(industrial|産業|industrials|machinery|機械|建設|重工|造船|航空宇宙|aerospace|defense|防衛|ボーイング|lockheed|キャタピラー|caterpillar|deere|vernova|vertiv|\bgev\b|\bvrt\b|データ.?センタ|critical\s*infrastructure|物流|運輸|運送|郵便|logistics|freight|railway|鉄道|海運|空運|倉庫|三菱重工|川崎重工|いすゞ)/i.test(n)) {
     return '産業'
   }
   // コミュニケーション・メディア
@@ -636,6 +876,7 @@ const inferStockSector = (name = '', symbol = '', extraHints = '') => {
  */
 const PIE_SECTOR_BY_SYMBOL = {
   GEV: '産業', // GE Vernova — GICS Industrials / Heavy Electrical Equipment
+  VRT: '産業', // Vertiv — GICS Industrials / Electrical Equipment
 }
 
 /** DBの sector / industry 文字列を円グラフ用の日本語カテゴリに寄せる（GICS・日英混在対応）。未判定は '' */
@@ -648,7 +889,7 @@ const mapProfileSectorToPieCategory = (raw) => {
     [/financial|financ(e|ial)|\bbank|insurance|reinsurance|asset\s*management|capital\s*markets|wealth|lending|broker|金融|銀行|保険|証券/i, '金融'],
     [/health|医療|製薬|pharma|バイオ|biotech|ドラッグ|medical|life\s*sciences|ヘルス/i, 'ヘルスケア'],
     [/energy|エネルギー|oil|petroleum|原油|石油|天然ガス|integrated\s*oil|oil\s*&\s*gas|chevron|exxon|conocophillips|shell|\bbp\b/i, 'エネルギー'],
-    [/utilities|utility|公益|電力.?ガス|電気.?ガス|water\s*utilities|multi-utilities/i, '公益'],
+    [/utilities|utility|公益|電力.?ガス|電気.?ガス|water\s*utilities|multi-utilities/i, '電力・ガス'],
     [/consumer\s*cyclical|consumer\s*discretionary|一般消費|非必須|discretionary|小売|retail/i, '消費財'],
     [/consumer\s*defensive|consumer\s*staples|生活必需|必須消費|staples/i, '生活必需品'],
     // Industrials: 英語 industry が "Heavy Electrical Equipment" 等で industrial 語を含まないことがある
@@ -731,7 +972,7 @@ const DEBT_INFO = {
   dti: 28.5,
   alerts: [
     { id: 1, type: 'opportunity', msg: '金利 0.3% 低いローンへの借り換えチャンス' },
-    { id: 2, type: 'warning', msg: '来月、市場金利の上昇が予測されています' },
+    { id: 2, type: 'warning', msg: '来月、市場金利の上昇が見込まれます' },
   ],
 }
 
@@ -756,14 +997,14 @@ const buildAiSummaryReport = ({ totalReturnRate, dti, concentration, bestReturn 
 
   const actions = [
     concentration >= 55
-      ? '単一テーマ集中が高めです。低相関アセットを10〜15%追加して分散を強化。'
-      : '現状の分散は良好です。定期積立ルールを維持し、急な比率変更を避ける。',
+      ? '単一テーマ集中が高めです。低相関アセットを含めた分散余地を確認する観点があります。'
+      : '現状の分散は良好です。定期的に配分を確認し、急な比率変更の影響を見ておく観点があります。',
     dti >= 35
-      ? '返済負担率が高めです。新規投資額より先に返済余力の確保を優先。'
-      : '負債比率は許容範囲です。積立比率の最適化に集中できます。',
+      ? '返済負担率が高めです。投資額と返済余力のバランス確認が重要です。'
+      : '負債比率は許容範囲です。積立比率の見直し余地を確認できます。',
     bestReturn >= 20
-      ? '高リターン銘柄の利益確定ルール（例: +25%で一部利確）を設定。'
-      : 'リターン改善余地あり。低コスト商品中心に積立額を段階的に増額。',
+      ? '高リターン銘柄の比率が大きくなっていないか、事前ルールと照らして確認できます。'
+      : 'リターン改善余地があります。コストや分散の観点から積立条件を確認できます。',
   ]
 
   const confidence = riskScoreResult.score >= 70 ? '高' : riskScoreResult.score >= 40 ? '中' : '中'
@@ -848,6 +1089,33 @@ const toLocalYmd = (d) => {
   const dd = String(d.getDate()).padStart(2, '0')
   return `${y}-${mm}-${dd}`
 }
+
+/** 株式の実現損益サマリー用。sell_date（YYYY-MM-DD）で絞り込み。暦年は cyYYYY（例: cy2026 = その年1/1〜12/31）。 */
+const filterRealizedStockTradesByWindow = (trades, windowKey) => {
+  const rows = Array.isArray(trades) ? trades : []
+  if (!windowKey || windowKey === 'all') return rows
+  const m = /^cy(\d{4})$/.exec(String(windowKey))
+  if (m) {
+    const y = m[1]
+    const fromIso = `${y}-01-01`
+    const toIso = `${y}-12-31`
+    return rows.filter((t) => {
+      const sd = toIsoDate(t.sellDate || '')
+      return sd && sd >= fromIso && sd <= toIso
+    })
+  }
+  return rows
+}
+
+const realizedPnlWindowLabelJaCompact = (windowKey) => {
+  if (!windowKey || windowKey === 'all') return '全期間'
+  const cy = /^cy(\d{4})$/.exec(String(windowKey))
+  if (cy) return `${String(cy[1]).slice(-2)}年`
+  return '全期間'
+}
+
+/** レポート「実現の期間」に出す暦年（ローンチ年のみなど。年が変わったら追記） */
+const REALIZED_PNL_SELECT_CALENDAR_YEARS = [2026]
 
 const parseIsoDateToLocalNoon = (iso) => {
   const raw = String(iso || '').trim().slice(0, 10)
@@ -949,9 +1217,10 @@ const buildAssetGrowthTrendData = (totalInvested, totalCurrentValue, opts = {}) 
 
   const now = new Date()
   if (simplified || (base <= 0 && end <= 0)) {
+    const cst = Math.round(base)
     return [
-      { month: trendChartStartLabel(earliestBuyRaw), value: base },
-      { month: formatAssetTrendMd(now), value: end },
+      { month: trendChartStartLabel(earliestBuyRaw), value: base, costJpy: cst, pnlJpy: Math.round(base - cst) },
+      { month: formatAssetTrendMd(now), value: end, costJpy: cst, pnlJpy: Math.round(end - cst) },
     ]
   }
 
@@ -984,21 +1253,23 @@ const buildAssetGrowthTrendData = (totalInvested, totalCurrentValue, opts = {}) 
   })
   const anchors = merged ? merged.anchors : [...monthEndAnchors, now]
   if (anchors.length < 2) {
+    const cst = Math.round(base)
     return [
-      { month: trendChartStartLabel(earliestBuyRaw), value: base },
-      { month: formatAssetTrendMd(now), value: end },
+      { month: trendChartStartLabel(earliestBuyRaw), value: base, costJpy: cst, pnlJpy: Math.round(base - cst) },
+      { month: formatAssetTrendMd(now), value: end, costJpy: cst, pnlJpy: Math.round(end - cst) },
     ]
   }
 
   const diff = end - base
   const len = anchors.length
+  const costFlat = Math.round(base)
   return anchors.map((d, idx) => {
     const t = len > 1 ? idx / (len - 1) : 1
     const value = Math.max(0, Math.round(base + diff * t))
     const label = merged
       ? merged.labels[idx]
       : (idx === len - 1 ? formatAssetTrendMd(now) : formatAssetTrendMd(d))
-    return { month: label, value }
+    return { month: label, value, costJpy: costFlat, pnlJpy: Math.round(value - costFlat) }
   })
 }
 
@@ -1124,6 +1395,176 @@ const computePortfolioValueOnDate = ({
   return Math.max(0, stockJpy + fundJpy)
 }
 
+const ownedStockLotCostJpy = (lot, sym, fxByDate) => {
+  const s = String(sym || lot?.symbol || '').trim().toUpperCase()
+  const q = Math.max(0, Number(lot?.qty || 0))
+  const cost = q * Math.max(0, Number(lot?.buyPrice || 0))
+  if (!q || !s) return 0
+  const cur = inferStockCurrency(s)
+  if (cur === 'USD') {
+    const buyDateIso = toIsoDate(lot?.buyDate || '')
+    const r = (buyDateIso && fxByDate && fxByDate[buyDateIso] != null) ? Number(fxByDate[buyDateIso]) : FX_RATES_TO_JPY.USD
+    return cost * (Number.isFinite(r) && r > 0 ? r : FX_RATES_TO_JPY.USD)
+  }
+  return toJpy(cost, cur)
+}
+
+const ownedFundLotCostJpy = (lot, fxByDate) => {
+  const invest = Math.max(0, Number(lot.investAmount || lot.invest_amount || 0))
+  if (invest <= 0) return 0
+  const sym = String(lot.symbol || '').trim().toUpperCase()
+  const fundCurrency = inferStockCurrency(sym)
+  if (fundCurrency === 'USD') {
+    const buyDateIso = toIsoDate(lot.buyDate || lot.buy_date || '')
+    const r = (buyDateIso && fxByDate && fxByDate[buyDateIso] != null) ? Number(fxByDate[buyDateIso]) : FX_RATES_TO_JPY.USD
+    return invest * (Number.isFinite(r) && r > 0 ? r : FX_RATES_TO_JPY.USD)
+  }
+  return toJpy(invest, fundCurrency)
+}
+
+/** 売却代金（円）。USD 株は sell 日の USD/JPY（無ければフォールバック）。 */
+const stockSaleProceedsJpy = (symbol, qty, sellPrice, sellDateIso, fxByDate) => {
+  const sym = String(symbol || '').trim().toUpperCase()
+  const q = Math.max(0, Number(qty || 0))
+  const px = Math.max(0, Number(sellPrice || 0))
+  if (!q || !px || !sym) return 0
+  const cur = inferStockCurrency(sym)
+  const native = q * px
+  if (cur === 'USD') {
+    const d = toIsoDate(sellDateIso || '')
+    const r =
+      d && fxByDate && fxByDate[d] != null
+        ? Number(fxByDate[d])
+        : FX_RATES_TO_JPY.USD
+    return native * (Number.isFinite(r) && r > 0 ? r : FX_RATES_TO_JPY.USD)
+  }
+  return toJpy(native, cur)
+}
+
+/**
+ * FIFO で売却数量を切り出し、売却部分の取得原価（円）を合算。残りロットで owned を置き換え。
+ */
+const fifoStockSellFromLots = ({ symbol, sellQty, ownedLots, fxByDate }) => {
+  const symU = String(symbol || '').trim().toUpperCase()
+  const wantRaw = Math.max(0, Number(sellQty || 0))
+  if (!symU || !Number.isFinite(wantRaw) || wantRaw <= 0) {
+    return { ok: false, reason: '売却数量を入力してください。' }
+  }
+  const symLots = (Array.isArray(ownedLots) ? ownedLots : []).filter(
+    (l) => String(l?.symbol || '').trim().toUpperCase() === symU,
+  )
+  const totalAvail = symLots.reduce((s, l) => s + Math.max(0, Number(l?.qty || 0)), 0)
+  const tol = Math.max(1e-9, 1e-12 * Math.max(1, totalAvail))
+  if (wantRaw > totalAvail + tol) {
+    return { ok: false, reason: '保有数量が不足しています。数量またはロットを確認してください。' }
+  }
+  const want = Math.min(wantRaw, totalAvail)
+  const sorted = [...symLots].sort((a, b) => {
+    const da = toIsoDate(a.buyDate || '') || '9999-12-31'
+    const db = toIsoDate(b.buyDate || '') || '9999-12-31'
+    return da.localeCompare(db)
+  })
+  let remaining = want
+  let costBasisJpy = 0
+  const updatedSymLots = []
+  for (const lot of sorted) {
+    const q = Math.max(0, Number(lot.qty || 0))
+    if (q <= 0) continue
+    if (remaining <= 0) {
+      updatedSymLots.push(lot)
+      continue
+    }
+    const take = Math.min(remaining, q)
+    const frac = q > 0 ? take / q : 0
+    costBasisJpy += ownedStockLotCostJpy(lot, symU, fxByDate) * frac
+    remaining -= take
+    const left = q - take
+    if (left > 1e-9) {
+      updatedSymLots.push({
+        ...lot,
+        qty: left,
+      })
+    }
+  }
+  const otherLots = (Array.isArray(ownedLots) ? ownedLots : []).filter(
+    (l) => String(l?.symbol || '').trim().toUpperCase() !== symU,
+  )
+  const updatedOwned = normalizeOwnedLots([...otherLots, ...updatedSymLots])
+  return { ok: true, updatedOwned, costBasisJpy, sellQty: want }
+}
+
+/**
+ * ファンド: 投資元本÷買付価格＝口数。FIFO で売却口数を切り出し、売却分の取得原価（円）を合算。
+ */
+const fifoFundSellFromLots = ({ symbol, sellUnits, ownedFundLots, fxByDate }) => {
+  const symU = String(symbol || '').trim().toUpperCase()
+  const wantRaw = Math.max(0, Number(sellUnits || 0))
+  if (!symU || !Number.isFinite(wantRaw) || wantRaw <= 0) {
+    return { ok: false, reason: '売却口数を入力してください。' }
+  }
+  const lotUnits = (lot) => {
+    const invest = Math.max(0, Number(lot?.investAmount ?? lot?.invest_amount ?? 0))
+    const buyP = Math.max(0, Number(lot?.buyPrice ?? lot?.buy_price ?? 0))
+    return buyP > 0 ? invest / buyP : 0
+  }
+  const symLots = (Array.isArray(ownedFundLots) ? ownedFundLots : []).filter(
+    (l) => String(l?.symbol || '').trim().toUpperCase() === symU,
+  )
+  const totalAvail = symLots.reduce((s, l) => s + lotUnits(l), 0)
+  const tol = Math.max(1e-9, 1e-12 * Math.max(1, totalAvail))
+  if (wantRaw > totalAvail + tol) {
+    return { ok: false, reason: '保有口数が不足しています。投資元本・買付価格またはロットを確認してください。' }
+  }
+  let want = Math.min(wantRaw, totalAvail)
+  if (totalAvail > 0) {
+    const gap = totalAvail - want
+    if (gap >= 0 && (gap <= tol || gap / totalAvail <= 1e-12)) want = totalAvail
+  }
+  const sorted = [...symLots].sort((a, b) => {
+    const da = toIsoDate(a.buyDate || a.buy_date || '') || '9999-12-31'
+    const db = toIsoDate(b.buyDate || b.buy_date || '') || '9999-12-31'
+    return da.localeCompare(db)
+  })
+  let remaining = want
+  let costBasisJpy = 0
+  const updatedSymLots = []
+  for (const lot of sorted) {
+    const q = lotUnits(lot)
+    if (q <= 0) {
+      updatedSymLots.push(lot)
+      continue
+    }
+    if (remaining <= 0) {
+      updatedSymLots.push(lot)
+      continue
+    }
+    const take = Math.min(remaining, q)
+    const frac = q > 0 ? take / q : 0
+    costBasisJpy += ownedFundLotCostJpy(lot, fxByDate) * frac
+    remaining -= take
+    const invest = Math.max(0, Number(lot.investAmount ?? lot.invest_amount ?? 0))
+    const buyP = Math.max(0, Number(lot.buyPrice ?? lot.buy_price ?? 0))
+    const newInvest = invest * (1 - frac)
+    const qRemain = q - take
+    const negligibleUnits =
+      qRemain <= Math.max(1e-14, 1e-14 * Math.max(1, q)) || newInvest <= Math.max(1e-10, invest * 1e-14)
+    if (negligibleUnits) {
+      continue
+    }
+    if (newInvest > 1e-6) {
+      updatedSymLots.push({
+        ...lot,
+        investAmount: newInvest,
+      })
+    }
+  }
+  const otherLots = (Array.isArray(ownedFundLots) ? ownedFundLots : []).filter(
+    (l) => String(l?.symbol || '').trim().toUpperCase() !== symU,
+  )
+  const updatedOwned = normalizeOwnedFundAmounts([...otherLots, ...updatedSymLots])
+  return { ok: true, updatedOwned, costBasisJpy, sellUnits: want }
+}
+
 /** buildAssetGrowthTrendData と同じ日付軸（アンカー + ラベル） */
 const collectTrendAnchorsFromOpts = (opts = {}) => {
   const simplified = opts.simplified === true
@@ -1230,14 +1671,28 @@ const computeHistoricalWealthTrendSeries = ({
     const anchorIso = toLocalYmd(anchorDate)
     const isLast = idx === anchors.length - 1
     if (isLast) {
+      const ls = Math.max(0, Math.round(Number(liveStockJpy || 0)))
+      const lf = Math.max(0, Math.round(Number(liveFundJpy || 0)))
+      let stockCostJpy = 0
+      let fundCostJpy = 0
+      for (const lot of stockRows) {
+        stockCostJpy += ownedStockLotCostJpy(lot, lot.symbol, fxByDate)
+      }
+      for (const lot of fundRows) {
+        fundCostJpy += ownedFundLotCostJpy(lot, fxByDate)
+      }
       return {
         month: labels[idx],
-        stockJpy: Math.max(0, Math.round(Number(liveStockJpy || 0))),
-        fundJpy: Math.max(0, Math.round(Number(liveFundJpy || 0))),
+        stockJpy: ls,
+        fundJpy: lf,
+        stockCostJpy: Math.round(stockCostJpy),
+        fundCostJpy: Math.round(fundCostJpy),
       }
     }
     let stockJpy = 0
     let fundJpy = 0
+    let stockCostJpy = 0
+    let fundCostJpy = 0
 
     for (const lot of stockRows) {
       const buyIso = toIsoDate(lot.buyDate || '')
@@ -1257,6 +1712,7 @@ const computeHistoricalWealthTrendSeries = ({
       } else {
         stockJpy += toJpy(nativeVal, cur)
       }
+      stockCostJpy += ownedStockLotCostJpy(lot, sym, fxByDate)
     }
 
     for (const lot of fundRows) {
@@ -1279,35 +1735,57 @@ const computeHistoricalWealthTrendSeries = ({
       } else {
         fundJpy += toJpy(nativeVal, cur)
       }
+      fundCostJpy += ownedFundLotCostJpy(lot, fxByDate)
     }
 
     return {
       month: labels[idx],
       stockJpy: Math.max(0, Math.round(stockJpy)),
       fundJpy: Math.max(0, Math.round(fundJpy)),
+      stockCostJpy: Math.round(stockCostJpy),
+      fundCostJpy: Math.round(fundCostJpy),
     }
   })
 
-  const assetGrowthData = split.map((r) => ({
-    month: r.month,
-    value: Math.max(0, Math.round((r.stockJpy || 0) + (r.fundJpy || 0))),
-  }))
+  const assetGrowthData = split.map((r) => {
+    const sv = Math.max(0, Math.round((r.stockJpy || 0) + (r.fundJpy || 0)))
+    const sc = Number.isFinite(r.stockCostJpy) ? Number(r.stockCostJpy) : 0
+    const fc = Number.isFinite(r.fundCostJpy) ? Number(r.fundCostJpy) : 0
+    const pnlJpy = (r.stockJpy || 0) - sc + (r.fundJpy || 0) - fc
+    return {
+      month: r.month,
+      value: sv,
+      pnlJpy: Math.round(pnlJpy),
+    }
+  })
 
-  const stockGrowthData = split.map((r, idx) => ({
-    month: r.month,
-    value:
-      idx === split.length - 1
-        ? Math.max(0, Math.round(Number(liveStockJpy || 0)))
-        : Math.max(0, Math.round(r.stockJpy || 0)),
-  }))
+  const stockGrowthData = split.map((r, idx) => {
+    const v = idx === split.length - 1
+      ? Math.max(0, Math.round(Number(liveStockJpy || 0)))
+      : Math.max(0, Math.round(r.stockJpy || 0))
+    const c = Number.isFinite(r.stockCostJpy) ? Number(r.stockCostJpy) : 0
+    const ci = Math.round(c)
+    return {
+      month: r.month,
+      value: v,
+      costJpy: ci,
+      pnlJpy: Math.round(v - ci),
+    }
+  })
 
-  const fundGrowthData = split.map((r, idx) => ({
-    month: r.month,
-    value:
-      idx === split.length - 1
-        ? Math.max(0, Math.round(Number(liveFundJpy || 0)))
-        : Math.max(0, Math.round(r.fundJpy || 0)),
-  }))
+  const fundGrowthData = split.map((r, idx) => {
+    const v = idx === split.length - 1
+      ? Math.max(0, Math.round(Number(liveFundJpy || 0)))
+      : Math.max(0, Math.round(r.fundJpy || 0))
+    const c = Number.isFinite(r.fundCostJpy) ? Number(r.fundCostJpy) : 0
+    const ci = Math.round(c)
+    return {
+      month: r.month,
+      value: v,
+      costJpy: ci,
+      pnlJpy: Math.round(v - ci),
+    }
+  })
 
   return { assetGrowthSplitData: split, assetGrowthData, stockGrowthData, fundGrowthData }
 }
@@ -1336,7 +1814,7 @@ const AssetGrowthSplitTooltip = ({ active, payload, label }) => {
     if (p.dataKey === 'stockJpy') stockJpy = Number(p.value || 0)
   }
   const total = fundJpy + stockJpy
-  const yen = (n) => `¥${Math.round(Number(n) || 0).toLocaleString()}`
+  const yen = (n) => `¥${Math.round(Number(n) || 0).toLocaleString('ja-JP')}`
   return (
     <div className="rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 px-2 py-1 shadow-sm max-w-[11rem]">
       <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 leading-tight mb-0.5">{String(label ?? '')}</p>
@@ -1362,6 +1840,75 @@ const getAssetGrowthYAxisDomain = (data = []) => {
   const upper = Math.max(lower + 50000, maxValue + padding)
 
   return [lower, upper]
+}
+
+/** 株式パフォーマンス: 棒の高さは max(評価, 原価)（含み益・含み損の積み上げ） */
+const getStockPerformanceYAxisDomain = (data = []) => {
+  const rows = Array.isArray(data) ? data : []
+  const heights = rows
+    .map((r) => {
+      const v = Math.max(0, Number(r?.value))
+      let c = Number(r?.costJpy)
+      if (!Number.isFinite(c)) {
+        const p = Number(r?.pnlJpy)
+        c = Number.isFinite(v) && Number.isFinite(p) ? v - p : NaN
+      }
+      if (!Number.isFinite(v)) return null
+      if (!Number.isFinite(c)) c = v
+      c = Math.max(0, c)
+      return Math.max(v, c)
+    })
+    .filter((h) => h != null && Number.isFinite(h))
+  if (heights.length === 0) return [0, 100000]
+  const minValue = Math.min(...heights)
+  const maxValue = Math.max(...heights)
+  const range = Math.max(1, maxValue - minValue)
+  const padding = Math.max(30000, Math.round(range * 0.45))
+  const lower = Math.max(0, minValue - padding)
+  const upper = Math.max(lower + 50000, maxValue + padding)
+  return [lower, upper]
+}
+
+const StockPerformanceStackTooltip = ({ active, payload, label }) => {
+  if (!active || !payload?.length) return null
+  const row = payload[0]?.payload
+  const v = Math.max(0, Math.round(Number(row?.value || 0)))
+  let c = Number(row?.costJpy)
+  if (!Number.isFinite(c)) {
+    const p = Number(row?.pnlJpy)
+    c = Number.isFinite(p) ? v - p : NaN
+  }
+  if (!Number.isFinite(c)) c = v
+  c = Math.max(0, Math.round(c))
+  const pnl = v - c
+  const basisJpy = Number(row?.basisJpy)
+  const gainJpy = Number(row?.gainJpy)
+  const lossJpy = Number(row?.lossJpy)
+  const yen = (n) => `¥${Math.round(Number(n) || 0).toLocaleString('ja-JP')}`
+  return (
+    <div className="rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 px-2 py-1.5 shadow-sm max-w-[14rem]">
+      <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 leading-tight mb-1">{String(label ?? '')}</p>
+      <p className="text-[11px] font-semibold text-slate-700 dark:text-slate-200 tabular-nums leading-snug">
+        評価合計 {yen(v)}
+      </p>
+      <p className="text-[11px] font-semibold text-slate-600 dark:text-slate-300 tabular-nums leading-snug">
+        取得原価 {yen(c)}
+      </p>
+      {Number.isFinite(basisJpy) && Number.isFinite(gainJpy) && gainJpy > 0 ? (
+        <p className="text-[11px] font-semibold text-red-600 dark:text-red-400 tabular-nums leading-snug">
+          原価（下段） {yen(basisJpy)} · 含み益 {yen(gainJpy)}
+        </p>
+      ) : null}
+      {Number.isFinite(basisJpy) && Number.isFinite(lossJpy) && lossJpy > 0 ? (
+        <p className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 tabular-nums leading-snug">
+          評価（下段） {yen(basisJpy)} · 含み損 {yen(lossJpy)}
+        </p>
+      ) : null}
+      <p className={`mt-1 pt-1 border-t border-slate-100 dark:border-slate-700 text-[11px] font-black tabular-nums leading-snug ${signedReturnTextClassStrong(pnl)}`}>
+        含み損益 {pnl >= 0 ? '+' : ''}{yen(pnl)}
+      </p>
+    </div>
+  )
 }
 
 const DTI_THRESHOLD = 35
@@ -1746,6 +2293,7 @@ const extractExpenseByServerOcr = async (file) => {
 const extractExpenseByLocalOcr = async (file) => {
   let worker = null
   try {
+    const { createWorker } = await import('tesseract.js')
     worker = await createWorker('jpn+eng')
     await worker.setParameters({
       tessedit_pageseg_mode: 6,
@@ -2294,6 +2842,8 @@ const SummarySection = ({
 
   useEffect(() => {
     let cancelled = false
+    let idleId = null
+    let timeoutId = null
     const loadManualNews = async () => {
       const fallback = getFallbackNewsData()
       try {
@@ -2305,8 +2855,22 @@ const SummarySection = ({
         // keep fallback
       }
     }
-    loadManualNews()
-    return () => { cancelled = true }
+    const schedule = () => {
+      if (cancelled) return
+      loadManualNews()
+    }
+    if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
+      idleId = window.requestIdleCallback(schedule, { timeout: 2500 })
+    } else {
+      timeoutId = window.setTimeout(schedule, 1)
+    }
+    return () => {
+      cancelled = true
+      if (idleId != null && typeof window !== 'undefined' && typeof window.cancelIdleCallback === 'function') {
+        window.cancelIdleCallback(idleId)
+      }
+      if (timeoutId != null) window.clearTimeout(timeoutId)
+    }
   }, [])
   const assetGrowthData = buildAssetGrowthTrendData(totalInvested, totalCurrentValue)
 
@@ -2390,30 +2954,30 @@ const SummarySection = ({
     <div className="space-y-6">
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
         <div className="xl:col-span-8 space-y-6">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/60">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/60">
               <h3 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
                 <TrendingUp size={18} className="text-indigo-500" /> 総合レポート
               </h3>
             </div>
             <div className="p-5 grid grid-cols-1 sm:grid-cols-2 2xl:grid-cols-4 gap-4">
-              <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700 rounded-xl p-4">
+              <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-600 rounded-xl p-4">
                 <p className="text-xs font-bold text-slate-500 mb-1">投資元本</p>
-                <p className="text-xl md:text-2xl 2xl:text-[2rem] font-black text-slate-900 dark:text-white leading-tight whitespace-nowrap tracking-tight">¥{totalInvested.toLocaleString()}</p>
+                <p className="text-xl md:text-2xl 2xl:text-[2rem] font-black text-slate-900 dark:text-white leading-tight whitespace-nowrap tracking-tight">¥{totalInvested.toLocaleString('ja-JP')}</p>
               </div>
-              <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700 rounded-xl p-4">
+              <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-600 rounded-xl p-4">
                 <p className="text-xs font-bold text-slate-500 mb-1">現在価値</p>
-                <p className="text-xl md:text-2xl 2xl:text-[2rem] font-black text-slate-900 dark:text-white leading-tight whitespace-nowrap tracking-tight">¥{totalCurrentValue.toLocaleString()}</p>
+                <p className="text-xl md:text-2xl 2xl:text-[2rem] font-black text-slate-900 dark:text-white leading-tight whitespace-nowrap tracking-tight">¥{totalCurrentValue.toLocaleString('ja-JP')}</p>
               </div>
-              <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700 rounded-xl p-4">
+              <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-600 rounded-xl p-4">
                 <p className="text-xs font-bold text-slate-500 mb-1">総損益</p>
-                <p className={`text-xl md:text-2xl 2xl:text-[2rem] font-black leading-tight whitespace-nowrap tracking-tight ${totalPnL >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                  {totalPnL >= 0 ? '+' : ''}¥{totalPnL.toLocaleString()}
+                <p className={`text-xl md:text-2xl 2xl:text-[2rem] font-black leading-tight whitespace-nowrap tracking-tight ${totalPnL >= 0 ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'}`}>
+                  {totalPnL >= 0 ? '+' : ''}¥{totalPnL.toLocaleString('ja-JP')}
                 </p>
               </div>
-              <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700 rounded-xl p-4">
+              <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-600 rounded-xl p-4">
                 <p className="text-xs font-bold text-slate-500 mb-1">損益率</p>
-                <p className={`text-xl md:text-2xl 2xl:text-[2rem] font-black leading-tight whitespace-nowrap tracking-tight ${totalReturnRate >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                <p className={`text-xl md:text-2xl 2xl:text-[2rem] font-black leading-tight whitespace-nowrap tracking-tight ${totalReturnRate >= 0 ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'}`}>
                   {totalReturnRate >= 0 ? '+' : ''}{totalReturnRate.toFixed(1)}%
                 </p>
               </div>
@@ -2421,7 +2985,7 @@ const SummarySection = ({
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-5">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 p-5">
               <h4 className="font-black text-slate-900 dark:text-white flex items-center gap-2 mb-3">
                 <TrendingUp size={16} className="text-indigo-500" /> ファンド概要
               </h4>
@@ -2436,11 +3000,11 @@ const SummarySection = ({
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-500">最高リターン</span>
-                  <span className="font-black text-green-600 dark:text-green-400">+{bestReturn.toFixed(1)}%</span>
+                  <span className="font-black text-red-600 dark:text-red-400">+{bestReturn.toFixed(1)}%</span>
                 </div>
               </div>
             </div>
-            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-5">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 p-5">
               <h4 className="font-black text-slate-900 dark:text-white flex items-center gap-2 mb-3">
                 <ShieldCheck size={16} className="text-emerald-500" /> 保険概要
               </h4>
@@ -2461,8 +3025,8 @@ const SummarySection = ({
             </div>
           </div>
 
-          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/60">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/60">
               <h3 className="font-black text-slate-900 dark:text-white">資産成長トレンド (6ヶ月)</h3>
             </div>
             <div className="p-5">
@@ -2478,7 +3042,7 @@ const SummarySection = ({
                       domain={getAssetGrowthYAxisDomain(assetGrowthData)}
                       tickFormatter={(v) => `${Math.round(v / 10000)}万`}
                     />
-                    <Tooltip formatter={(v) => `¥${Number(v).toLocaleString()}`} labelFormatter={(l) => String(l || '')} />
+                    <Tooltip formatter={(v) => `¥${Number(v).toLocaleString('ja-JP')}`} labelFormatter={(l) => String(l || '')} />
                     <Bar dataKey="value" fill="#3b82f6" radius={[5, 5, 0, 0]} maxBarSize={44} />
                   </BarChart>
                 </ResponsiveContainer>
@@ -2489,8 +3053,8 @@ const SummarySection = ({
             </div>
           </div>
 
-          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/60">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/60">
               <h3 className="font-black text-slate-900 dark:text-white">株式パフォーマンス</h3>
             </div>
             <div className="overflow-x-auto">
@@ -2528,15 +3092,15 @@ const SummarySection = ({
                       <tr key={`summary-stock-${stock.id}`} className="border-t border-slate-100 dark:border-slate-800">
                         <td className="px-5 py-4 font-bold text-slate-800 dark:text-slate-200">{stock.code}</td>
                         <td className="px-5 py-4 text-right font-semibold text-slate-700 dark:text-slate-300">
-                          ¥{investmentAmount.toLocaleString()}
+                          ¥{investmentAmount.toLocaleString('ja-JP')}
                         </td>
                         <td className="px-5 py-4 text-right font-semibold text-slate-900 dark:text-white">
-                          ¥{presentValue.toLocaleString()}
+                          ¥{presentValue.toLocaleString('ja-JP')}
                         </td>
-                        <td className={`px-5 py-4 text-right font-black ${pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                          {pnl >= 0 ? '+' : ''}¥{pnl.toLocaleString()}
+                        <td className={`px-5 py-4 text-right font-black ${pnl >= 0 ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'}`}>
+                          {pnl >= 0 ? '+' : ''}¥{pnl.toLocaleString('ja-JP')}
                         </td>
-                        <td className={`px-5 py-4 text-right font-black ${rate >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                        <td className={`px-5 py-4 text-right font-black ${rate >= 0 ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'}`}>
                           {rate >= 0 ? '+' : ''}{rate.toFixed(2)}%
                         </td>
                       </tr>
@@ -2552,7 +3116,7 @@ const SummarySection = ({
         </div>
 
         <div className="xl:col-span-4">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-5">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 p-5">
             <h3 className="text-lg font-black text-slate-900 dark:text-white mb-4 flex items-center gap-2">
               <PieChart size={18} className="text-indigo-500" /> 資産配分
             </h3>
@@ -2564,7 +3128,7 @@ const SummarySection = ({
                       <Cell key={entry.id} fill={entry.color} />
                     ))}
                   </Pie>
-                  <Tooltip formatter={(value) => `¥${Number(value).toLocaleString()}`} />
+                  <Tooltip formatter={(value) => `¥${Number(value).toLocaleString('ja-JP')}`} />
                 </RechartsPieChart>
               </ResponsiveContainer>
             </div>
@@ -2594,14 +3158,14 @@ const SummarySection = ({
                 : '※ 表示データはユーザー保存情報をもとに更新されます。'}
             </p>
           </div>
-          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-4 mt-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 p-4 mt-4">
             <h4 className="text-sm font-black text-slate-900 dark:text-white mb-2">クイックインサイト</h4>
             <p className="text-xs text-slate-500 leading-relaxed">
               現在はファンド中心の構成です。リスクを抑えたい場合は、値動きの異なる資産の比率を高めると変動幅の平準化が期待できます。
             </p>
           </div>
 
-          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-5 mt-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 p-5 mt-4">
             <div className="flex items-start justify-between gap-3 mb-4">
               <div>
                 <h4 className="text-sm font-black flex items-center gap-2 text-slate-900 dark:text-white">
@@ -2646,7 +3210,7 @@ const SummarySection = ({
                 </div>
               </div>
               <div className="bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 grid grid-rows-[22px_36px_6px] gap-1">
-                <p className="text-[10px] text-slate-500 dark:text-slate-300 leading-tight">信頼度</p>
+                <p className="text-[10px] text-slate-500 dark:text-slate-300 leading-tight">データ充足度</p>
                 <div className="flex items-start">
                   <p className="font-black text-sm leading-tight text-slate-900 dark:text-white">{aiReport.confidence}</p>
                 </div>
@@ -2664,7 +3228,7 @@ const SummarySection = ({
             </div>
 
             <div className="mb-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 p-3">
-              <p className="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-300 font-bold">Personalized (個別)</p>
+              <p className="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-300 font-bold">入力情報ベース</p>
               <div className="mt-2 space-y-1.5">
                 {personalizedBrief.map((line, idx) => (
                   <p key={`brief-${idx}`} className="text-xs text-slate-700 dark:text-slate-200 leading-relaxed">
@@ -2711,7 +3275,29 @@ const futureValueMonthlyContributionsJpy = (monthlyYen, annualPercent, years) =>
   return { fv: Math.round(Math.max(0, fv)), contributed }
 }
 
+/** null = 未設定（初回は開く）。'1' 開く / '0' 閉じる */
+const WEALTH_ACCUM_SIM_EXPANDED_KEY = 'mm_wealth_accum_sim_expanded_v1'
+
 const WealthAccumulationSimCard = () => {
+  const [simExpanded, setSimExpanded] = useState(() => {
+    if (typeof window === 'undefined') return true
+    try {
+      const v = window.localStorage.getItem(WEALTH_ACCUM_SIM_EXPANDED_KEY)
+      if (v === null) return true
+      return v === '1'
+    } catch {
+      return true
+    }
+  })
+  const persistSimExpanded = useCallback((next) => {
+    setSimExpanded(next)
+    try {
+      window.localStorage.setItem(WEALTH_ACCUM_SIM_EXPANDED_KEY, next ? '1' : '0')
+    } catch {
+      /* ignore */
+    }
+  }, [])
+
   const [indexLabel, setIndexLabel] = useState('topix')
   const [monthlyStr, setMonthlyStr] = useState('1000')
   const [years, setYears] = useState(10)
@@ -2762,6 +3348,8 @@ const WealthAccumulationSimCard = () => {
 
   const indexTitle = indexLabel === 'nikkei' ? '日経225連動（代表ETF）' : 'TOPIX連動（代表ETF）'
   const etfCode = indexLabel === 'nikkei' ? WEALTH_SIM_ETF_SYMBOL.nikkei : WEALTH_SIM_ETF_SYMBOL.topix
+  const indexShortJa = indexLabel === 'nikkei' ? '日経225' : 'TOPIX'
+  const summaryOneLine = `毎月${fmt(monthlyNum)}・${years}年・${indexShortJa}ベースの試算 → 評価額 ${fmt(fv)}（積立合計 ${fmt(contributed)}）`
 
   return (
     <div className="rounded-2xl border border-indigo-200/80 dark:border-indigo-900/50 bg-gradient-to-br from-indigo-50/90 to-white dark:from-indigo-950/40 dark:to-slate-900 px-3 py-3 sm:px-4 sm:py-4 shadow-sm">
@@ -2770,13 +3358,32 @@ const WealthAccumulationSimCard = () => {
           <div className="rounded-lg bg-indigo-500/15 dark:bg-indigo-400/10 p-1.5 shrink-0">
             <PiggyBank className="text-indigo-600 dark:text-indigo-400" size={20} aria-hidden />
           </div>
-          <div className="min-w-0">
-            <h3 className="text-sm font-black text-slate-900 dark:text-white leading-snug">
-              資産形成のイメージ：少額の積立シミュレーション
-            </h3>
-            <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5 leading-snug">
-              代表ETFの直近約3か月リターンを、同じペースが年4回続くと仮定して参考年率（複利）に換算し、その金利で毎月積み立てた場合のイメージ額です。表の±%と試算年率は別物なのでご注意ください。
-            </p>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-start gap-2">
+              <h3 className="text-sm font-black text-slate-900 dark:text-white leading-snug min-w-0 flex-1">
+                資産形成のイメージ：少額の積立シミュレーション
+              </h3>
+              <button
+                type="button"
+                onClick={() => persistSimExpanded(!simExpanded)}
+                aria-expanded={simExpanded}
+                aria-controls={simExpanded ? 'wealth-accum-sim-details' : undefined}
+                className="shrink-0 rounded-xl border border-indigo-200/90 dark:border-indigo-800/60 bg-white/90 dark:bg-slate-800/80 p-1.5 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 transition-colors touch-manipulation"
+                title={simExpanded ? '折りたたむ' : '開いて詳細を表示'}
+              >
+                <ChevronDown className={`w-5 h-5 transition-transform duration-200 ${simExpanded ? 'rotate-180' : ''}`} aria-hidden />
+                <span className="sr-only">{simExpanded ? '少額積立シミュレーションを折りたたむ' : '少額積立シミュレーションの詳細を開く'}</span>
+              </button>
+            </div>
+            {simExpanded ? (
+              <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5 leading-snug">
+                代表ETFの直近約3か月リターンを、同じペースが年4回続くと仮定して参考年率（複利）に換算し、その金利で毎月積み立てた場合のイメージ額です。表の±%と試算年率は別物なのでご注意ください。
+              </p>
+            ) : (
+              <p className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 mt-1 leading-snug">
+                {summaryOneLine}
+              </p>
+            )}
           </div>
         </div>
         <Link
@@ -2787,7 +3394,8 @@ const WealthAccumulationSimCard = () => {
         </Link>
       </div>
 
-      <div className="mt-3 grid grid-cols-1 lg:grid-cols-2 lg:gap-4 lg:items-stretch gap-3">
+      {simExpanded ? (
+      <div id="wealth-accum-sim-details" className="mt-3 grid grid-cols-1 lg:grid-cols-2 lg:gap-4 lg:items-stretch gap-3">
         <div className="flex flex-col gap-2 min-w-0">
           <div className="flex flex-wrap gap-1.5">
             {[
@@ -2817,7 +3425,7 @@ const WealthAccumulationSimCard = () => {
             {realized3mLoading ? (
               <p className="text-sm font-bold text-slate-400">取得中…</p>
             ) : realized3m?.ok ? (
-              <p className={`text-2xl font-black tabular-nums leading-none ${realized3m.pct >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+              <p className={`text-2xl font-black tabular-nums leading-none ${signedReturnTextClassStrong(realized3m.pct)}`}>
                 {realized3m.pct >= 0 ? '+' : ''}{realized3m.pct.toFixed(2)}%
               </p>
             ) : (
@@ -2894,10 +3502,17 @@ const WealthAccumulationSimCard = () => {
           </div>
         </div>
       </div>
+      ) : null}
 
+      {simExpanded ? (
       <p className="text-[10px] text-slate-500 dark:text-slate-500 mt-2.5 leading-snug">
         ※試算の年率は過去の短期実績からの参考であり、将来の運用成果を保証するものではありません。実際の投資は余裕資金の範囲で、商品説明書をご確認ください。
       </p>
+      ) : (
+      <p className="text-[10px] text-slate-500 dark:text-slate-500 mt-2 leading-snug">
+        ※試算は参考です。詳細・条件変更は開いてください。
+      </p>
+      )}
     </div>
   )
 }
@@ -2952,6 +3567,10 @@ const calcAveragingDownPlan = ({ avgBuyPrice, currentPrice, currentQty, targetAv
   }
 }
 
+/** 保有ロット削除の確認（実際の売却・実現損益とは別経路） */
+const CONFIRM_DELETE_OWNED_LOT_JA =
+  'この取引（ロット）を削除しますか？誤入力の取り消しであり、「売却記録」とは別です。実現損益の集計・売却履歴には影響しません。'
+
 const WealthSection = ({
   stockWatchlistItems = [],
   ownedStocks = [],
@@ -2965,8 +3584,8 @@ const WealthSection = ({
   searchStockSuggestions,
   searchFundSuggestions,
   onRemoveStockWatchlist,
-  onRemoveOwnedStock,
   onUpdateOwnedStock,
+  onRemoveOwnedStock,
   onLoadOwnedStockPrice,
   onAddOwnedFund,
   onRemoveOwnedFund,
@@ -2989,6 +3608,12 @@ const WealthSection = ({
   tabMode = 'wealth',
   isPaidMember = false,
   onUiMessage = null,
+  realizedStockTrades = [],
+  onRecordStockSale = null,
+  realizedFundTrades = [],
+  onRecordFundSale = null,
+  onSwitchPortfolioTab = null,
+  portfolioQuotesHydrating = false,
 }) => {
   const navigate = useNavigate()
   const [newOwnedSymbol, setNewOwnedSymbol] = useState('')
@@ -3016,6 +3641,21 @@ const WealthSection = ({
   const [avgDownTargetPriceInput, setAvgDownTargetPriceInput] = useState('')
   const [avgDownAddQtyInput, setAvgDownAddQtyInput] = useState('')
   const [avgDownSelectedStock, setAvgDownSelectedStock] = useState(null)
+  const [stockSellModalOpen, setStockSellModalOpen] = useState(false)
+  const [stockSellContext, setStockSellContext] = useState(null)
+  const [stockSellQtyInput, setStockSellQtyInput] = useState('')
+  const [stockSellPriceInput, setStockSellPriceInput] = useState('')
+  const [stockSellDateInput, setStockSellDateInput] = useState('')
+  const [stockSellBusy, setStockSellBusy] = useState(false)
+  const [fundSellModalOpen, setFundSellModalOpen] = useState(false)
+  const [fundSellContext, setFundSellContext] = useState(null)
+  const [fundSellUnitsInput, setFundSellUnitsInput] = useState('')
+  const [fundSellPriceInput, setFundSellPriceInput] = useState('')
+  const [fundSellDateInput, setFundSellDateInput] = useState('')
+  const [fundSellBusy, setFundSellBusy] = useState(false)
+  const [stockRealizedWindow, setStockRealizedWindow] = useState('cy2026')
+  const [wealthMonthlyStockRealizedOpen, setWealthMonthlyStockRealizedOpen] = useState(false)
+  const [wealthMonthlyFundRealizedOpen, setWealthMonthlyFundRealizedOpen] = useState(false)
   /** stock_daily_prices から再評価した推移。取得できないときは null（補間フォールバック） */
   const [historicalWealthTrend, setHistoricalWealthTrend] = useState(null)
   const [portfolioDropSnapshot, setPortfolioDropSnapshot] = useState(null)
@@ -3028,6 +3668,86 @@ const WealthSection = ({
   const liveWealthTotalsRef = useRef({ stock: 0, fund: 0 })
   /** stock_daily_prices 再取得のデバウンス（依存が細かく変わると無限に近いループになるのを防ぐ） */
   const wealthPriceResyncTimerRef = useRef(null)
+
+  const [stockTabHelpOpen, setStockTabHelpOpen] = useState(false)
+  const [fundTabHelpOpen, setFundTabHelpOpen] = useState(false)
+
+  useEffect(() => {
+    if (tabMode !== 'stock') setStockTabHelpOpen(false)
+    if (tabMode !== 'fund') setFundTabHelpOpen(false)
+  }, [tabMode])
+
+  useEffect(() => {
+    if (!stockTabHelpOpen && !fundTabHelpOpen) return undefined
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return
+      if (stockTabHelpOpen) setStockTabHelpOpen(false)
+      if (fundTabHelpOpen) setFundTabHelpOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [stockTabHelpOpen, fundTabHelpOpen])
+
+  const realizedPnlBySymbol = useMemo(() => {
+    const m = new Map()
+    for (const t of Array.isArray(realizedStockTrades) ? realizedStockTrades : []) {
+      const k = String(t.symbol || '').trim().toUpperCase()
+      if (!k) continue
+      m.set(k, (m.get(k) || 0) + Number(t.realizedPnlJpy || 0))
+    }
+    return m
+  }, [realizedStockTrades])
+
+  const realizedFundPnlBySymbol = useMemo(() => {
+    const m = new Map()
+    for (const t of Array.isArray(realizedFundTrades) ? realizedFundTrades : []) {
+      const k = String(t.symbol || '').trim().toUpperCase()
+      if (!k) continue
+      m.set(k, (m.get(k) || 0) + Number(t.realizedPnlJpy || 0))
+    }
+    return m
+  }, [realizedFundTrades])
+
+  const openFundSellModal = (fund) => {
+    if (!onRecordFundSale) return
+    if (!userId) {
+      if (typeof onUiMessage === 'function') onUiMessage('売却記録はログイン後にご利用ください。', 'info')
+      return
+    }
+    const sym = String(fund?.symbol || fund?.code || '').trim().toUpperCase()
+    if (!sym) return
+    const maxU = Math.max(0, Number(fund?.units || 0))
+    setFundSellContext({
+      symbol: sym,
+      name: fund?.name || fund?.code || sym,
+      maxUnits: maxU,
+      hintPrice: Math.max(0, Number(fund?.latestPrice || 0)),
+    })
+    setFundSellUnitsInput('')
+    setFundSellPriceInput(Number(fund?.latestPrice || 0) > 0 ? String(fund.latestPrice) : '')
+    setFundSellDateInput(new Date().toISOString().slice(0, 10))
+    setFundSellModalOpen(true)
+  }
+
+  const openStockSellModal = (stock) => {
+    if (!onRecordStockSale) return
+    if (!userId) {
+      if (typeof onUiMessage === 'function') onUiMessage('売却記録はログイン後にご利用ください。', 'info')
+      return
+    }
+    const sym = String(stock?.symbol || '').trim().toUpperCase()
+    if (!sym) return
+    setStockSellContext({
+      symbol: sym,
+      name: stock?.name || stock?.code || sym,
+      maxQty: Math.max(0, Number(stock?.totalQty || 0)),
+      hintPrice: Math.max(0, Number(stock?.price || 0)),
+    })
+    setStockSellQtyInput('')
+    setStockSellPriceInput(Number(stock?.price || 0) > 0 ? String(stock.price) : '')
+    setStockSellDateInput(new Date().toISOString().slice(0, 10))
+    setStockSellModalOpen(true)
+  }
 
   useEffect(() => {
     const uid = userId
@@ -3159,7 +3879,7 @@ const WealthSection = ({
     const raw = ownedStockDrafts?.[id]?.[field]
     if (raw == null) return
     const normalized = field === 'qty'
-      ? sanitizeDecimalOneInput(raw)
+      ? sanitizeStockShareQtyInput(raw)
       : field === 'buyPrice'
         ? sanitizeDecimalInput(raw)
         : String(raw)
@@ -3467,6 +4187,16 @@ const WealthSection = ({
   const rawFundSlots = Array.isArray(ownedFunds) ? ownedFunds.length : 0
   const hasRawStockHoldings = rawStockSlots > 0
   const hasRawFundHoldings = rawFundSlots > 0
+  /** DB 同期直後は live 行が未構築 → 総資産が 0 や別ソース（モック資産など）でチラつくのを防ぐ */
+  const ownedLiveRowsSynced = (
+    (!hasRawStockHoldings
+      || (Array.isArray(ownedStockItems) && ownedStockItems.length === rawStockSlots))
+    && (!hasRawFundHoldings
+      || (Array.isArray(ownedFundItems) && ownedFundItems.length === rawFundSlots))
+  )
+  /** 評価額依存の数字だけ隠してスピナー（保有取得原価はそのまま） */
+  const portfolioNumbersHydratingMask =
+    Boolean(portfolioQuotesHydrating && userId && (hasRawStockHoldings || hasRawFundHoldings))
   const stockLotBuyIsoDates = (() => {
     const s = new Set()
     const add = (rows) => {
@@ -3548,6 +4278,82 @@ const WealthSection = ({
   liveWealthTotalsRef.current = { stock: stockTotalCurrentJpy, fund: fundTotalCurrentJpy }
   const totalPnL = totalCurrentValue - totalInvested
   const totalReturnRate = totalInvested > 0 ? (totalPnL / totalInvested) * 100 : 0
+  const stockRealizedPnlSum = (Array.isArray(realizedStockTrades) ? realizedStockTrades : []).reduce(
+    (s, t) => s + Number(t.realizedPnlJpy || 0),
+    0,
+  )
+  const stockRealizedCostSum = (Array.isArray(realizedStockTrades) ? realizedStockTrades : []).reduce(
+    (s, t) => s + Number(t.costBasisJpy || 0),
+    0,
+  )
+  const stockRealizedProceedsSum = (Array.isArray(realizedStockTrades) ? realizedStockTrades : []).reduce(
+    (s, t) => s + Number(t.proceedsJpy || 0),
+    0,
+  )
+  const realizedStockTradesWindowed = filterRealizedStockTradesByWindow(realizedStockTrades, stockRealizedWindow)
+  const stockRealizedPnlSumWindow = (Array.isArray(realizedStockTradesWindowed) ? realizedStockTradesWindowed : []).reduce(
+    (s, t) => s + Number(t.realizedPnlJpy || 0),
+    0,
+  )
+  const stockRealizedCostSumWindow = (Array.isArray(realizedStockTradesWindowed) ? realizedStockTradesWindowed : []).reduce(
+    (s, t) => s + Number(t.costBasisJpy || 0),
+    0,
+  )
+  const stockRealizedReturnPctWindow =
+    stockRealizedCostSumWindow > 0 && Number.isFinite(stockRealizedPnlSumWindow)
+      ? (stockRealizedPnlSumWindow / stockRealizedCostSumWindow) * 100
+      : null
+  const stockOpenAndRealizedCostDenom = stockTotalInvestedJpy + stockRealizedCostSum
+  const stockPnlWithRealizedJpy =
+    Number(stockTotalCurrentJpy || 0) - Number(stockTotalInvestedJpy || 0) + stockRealizedPnlSum
+  const stockReturnWithRealizedPct =
+    stockOpenAndRealizedCostDenom > 0 && Number.isFinite(stockPnlWithRealizedJpy)
+      ? (stockPnlWithRealizedJpy / stockOpenAndRealizedCostDenom) * 100
+      : null
+  const fundRealizedPnlSum = (Array.isArray(realizedFundTrades) ? realizedFundTrades : []).reduce(
+    (s, t) => s + Number(t.realizedPnlJpy || 0),
+    0,
+  )
+  const fundRealizedCostSum = (Array.isArray(realizedFundTrades) ? realizedFundTrades : []).reduce(
+    (s, t) => s + Number(t.costBasisJpy || 0),
+    0,
+  )
+  const fundRealizedProceedsSum = (Array.isArray(realizedFundTrades) ? realizedFundTrades : []).reduce(
+    (s, t) => s + Number(t.proceedsJpy || 0),
+    0,
+  )
+  const realizedFundTradesWindowed = filterRealizedStockTradesByWindow(realizedFundTrades, stockRealizedWindow)
+  const fundRealizedPnlSumWindow = (Array.isArray(realizedFundTradesWindowed) ? realizedFundTradesWindowed : []).reduce(
+    (s, t) => s + Number(t.realizedPnlJpy || 0),
+    0,
+  )
+  const fundRealizedCostSumWindow = (Array.isArray(realizedFundTradesWindowed) ? realizedFundTradesWindowed : []).reduce(
+    (s, t) => s + Number(t.costBasisJpy || 0),
+    0,
+  )
+  const fundRealizedReturnPctWindow =
+    fundRealizedCostSumWindow > 0 && Number.isFinite(fundRealizedPnlSumWindow)
+      ? (fundRealizedPnlSumWindow / fundRealizedCostSumWindow) * 100
+      : null
+  const wealthRealizedPnlSumWindow = stockRealizedPnlSumWindow + fundRealizedPnlSumWindow
+  const wealthRealizedCostSumWindow = stockRealizedCostSumWindow + fundRealizedCostSumWindow
+  const wealthRealizedReturnPctWindow =
+    wealthRealizedCostSumWindow > 0 && Number.isFinite(wealthRealizedPnlSumWindow)
+      ? (wealthRealizedPnlSumWindow / wealthRealizedCostSumWindow) * 100
+      : null
+  const fundOpenAndRealizedCostDenom = fundTotalInvestedJpy + fundRealizedCostSum
+  const fundPnlWithRealizedJpy =
+    Number(fundTotalCurrentJpy || 0) - Number(fundTotalInvestedJpy || 0) + fundRealizedPnlSum
+  const fundReturnWithRealizedPct =
+    fundOpenAndRealizedCostDenom > 0 && Number.isFinite(fundPnlWithRealizedJpy)
+      ? (fundPnlWithRealizedJpy / fundOpenAndRealizedCostDenom) * 100
+      : null
+  const accountPnlWithRealizedJpy = totalPnL + stockRealizedPnlSum + fundRealizedPnlSum
+  const accountCostWithRealizedDenom = totalInvested + stockRealizedCostSum + fundRealizedCostSum
+  const accountReturnWithRealizedPct =
+    accountCostWithRealizedDenom > 0 && Number.isFinite(accountPnlWithRealizedJpy)
+      ? (accountPnlWithRealizedJpy / accountCostWithRealizedDenom) * 100
+      : null
   const totalHoldingsCount = groupedOwnedStocks.length + effectiveFundRows.length
   const assetEarliestBuy = (() => {
     const stockDates = []
@@ -3791,6 +4597,56 @@ const WealthSection = ({
   const assetGrowthData = historicalWealthTrend?.assetGrowthData ?? assetGrowthDataFb
   const assetGrowthSplitData = historicalWealthTrend?.assetGrowthSplitData ?? assetGrowthSplitDataFb
 
+  const stockPerformanceBarRows = useMemo(() => {
+    const rows = Array.isArray(stockGrowthData) ? stockGrowthData : []
+    return rows.map((r) => {
+      const v = Math.max(0, Math.round(Number(r.value || 0)))
+      let c = Number(r.costJpy)
+      if (!Number.isFinite(c)) {
+        const p = Number(r.pnlJpy)
+        c = Number.isFinite(p) ? v - p : NaN
+      }
+      if (!Number.isFinite(c)) c = v
+      c = Math.max(0, Math.round(c))
+      let basisJpy = 0
+      let gainJpy = 0
+      let lossJpy = 0
+      if (v >= c) {
+        basisJpy = c
+        gainJpy = v - c
+      } else {
+        basisJpy = v
+        lossJpy = c - v
+      }
+      return { ...r, basisJpy, gainJpy, lossJpy }
+    })
+  }, [stockGrowthData])
+
+  const fundPerformanceBarRows = useMemo(() => {
+    const rows = Array.isArray(fundGrowthData) ? fundGrowthData : []
+    return rows.map((r) => {
+      const v = Math.max(0, Math.round(Number(r.value || 0)))
+      let c = Number(r.costJpy)
+      if (!Number.isFinite(c)) {
+        const p = Number(r.pnlJpy)
+        c = Number.isFinite(p) ? v - p : NaN
+      }
+      if (!Number.isFinite(c)) c = v
+      c = Math.max(0, Math.round(c))
+      let basisJpy = 0
+      let gainJpy = 0
+      let lossJpy = 0
+      if (v >= c) {
+        basisJpy = c
+        gainJpy = v - c
+      } else {
+        basisJpy = v
+        lossJpy = c - v
+      }
+      return { ...r, basisJpy, gainJpy, lossJpy }
+    })
+  }, [fundGrowthData])
+
   const stockSectorData = Object.values(groupedOwnedStocks.reduce((acc, stock) => {
     const sector = sectorForOwnedStockPie(stock)
     if (!acc[sector]) {
@@ -3823,7 +4679,24 @@ const WealthSection = ({
   const isStockTab = tabMode === 'stock'
   const isFundTab = tabMode === 'fund'
   const stockHasInputs = groupedOwnedStocks.length > 0
+  /** ownedStockItems は v_stock_latest / プロファイル取得より遅れる。raw の保有ロットがあれば「未登録」バナーを出さない */
+  const stockReportHasData =
+    hasRawStockHoldings
+    || stockHasInputs
+    || (Array.isArray(realizedStockTrades) && realizedStockTrades.length > 0)
+  const stockRealizedWindowLabelJaCompact = realizedPnlWindowLabelJaCompact(stockRealizedWindow)
   const fundHasInputs = groupedOwnedFunds.length > 0
+  const fundReportHasData =
+    hasRawFundHoldings
+    || fundHasInputs
+    || (Array.isArray(realizedFundTrades) && realizedFundTrades.length > 0)
+  const wealthReportHasData =
+    hasRawStockHoldings
+    || hasRawFundHoldings
+    || stockHasInputs
+    || fundHasInputs
+    || (Array.isArray(realizedStockTrades) && realizedStockTrades.length > 0)
+    || (Array.isArray(realizedFundTrades) && realizedFundTrades.length > 0)
   const calcStaleDays = (tradeDate) => {
     const iso = toIsoDate(tradeDate || '')
     if (!iso) return null
@@ -4117,54 +4990,32 @@ const WealthSection = ({
       cancelled = true
     }
   }, [portfolioAlertHistoryKey])
-  const assetTrendLen = (assetGrowthData || []).length
-  const stockTrendLen = (stockGrowthData || []).length
-  const fundTrendLen = (fundGrowthData || []).length
-  /** グラフが2点以上あれば「直近柱 vs その前の柱」（単月とは限らないが1銘柄時の2点モード乱れを避ける） */
-  const assetDeltaIsMoM = assetTrendLen >= 2
-  const stockDeltaIsMoM = stockTrendLen >= 2
-  const fundDeltaIsMoM = fundTrendLen >= 2
-  const prevAssetValue = assetDeltaIsMoM
-    ? Number(assetGrowthData[assetTrendLen - 2]?.value)
-    : Number(assetGrowthData[0]?.value ?? totalInvested)
-  const thisMonthDeltaYen = assetDeltaIsMoM
-    ? totalCurrentValue - prevAssetValue
-    : totalCurrentValue - Number(assetGrowthData[0]?.value ?? totalInvested)
-  const monthDeltaVsPrevPct = assetDeltaIsMoM && prevAssetValue > 0 && Number.isFinite(thisMonthDeltaYen)
-    ? (thisMonthDeltaYen / prevAssetValue) * 100
+  /** 株式／ファンドを分けた累計（評価−元本）と収益率（月次変動サマリー・合計の定義は totalPnL／totalReturnRate と一致） */
+  const aggStockPnLJpy = Number(stockTotalCurrentJpy || 0) - Number(stockTotalInvestedJpy || 0)
+  const aggFundPnLJpy = Number(fundTotalCurrentJpy || 0) - Number(fundTotalInvestedJpy || 0)
+  const aggStockReturnPct = stockTotalInvestedJpy > 0 && Number.isFinite(aggStockPnLJpy)
+    ? (aggStockPnLJpy / stockTotalInvestedJpy) * 100
     : null
-  const prevStockValue = stockDeltaIsMoM
-    ? Number(stockGrowthData[stockTrendLen - 2]?.value)
-    : Number(stockGrowthData[0]?.value ?? stockTotalInvestedJpy)
-  const prevFundValue = fundDeltaIsMoM
-    ? Number(fundGrowthData[fundTrendLen - 2]?.value)
-    : Number(fundGrowthData[0]?.value ?? fundTotalInvestedJpy)
-  const stockMonthDeltaYen = stockDeltaIsMoM
-    ? stockTotalCurrentJpy - prevStockValue
-    : stockTotalCurrentJpy - stockTotalInvestedJpy
-  const fundMonthDeltaYen = fundDeltaIsMoM
-    ? fundTotalCurrentJpy - prevFundValue
-    : fundTotalCurrentJpy - fundTotalInvestedJpy
-  /** サマリー1行目：実質「チャートの最後から2本目↔最終柱」。多くは前月末終値ベースの評価との差 */
-  const assetDeltaPrimaryLabel = !assetDeltaIsMoM
-    ? '評価変動（補間・参考）'
-    : historicalWealthTrend
-      ? '直近月末比・資産増減（終値ベース）'
-      : '直近月末比・資産増減（チャート補間）'
-  const assetDeltaFootnote = historicalWealthTrend
-    ? '※ 各柱は、その日付以前に約定した保有分のみを、その日付以前の終値で再評価した推定です。最終柱は一覧の最新評価と一致します。欠損銘柄は当該柱の小計から除かれます。'
-        + ' 上段の金額は「最後から2本目の柱」と「最終柱」の評価額の差です（多くは前月末比）。月中の追加買付があると評価額の純増が含まれます。'
-    : assetDeltaIsMoM
-      ? '※ 上段はチャート上の直前期間末（多くは前月末に相当する柱）から、現在の評価までの差の目安です。補間のため日次の実績ではありません。追加買付があると含まれます。'
-      : '※ チャートが始点・終点の2点のみのときは「補間シリーズ上の累計変化」を示します（日次実績ではありません）。'
-  const dominantContribution = (() => {
-    const stockAbs = Math.abs(stockMonthDeltaYen)
-    const fundAbs = Math.abs(fundMonthDeltaYen)
-    const totalAbs = stockAbs + fundAbs
-    if (totalAbs < 100) return 'この期間の評価額の変動は小さめです。'
-    const stockDominant = stockAbs >= fundAbs
-    const share = Math.round(((stockDominant ? stockAbs : fundAbs) / totalAbs) * 100)
-    return `内訳（絶対値ベース）では、${stockDominant ? '株式' : 'ファンド'}側の変動がおよそ${share}%を占めています。下落時も同様です。`
+  const aggFundReturnPct = fundTotalInvestedJpy > 0 && Number.isFinite(aggFundPnLJpy)
+    ? (aggFundPnLJpy / fundTotalInvestedJpy) * 100
+    : null
+  /** 含み損益合計に占める株式／ファンドの割合（同方向のときのみバー表示。相殺時は説明のみ） */
+  const monthlyUnrealizedPnlSplit = (() => {
+    if (!Number.isFinite(totalPnL) || totalInvested <= 0) return { mode: 'none' }
+    if (Math.abs(totalPnL) < 1e-9) return { mode: 'zero' }
+    const s = aggStockPnLJpy
+    const f = aggFundPnLJpy
+    const stockOk = Number.isFinite(s)
+    const fundOk = Number.isFinite(f)
+    if (!stockOk || !fundOk) return { mode: 'none' }
+    const sameDirection =
+      (totalPnL > 0 && s >= 0 && f >= 0) || (totalPnL < 0 && s <= 0 && f <= 0)
+    if (!sameDirection) return { mode: 'offset' }
+    const stockPct = (s / totalPnL) * 100
+    const fundPct = (f / totalPnL) * 100
+    const stockBarW = Math.max(0, Math.min(100, stockPct))
+    const fundBarW = Math.max(0, Math.min(100, 100 - stockBarW))
+    return { mode: 'bar', stockPct, fundPct, stockBarW, fundBarW }
   })()
   const [nowTsForExpiry] = useState(() => Date.now())
   const calcDaysLeftFromIso = (value) => {
@@ -4192,26 +5043,36 @@ const WealthSection = ({
     const iso = dates[dates.length - 1]
     return iso ? formatDateJpSlash(iso) : '--'
   })()
+  /** 売却記録の取得原価は含めない（一覧の投資元本合計と揃える） */
   const reportInvestYen = isStockTab
-    ? (stockHasInputs ? stockTotalInvestedJpy : null)
+    ? (stockReportHasData ? stockTotalInvestedJpy : null)
     : isFundTab
-      ? (fundHasInputs ? fundTotalInvestedJpy : null)
-      : totalInvested
-  const reportCurrentYen = isStockTab
-    ? (stockHasInputs ? stockTotalCurrentJpy : null)
+      ? (fundReportHasData ? fundTotalInvestedJpy : null)
+      : wealthReportHasData
+        ? totalInvested
+        : null
+  const reportHoldingsValueYen = isStockTab
+    ? (stockReportHasData ? stockTotalCurrentJpy : null)
     : isFundTab
-      ? (fundHasInputs ? fundTotalCurrentJpy : null)
-      : totalCurrentValue
+      ? (fundReportHasData ? fundTotalCurrentJpy : null)
+      : wealthReportHasData
+        ? stockTotalCurrentJpy + fundTotalCurrentJpy
+        : null
   const reportPnlYen = isStockTab
-    ? (stockHasInputs ? (stockTotalCurrentJpy - stockTotalInvestedJpy) : null)
+    ? (stockReportHasData ? stockPnlWithRealizedJpy : null)
     : isFundTab
-      ? (fundHasInputs ? (fundTotalCurrentJpy - fundTotalInvestedJpy) : null)
-      : totalPnL
+      ? (fundReportHasData ? fundPnlWithRealizedJpy : null)
+      : wealthReportHasData
+        ? accountPnlWithRealizedJpy
+        : null
   const reportRatePct = isStockTab
-    ? (stockHasInputs && stockTotalInvestedJpy > 0 ? ((stockTotalCurrentJpy - stockTotalInvestedJpy) / stockTotalInvestedJpy) * 100 : null)
+    ? (stockReportHasData ? stockReturnWithRealizedPct : null)
     : isFundTab
-      ? (fundHasInputs && fundTotalInvestedJpy > 0 ? ((fundTotalCurrentJpy - fundTotalInvestedJpy) / fundTotalInvestedJpy) * 100 : null)
-      : totalReturnRate
+      ? (fundReportHasData ? fundReturnWithRealizedPct : null)
+      : wealthReportHasData
+        ? accountReturnWithRealizedPct
+        : null
+
   const stockDiagnosisHoldings = groupedOwnedStocks
     .map((stock) => {
       const currency = inferStockCurrency(stock.symbol)
@@ -4266,12 +5127,12 @@ const WealthSection = ({
           <div className="relative z-[121] w-full max-w-md rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 shadow-xl">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-xs font-bold text-slate-500 dark:text-slate-400">ナンピン計算（平均取得単価を下げる）</p>
+                <p className="text-xs font-bold text-slate-500 dark:text-slate-400">平均取得単価計算</p>
                 <h4 className="text-base font-black text-slate-900 dark:text-white mt-0.5">
                   {avgDownSelectedStock.name}
                 </h4>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-                  現在平均 {Number(avgDownSelectedStock.avgBuyPrice || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} / 現在価格 {Number(avgDownSelectedStock.currentPrice || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} / 保有 {Number(avgDownSelectedStock.currentQty || 0).toLocaleString()}株
+                  現在平均 {formatStockNativePrice(avgDownSelectedStock.avgBuyPrice, avgDownSelectedStock.currency || inferStockCurrency(avgDownSelectedStock.symbol))} / 現在価格 {formatStockNativePrice(avgDownSelectedStock.currentPrice, avgDownSelectedStock.currency || inferStockCurrency(avgDownSelectedStock.symbol))} / 保有 {Number(avgDownSelectedStock.currentQty || 0).toLocaleString('ja-JP')}株
                 </p>
               </div>
               <button
@@ -4330,9 +5191,9 @@ const WealthSection = ({
                         className="mm-touch-slider mt-2"
                       />
                       <div className="mt-1.5 flex items-center justify-between text-[10px] font-bold text-slate-500 dark:text-slate-400">
-                        <span>{avgDownUiMeta.targetMin.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
-                        <span>目標: {avgDownUiMeta.targetValue.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
-                        <span>{avgDownUiMeta.targetMax.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+                        <span>{avgDownUiMeta.targetMin.toLocaleString('ja-JP', { maximumFractionDigits: 2 })}</span>
+                        <span>目標: {avgDownUiMeta.targetValue.toLocaleString('ja-JP', { maximumFractionDigits: 2 })}</span>
+                        <span>{avgDownUiMeta.targetMax.toLocaleString('ja-JP', { maximumFractionDigits: 2 })}</span>
                       </div>
                     </>
                   ) : (
@@ -4361,8 +5222,8 @@ const WealthSection = ({
                   />
                   <div className="mt-1.5 flex items-center justify-between text-[10px] font-bold text-slate-500 dark:text-slate-400">
                     <span>1株</span>
-                    <span>現在: {Number(avgDownUiMeta?.qtyValue || 0).toLocaleString()}株</span>
-                    <span>{Number(avgDownUiMeta?.qtyMax || 100).toLocaleString()}株</span>
+                    <span>現在: {Number(avgDownUiMeta?.qtyValue || 0).toLocaleString('ja-JP')}株</span>
+                    <span>{Number(avgDownUiMeta?.qtyMax || 100).toLocaleString('ja-JP')}株</span>
                   </div>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {[10, 25, 50, 100].map((qtyPreset) => (
@@ -4383,16 +5244,16 @@ const WealthSection = ({
               {avgDownPreview?.ok ? (
                 <div className="space-y-1.5">
                   <p className="text-sm font-black text-slate-900 dark:text-white">
-                    現在価格で <span className="text-orange-600 dark:text-orange-300">{Number(avgDownPreview.addQty || 0).toLocaleString()}株</span> の追加買いが必要です
+                    現在価格で <span className="text-orange-600 dark:text-orange-300">{Number(avgDownPreview.addQty || 0).toLocaleString('ja-JP')}株</span> の追加買いが必要です
                   </p>
                   <p className="text-xs text-slate-600 dark:text-slate-300">
-                    追加買い想定金額: ¥{Math.round(Number(avgDownPreview.buyAmount || 0)).toLocaleString()}
+                    追加買い想定金額: {formatStockNativeMoney(avgDownPreview.buyAmount, avgDownSelectedStock.currency || inferStockCurrency(avgDownSelectedStock.symbol))}
                   </p>
                   <p className="text-xs text-slate-600 dark:text-slate-300">
-                    目標平均取得単価: {Number(avgDownPreview.targetAvgPrice || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                    目標平均取得単価: {formatStockNativePrice(avgDownPreview.targetAvgPrice, avgDownSelectedStock.currency || inferStockCurrency(avgDownSelectedStock.symbol))}
                   </p>
                   <p className="text-xs text-slate-600 dark:text-slate-300">
-                    反映後の想定平均: {Number(avgDownPreview.nextAvgPrice || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                    反映後の想定平均: {formatStockNativePrice(avgDownPreview.nextAvgPrice, avgDownSelectedStock.currency || inferStockCurrency(avgDownSelectedStock.symbol))}
                   </p>
                   {avgDownPreview.highAddQty ? (
                     <p className="text-[10px] text-amber-800 dark:text-amber-200/95 leading-relaxed">
@@ -4412,6 +5273,206 @@ const WealthSection = ({
           </div>
         </div>
       ) : null}
+      {stockSellModalOpen && stockSellContext ? (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center px-4">
+          <button
+            type="button"
+            className="absolute inset-0 bg-slate-900/55"
+            onClick={() => { if (!stockSellBusy) setStockSellModalOpen(false) }}
+            aria-label="close stock sell modal"
+          />
+          <div className="relative z-[121] w-full max-w-md rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 shadow-xl">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold text-slate-500 dark:text-slate-400">売却を記録（実現損益・FIFO）</p>
+                <h4 className="text-base font-black text-slate-900 dark:text-white mt-0.5">
+                  {stockSellContext.name} ({stockSellContext.symbol})
+                </h4>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                  保有数量 {stockSellContext.maxQty.toLocaleString('ja-JP')} まで。売却に応じた取得原価は買付日が古いロットから自動で充当されます。
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={stockSellBusy}
+                onClick={() => setStockSellModalOpen(false)}
+                className="rounded-md border border-slate-200 dark:border-slate-700 px-2 py-1 text-xs font-bold text-slate-500 disabled:opacity-50"
+              >
+                閉じる
+              </button>
+            </div>
+            <div className="mt-3 space-y-2">
+              <div>
+                <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400">売却日</span>
+                <OwnedBuyDateTextInput
+                  value={stockSellDateInput}
+                  onCommit={(iso) => setStockSellDateInput(iso)}
+                  className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-bold tabular-nums"
+                />
+              </div>
+              <div>
+                <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400">売却数量</span>
+                <div className="mt-1 flex gap-2">
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={stockSellQtyInput}
+                    onChange={(e) => setStockSellQtyInput(sanitizeDecimalManyInput(e.target.value, 6))}
+                    placeholder={`最大 ${stockSellContext.maxQty.toLocaleString('ja-JP')}`}
+                    className="min-w-0 flex-1 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-bold text-right tabular-nums"
+                  />
+                  <button
+                    type="button"
+                    disabled={stockSellBusy || !stockSellContext.maxQty}
+                    onClick={() => setStockSellQtyInput(formatMaxSellUnitsInput(stockSellContext.maxQty))}
+                    className="shrink-0 px-2.5 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 text-[11px] font-black text-slate-800 dark:text-slate-100 disabled:opacity-45"
+                  >
+                    全数量
+                  </button>
+                </div>
+              </div>
+              <div>
+                <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400">売却単価（株式の建て貨幣）</span>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={stockSellPriceInput}
+                  onChange={(e) => setStockSellPriceInput(sanitizeDecimalInput(e.target.value))}
+                  placeholder={stockSellContext.hintPrice > 0 ? String(stockSellContext.hintPrice) : '例: 328.15'}
+                  className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-bold text-right tabular-nums"
+                />
+              </div>
+              <button
+                type="button"
+                disabled={
+                  stockSellBusy
+                  || !stockSellContext.maxQty
+                  || !onRecordStockSale
+                }
+                onClick={async () => {
+                  if (!onRecordStockSale) return
+                  setStockSellBusy(true)
+                  try {
+                    await onRecordStockSale({
+                      symbol: stockSellContext.symbol,
+                      sellDate: stockSellDateInput,
+                      sellQty: stockSellQtyInput,
+                      sellPrice: stockSellPriceInput,
+                    })
+                    setStockSellModalOpen(false)
+                    setStockSellContext(null)
+                  } finally {
+                    setStockSellBusy(false)
+                  }
+                }}
+                className="mt-2 w-full min-h-[48px] rounded-xl bg-slate-900 dark:bg-indigo-600 text-white text-sm font-black hover:opacity-90 disabled:opacity-50"
+              >
+                {stockSellBusy ? '保存中…' : '記録する（ロットを FIFO で減算）'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {fundSellModalOpen && fundSellContext ? (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center px-4">
+          <button
+            type="button"
+            className="absolute inset-0 bg-slate-900/55"
+            onClick={() => { if (!fundSellBusy) setFundSellModalOpen(false) }}
+            aria-label="close fund sell modal"
+          />
+          <div className="relative z-[121] w-full max-w-md rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 shadow-xl">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold text-slate-500 dark:text-slate-400">ファンド売却を記録（実現損益・FIFO）</p>
+                <h4 className="text-base font-black text-slate-900 dark:text-white mt-0.5">
+                  {fundSellContext.name} ({fundSellContext.symbol})
+                </h4>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                  売却口数は最大 {fundSellContext.maxUnits.toLocaleString('ja-JP', { maximumFractionDigits: 6 })} まで。取得原価は買付日が古いロットから自動で充当されます。
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={fundSellBusy}
+                onClick={() => setFundSellModalOpen(false)}
+                className="rounded-md border border-slate-200 dark:border-slate-700 px-2 py-1 text-xs font-bold text-slate-500 disabled:opacity-50"
+              >
+                閉じる
+              </button>
+            </div>
+            <div className="mt-3 space-y-2">
+              <div>
+                <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400">売却日</span>
+                <OwnedBuyDateTextInput
+                  value={fundSellDateInput}
+                  onCommit={(iso) => setFundSellDateInput(iso)}
+                  className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-bold tabular-nums"
+                />
+              </div>
+              <div>
+                <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400">売却口数</span>
+                <div className="mt-1 flex gap-2">
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={fundSellUnitsInput}
+                    onChange={(e) => setFundSellUnitsInput(sanitizeDecimalManyInput(e.target.value, 16))}
+                    placeholder={`最大 ${formatMaxSellUnitsInput(fundSellContext.maxUnits) || fundSellContext.maxUnits.toLocaleString('ja-JP', { maximumFractionDigits: 10 })}`}
+                    className="min-w-0 flex-1 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-bold text-right tabular-nums"
+                  />
+                  <button
+                    type="button"
+                    disabled={fundSellBusy || !fundSellContext.maxUnits}
+                    onClick={() => setFundSellUnitsInput(formatMaxSellUnitsInput(fundSellContext.maxUnits))}
+                    className="shrink-0 px-2.5 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 text-[11px] font-black text-slate-800 dark:text-slate-100 disabled:opacity-45"
+                  >
+                    全口数
+                  </button>
+                </div>
+              </div>
+              <div>
+                <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400">売却単価（基準価額・建て貨幣）</span>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={fundSellPriceInput}
+                  onChange={(e) => setFundSellPriceInput(sanitizeDecimalInput(e.target.value))}
+                  placeholder={fundSellContext.hintPrice > 0 ? String(fundSellContext.hintPrice) : '例: 300000'}
+                  className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-bold text-right tabular-nums"
+                />
+              </div>
+              <button
+                type="button"
+                disabled={
+                  fundSellBusy
+                  || !fundSellContext.maxUnits
+                  || !onRecordFundSale
+                }
+                onClick={async () => {
+                  if (!onRecordFundSale) return
+                  setFundSellBusy(true)
+                  try {
+                    await onRecordFundSale({
+                      symbol: fundSellContext.symbol,
+                      sellDate: fundSellDateInput,
+                      sellUnits: fundSellUnitsInput,
+                      sellPrice: fundSellPriceInput,
+                    })
+                    setFundSellModalOpen(false)
+                    setFundSellContext(null)
+                  } finally {
+                    setFundSellBusy(false)
+                  }
+                }}
+                className="mt-2 w-full min-h-[48px] rounded-xl bg-slate-900 dark:bg-indigo-600 text-white text-sm font-black hover:opacity-90 disabled:opacity-50"
+              >
+                {fundSellBusy ? '保存中…' : '記録する（口数を FIFO で減算）'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       {showFreeHoldingsBanner ? (
         <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50/90 dark:bg-amber-950/25 px-4 py-3 text-xs text-amber-950 dark:text-amber-100">
           <p className="font-black">保有の登録上限（参考）</p>
@@ -4426,36 +5487,408 @@ const WealthSection = ({
       ) : null}
       {tabMode === 'wealth' ? <WealthAccumulationSimCard /> : null}
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
-        <div className="xl:col-span-8 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/60">
-            <h3 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
-              <TrendingUp size={18} className="text-indigo-500" /> {isStockTab ? '株式レポート' : isFundTab ? 'ファンドレポート' : '総合レポート'}
-            </h3>
+        {(isStockTab && !stockReportHasData) ? (
+          <div className="xl:col-span-12 rounded-2xl border border-dashed border-orange-300 dark:border-orange-700 bg-orange-50/50 dark:bg-orange-950/25 px-6 py-10 text-center shadow-sm">
+            <p className="text-lg font-black text-slate-900 dark:text-white">まだ株式の保有が登録されていません</p>
+            <p className="mt-2 text-sm text-slate-600 dark:text-slate-300 leading-relaxed max-w-xl mx-auto">
+              下の「株式パフォーマンス」から銘柄・数量・買付情報を追加すると、評価損益やセクター配分が表示されます（実現損益のみの場合はこのカードは表示されません）。
+            </p>
+            <button
+              type="button"
+              onClick={() => document.getElementById('mypage-stock-holdings')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              className="mt-6 inline-flex items-center justify-center rounded-xl bg-slate-900 dark:bg-orange-500 text-white text-sm font-black px-6 py-3 hover:opacity-90 shadow-md"
+            >
+              保有株式を追加する（入力へスクロール）
+            </button>
           </div>
-          <div className="p-5 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-            <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700 rounded-xl p-4">
-              <p className="text-xs font-bold text-slate-500 mb-1">投資元本</p>
-              <p className="text-2xl font-black text-slate-900 dark:text-white">{reportInvestYen == null ? '--' : `¥${Math.round(reportInvestYen).toLocaleString()}`}</p>
+        ) : (isFundTab && !fundReportHasData) ? (
+          <div className="xl:col-span-12 rounded-2xl border border-dashed border-indigo-300 dark:border-indigo-700 bg-indigo-50/50 dark:bg-indigo-950/25 px-6 py-10 text-center shadow-sm">
+            <p className="text-lg font-black text-slate-900 dark:text-white">まだファンドの保有が登録されていません</p>
+            <p className="mt-2 text-sm text-slate-600 dark:text-slate-300 leading-relaxed max-w-xl mx-auto">
+              「ファンドパフォーマンス」から銘柄と取得情報を追加すると、レポートや配分チャートが表示されます。
+            </p>
+            <button
+              type="button"
+              onClick={() => document.getElementById('mypage-owned-fund-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              className="mt-6 inline-flex items-center justify-center rounded-xl bg-slate-900 dark:bg-indigo-600 text-white text-sm font-black px-6 py-3 hover:opacity-90 shadow-md"
+            >
+              保有ファンドを追加する（入力へスクロール）
+            </button>
+          </div>
+        ) : (isWealthTab && !wealthReportHasData) ? (
+          <div className="xl:col-span-12 rounded-2xl border border-dashed border-slate-300 dark:border-slate-600 bg-slate-50/80 dark:bg-slate-900/40 px-6 py-10 text-center shadow-sm">
+            <p className="text-lg font-black text-slate-900 dark:text-white">まだ保有資産がありません</p>
+            <p className="mt-2 text-sm text-slate-600 dark:text-slate-300 leading-relaxed max-w-xl mx-auto">
+              株式またはファンドタブで保有を登録すると、総合レポートと資産推移が表示されます。
+            </p>
+            <div className="mt-6 flex flex-col sm:flex-row gap-3 justify-center items-stretch sm:items-center">
+              <button
+                type="button"
+                onClick={() => typeof onSwitchPortfolioTab === 'function' && onSwitchPortfolioTab('stock')}
+                className="inline-flex items-center justify-center rounded-xl bg-emerald-700 dark:bg-emerald-600 text-white text-sm font-black px-6 py-3 hover:opacity-90 shadow-md"
+              >
+                株式タブで追加
+              </button>
+              <button
+                type="button"
+                onClick={() => typeof onSwitchPortfolioTab === 'function' && onSwitchPortfolioTab('fund')}
+                className="inline-flex items-center justify-center rounded-xl bg-blue-700 dark:bg-blue-600 text-white text-sm font-black px-6 py-3 hover:opacity-90 shadow-md"
+              >
+                ファンドタブで追加
+              </button>
             </div>
-            <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700 rounded-xl p-4">
-              <p className="text-xs font-bold text-slate-500 mb-1">現在価値</p>
-              <p className="text-2xl font-black text-slate-900 dark:text-white">{reportCurrentYen == null ? '--' : `¥${Math.round(reportCurrentYen).toLocaleString()}`}</p>
+          </div>
+        ) : (
+          <>
+        <div className="xl:col-span-8 bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/60">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <h3 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
+                <TrendingUp size={18} className="text-indigo-500" /> {isStockTab ? '株式レポート' : isFundTab ? 'ファンドレポート' : '総合レポート'}
+              </h3>
+              {(isStockTab || isWealthTab || isFundTab) ? (
+                <label className="flex items-center gap-2 text-[11px] font-bold text-slate-600 dark:text-slate-300 shrink-0">
+                  <span className="whitespace-nowrap">実現の期間</span>
+                  <select
+                    value={stockRealizedWindow}
+                    onChange={(e) => setStockRealizedWindow(e.target.value)}
+                    className="max-w-[11rem] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1 text-[11px] font-black text-slate-800 dark:text-slate-100"
+                  >
+                    <option value="all">全期間</option>
+                    {REALIZED_PNL_SELECT_CALENDAR_YEARS.map((y) => (
+                      <option key={y} value={`cy${y}`}>{y}年（1〜12月）</option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
             </div>
-            <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700 rounded-xl p-4">
-              <p className="text-xs font-bold text-slate-500 mb-1">総損益</p>
-              <p className={`text-2xl font-black ${reportPnlYen == null ? 'text-slate-400' : reportPnlYen >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                {reportPnlYen == null ? '--' : `${reportPnlYen >= 0 ? '+' : ''}¥${Math.round(reportPnlYen).toLocaleString()}`}
+            {isStockTab && stockRealizedWindow !== 'all' ? (
+              <p className="mt-2 text-[10px] font-semibold leading-relaxed text-slate-500 dark:text-slate-400">
+                上行の「損益」「損益率」は全期間の実現を含みます。下段の「実現」は{stockRealizedWindowLabelJaCompact}の売却分のみです。
               </p>
-            </div>
-            <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700 rounded-xl p-4">
-              <p className="text-xs font-bold text-slate-500 mb-1">損益率</p>
-              <p className={`text-2xl font-black ${reportRatePct == null ? 'text-slate-400' : reportRatePct >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                {reportRatePct == null ? '--' : `${reportRatePct >= 0 ? '+' : ''}${reportRatePct.toFixed(1)}%`}
+            ) : null}
+            {isWealthTab && stockRealizedWindow !== 'all' ? (
+              <p className="mt-2 text-[10px] font-semibold leading-relaxed text-slate-500 dark:text-slate-400">
+                上行の「損益」「損益率」は、保有の含み損益に株式・ファンドの全期間実現損益を加えたポートフォリオ合算です。下段の「実現」は売却記録ベース（{stockRealizedWindowLabelJaCompact}・株式+ファンド）です。
               </p>
+            ) : null}
+            {isFundTab && stockRealizedWindow !== 'all' ? (
+              <p className="mt-2 text-[10px] font-semibold leading-relaxed text-slate-500 dark:text-slate-400">
+                上行の「損益」「損益率」は全期間の実現を含みます。下段の「実現」は{stockRealizedWindowLabelJaCompact}の売却分のみです。
+              </p>
+            ) : null}
+          </div>
+          <div className="p-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+            <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-600 rounded-xl p-4 flex flex-col justify-between min-h-[132px]">
+              <div>
+                <p className="text-xs font-bold text-slate-500 mb-1">保有取得原価</p>
+                <p className="text-2xl font-black text-slate-900 dark:text-white tabular-nums">{reportInvestYen == null ? '--' : `¥${Math.round(reportInvestYen).toLocaleString('ja-JP')}`}</p>
+              </div>
+              <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-600">
+                <p className="text-xs font-bold text-slate-500 mb-1">現在評価額（保有）</p>
+                <p className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tabular-nums">{portfolioNumbersHydratingMask ? (
+                  <span className="inline-flex items-center gap-2 text-slate-400 dark:text-slate-500 tabular-nums">
+                    <Loader2 className="animate-spin shrink-0 text-orange-500" size={22} aria-hidden />
+                    …
+                  </span>
+                ) : reportHoldingsValueYen == null ? '--' : `¥${Math.round(reportHoldingsValueYen).toLocaleString('ja-JP')}`}</p>
+              </div>
+            </div>
+            <div className="relative overflow-hidden bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-600 rounded-xl p-4 flex flex-col justify-between min-h-[132px]">
+              {isStockTab ? (
+                <>
+                  <div>
+                    <p className="text-xs font-bold text-slate-500 mb-1">損益</p>
+                    <p className={`text-2xl font-black tabular-nums ${reportPnlYen == null ? 'text-slate-400' : reportPnlYen >= 0 ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'}`}>
+                      {reportPnlYen == null ? '--' : `${reportPnlYen >= 0 ? '+' : ''}¥${Math.round(reportPnlYen).toLocaleString('ja-JP')}`}
+                    </p>
+                  </div>
+                  <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-600 space-y-1.5">
+                    <div className="flex justify-between items-baseline gap-2 text-[11px] sm:text-xs">
+                      <span className="font-bold text-slate-500 dark:text-slate-400 shrink-0">含み</span>
+                      <span
+                        className={`font-black tabular-nums text-right ${
+                          !stockReportHasData
+                            ? 'text-slate-400'
+                            : aggStockPnLJpy >= 0
+                              ? 'text-red-600 dark:text-red-400'
+                              : 'text-blue-600 dark:text-blue-400'
+                        }`}
+                      >
+                        {stockReportHasData ? `${aggStockPnLJpy >= 0 ? '+' : ''}¥${Math.round(aggStockPnLJpy).toLocaleString('ja-JP')}` : '--'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-baseline gap-2 text-[11px] sm:text-xs">
+                      <span className="font-bold text-slate-500 dark:text-slate-400 shrink-0">
+                        実現{stockRealizedWindow !== 'all' ? `（${stockRealizedWindowLabelJaCompact}）` : ''}
+                      </span>
+                      <span
+                        className={`font-black tabular-nums text-right ${
+                          !stockReportHasData
+                            ? 'text-slate-400'
+                            : stockRealizedPnlSumWindow >= 0
+                              ? 'text-red-600 dark:text-red-400'
+                              : 'text-blue-600 dark:text-blue-400'
+                        }`}
+                      >
+                        {stockReportHasData ? `${stockRealizedPnlSumWindow >= 0 ? '+' : ''}¥${Math.round(stockRealizedPnlSumWindow).toLocaleString('ja-JP')}` : '--'}
+                      </span>
+                    </div>
+                  </div>
+                </>
+              ) : isFundTab ? (
+                <>
+                  <div>
+                    <p className="text-xs font-bold text-slate-500 mb-1">損益</p>
+                    <p className={`text-2xl font-black tabular-nums ${reportPnlYen == null ? 'text-slate-400' : reportPnlYen >= 0 ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'}`}>
+                      {reportPnlYen == null ? '--' : `${reportPnlYen >= 0 ? '+' : ''}¥${Math.round(reportPnlYen).toLocaleString('ja-JP')}`}
+                    </p>
+                  </div>
+                  <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-600 space-y-1.5">
+                    <div className="flex justify-between items-baseline gap-2 text-[11px] sm:text-xs">
+                      <span className="font-bold text-slate-500 dark:text-slate-400 shrink-0">含み</span>
+                      <span
+                        className={`font-black tabular-nums text-right ${
+                          !fundReportHasData
+                            ? 'text-slate-400'
+                            : aggFundPnLJpy >= 0
+                              ? 'text-red-600 dark:text-red-400'
+                              : 'text-blue-600 dark:text-blue-400'
+                        }`}
+                      >
+                        {fundReportHasData ? `${aggFundPnLJpy >= 0 ? '+' : ''}¥${Math.round(aggFundPnLJpy).toLocaleString('ja-JP')}` : '--'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-baseline gap-2 text-[11px] sm:text-xs">
+                      <span className="font-bold text-slate-500 dark:text-slate-400 shrink-0">
+                        実現{stockRealizedWindow !== 'all' ? `（${stockRealizedWindowLabelJaCompact}）` : ''}
+                      </span>
+                      <span
+                        className={`font-black tabular-nums text-right ${
+                          !fundReportHasData
+                            ? 'text-slate-400'
+                            : fundRealizedPnlSumWindow >= 0
+                              ? 'text-red-600 dark:text-red-400'
+                              : 'text-blue-600 dark:text-blue-400'
+                        }`}
+                      >
+                        {fundReportHasData ? `${fundRealizedPnlSumWindow >= 0 ? '+' : ''}¥${Math.round(fundRealizedPnlSumWindow).toLocaleString('ja-JP')}` : '--'}
+                      </span>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <p className="text-xs font-bold text-slate-500 mb-1">損益</p>
+                    <p className={`text-2xl font-black tabular-nums ${reportPnlYen == null ? 'text-slate-400' : reportPnlYen >= 0 ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'}`}>
+                      {reportPnlYen == null ? '--' : `${reportPnlYen >= 0 ? '+' : ''}¥${Math.round(reportPnlYen).toLocaleString('ja-JP')}`}
+                    </p>
+                  </div>
+                  <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-600 space-y-1.5">
+                    <div className="flex justify-between items-baseline gap-2 text-[11px] sm:text-xs">
+                      <span className="font-bold text-slate-500 dark:text-slate-400 shrink-0">含み</span>
+                      <span
+                        className={`font-black tabular-nums text-right ${
+                          !wealthReportHasData
+                            ? 'text-slate-400'
+                            : totalPnL >= 0
+                              ? 'text-red-600 dark:text-red-400'
+                              : 'text-blue-600 dark:text-blue-400'
+                        }`}
+                      >
+                        {wealthReportHasData ? `${totalPnL >= 0 ? '+' : ''}¥${Math.round(totalPnL).toLocaleString('ja-JP')}` : '--'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-baseline gap-2 text-[11px] sm:text-xs">
+                      <span className="font-bold text-slate-500 dark:text-slate-400 shrink-0">
+                        実現{stockRealizedWindow !== 'all' ? `（${stockRealizedWindowLabelJaCompact}）` : ''}
+                      </span>
+                      <span
+                        className={`font-black tabular-nums text-right ${
+                          !(Array.isArray(realizedStockTrades) && realizedStockTrades.length > 0)
+                          && !(Array.isArray(realizedFundTrades) && realizedFundTrades.length > 0)
+                            ? 'text-slate-400'
+                            : wealthRealizedPnlSumWindow >= 0
+                              ? 'text-red-600 dark:text-red-400'
+                              : 'text-blue-600 dark:text-blue-400'
+                        }`}
+                      >
+                        {(Array.isArray(realizedStockTrades) && realizedStockTrades.length > 0)
+                        || (Array.isArray(realizedFundTrades) && realizedFundTrades.length > 0)
+                          ? `${wealthRealizedPnlSumWindow >= 0 ? '+' : ''}¥${Math.round(wealthRealizedPnlSumWindow).toLocaleString('ja-JP')}`
+                          : '--'}
+                      </span>
+                    </div>
+                  </div>
+                </>
+              )}
+              {portfolioNumbersHydratingMask ? (
+                <div
+                  className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-xl bg-white/75 dark:bg-slate-950/55 backdrop-blur-[1px]"
+                  aria-busy="true"
+                >
+                  <Loader2 className="animate-spin text-orange-500" size={24} aria-hidden />
+                  <span className="text-[10px] font-black text-slate-600 dark:text-slate-300 px-2 text-center leading-tight">評価を同期中…</span>
+                </div>
+              ) : null}
+            </div>
+            <div className="relative overflow-hidden bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-600 rounded-xl p-4 flex flex-col justify-between min-h-[132px]">
+              {isStockTab ? (
+                <>
+                  <div>
+                    <p className="text-xs font-bold text-slate-500 mb-1">損益率</p>
+                    <p className={`text-2xl font-black tabular-nums ${reportRatePct == null ? 'text-slate-400' : reportRatePct >= 0 ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'}`}>
+                      {reportRatePct == null ? '--' : `${reportRatePct >= 0 ? '+' : ''}${reportRatePct.toFixed(1)}%`}
+                    </p>
+                  </div>
+                  <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-600 space-y-1.5">
+                    <div className="flex justify-between items-baseline gap-2 text-[11px] sm:text-xs">
+                      <span className="font-bold text-slate-500 dark:text-slate-400 shrink-0">含み</span>
+                      <span
+                        className={`font-black tabular-nums text-right ${
+                          !stockReportHasData || aggStockReturnPct == null
+                            ? 'text-slate-400'
+                            : aggStockReturnPct >= 0
+                              ? 'text-red-600 dark:text-red-400'
+                              : 'text-blue-600 dark:text-blue-400'
+                        }`}
+                      >
+                        {stockReportHasData && aggStockReturnPct != null
+                          ? `${aggStockReturnPct >= 0 ? '+' : ''}${aggStockReturnPct.toFixed(1)}%`
+                          : '--'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-baseline gap-2 text-[11px] sm:text-xs">
+                      <span className="font-bold text-slate-500 dark:text-slate-400 shrink-0">
+                        実現{stockRealizedWindow !== 'all' ? `（${stockRealizedWindowLabelJaCompact}）` : ''}
+                      </span>
+                      <span
+                        className={`font-black tabular-nums text-right ${
+                          !stockReportHasData || stockRealizedReturnPctWindow == null
+                            ? 'text-slate-400'
+                            : stockRealizedReturnPctWindow >= 0
+                              ? 'text-red-600 dark:text-red-400'
+                              : 'text-blue-600 dark:text-blue-400'
+                        }`}
+                      >
+                        {stockReportHasData && stockRealizedReturnPctWindow != null
+                          ? `${stockRealizedReturnPctWindow >= 0 ? '+' : ''}${stockRealizedReturnPctWindow.toFixed(1)}%`
+                          : '--'}
+                      </span>
+                    </div>
+                  </div>
+                </>
+              ) : isFundTab ? (
+                <>
+                  <div>
+                    <p className="text-xs font-bold text-slate-500 mb-1">損益率</p>
+                    <p className={`text-2xl font-black tabular-nums ${reportRatePct == null ? 'text-slate-400' : reportRatePct >= 0 ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'}`}>
+                      {reportRatePct == null ? '--' : `${reportRatePct >= 0 ? '+' : ''}${reportRatePct.toFixed(1)}%`}
+                    </p>
+                  </div>
+                  <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-600 space-y-1.5">
+                    <div className="flex justify-between items-baseline gap-2 text-[11px] sm:text-xs">
+                      <span className="font-bold text-slate-500 dark:text-slate-400 shrink-0">含み</span>
+                      <span
+                        className={`font-black tabular-nums text-right ${
+                          !fundReportHasData || aggFundReturnPct == null
+                            ? 'text-slate-400'
+                            : aggFundReturnPct >= 0
+                              ? 'text-red-600 dark:text-red-400'
+                              : 'text-blue-600 dark:text-blue-400'
+                        }`}
+                      >
+                        {fundReportHasData && aggFundReturnPct != null
+                          ? `${aggFundReturnPct >= 0 ? '+' : ''}${aggFundReturnPct.toFixed(1)}%`
+                          : '--'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-baseline gap-2 text-[11px] sm:text-xs">
+                      <span className="font-bold text-slate-500 dark:text-slate-400 shrink-0">
+                        実現{stockRealizedWindow !== 'all' ? `（${stockRealizedWindowLabelJaCompact}）` : ''}
+                      </span>
+                      <span
+                        className={`font-black tabular-nums text-right ${
+                          !fundReportHasData || fundRealizedReturnPctWindow == null
+                            ? 'text-slate-400'
+                            : fundRealizedReturnPctWindow >= 0
+                              ? 'text-red-600 dark:text-red-400'
+                              : 'text-blue-600 dark:text-blue-400'
+                        }`}
+                      >
+                        {fundReportHasData && fundRealizedReturnPctWindow != null
+                          ? `${fundRealizedReturnPctWindow >= 0 ? '+' : ''}${fundRealizedReturnPctWindow.toFixed(1)}%`
+                          : '--'}
+                      </span>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <p className="text-xs font-bold text-slate-500 mb-1">損益率</p>
+                    <p className={`text-2xl font-black tabular-nums ${reportRatePct == null ? 'text-slate-400' : reportRatePct >= 0 ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'}`}>
+                      {reportRatePct == null ? '--' : `${reportRatePct >= 0 ? '+' : ''}${reportRatePct.toFixed(1)}%`}
+                    </p>
+                  </div>
+                  <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-600 space-y-1.5">
+                    <div className="flex justify-between items-baseline gap-2 text-[11px] sm:text-xs">
+                      <span className="font-bold text-slate-500 dark:text-slate-400 shrink-0">含み</span>
+                      <span
+                        className={`font-black tabular-nums text-right ${
+                          !wealthReportHasData || totalInvested <= 0
+                            ? 'text-slate-400'
+                            : totalReturnRate >= 0
+                              ? 'text-red-600 dark:text-red-400'
+                              : 'text-blue-600 dark:text-blue-400'
+                        }`}
+                      >
+                        {wealthReportHasData && totalInvested > 0
+                          ? `${totalReturnRate >= 0 ? '+' : ''}${totalReturnRate.toFixed(1)}%`
+                          : '--'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-baseline gap-2 text-[11px] sm:text-xs">
+                      <span className="font-bold text-slate-500 dark:text-slate-400 shrink-0">
+                        実現{stockRealizedWindow !== 'all' ? `（${stockRealizedWindowLabelJaCompact}）` : ''}
+                      </span>
+                      <span
+                        className={`font-black tabular-nums text-right ${
+                          (!(Array.isArray(realizedStockTrades) && realizedStockTrades.length > 0)
+                          && !(Array.isArray(realizedFundTrades) && realizedFundTrades.length > 0))
+                          || wealthRealizedReturnPctWindow == null
+                            ? 'text-slate-400'
+                            : wealthRealizedReturnPctWindow >= 0
+                              ? 'text-red-600 dark:text-red-400'
+                              : 'text-blue-600 dark:text-blue-400'
+                        }`}
+                      >
+                        {(Array.isArray(realizedStockTrades) && realizedStockTrades.length > 0
+                        || (Array.isArray(realizedFundTrades) && realizedFundTrades.length > 0))
+                        && wealthRealizedReturnPctWindow != null
+                          ? `${wealthRealizedReturnPctWindow >= 0 ? '+' : ''}${wealthRealizedReturnPctWindow.toFixed(1)}%`
+                          : '--'}
+                      </span>
+                    </div>
+                  </div>
+                </>
+              )}
+              {portfolioNumbersHydratingMask ? (
+                <div
+                  className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-xl bg-white/75 dark:bg-slate-950/55 backdrop-blur-[1px]"
+                  aria-busy="true"
+                >
+                  <Loader2 className="animate-spin text-orange-500" size={24} aria-hidden />
+                  <span className="text-[10px] font-black text-slate-600 dark:text-slate-300 px-2 text-center leading-tight">評価を同期中…</span>
+                </div>
+              ) : null}
+            </div>
             </div>
           </div>
         </div>
-        <div className="xl:col-span-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-5">
+        <div className="xl:col-span-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 p-5">
           <h4 className="font-black text-slate-900 dark:text-white flex items-center gap-2 mb-3">
             <TrendingUp size={16} className="text-indigo-500" /> {isStockTab ? '株式レポート' : isFundTab ? 'ファンドレポート' : '資産運用サマリー'}
           </h4>
@@ -4466,29 +5899,52 @@ const WealthSection = ({
             </div>
             <div className="flex justify-between">
               <span className="text-slate-500">{isStockTab ? 'セクター数' : isFundTab ? 'ウォッチリスト' : '株式/ファンド比率'}</span>
-              <span className="font-black text-slate-900 dark:text-white">{isStockTab ? stockSectorData.length : isFundTab ? fundWatchlist.length : `${Math.round((stockTotalCurrentJpy / Math.max(1, totalCurrentValue)) * 100)}% / ${Math.round((fundTotalCurrentJpy / Math.max(1, totalCurrentValue)) * 100)}%`}</span>
+              <span className="font-black text-slate-900 dark:text-white">
+                {(portfolioNumbersHydratingMask && isWealthTab) ? (
+                  <span className="inline-flex items-center gap-1.5 text-slate-400 tabular-nums">
+                    <Loader2 className="animate-spin shrink-0 text-orange-500" size={16} aria-hidden />
+                    …
+                  </span>
+                ) : isStockTab ? stockSectorData.length : isFundTab ? fundWatchlist.length : `${Math.round((stockTotalCurrentJpy / Math.max(1, totalCurrentValue)) * 100)}% / ${Math.round((fundTotalCurrentJpy / Math.max(1, totalCurrentValue)) * 100)}%`}
+              </span>
             </div>
             <div className="flex justify-between">
               <span className="text-slate-500">{isStockTab ? '株式評価額(円換算)' : isFundTab ? 'ファンド評価額(円換算)' : '合算評価額(円換算)'}</span>
-              {isStockTab ? (
-                <span className="font-black text-slate-900 dark:text-white">¥{Math.round(stockTotalCurrentJpy).toLocaleString()}</span>
+              {portfolioNumbersHydratingMask ? (
+                <span className="inline-flex items-center gap-1.5 text-slate-400 tabular-nums font-black">
+                  <Loader2 className="animate-spin shrink-0 text-orange-500" size={16} aria-hidden />
+                  …
+                </span>
+              ) : isStockTab ? (
+                <span className="font-black text-slate-900 dark:text-white">¥{Math.round(stockTotalCurrentJpy).toLocaleString('ja-JP')}</span>
               ) : isFundTab ? (
-                <span className="font-black text-slate-900 dark:text-white">¥{Math.round(fundTotalCurrentJpy).toLocaleString()}</span>
+                <span className="font-black text-slate-900 dark:text-white">¥{Math.round(fundTotalCurrentJpy).toLocaleString('ja-JP')}</span>
               ) : (
-                <span className="font-black text-slate-900 dark:text-white">¥{Math.round(totalCurrentValue).toLocaleString()}</span>
+                <span className="font-black text-slate-900 dark:text-white">¥{Math.round(totalCurrentValue).toLocaleString('ja-JP')}</span>
               )}
             </div>
           </div>
         </div>
+          </>
+        )}
       </div>
 
       {isPaidMember ? (
-        <PortfolioDiagnosisPanel
-          scopeLabel={diagnosisScopeLabel}
-          holdings={diagnosisHoldings}
-          userId={userId}
-        />
+        <Suspense
+          fallback={(
+            <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/40 p-6 animate-pulse min-h-[140px]" aria-hidden />
+          )}
+        >
+          <div id="mypage-asset-diagnosis">
+            <PortfolioDiagnosisPanel
+              scopeLabel={diagnosisScopeLabel}
+              holdings={diagnosisHoldings}
+              userId={userId}
+            />
+          </div>
+        </Suspense>
       ) : (
+        <div id="mypage-asset-diagnosis">
         <button
           type="button"
           onClick={() => {
@@ -4505,11 +5961,12 @@ const WealthSection = ({
           <p className="mt-1.5 text-sm text-slate-600 dark:text-slate-300">例: 現在の比率では「高ボラ資産が+12%」のため、分散改善余地があります。</p>
           <p className="mt-3 inline-flex items-center rounded-full bg-indigo-100 dark:bg-indigo-900/40 px-3 py-1 text-xs font-black text-indigo-700 dark:text-indigo-200">クリックしてプレミアムで確認</p>
         </button>
+        </div>
       )}
 
       {isStockTab && Boolean(globalThis?.__MM_DEV__) && (
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/60">
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/60">
             <h3 className="text-lg font-black text-slate-900 dark:text-white">株式ウォッチリスト</h3>
           </div>
           <div className="p-5">
@@ -4534,9 +5991,9 @@ const WealthSection = ({
                         <p className="text-sm text-slate-500 dark:text-slate-400">{stock.code}</p>
                         <div className="mt-1.5 flex flex-wrap items-center gap-2 text-sm">
                           <span className="font-semibold text-slate-700 dark:text-slate-200">
-                            {Number(stock.price || 0) > 0 ? `¥${Math.round(Number(stock.price || 0)).toLocaleString()}` : '--'}
+                            {Number(stock.price || 0) > 0 ? `¥${Math.round(Number(stock.price || 0)).toLocaleString('ja-JP')}` : '--'}
                           </span>
-                          <span className={`font-black tabular-nums ${Number(stock.rate || 0) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                          <span className={`font-black tabular-nums ${Number(stock.rate || 0) >= 0 ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'}`}>
                             {Number.isFinite(Number(stock.rate)) ? `${Number(stock.rate || 0) >= 0 ? '+' : ''}${Number(stock.rate || 0).toFixed(2)}%` : '--'}
                           </span>
                         </div>
@@ -4569,8 +6026,8 @@ const WealthSection = ({
 
       {isFundTab && fundHasInputs && (
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
-          <div className="xl:col-span-5 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/60">
+          <div className="xl:col-span-5 bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/60">
               <h3 className="font-black text-slate-900 dark:text-white">ファンド 国別配分 (円換算)</h3>
             </div>
             <div className="p-5">
@@ -4590,7 +6047,7 @@ const WealthSection = ({
                         <Cell key={`fund-split-top-${entry.name}`} fill={entry.color} />
                       ))}
                     </Pie>
-                    <Tooltip formatter={(value) => `¥${Number(value).toLocaleString()}`} />
+                    <Tooltip formatter={(value) => `¥${Number(value).toLocaleString('ja-JP')}`} />
                   </RechartsPieChart>
                 </ResponsiveContainer>
               </div>
@@ -4612,7 +6069,7 @@ const WealthSection = ({
             </div>
           </div>
 
-          <div className="xl:col-span-7 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-5">
+          <div className="xl:col-span-7 bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 p-5">
             <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
               <h3 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
                 <PieChart size={18} className="text-indigo-500" /> ファンドパフォーマンス推移 ({wealthChartMonths}ヶ月)
@@ -4624,28 +6081,47 @@ const WealthSection = ({
                 <option value={36}>36ヶ月</option>
               </select>
             </div>
-            <div className="h-52">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={fundGrowthData} margin={{ top: 8, right: 8, left: 8, bottom: 4 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                  <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} interval={0} angle={-28} textAnchor="end" height={46} />
-                  <YAxis
-                    tick={{ fontSize: 11, fill: '#64748b' }}
-                    axisLine={false}
-                    tickLine={false}
-                    domain={getAssetGrowthYAxisDomain(fundGrowthData)}
-                    tickFormatter={(v) => `${Math.round(v / 10000)}万`}
-                  />
-                  <Tooltip formatter={(v) => `¥${Number(v).toLocaleString()}`} labelFormatter={(l) => String(l || '')} />
-                  <Bar dataKey="value" fill="#3b82f6" radius={[5, 5, 0, 0]} maxBarSize={44} />
-                </BarChart>
-              </ResponsiveContainer>
+            <div className="space-y-2">
+              <div className="h-52">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={fundPerformanceBarRows} margin={{ top: 8, right: 8, left: 8, bottom: 4 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                    <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} interval={0} angle={-28} textAnchor="end" height={46} />
+                    <YAxis
+                      tick={{ fontSize: 11, fill: '#64748b' }}
+                      axisLine={false}
+                      tickLine={false}
+                      domain={getStockPerformanceYAxisDomain(fundPerformanceBarRows)}
+                      tickFormatter={(v) => `${Math.round(v / 10000)}万`}
+                    />
+                    <Tooltip content={StockPerformanceStackTooltip} wrapperStyle={{ outline: 'none' }} cursor={{ fill: 'rgba(148, 163, 184, 0.1)' }} />
+                    <Legend wrapperStyle={{ fontSize: 10 }} />
+                    <Bar name="ベース" dataKey="basisJpy" stackId="fundperf" fill="#93c5fd" maxBarSize={44} />
+                    <Bar name="含み益" dataKey="gainJpy" stackId="fundperf" fill="#2563eb" maxBarSize={44} radius={[5, 5, 0, 0]} />
+                    <Bar name="含み損" dataKey="lossJpy" stackId="fundperf" fill="#60a5fa" maxBarSize={44} radius={[5, 5, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="space-y-1.5 text-[10px] font-semibold leading-relaxed text-slate-500 dark:text-slate-400 px-0.5">
+                <p>
+                  <span className="font-black text-slate-600 dark:text-slate-300">読み方：</span>
+                  各柱は、その日時点の<span className="font-black">保有ロット</span>について、終値（取引無い日は直近終値）で円換算した<span className="font-black">評価額</span>と<span className="font-black">取得原価</span>（投資元本ベース）を積み上げたものです。最後の柱は画面と同じ最新のファンド評価です。
+                </p>
+                <p>
+                  <span className="font-black text-slate-600 dark:text-slate-300">ベース／含み益・損：</span>
+                  評価が原価以上のとき → 灰＝<span className="font-black">取得原価</span>、その上の青＝<span className="font-black">含み益</span>（柱の合計高さ＝評価額）。評価が原価を下回るとき → 灰＝<span className="font-black">評価額</span>、その上の薄青＝<span className="font-black">含み損</span>の分（合計高さ＝原価）。「ベース」が常に原価だけではありません。
+                </p>
+                <p>
+                  売却記録の<span className="font-black">実現損益</span>はこのグラフには入りません（上部レポートの「実現」）。売却でロットが減ると、以降の柱は評価・原価ともに下がって見えます。日足がDBに無い区間は補間になることがあります。
+                </p>
+              </div>
             </div>
           </div>
         </div>
       )}
+
       {isFundTab && !fundHasInputs && (
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-5">
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 p-5">
           <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">
             保有ファンドが未登録のため、国別配分・6ヶ月推移は表示されません。
           </p>
@@ -4654,15 +6130,22 @@ const WealthSection = ({
 
       {isFundTab && (
         <div className="space-y-4">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/60">
-              <h3 className="font-black text-slate-900 dark:text-white">ファンドパフォーマンス</h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">実際に買ったファンドを追加して、取引別・合算損益率を管理できます。</p>
-              <div className="mt-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white/70 dark:bg-slate-900/40 px-3 py-2">
-                <p className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
-                  例) ファンドコード: `2558.T` / 投資元本: `10000000` / 買付日: `2026/01/15` / 買付価格: `300000` → 「保有ファンドを追加」
-                </p>
+          <div id="mypage-owned-fund-section" className="scroll-mt-24 bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/60">
+              <div className="flex items-start justify-between gap-3">
+                <h3 id="fund-performance-heading" className="font-black text-slate-900 dark:text-white shrink-0">ファンドパフォーマンス</h3>
+                <button
+                  type="button"
+                  onClick={() => setFundTabHelpOpen(true)}
+                  className="shrink-0 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 p-2 text-slate-500 hover:text-orange-600 dark:hover:text-orange-400 hover:border-orange-300 dark:hover:border-orange-500 transition-colors"
+                  aria-label="保有ファンドの入力方法を表示"
+                  aria-describedby="fund-performance-heading"
+                  title="入力のしかた"
+                >
+                  <HelpCircle className="w-5 h-5" aria-hidden />
+                </button>
               </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">実際に買ったファンドを追加して、取引別・合算損益率を管理できます。</p>
               <div className="mt-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-[2.1fr_1fr_1fr_1fr_auto] gap-3 md:gap-2 xl:items-end">
                 {(() => {
                   const submitOwnedFund = async () => {
@@ -4761,7 +6244,9 @@ const WealthSection = ({
                                 }`}
                               >
                                 <span className="font-black text-slate-800 dark:text-slate-100">{item.name || item.symbol}</span>
-                                <span className="ml-1 text-slate-500 dark:text-slate-400">({item.symbol})</span>
+                                {String(item.name || '') !== String(item.symbol || '') ? (
+                                  <span className="ml-1 text-slate-500 dark:text-slate-400">({item.symbol})</span>
+                                ) : null}
                               </button>
                             ))}
                           </div>
@@ -4791,7 +6276,9 @@ const WealthSection = ({
                                   : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:border-orange-300 dark:hover:border-orange-600/60'
                               }`}
                             >
-                              {item.name || item.symbol} ({item.symbol})
+                              {String(item.name || '') !== String(item.symbol || '')
+                                ? `${item.name} (${item.symbol})`
+                                : (item.symbol || item.name)}
                             </button>
                             )
                           })}
@@ -4851,6 +6338,7 @@ const WealthSection = ({
               ) : (
                 groupedOwnedFunds.map((fund) => {
                   const pnlYen = fund.currentValueJpy - fund.totalCostJpy
+                  const symRealFund = realizedFundPnlBySymbol.get(fund.symbol) || 0
                   const buyDatesSorted = fund.lots.map((l) => toIsoDate(l.buyDate || '')).filter(Boolean).sort()
                   const buyDateDisplay = buyDatesSorted.length === 0
                     ? '—'
@@ -4859,43 +6347,61 @@ const WealthSection = ({
                       : `${formatDateJpSlash(buyDatesSorted[0])}〜`
                   const isExpanded = Boolean(expandedFundSymbols[fund.symbol])
                   return (
-                    <div key={`m-owned-fund-${fund.symbol}`} className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 shadow-sm space-y-3">
+                    <div key={`m-owned-fund-${fund.symbol}`} className={ownedPortfolioMobileCardClass}>
                       <div>
                         <p className="font-bold text-slate-900 dark:text-white text-[15px] leading-snug">{fund.name || fund.code}</p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{fund.code}</p>
+                        <span className={`${ownedPortfolioTickerPillClass} mt-0.5`}>{fund.code}</span>
                       </div>
                       <dl className="grid grid-cols-2 gap-x-2 gap-y-2 text-sm">
                         <dt className="text-slate-500 text-[11px] font-semibold">取引数</dt>
                         <dd className="text-right font-semibold tabular-nums">{fund.lots.length}</dd>
                         <dt className="text-slate-500 text-[11px] font-semibold">投資元本</dt>
-                        <dd className="text-right font-semibold tabular-nums whitespace-nowrap min-w-0">¥{Math.round(fund.totalCostJpy).toLocaleString()}</dd>
+                        <dd className="text-right font-semibold tabular-nums whitespace-nowrap min-w-0">¥{Math.round(fund.totalCostJpy).toLocaleString('ja-JP')}</dd>
                         <dt className="text-slate-500 text-[11px] font-semibold">買付日</dt>
                         <dd className="text-right font-semibold text-xs break-all">{buyDateDisplay}</dd>
                         <dt className="text-slate-500 text-[11px] font-semibold">平均買付</dt>
-                        <dd className="text-right font-semibold tabular-nums text-xs">{fund.units > 0 ? Number(fund.buyPrice || 0).toLocaleString(undefined, { maximumFractionDigits: 2 }) : '—'}</dd>
+                        <dd className="text-right font-semibold tabular-nums text-xs">{fund.units > 0 ? Number(fund.buyPrice || 0).toLocaleString('ja-JP', { maximumFractionDigits: 2 }) : '—'}</dd>
                         <dt className="text-slate-500 text-[11px] font-semibold">最新価格</dt>
-                        <dd className="text-right font-semibold tabular-nums">{fund.latestPrice > 0 ? Number(fund.latestPrice).toLocaleString() : '--'}</dd>
+                        <dd className="text-right font-semibold tabular-nums">{fund.latestPrice > 0 ? Number(fund.latestPrice).toLocaleString('ja-JP') : '--'}</dd>
                         <dt className="text-slate-500 text-[11px] font-semibold">現在価値</dt>
-                        <dd className="text-right font-bold tabular-nums whitespace-nowrap min-w-0">¥{Math.round(fund.currentValueJpy).toLocaleString()}</dd>
+                        <dd className="text-right font-bold tabular-nums whitespace-nowrap min-w-0">¥{Math.round(fund.currentValueJpy).toLocaleString('ja-JP')}</dd>
                         <dt className="text-slate-500 text-[11px] font-semibold">損益</dt>
-                        <dd className={`text-right font-black tabular-nums whitespace-nowrap min-w-0 ${pnlYen >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                          {`${pnlYen >= 0 ? '+' : ''}¥${Math.round(pnlYen).toLocaleString()}`}
+                        <dd className={`text-right font-black tabular-nums whitespace-nowrap min-w-0 ${pnlYen >= 0 ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'}`}>
+                          {`${pnlYen >= 0 ? '+' : ''}¥${Math.round(pnlYen).toLocaleString('ja-JP')}`}
                         </dd>
                         <dt className="text-slate-500 text-[11px] font-semibold">損益率</dt>
-                        <dd className={`text-right font-black tabular-nums whitespace-nowrap ${fund.pnlRate == null ? 'text-slate-400' : fund.pnlRate >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                        <dd className={`text-right font-black tabular-nums whitespace-nowrap ${fund.pnlRate == null ? 'text-slate-400' : fund.pnlRate >= 0 ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'}`}>
                           {fund.pnlRate == null ? '--' : `${fund.pnlRate >= 0 ? '+' : ''}${fund.pnlRate.toFixed(2)}%`}
                         </dd>
+                        {symRealFund !== 0 ? (
+                          <>
+                            <dt className="text-slate-500 text-[11px] font-semibold">実現累計</dt>
+                            <dd className={`text-right font-black tabular-nums whitespace-nowrap ${symRealFund >= 0 ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'}`}>
+                              {symRealFund >= 0 ? '+' : ''}¥{Math.round(symRealFund).toLocaleString('ja-JP')}
+                            </dd>
+                          </>
+                        ) : null}
                       </dl>
                       {fund.tradeDate ? (
                         <p className="text-[10px] text-slate-400">価格基準日: {formatDateJpSlash(fund.tradeDate)}</p>
                       ) : null}
-                      <button
-                        type="button"
-                        onClick={() => setExpandedFundSymbols((prev) => ({ ...prev, [fund.symbol]: !prev[fund.symbol] }))}
-                        className="w-full min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-600 text-sm font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/60"
-                      >
-                        {isExpanded ? '取引を隠す' : '取引を表示・編集'}
-                      </button>
+                      <div className="flex flex-col gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setExpandedFundSymbols((prev) => ({ ...prev, [fund.symbol]: !prev[fund.symbol] }))}
+                          className="w-full min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-600 text-sm font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/60"
+                        >
+                          {isExpanded ? '取引を隠す' : '取引を表示・編集'}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={Number(fund.units || 0) <= 0}
+                          onClick={() => openFundSellModal(fund)}
+                          className="w-full min-h-[44px] rounded-lg border border-indigo-300 dark:border-indigo-700 text-sm font-black text-indigo-800 dark:text-indigo-200 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 disabled:opacity-45 disabled:pointer-events-none"
+                        >
+                          売却を記録（実現損益）
+                        </button>
+                      </div>
                       {isExpanded && fund.lots.map((lot) => {
                         const lotPnlYen = lot.currentValueJpy - lot.totalCostJpy
                         const lotPnlRate = lot.totalCostJpy > 0 ? ((lot.currentValueJpy - lot.totalCostJpy) / lot.totalCostJpy) * 100 : null
@@ -4948,19 +6454,19 @@ const WealthSection = ({
                             <div className="grid grid-cols-2 gap-2 text-xs">
                               <div>
                                 <span className="text-slate-500 font-semibold">最新</span>
-                                <p className="font-semibold tabular-nums">{lot.effectiveLatestPrice > 0 ? Number(lot.effectiveLatestPrice).toLocaleString() : '--'}</p>
+                                <p className="font-semibold tabular-nums">{lot.effectiveLatestPrice > 0 ? Number(lot.effectiveLatestPrice).toLocaleString('ja-JP') : '--'}</p>
                                 <p className="text-[10px] text-slate-400">{lot.tradeDate ? formatDateJpSlash(lot.tradeDate) : ''}</p>
                               </div>
                               <div>
                                 <span className="text-slate-500 font-semibold">現在価値</span>
-                                <p className="font-semibold tabular-nums">{lot.currentValueJpy > 0 ? `¥${Math.round(lot.currentValueJpy).toLocaleString()}` : '--'}</p>
+                                <p className="font-semibold tabular-nums">{lot.currentValueJpy > 0 ? `¥${Math.round(lot.currentValueJpy).toLocaleString('ja-JP')}` : '--'}</p>
                               </div>
                             </div>
                             <div className="flex flex-col gap-1 text-xs font-black sm:flex-row sm:flex-wrap sm:gap-x-3 sm:gap-y-1">
-                              <span className={`whitespace-nowrap tabular-nums ${lotPnlYen >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                                損益 {`${lotPnlYen >= 0 ? '+' : ''}¥${Math.round(lotPnlYen).toLocaleString()}`}
+                              <span className={`whitespace-nowrap tabular-nums ${lotPnlYen >= 0 ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'}`}>
+                                損益 {`${lotPnlYen >= 0 ? '+' : ''}¥${Math.round(lotPnlYen).toLocaleString('ja-JP')}`}
                               </span>
-                              <span className={`whitespace-nowrap tabular-nums ${lotPnlRate == null ? 'text-slate-400' : lotPnlRate >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                              <span className={`whitespace-nowrap tabular-nums ${lotPnlRate == null ? 'text-slate-400' : lotPnlRate >= 0 ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'}`}>
                                 {lotPnlRate == null ? '--' : `${lotPnlRate >= 0 ? '+' : ''}${lotPnlRate.toFixed(2)}%`}
                               </span>
                             </div>
@@ -4974,11 +6480,17 @@ const WealthSection = ({
                               </button>
                               <button
                                 type="button"
-                                onClick={() => onRemoveOwnedFund?.(lot.id)}
-                                className="min-h-[44px] w-full rounded-lg border border-red-200 dark:border-red-800 text-sm font-bold text-red-600"
+                                onClick={() => {
+                                  if (!window.confirm(CONFIRM_DELETE_OWNED_LOT_JA)) return
+                                  onRemoveOwnedFund?.(lot.id)
+                                }}
+                                className="min-h-[44px] w-full rounded-lg border border-red-200 dark:border-red-800 text-sm font-bold text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/30"
                               >
-                                削除
+                                取引を削除
                               </button>
+                              <p className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 leading-snug">
+                                削除は実現損益に影響しません。実売却での口数減は「売却を記録」へ。
+                              </p>
                             </div>
                           </div>
                         )
@@ -4988,32 +6500,32 @@ const WealthSection = ({
                 })
               )}
               {groupedOwnedFunds.length > 0 && (
-                <div className="rounded-xl border-2 border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/30 p-3 space-y-2 text-sm">
-                  <div className="flex justify-between gap-3 font-bold text-slate-600 dark:text-slate-400">
+                <div className={ownedPortfolioMobileTotalsClass}>
+                  <div className="flex justify-between gap-3 font-bold text-slate-700 dark:text-slate-300">
                     <span>投資元本合計（円換算）</span>
-                    <span className="tabular-nums shrink-0">¥{Math.round(fundTotalInvestedJpy).toLocaleString()}</span>
+                    <span className="tabular-nums shrink-0">¥{Math.round(fundTotalInvestedJpy).toLocaleString('ja-JP')}</span>
                   </div>
-                  <div className="flex justify-between gap-3 font-black text-slate-900 dark:text-white">
+                  <div className="flex justify-between gap-3 font-black text-indigo-900 dark:text-indigo-200">
                     <span>現在評価額合計</span>
-                    <span className="tabular-nums shrink-0">¥{Math.round(fundTotalCurrentJpy).toLocaleString()}</span>
+                    <span className="tabular-nums shrink-0">¥{Math.round(fundTotalCurrentJpy).toLocaleString('ja-JP')}</span>
                   </div>
                 </div>
               )}
             </div>
-            <div className="hidden lg:block overflow-x-auto touch-pan-x">
-              <table className="w-full min-w-[1180px] xl:min-w-[1240px] text-base lg:text-sm tabular-nums">
-                <thead className="bg-slate-50 dark:bg-slate-800/40">
-                  <tr className="text-left text-slate-500 text-xs uppercase tracking-wider">
-                    <th className="px-3 py-3.5 lg:px-5 lg:py-3 whitespace-nowrap align-bottom max-w-[14rem] xl:max-w-[18rem]">ファンド名</th>
-                    <th className="px-3 py-3.5 lg:px-5 lg:py-3 text-right whitespace-nowrap align-bottom">取引数</th>
-                    <th className="px-3 py-3.5 lg:px-5 lg:py-3 text-right whitespace-nowrap align-bottom">投資元本(合計)</th>
-                    <th className="px-3 py-3.5 lg:px-5 lg:py-3 text-right whitespace-nowrap align-bottom">買付日</th>
-                    <th className="px-3 py-3.5 lg:px-5 lg:py-3 text-right whitespace-nowrap align-bottom">平均買付価格</th>
-                    <th className="px-3 py-3.5 lg:px-5 lg:py-3 text-right whitespace-nowrap align-bottom">最新価格</th>
-                    <th className="px-3 py-3.5 lg:px-5 lg:py-3 text-right whitespace-nowrap align-bottom">現在価値(円)</th>
-                    <th className="px-3 py-3.5 lg:px-5 lg:py-3 text-right whitespace-nowrap align-bottom">損益</th>
-                    <th className="px-3 py-3.5 lg:px-5 lg:py-3 text-right whitespace-nowrap align-bottom">損益率</th>
-                    <th className="px-3 py-3.5 lg:px-5 lg:py-3 text-right whitespace-nowrap align-bottom">管理</th>
+            <div className={ownedPortfolioTableScrollWrapClass}>
+              <table className={`${ownedPortfolioTableBaseClass} min-w-[1180px] xl:min-w-[1240px]`}>
+                <thead>
+                  <tr className={`text-left ${ownedPortfolioTheadRowClass}`}>
+                    <th className={`${ownedPortfolioThBaseClass} text-left max-w-[14rem] xl:max-w-[18rem]`}>ファンド名</th>
+                    <th className={`${ownedPortfolioThBaseClass} text-right`}>取引数</th>
+                    <th className={`${ownedPortfolioThBaseClass} text-right`}>投資元本(合計)</th>
+                    <th className={`${ownedPortfolioThBaseClass} text-right`}>買付日</th>
+                    <th className={`${ownedPortfolioThBaseClass} text-right`}>平均買付価格</th>
+                    <th className={`${ownedPortfolioThBaseClass} text-right`}>最新価格</th>
+                    <th className={`${ownedPortfolioThBaseClass} text-right`}>現在価値(円)</th>
+                    <th className={`${ownedPortfolioThBaseClass} text-right`}>損益</th>
+                    <th className={`${ownedPortfolioThBaseClass} text-right`}>損益率</th>
+                    <th className={`${ownedPortfolioThBaseClass} text-right`}>管理</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -5026,6 +6538,7 @@ const WealthSection = ({
                   )}
                   {groupedOwnedFunds.map((fund) => {
                     const pnlYen = fund.currentValueJpy - fund.totalCostJpy
+                    const symRealFund = realizedFundPnlBySymbol.get(fund.symbol) || 0
                     const buyDatesSorted = fund.lots.map((l) => toIsoDate(l.buyDate || '')).filter(Boolean).sort()
                     const buyDateDisplay = buyDatesSorted.length === 0
                       ? '—'
@@ -5035,40 +6548,55 @@ const WealthSection = ({
                     const isExpanded = Boolean(expandedFundSymbols[fund.symbol])
                     return (
                       <Fragment key={`wealth-fund-group-${fund.symbol}`}>
-                        <tr className="border-t border-slate-100 dark:border-slate-800">
-                          <td className="px-3 py-4 sm:px-5 align-top min-w-0 max-w-[14rem] xl:max-w-[18rem]">
-                            <p className="font-bold text-slate-800 dark:text-slate-200 text-[15px] lg:text-sm break-words leading-snug">{fund.name || fund.code}</p>
-                            <p className="text-xs text-slate-500 dark:text-slate-400 break-all">{fund.code}</p>
+                        <tr className={ownedPortfolioTbodyRowClass}>
+                          <td className={`${ownedPortfolioNameCellClass} !py-2 sm:!py-2.5 lg:!py-2`}>
+                            <p className="font-bold text-slate-900 dark:text-slate-50 text-[15px] lg:text-sm break-words leading-snug">{fund.name || fund.code}</p>
+                            <span className={`${ownedPortfolioTickerPillClass} break-all`}>{fund.code}</span>
                           </td>
-                          <td className="px-3 py-4 sm:px-5 text-right font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap">{fund.lots.length}</td>
-                          <td className="px-3 py-4 sm:px-5 text-right font-semibold text-slate-700 dark:text-slate-300 text-[15px] lg:text-sm whitespace-nowrap">
-                            ¥{Math.round(fund.totalCostJpy).toLocaleString()}
+                          <td className="px-3 py-2 sm:px-5 lg:py-2 text-right font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap">{fund.lots.length}</td>
+                          <td className="px-3 py-2 sm:px-5 lg:py-2 text-right font-semibold text-slate-700 dark:text-slate-300 text-[15px] lg:text-sm whitespace-nowrap">
+                            ¥{Math.round(fund.totalCostJpy).toLocaleString('ja-JP')}
                           </td>
-                          <td className="px-3 py-4 sm:px-5 text-right font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap">{buyDateDisplay}</td>
-                          <td className="px-3 py-4 sm:px-5 text-right font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap">
-                            {fund.units > 0 ? Number(fund.buyPrice || 0).toLocaleString(undefined, { maximumFractionDigits: 2 }) : '—'}
+                          <td className="px-3 py-2 sm:px-5 lg:py-2 text-right font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap">{buyDateDisplay}</td>
+                          <td className="px-3 py-2 sm:px-5 lg:py-2 text-right font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap">
+                            {fund.units > 0 ? Number(fund.buyPrice || 0).toLocaleString('ja-JP', { maximumFractionDigits: 2 }) : '—'}
                           </td>
-                          <td className="px-3 py-4 sm:px-5 text-right font-semibold text-slate-900 dark:text-white whitespace-nowrap">
-                            {fund.latestPrice > 0 ? Number(fund.latestPrice).toLocaleString() : '--'}
-                            <p className="text-xs lg:text-[11px] text-slate-400 whitespace-normal">{fund.tradeDate ? formatDateJpSlash(fund.tradeDate) : ''}</p>
+                          <td className="px-3 py-2 sm:px-5 lg:py-2 text-right font-semibold text-slate-900 dark:text-white whitespace-nowrap">
+                            {fund.latestPrice > 0 ? Number(fund.latestPrice).toLocaleString('ja-JP') : '--'}
+                            <p className="text-xs lg:text-[11px] text-slate-400 whitespace-normal leading-tight">{fund.tradeDate ? formatDateJpSlash(fund.tradeDate) : ''}</p>
                           </td>
-                          <td className="px-3 py-4 sm:px-5 text-right font-semibold text-slate-900 dark:text-white text-[15px] lg:text-sm whitespace-nowrap">
-                            {fund.currentValueJpy > 0 ? `¥${Math.round(fund.currentValueJpy).toLocaleString()}` : '--'}
+                          <td className="px-3 py-2 sm:px-5 lg:py-2 text-right font-black text-indigo-900 dark:text-indigo-200 text-[15px] lg:text-sm whitespace-nowrap">
+                            {fund.currentValueJpy > 0 ? `¥${Math.round(fund.currentValueJpy).toLocaleString('ja-JP')}` : '--'}
                           </td>
-                          <td className={`px-3 py-4 sm:px-5 text-right font-black text-[15px] lg:text-sm whitespace-nowrap tabular-nums ${pnlYen >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                            {`${pnlYen >= 0 ? '+' : ''}¥${Math.round(pnlYen).toLocaleString()}`}
+                          <td className={`px-3 py-2 sm:px-5 lg:py-2 text-right font-black text-[15px] lg:text-sm whitespace-nowrap tabular-nums ${pnlYen >= 0 ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'}`}>
+                            {`${pnlYen >= 0 ? '+' : ''}¥${Math.round(pnlYen).toLocaleString('ja-JP')}`}
                           </td>
-                          <td className={`px-3 py-4 sm:px-5 text-right font-black text-[15px] lg:text-sm whitespace-nowrap tabular-nums ${fund.pnlRate == null ? 'text-slate-400' : fund.pnlRate >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                          <td className={`px-3 py-2 sm:px-5 lg:py-2 text-right font-black text-[15px] lg:text-sm whitespace-nowrap tabular-nums ${fund.pnlRate == null ? 'text-slate-400' : fund.pnlRate >= 0 ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'}`}>
                             {fund.pnlRate == null ? '--' : `${fund.pnlRate >= 0 ? '+' : ''}${fund.pnlRate.toFixed(2)}%`}
+                            {symRealFund !== 0 ? (
+                              <span className={`mt-1 block text-[10px] lg:text-[9px] font-bold tabular-nums ${symRealFund >= 0 ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'}`}>
+                                実現累計 {symRealFund >= 0 ? '+' : ''}¥{Math.round(symRealFund).toLocaleString('ja-JP')}
+                              </span>
+                            ) : null}
                           </td>
-                          <td className="px-3 py-4 sm:px-5 text-right whitespace-nowrap">
-                            <button
-                              type="button"
-                              onClick={() => setExpandedFundSymbols((prev) => ({ ...prev, [fund.symbol]: !prev[fund.symbol] }))}
-                              className="min-h-[44px] lg:min-h-0 px-3 py-2.5 lg:py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-sm lg:text-xs font-bold text-slate-600 dark:text-slate-300 hover:border-orange-400"
-                            >
-                              {isExpanded ? '取引を隠す' : '取引を表示'}
-                            </button>
+                          <td className="px-3 py-2 sm:px-5 lg:py-2 text-right whitespace-nowrap align-middle">
+                            <div className="flex flex-row flex-wrap items-center justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setExpandedFundSymbols((prev) => ({ ...prev, [fund.symbol]: !prev[fund.symbol] }))}
+                                className="min-h-[44px] lg:min-h-0 px-3 py-2.5 lg:py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-sm lg:text-xs font-bold text-slate-600 dark:text-slate-300 hover:border-orange-400"
+                              >
+                                {isExpanded ? '取引を隠す' : '取引を表示'}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={Number(fund.units || 0) <= 0}
+                                onClick={() => openFundSellModal(fund)}
+                                className="min-h-[44px] lg:min-h-0 shrink-0 px-3 py-2.5 lg:py-1.5 rounded-lg border border-indigo-300 dark:border-indigo-700 text-sm lg:text-xs font-black text-indigo-800 dark:text-indigo-200 hover:bg-indigo-50 dark:hover:bg-indigo-950/25 disabled:opacity-45 disabled:pointer-events-none"
+                              >
+                                売却記録
+                              </button>
+                            </div>
                           </td>
                         </tr>
                         {isExpanded && fund.lots.map((lot) => {
@@ -5076,7 +6604,7 @@ const WealthSection = ({
                           const lotPnlRate = lot.totalCostJpy > 0 ? ((lot.currentValueJpy - lot.totalCostJpy) / lot.totalCostJpy) * 100 : null
                           const raw = lot.raw || {}
                           return (
-                            <tr key={`wealth-fund-lot-${lot.id}`} className="border-t border-slate-100 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-900/30">
+                            <tr key={`wealth-fund-lot-${lot.id}`} className={ownedPortfolioLotRowClass}>
                               <td className="px-3 py-3 sm:px-5 text-sm lg:text-xs text-slate-500 dark:text-slate-400 align-top min-w-0 max-w-[14rem] xl:max-w-[18rem]">└ 取引</td>
                               <td className="px-3 py-3 sm:px-5 text-right text-sm lg:text-xs text-slate-400 dark:text-slate-500 whitespace-nowrap">-</td>
                               <td className="px-3 py-3 sm:px-5 text-right whitespace-nowrap">
@@ -5119,20 +6647,20 @@ const WealthSection = ({
                                 />
                               </td>
                               <td className="px-3 py-3 sm:px-5 text-right font-semibold text-slate-900 dark:text-white text-sm lg:text-xs whitespace-nowrap">
-                                {lot.effectiveLatestPrice > 0 ? Number(lot.effectiveLatestPrice).toLocaleString() : '--'}
+                                {lot.effectiveLatestPrice > 0 ? Number(lot.effectiveLatestPrice).toLocaleString('ja-JP') : '--'}
                                 <p className="text-xs lg:text-[11px] text-slate-400 whitespace-normal">{lot.tradeDate ? formatDateJpSlash(lot.tradeDate) : ''}</p>
                               </td>
                               <td className="px-3 py-3 sm:px-5 text-right font-semibold text-slate-900 dark:text-white text-sm lg:text-xs whitespace-nowrap">
-                                {lot.currentValueJpy > 0 ? `¥${Math.round(lot.currentValueJpy).toLocaleString()}` : '--'}
+                                {lot.currentValueJpy > 0 ? `¥${Math.round(lot.currentValueJpy).toLocaleString('ja-JP')}` : '--'}
                               </td>
-                              <td className={`px-3 py-3 sm:px-5 text-right font-black text-sm lg:text-xs whitespace-nowrap tabular-nums ${lotPnlYen >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                                {`${lotPnlYen >= 0 ? '+' : ''}¥${Math.round(lotPnlYen).toLocaleString()}`}
+                              <td className={`px-3 py-3 sm:px-5 text-right font-black text-sm lg:text-xs whitespace-nowrap tabular-nums ${lotPnlYen >= 0 ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'}`}>
+                                {`${lotPnlYen >= 0 ? '+' : ''}¥${Math.round(lotPnlYen).toLocaleString('ja-JP')}`}
                               </td>
-                              <td className={`px-3 py-3 sm:px-5 text-right font-black text-sm lg:text-xs whitespace-nowrap tabular-nums ${lotPnlRate == null ? 'text-slate-400' : lotPnlRate >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                              <td className={`px-3 py-3 sm:px-5 text-right font-black text-sm lg:text-xs whitespace-nowrap tabular-nums ${lotPnlRate == null ? 'text-slate-400' : lotPnlRate >= 0 ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'}`}>
                                 {lotPnlRate == null ? '--' : `${lotPnlRate >= 0 ? '+' : ''}${lotPnlRate.toFixed(2)}%`}
                               </td>
-                              <td className="px-3 py-3 sm:px-5 text-right whitespace-nowrap">
-                                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2">
+                              <td className="px-3 py-3 sm:px-5 text-right whitespace-nowrap max-w-[11rem]">
+                                <div className="flex flex-col gap-1.5 items-end">
                                   <button
                                     type="button"
                                     onClick={() => onLoadOwnedFundPrice?.(lot.id, fund.symbol, lot.buyDate)}
@@ -5142,12 +6670,18 @@ const WealthSection = ({
                                   </button>
                                   <button
                                     type="button"
-                                    onClick={() => onRemoveOwnedFund?.(lot.id)}
-                                    className="min-h-[44px] sm:min-h-0 px-3 py-2.5 sm:px-2 sm:py-1 rounded-lg border border-red-200 dark:border-red-800 text-sm sm:text-[11px] font-bold text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+                                    onClick={() => {
+                                      if (!window.confirm(CONFIRM_DELETE_OWNED_LOT_JA)) return
+                                      onRemoveOwnedFund?.(lot.id)
+                                    }}
+                                    className="min-h-[44px] sm:min-h-0 px-3 py-2.5 sm:px-2 sm:py-1 rounded-lg border border-red-200 dark:border-red-800 text-sm sm:text-[11px] font-bold text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/30"
                                   >
-                                    削除
+                                    取引削除
                                   </button>
                                 </div>
+                                <p className="mt-2 text-left sm:text-right text-[9px] font-semibold text-slate-500 dark:text-slate-400 leading-snug">
+                                  削除は実現損益に影響しません
+                                </p>
                               </td>
                             </tr>
                           )
@@ -5156,23 +6690,31 @@ const WealthSection = ({
                     )
                   })}
                 </tbody>
-                <tfoot className="bg-slate-50 dark:bg-slate-800/50 border-t-2 border-slate-200 dark:border-slate-700">
+                <tfoot className={ownedPortfolioTfootClass}>
                   <tr>
-                    <td colSpan={6} className="px-3 py-2.5 sm:px-5 sm:py-2 text-right font-bold text-slate-600 dark:text-slate-400 text-sm lg:text-xs">投資元本合計（円換算）</td>
-                    <td className="px-3 py-2.5 sm:px-5 sm:py-2 text-right font-bold text-slate-800 dark:text-slate-200 text-[15px] lg:text-sm whitespace-nowrap tabular-nums">¥{Math.round(fundTotalInvestedJpy).toLocaleString()}</td>
+                    <td colSpan={6} className="px-3 py-2.5 sm:px-5 sm:py-2 text-right font-bold text-slate-700 dark:text-slate-300 text-sm lg:text-xs">投資元本合計（円換算）</td>
+                    <td className="px-3 py-2.5 sm:px-5 sm:py-2 text-right font-bold text-slate-900 dark:text-slate-100 text-[15px] lg:text-sm whitespace-nowrap tabular-nums">¥{Math.round(fundTotalInvestedJpy).toLocaleString('ja-JP')}</td>
                     <td colSpan={3} className="px-3 sm:px-5 py-2" />
                   </tr>
                   <tr>
-                    <td colSpan={6} className="px-3 py-3.5 sm:px-5 sm:py-3 text-right font-black text-slate-800 dark:text-slate-200 text-sm lg:text-xs">現在評価額合計</td>
-                    <td className="px-3 py-3.5 sm:px-5 sm:py-3 text-right font-black text-slate-900 dark:text-white text-[15px] lg:text-sm whitespace-nowrap tabular-nums">¥{Math.round(fundTotalCurrentJpy).toLocaleString()}</td>
+                    <td colSpan={6} className="px-3 py-3.5 sm:px-5 sm:py-3 text-right font-black text-slate-800 dark:text-slate-100 text-sm lg:text-xs">現在評価額合計</td>
+                    <td className="px-3 py-3.5 sm:px-5 sm:py-3 text-right font-black text-indigo-900 dark:text-indigo-200 text-[15px] lg:text-sm whitespace-nowrap tabular-nums">¥{Math.round(fundTotalCurrentJpy).toLocaleString('ja-JP')}</td>
                     <td colSpan={3} className="px-3 sm:px-5 py-3" />
                   </tr>
                 </tfoot>
               </table>
             </div>
+            <p className="px-4 sm:px-5 py-3 text-xs sm:text-[11px] text-slate-500 dark:text-slate-400 border-t border-slate-100 dark:border-slate-800 leading-relaxed">
+              ※ 買付日入力後の「終値反映」は、その日以前の直近終値を買付価格に入れます（買付日は変えません）。
+              <span className="block mt-2">
+                投資元本・買付価格・買付日の編集は保存され損益に反映されます。誤追加した取引は各行から削除できます（
+                <span className="font-bold text-slate-700 dark:text-slate-200">削除は実現損益に影響しません</span>
+                ）。実売却で口数を減らす場合は「売却記録」を使ってください。
+              </span>
+            </p>
           </div>
-          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/60">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/60">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <h3 className="font-black text-slate-900 dark:text-white">保存した配分セット</h3>
@@ -5235,8 +6777,8 @@ const WealthSection = ({
               )}
             </div>
           </div>
-          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/60">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/60">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <h3 className="text-lg font-black text-slate-900 dark:text-white">ファンドウォッチリスト</h3>
@@ -5287,7 +6829,7 @@ const WealthSection = ({
                               </span>
                             </div>
                           </div>
-                          <span className={`shrink-0 text-base font-black tabular-nums ${oneYear >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                          <span className={`shrink-0 text-base font-black tabular-nums ${oneYear >= 0 ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'}`}>
                             {`${oneYear >= 0 ? '+' : ''}${oneYear.toFixed(2)}%`}
                           </span>
                         </div>
@@ -5337,61 +6879,73 @@ const WealthSection = ({
 
       {!isFundTab && (
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
-        <div id={isWealthTab ? 'wealth-allocation-chart' : undefined} className={`${isStockTab || isWealthTab ? 'xl:col-span-5' : 'xl:col-span-7'} bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden`}>
-          <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/60">
+        <div id={isWealthTab ? 'wealth-allocation-chart' : undefined} className={`${isStockTab || isWealthTab ? 'xl:col-span-5' : 'xl:col-span-7'} bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 overflow-hidden`}>
+          <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/60">
             <h3 className="font-black text-slate-900 dark:text-white">{isWealthTab ? '株式/ファンド構成比' : isStockTab ? '株式 セクター別配分 (円換算)' : isFundTab ? 'ファンド 国別配分 (円換算)' : '資産成長トレンド (6ヶ月)'}</h3>
           </div>
           <div className="p-5">
             <div className="h-52">
               {isWealthTab ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <RechartsPieChart>
-                    <Pie
-                      data={[
-                        { name: '株式', value: stockTotalCurrentJpy, color: '#10b981' },
-                        { name: 'ファンド', value: fundTotalCurrentJpy, color: '#3b82f6' },
-                      ].filter((r) => Number(r.value || 0) > 0)}
-                      dataKey="value"
-                      nameKey="name"
-                      outerRadius={84}
-                      innerRadius={48}
-                      paddingAngle={
-                        [
-                          { name: '株式', value: stockTotalCurrentJpy, color: '#10b981' },
-                          { name: 'ファンド', value: fundTotalCurrentJpy, color: '#3b82f6' },
-                        ].filter((r) => Number(r.value || 0) > 0).length > 1 ? 2 : 0
-                      }
-                      minAngle={MY_PAGE_PIE_MIN_ANGLE}
-                      stroke="none"
-                    >
-                      {[
-                        { name: '株式', value: stockTotalCurrentJpy, color: '#10b981' },
-                        { name: 'ファンド', value: fundTotalCurrentJpy, color: '#3b82f6' },
-                      ].filter((r) => Number(r.value || 0) > 0).map((entry) => (
-                        <Cell key={`wealth-split-${entry.name}`} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip formatter={(value) => `¥${Number(value).toLocaleString()}`} />
-                  </RechartsPieChart>
-                </ResponsiveContainer>
+                (() => {
+                  const wealthPieSlices = [
+                    { name: '株式', value: stockTotalCurrentJpy, color: '#10b981' },
+                    { name: 'ファンド', value: fundTotalCurrentJpy, color: '#3b82f6' },
+                  ].filter((r) => Number(r.value || 0) > 0)
+                  if (wealthPieSlices.length === 0) {
+                    return (
+                      <div className="h-full flex flex-col items-center justify-center text-center px-3">
+                        <p className="text-sm font-bold text-slate-500 dark:text-slate-400 leading-relaxed">
+                          株式またはファンドの保有を登録すると、構成比チャートが表示されます。
+                        </p>
+                      </div>
+                    )
+                  }
+                  return (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <RechartsPieChart>
+                        <Pie
+                          data={wealthPieSlices}
+                          dataKey="value"
+                          nameKey="name"
+                          outerRadius={84}
+                          innerRadius={48}
+                          paddingAngle={wealthPieSlices.length > 1 ? 2 : 0}
+                          minAngle={MY_PAGE_PIE_MIN_ANGLE}
+                          stroke="none"
+                        >
+                          {wealthPieSlices.map((entry) => (
+                            <Cell key={`wealth-split-${entry.name}`} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip formatter={(value) => `¥${Number(value).toLocaleString('ja-JP')}`} />
+                      </RechartsPieChart>
+                    </ResponsiveContainer>
+                  )
+                })()
+              ) : isStockTab && stockSectorData.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center text-center px-3">
+                  <p className="text-sm font-bold text-slate-500 dark:text-slate-400 leading-relaxed">
+                    保有株式を追加すると、セクター別の配分が表示されます。
+                  </p>
+                </div>
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
                   <RechartsPieChart>
                     <Pie
-                      data={isStockTab ? stockSectorData : fundCountryData}
+                      data={stockSectorData}
                       dataKey="value"
                       nameKey="name"
                       outerRadius={84}
                       innerRadius={48}
                       paddingAngle={2}
-                      minAngle={isStockTab ? 0 : MY_PAGE_PIE_MIN_ANGLE}
+                      minAngle={0}
                       stroke="none"
                     >
-                      {(isStockTab ? stockSectorData : fundCountryData).map((entry) => (
+                      {stockSectorData.map((entry) => (
                         <Cell key={`asset-split-${entry.name}`} fill={entry.color} />
                       ))}
                     </Pie>
-                    <Tooltip formatter={(value) => `¥${Number(value).toLocaleString()}`} />
+                    <Tooltip formatter={(value) => `¥${Number(value).toLocaleString('ja-JP')}`} />
                   </RechartsPieChart>
                 </ResponsiveContainer>
               )}
@@ -5436,7 +6990,7 @@ const WealthSection = ({
           </div>
         </div>
 
-        <div className={`${isStockTab || isWealthTab ? 'xl:col-span-7' : 'xl:col-span-5'} bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-5`}>
+        <div className={`${isStockTab || isWealthTab ? 'xl:col-span-7' : 'xl:col-span-5'} bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 p-5`}>
           <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
             <h3 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
               <PieChart size={18} className="text-indigo-500" /> {isWealthTab ? '資産成長トレンド' : isStockTab ? '株式パフォーマンス推移' : isFundTab ? 'ファンドパフォーマンス推移' : '株式/ファンド構成比'}
@@ -5471,40 +7025,40 @@ const WealthSection = ({
               </ResponsiveContainer>
             </div>
           ) : isStockTab ? (
-            <div className="h-52">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={stockGrowthData} margin={{ top: 8, right: 8, left: 8, bottom: 4 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                  <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} interval={0} angle={-28} textAnchor="end" height={46} />
-                  <YAxis
-                    tick={{ fontSize: 11, fill: '#64748b' }}
-                    axisLine={false}
-                    tickLine={false}
-                    domain={getAssetGrowthYAxisDomain(stockGrowthData)}
-                    tickFormatter={(v) => `${Math.round(v / 10000)}万`}
-                  />
-                  <Tooltip formatter={(v) => `¥${Number(v).toLocaleString()}`} labelFormatter={(l) => String(l || '')} />
-                  <Bar dataKey="value" fill="#10b981" radius={[5, 5, 0, 0]} maxBarSize={44} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          ) : isFundTab ? (
-            <div className="h-52">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={fundGrowthData} margin={{ top: 8, right: 8, left: 8, bottom: 4 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                  <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} interval={0} angle={-28} textAnchor="end" height={46} />
-                  <YAxis
-                    tick={{ fontSize: 11, fill: '#64748b' }}
-                    axisLine={false}
-                    tickLine={false}
-                    domain={getAssetGrowthYAxisDomain(fundGrowthData)}
-                    tickFormatter={(v) => `${Math.round(v / 10000)}万`}
-                  />
-                  <Tooltip formatter={(v) => `¥${Number(v).toLocaleString()}`} labelFormatter={(l) => String(l || '')} />
-                  <Bar dataKey="value" fill="#3b82f6" radius={[5, 5, 0, 0]} maxBarSize={44} />
-                </BarChart>
-              </ResponsiveContainer>
+            <div className="space-y-2">
+              <div className="h-52">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={stockPerformanceBarRows} margin={{ top: 8, right: 8, left: 8, bottom: 4 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                    <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} interval={0} angle={-28} textAnchor="end" height={46} />
+                    <YAxis
+                      tick={{ fontSize: 11, fill: '#64748b' }}
+                      axisLine={false}
+                      tickLine={false}
+                      domain={getStockPerformanceYAxisDomain(stockPerformanceBarRows)}
+                      tickFormatter={(v) => `${Math.round(v / 10000)}万`}
+                    />
+                    <Tooltip content={StockPerformanceStackTooltip} wrapperStyle={{ outline: 'none' }} cursor={{ fill: 'rgba(148, 163, 184, 0.1)' }} />
+                    <Legend wrapperStyle={{ fontSize: 10 }} />
+                    <Bar name="ベース" dataKey="basisJpy" stackId="stk" fill="#94a3b8" maxBarSize={44} />
+                    <Bar name="含み益" dataKey="gainJpy" stackId="stk" fill="#10b981" maxBarSize={44} radius={[5, 5, 0, 0]} />
+                    <Bar name="含み損" dataKey="lossJpy" stackId="stk" fill="#f43f5e" maxBarSize={44} radius={[5, 5, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="space-y-1.5 text-[10px] font-semibold leading-relaxed text-slate-500 dark:text-slate-400 px-0.5">
+                <p>
+                  <span className="font-black text-slate-600 dark:text-slate-300">読み方：</span>
+                  各柱は、その日時点の<span className="font-black">保有ロット</span>について、終値（取引無い日は直近終値）で円換算した<span className="font-black">評価額</span>と<span className="font-black">取得原価</span>を積み上げたものです。最後の柱は画面と同じ最新の株式評価です。
+                </p>
+                <p>
+                  <span className="font-black text-slate-600 dark:text-slate-300">ベース／含み益・損：</span>
+                  評価が原価以上のとき → 灰＝<span className="font-black">取得原価</span>、その上の緑＝<span className="font-black">含み益</span>（柱の合計高さ＝評価額）。評価が原価を下回るとき → 灰＝<span className="font-black">評価額</span>、その上の赤＝<span className="font-black">含み損</span>の分（合計高さ＝原価）。「ベース」が常に原価だけではありません。
+                </p>
+                <p>
+                  売却記録の<span className="font-black">実現損益</span>はこのグラフには入りません（上部レポートの「実現」）。売却でロットが減ると、以降の柱は評価・原価ともに下がって見えます。日足がDBに無い区間は補間になることがあります。
+                </p>
+              </div>
             </div>
           ) : null}
         </div>
@@ -5512,9 +7066,9 @@ const WealthSection = ({
       )}
 
       {isWealthTab && (
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 xl:items-stretch">
           {totalCurrentValue > 0 ? (
-            <div className="xl:col-span-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-5">
+            <div className="xl:col-span-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 p-5 flex flex-col min-h-0 max-xl:h-auto xl:h-full">
               <h3 className="font-black text-slate-900 dark:text-white flex items-center gap-2">
                 <PieChart size={16} className="text-indigo-500" /> 構成比アラート
               </h3>
@@ -5536,51 +7090,417 @@ const WealthSection = ({
                   構成比の内訳を見る
                 </button>
               </div>
+              {(() => {
+                const targetStockW = Math.max(0, Math.min(100, Number(TARGET_STOCK_RATIO_PCT) || 0))
+                const curStockW = Math.max(0, Math.min(100, Number(currentStockRatioPct) || 0))
+                const curFundW = Math.max(0, Math.min(100, Number(currentFundRatioPct) || 0))
+                const norm = curStockW + curFundW
+                const curStockBar = norm > 0 ? (curStockW / norm) * 100 : 0
+                const curFundBar = norm > 0 ? (curFundW / norm) * 100 : 0
+                const targetStockJpy = totalCurrentValue * (targetStockW / 100)
+                const stockDeltaJpy = targetStockJpy - Number(stockTotalCurrentJpy || 0)
+                const showYenHint = totalCurrentValue > 0 && Math.abs(Number(stockRatioGapPct) || 0) >= 1
+                const yenHint =
+                  showYenHint && Number.isFinite(stockDeltaJpy) && Math.abs(stockDeltaJpy) >= 1
+                    ? `評価額ベースで目標の株式比率に近づける目安は、株式をおおよそ ${
+                        stockDeltaJpy >= 0 ? '+' : '−'
+                      }¥${Math.round(Math.abs(stockDeltaJpy)).toLocaleString('ja-JP')}（売買・手数料・税は含みません）。`
+                    : null
+                return (
+                  <div className="mt-4 flex flex-col min-h-0 xl:flex-1 xl:min-h-0">
+                    <div className="space-y-3">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-2">
+                          目標と現在（棒は左＝株式 / 右＝ファンド）
+                        </p>
+                        <div className="space-y-2.5">
+                          <div>
+                            <div className="flex items-center justify-between gap-2 mb-1">
+                              <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300">目標</span>
+                              <span className="text-[10px] font-mono font-bold tabular-nums text-slate-500 dark:text-slate-400">
+                                株 {targetStockW.toFixed(0)}% / ファ {Math.max(0, 100 - targetStockW).toFixed(0)}%
+                              </span>
+                            </div>
+                            <div
+                              className="flex h-2 w-full overflow-hidden rounded-full bg-slate-200/80 dark:bg-slate-700/80"
+                              role="img"
+                              aria-label={`目標 株式${targetStockW.toFixed(0)}パーセント、ファンド${Math.max(0, 100 - targetStockW).toFixed(0)}パーセント`}
+                            >
+                              <div className="h-full bg-emerald-500 dark:bg-emerald-500/90" style={{ width: `${targetStockW}%` }} />
+                              <div className="h-full bg-blue-500 dark:bg-blue-500/90" style={{ width: `${100 - targetStockW}%` }} />
+                            </div>
+                          </div>
+                          <div>
+                            <div className="flex items-center justify-between gap-2 mb-1">
+                              <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300">現在</span>
+                              <span className="text-[10px] font-mono font-bold tabular-nums text-slate-500 dark:text-slate-400">
+                                株 {curStockW.toFixed(0)}% / ファ {curFundW.toFixed(0)}%
+                              </span>
+                            </div>
+                            <div
+                              className="flex h-2 w-full overflow-hidden rounded-full bg-slate-200/80 dark:bg-slate-700/80"
+                              role="img"
+                              aria-label={`現在 株式${curStockW.toFixed(0)}パーセント、ファンド${curFundW.toFixed(0)}パーセント`}
+                            >
+                              <div className="h-full bg-emerald-500 dark:bg-emerald-500/90" style={{ width: `${curStockBar}%` }} />
+                              <div className="h-full bg-blue-500 dark:bg-blue-500/90" style={{ width: `${curFundBar}%` }} />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      {yenHint ? (
+                        <p className="text-[11px] font-semibold leading-relaxed text-slate-600 dark:text-slate-300">{yenHint}</p>
+                      ) : null}
+                      {monthlyUnrealizedPnlSplit.mode === 'bar' ? (
+                        <div className="mt-3 pt-3 border-t border-slate-200/90 dark:border-slate-700/80">
+                          <div className="rounded-xl border border-slate-200/90 dark:border-slate-600/80 bg-slate-50/90 dark:bg-slate-800/50 px-3 py-2.5">
+                            <p className="text-[11px] sm:text-xs font-bold text-slate-600 dark:text-slate-300">
+                              含み損益の寄与度（合計損益に占める割合）
+                            </p>
+                            <p className="mt-1 text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">
+                              ※ 上の「目標／現在」バー（評価額の構成比）とは別指標です（損益の大きさの分け合い）。
+                            </p>
+                            <div
+                              className="mt-2 flex h-2.5 w-full overflow-hidden rounded-full bg-slate-200/80 dark:bg-slate-700/80"
+                              role="img"
+                              aria-label={`含み損益の合計に対し、株式が${monthlyUnrealizedPnlSplit.stockPct.toFixed(0)}パーセント、ファンドが${monthlyUnrealizedPnlSplit.fundPct.toFixed(0)}パーセントを占めます`}
+                            >
+                              <div
+                                className="h-full bg-emerald-500 dark:bg-emerald-500/90"
+                                style={{ width: `${monthlyUnrealizedPnlSplit.stockBarW}%` }}
+                              />
+                              <div
+                                className="h-full bg-blue-500 dark:bg-blue-500/90"
+                                style={{ width: `${monthlyUnrealizedPnlSplit.fundBarW}%` }}
+                              />
+                            </div>
+                            <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[10px] sm:text-[11px] font-bold tabular-nums">
+                              <span className="text-emerald-700 dark:text-emerald-300">
+                                株式（損益シェア）{' '}
+                                {monthlyUnrealizedPnlSplit.stockPct >= 10
+                                  ? monthlyUnrealizedPnlSplit.stockPct.toFixed(0)
+                                  : monthlyUnrealizedPnlSplit.stockPct.toFixed(1)}
+                                %
+                              </span>
+                              <span className="text-blue-700 dark:text-blue-300">
+                                ファンド（損益シェア）{' '}
+                                {monthlyUnrealizedPnlSplit.fundPct >= 10
+                                  ? monthlyUnrealizedPnlSplit.fundPct.toFixed(0)
+                                  : monthlyUnrealizedPnlSplit.fundPct.toFixed(1)}
+                                %
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                    <div className="min-h-3 shrink-0 xl:flex-1" aria-hidden="true" />
+                    <div className="space-y-3 pt-3 border-t border-slate-200/90 dark:border-slate-700/80">
+                      <p className="text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">
+                        株式比率のズレが <span className="font-black">±15%</span> を超えると、上のギャップ表示を強調します。
+                      </p>
+                      <p className="text-[10px] leading-relaxed text-slate-400 dark:text-slate-500">
+                        目標比率と目安金額は参考情報です。投資助言ではありません。
+                      </p>
+                    </div>
+                  </div>
+                )
+              })()}
             </div>
           ) : null}
-          <div className="xl:col-span-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-5">
+          <div className="xl:col-span-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 p-5 flex flex-col min-h-0 max-xl:h-auto xl:h-full">
             <h3 className="font-black text-slate-900 dark:text-white flex items-center gap-2">
-              <TrendingUp size={16} className="text-emerald-500" /> 月次変動サマリー
+              <TrendingUp size={16} className="text-emerald-500 shrink-0" aria-hidden /> 月次変動サマリー
             </h3>
-            <div className="mt-4 space-y-2 text-sm">
-              <div className="flex items-center justify-between rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2">
-                <span className="text-slate-500">{assetDeltaPrimaryLabel}</span>
-                <span className={`font-black inline-flex flex-wrap items-baseline justify-end gap-x-1 ${signedReturnTextClassStrong(thisMonthDeltaYen)}`}>
-                  <span>
-                    {thisMonthDeltaYen >= 0 ? '+' : ''}¥{Math.round(thisMonthDeltaYen).toLocaleString()}
-                  </span>
-                  {monthDeltaVsPrevPct != null && Number.isFinite(monthDeltaVsPrevPct) ? (
-                    <span className="text-xs font-bold tabular-nums">
-                      ({monthDeltaVsPrevPct >= 0 ? '+' : ''}{monthDeltaVsPrevPct.toFixed(2)}%)
+            <div className="mt-4 flex flex-col min-h-0 xl:flex-1 xl:min-h-0">
+            <div className="space-y-3 text-sm">
+              {totalInvested > 0 && Number.isFinite(totalPnL) ? (
+                <div className="rounded-xl border border-emerald-200/80 dark:border-emerald-900/50 bg-emerald-50/50 dark:bg-emerald-950/20 px-3 py-3">
+                  <div className="flex items-start justify-between gap-2.5">
+                    <div className="min-w-0 pr-1">
+                      <span className="text-slate-600 dark:text-slate-300 text-xs sm:text-[13px] block leading-snug font-bold">
+                        合計の含み損益（現在評価合計 − 取得元本合計）
+                      </span>
+                      <span className="mt-1 block text-[11px] sm:text-xs font-semibold leading-snug text-emerald-800/80 dark:text-emerald-300/80">
+                        累計：元本に利益を繰り入れません。（評価−元本）÷元本＝括弧の%。
+                      </span>
+                    </div>
+                    <div className={`shrink-0 font-black tabular-nums text-right leading-tight ${signedReturnTextClassStrong(totalPnL)}`}>
+                      <div className="text-lg sm:text-xl">{totalPnL >= 0 ? '+' : ''}¥{Math.round(totalPnL).toLocaleString('ja-JP')}</div>
+                      {Number.isFinite(totalReturnRate) ? (
+                        <div className="text-xs sm:text-sm font-bold mt-0.5">
+                          ({totalReturnRate >= 0 ? '+' : ''}{totalReturnRate.toFixed(2)}%)
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+              {accountCostWithRealizedDenom > 0 && accountReturnWithRealizedPct != null && Number.isFinite(accountReturnWithRealizedPct) && (stockRealizedPnlSum !== 0 || stockRealizedCostSum !== 0 || fundRealizedPnlSum !== 0 || fundRealizedCostSum !== 0) ? (
+                <div className="rounded-xl border border-indigo-200/80 dark:border-indigo-900/50 bg-indigo-50/50 dark:bg-indigo-950/20 px-3 py-3">
+                  <div className="flex items-start justify-between gap-2.5">
+                    <div className="min-w-0 pr-1">
+                      <span className="text-slate-600 dark:text-slate-300 text-xs sm:text-[13px] block leading-snug font-bold">
+                        口座全体・総損益（含み + 株式・ファンドの実現）
+                      </span>
+                      <span className="mt-1 block text-[11px] sm:text-xs font-semibold leading-snug text-indigo-900/80 dark:text-indigo-200/85">
+                        株式・ファンドの確定損益を上の含み損益に加算。分母は保有元本合計に、売却した株式・ファンドの取得原価（累計）を加えたもの。
+                      </span>
+                    </div>
+                    <div className={`shrink-0 font-black tabular-nums text-right leading-tight ${signedReturnTextClassStrong(accountPnlWithRealizedJpy)}`}>
+                      <div className="text-lg sm:text-xl">
+                        {accountPnlWithRealizedJpy >= 0 ? '+' : ''}¥{Math.round(accountPnlWithRealizedJpy).toLocaleString('ja-JP')}
+                      </div>
+                      <div className="text-xs sm:text-sm font-bold mt-0.5">
+                        ({accountReturnWithRealizedPct >= 0 ? '+' : ''}{accountReturnWithRealizedPct.toFixed(2)}%)
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+              {totalCurrentValue <= 0 && monthlyUnrealizedPnlSplit.mode === 'bar' ? (
+                <div className="rounded-xl border border-slate-200/90 dark:border-slate-600/80 bg-slate-50/90 dark:bg-slate-800/50 px-3 py-2.5">
+                  <p className="text-[11px] sm:text-xs font-bold text-slate-600 dark:text-slate-300">
+                    含み損益の寄与度（合計損益に占める割合）
+                  </p>
+                  <p className="mt-1 text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">
+                    ※ 評価額の構成比とは別指標です（損益の大きさの分け合い）。
+                  </p>
+                  <div
+                    className="mt-2 flex h-2.5 w-full overflow-hidden rounded-full bg-slate-200/80 dark:bg-slate-700/80"
+                    role="img"
+                    aria-label={`含み損益の合計に対し、株式が${monthlyUnrealizedPnlSplit.stockPct.toFixed(0)}パーセント、ファンドが${monthlyUnrealizedPnlSplit.fundPct.toFixed(0)}パーセントを占めます`}
+                  >
+                    <div
+                      className="h-full bg-emerald-500 dark:bg-emerald-500/90"
+                      style={{ width: `${monthlyUnrealizedPnlSplit.stockBarW}%` }}
+                    />
+                    <div
+                      className="h-full bg-blue-500 dark:bg-blue-500/90"
+                      style={{ width: `${monthlyUnrealizedPnlSplit.fundBarW}%` }}
+                    />
+                  </div>
+                  <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[10px] sm:text-[11px] font-bold tabular-nums">
+                    <span className="text-emerald-700 dark:text-emerald-300">
+                      株式（損益シェア）{' '}
+                      {monthlyUnrealizedPnlSplit.stockPct >= 10
+                        ? monthlyUnrealizedPnlSplit.stockPct.toFixed(0)
+                        : monthlyUnrealizedPnlSplit.stockPct.toFixed(1)}
+                      %
                     </span>
-                  ) : null}
-                </span>
-              </div>
-              <div className="flex items-center justify-between rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2">
-                <span className="text-slate-500">評価変動の内訳（株式 / ファンド）</span>
-                <span className="font-black text-slate-900 dark:text-white tabular-nums text-right text-[13px]">
-                  <span className={signedReturnTextClassStrong(stockMonthDeltaYen)}>
-                    {stockMonthDeltaYen >= 0 ? '+' : ''}¥{Math.round(stockMonthDeltaYen).toLocaleString()}
-                  </span>
-                  <span className="text-slate-400 mx-1">/</span>
-                  <span className={signedReturnTextClassStrong(fundMonthDeltaYen)}>
-                    {fundMonthDeltaYen >= 0 ? '+' : ''}¥{Math.round(fundMonthDeltaYen).toLocaleString()}
-                  </span>
-                </span>
+                    <span className="text-blue-700 dark:text-blue-300">
+                      ファンド（損益シェア）{' '}
+                      {monthlyUnrealizedPnlSplit.fundPct >= 10
+                        ? monthlyUnrealizedPnlSplit.fundPct.toFixed(0)
+                        : monthlyUnrealizedPnlSplit.fundPct.toFixed(1)}
+                      %
+                    </span>
+                  </div>
+                </div>
+              ) : monthlyUnrealizedPnlSplit.mode === 'offset' && totalInvested > 0 && Number.isFinite(totalPnL) && totalPnL !== 0 ? (
+                <p className="rounded-xl border border-amber-200/80 dark:border-amber-900/50 bg-amber-50/70 dark:bg-amber-950/25 px-3 py-2 text-[10px] sm:text-[11px] font-semibold leading-relaxed text-amber-950 dark:text-amber-100/95">
+                  株式とファンドで損益の方向が異なる（相殺）ため、合計に対する％内訳バーは表示しません。下の金額ベースをご覧ください。
+                </p>
+              ) : null}
+              <div className="rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-3 space-y-3">
+                <div>
+                  <div className="text-xs sm:text-[13px] font-bold text-slate-600 dark:text-slate-300 mb-1.5">株式</div>
+                  <div className="flex items-start justify-between gap-2.5">
+                    <div className="text-xs sm:text-[13px] text-slate-500 dark:text-slate-400 leading-snug min-w-0">
+                      <div className="font-semibold text-slate-600 dark:text-slate-300">含み損益（評価−元本）</div>
+                      <div className="mt-0.5 text-[11px] sm:text-xs text-slate-500 dark:text-slate-500">
+                        取得元本 ¥{Math.round(stockTotalInvestedJpy || 0).toLocaleString('ja-JP')} ／ 現在評価 ¥{Math.round(stockTotalCurrentJpy || 0).toLocaleString('ja-JP')}
+                      </div>
+                    </div>
+                    <div className="shrink-0 font-black tabular-nums text-right leading-tight">
+                      <div className={`text-base sm:text-[17px] ${signedReturnTextClassStrong(aggStockPnLJpy)}`}>
+                        {aggStockPnLJpy >= 0 ? '+' : ''}¥{Math.round(aggStockPnLJpy).toLocaleString('ja-JP')}
+                      </div>
+                      {aggStockReturnPct != null && Number.isFinite(aggStockReturnPct) ? (
+                        <div className={`text-[11px] sm:text-xs font-bold mt-0.5 ${signedReturnTextClassStrong(aggStockPnLJpy)}`}>
+                          （{aggStockReturnPct >= 0 ? '+' : ''}{aggStockReturnPct.toFixed(2)}%）
+                        </div>
+                      ) : (
+                        <div className="text-[11px] font-bold text-slate-400 mt-0.5">（―）</div>
+                      )}
+                    </div>
+                  </div>
+                  {(() => {
+                    const stockMonthlyDetailExpandable =
+                      stockRealizedPnlSum !== 0 ||
+                      stockRealizedWindow !== 'all' ||
+                      (stockReturnWithRealizedPct != null &&
+                        Number.isFinite(stockReturnWithRealizedPct) &&
+                        stockOpenAndRealizedCostDenom > 0)
+                    if (!stockMonthlyDetailExpandable) return null
+                    return (
+                      <div className="mt-3 pt-3 border-t border-dashed border-slate-200 dark:border-slate-600">
+                        <button
+                          type="button"
+                          className="flex w-full items-center justify-between gap-2 rounded-lg py-1.5 text-left outline-none ring-offset-2 ring-offset-white focus-visible:ring-2 focus-visible:ring-indigo-400 dark:ring-offset-slate-900"
+                          aria-expanded={wealthMonthlyStockRealizedOpen}
+                          onClick={() => setWealthMonthlyStockRealizedOpen((v) => !v)}
+                        >
+                          <span className="text-[11px] sm:text-xs font-bold text-slate-600 dark:text-slate-300">
+                            株式の実現損益・総収益率（詳細）
+                          </span>
+                          <ChevronDown
+                            size={18}
+                            className={`shrink-0 text-slate-400 transition-transform ${wealthMonthlyStockRealizedOpen ? 'rotate-180' : ''}`}
+                            aria-hidden
+                          />
+                        </button>
+                        {wealthMonthlyStockRealizedOpen ? (
+                          <div className="mt-2 space-y-3">
+                            {stockRealizedPnlSum !== 0 || stockRealizedWindow !== 'all' ? (
+                              <div className="rounded-lg border border-slate-100 bg-slate-50/80 px-2.5 py-2 dark:border-slate-700/80 dark:bg-slate-800/40">
+                                <div className="flex items-start justify-between gap-2.5">
+                                  <div className="text-xs sm:text-[13px] text-slate-500 dark:text-slate-400 leading-snug min-w-0">
+                                    <div className="font-semibold text-slate-600 dark:text-slate-300">
+                                      実現損益（株式・{stockRealizedWindowLabelJaCompact}）
+                                    </div>
+                                    <div className="mt-0.5 text-[10px] sm:text-[11px]">
+                                      「売却を記録」に基づく確定損益（株式のみ）。期間は<span className="font-black">株式タブ</span>のレポート上部「実現の期間」と同じです。
+                                    </div>
+                                  </div>
+                                  <div className={`shrink-0 font-black tabular-nums text-right ${signedReturnTextClassStrong(stockRealizedPnlSumWindow)}`}>
+                                    {stockRealizedPnlSumWindow >= 0 ? '+' : ''}¥{Math.round(stockRealizedPnlSumWindow).toLocaleString('ja-JP')}
+                                  </div>
+                                </div>
+                              </div>
+                            ) : null}
+                            {stockReturnWithRealizedPct != null && Number.isFinite(stockReturnWithRealizedPct) && stockOpenAndRealizedCostDenom > 0 ? (
+                              <div className="rounded-lg border border-slate-100 bg-slate-50/80 px-2.5 py-2 dark:border-slate-700/80 dark:bg-slate-800/40">
+                                <div className="flex items-start justify-between gap-2.5">
+                                  <div className="text-xs sm:text-[13px] text-slate-500 dark:text-slate-400 leading-snug min-w-0">
+                                    <div className="font-semibold text-slate-600 dark:text-slate-300">株式・総収益率（含み+実現）</div>
+                                    <div className="mt-0.5 text-[10px] sm:text-[11px]">
+                                      分母: 現在の株式元本 + 売却済みロットの取得原価（累計）。
+                                    </div>
+                                  </div>
+                                  <div className={`shrink-0 font-black tabular-nums text-right ${signedReturnTextClassStrong(stockPnlWithRealizedJpy)}`}>
+                                    <div className={`text-base sm:text-[17px] ${signedReturnTextClassStrong(stockPnlWithRealizedJpy)}`}>
+                                      {stockPnlWithRealizedJpy >= 0 ? '+' : ''}¥{Math.round(stockPnlWithRealizedJpy).toLocaleString('ja-JP')}
+                                    </div>
+                                    <div className={`text-[11px] sm:text-xs font-bold mt-0.5 ${signedReturnTextClassStrong(stockPnlWithRealizedJpy)}`}>
+                                      （{stockReturnWithRealizedPct >= 0 ? '+' : ''}{stockReturnWithRealizedPct.toFixed(2)}%）
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </div>
+                    )
+                  })()}
+                </div>
+                <div className="border-t border-slate-200 dark:border-slate-700 pt-3">
+                  <div className="text-xs sm:text-[13px] font-bold text-slate-600 dark:text-slate-300 mb-1.5">ファンド</div>
+                  <div className="flex items-start justify-between gap-2.5">
+                    <div className="text-xs sm:text-[13px] text-slate-500 dark:text-slate-400 leading-snug min-w-0">
+                      <div className="font-semibold text-slate-600 dark:text-slate-300">含み損益（評価−元本）</div>
+                      <div className="mt-0.5 text-[11px] sm:text-xs text-slate-500 dark:text-slate-500">
+                        取得元本 ¥{Math.round(fundTotalInvestedJpy || 0).toLocaleString('ja-JP')} ／ 現在評価 ¥{Math.round(fundTotalCurrentJpy || 0).toLocaleString('ja-JP')}
+                      </div>
+                    </div>
+                    <div className="shrink-0 font-black tabular-nums text-right leading-tight">
+                      <div className={`text-base sm:text-[17px] ${signedReturnTextClassStrong(aggFundPnLJpy)}`}>
+                        {aggFundPnLJpy >= 0 ? '+' : ''}¥{Math.round(aggFundPnLJpy).toLocaleString('ja-JP')}
+                      </div>
+                      {aggFundReturnPct != null && Number.isFinite(aggFundReturnPct) ? (
+                        <div className={`text-[11px] sm:text-xs font-bold mt-0.5 ${signedReturnTextClassStrong(aggFundPnLJpy)}`}>
+                          （{aggFundReturnPct >= 0 ? '+' : ''}{aggFundReturnPct.toFixed(2)}%）
+                        </div>
+                      ) : (
+                        <div className="text-[11px] font-bold text-slate-400 mt-0.5">（―）</div>
+                      )}
+                    </div>
+                  </div>
+                  {(() => {
+                    const fundMonthlyDetailExpandable =
+                      fundRealizedPnlSum !== 0 ||
+                      stockRealizedWindow !== 'all' ||
+                      (fundReturnWithRealizedPct != null &&
+                        Number.isFinite(fundReturnWithRealizedPct) &&
+                        fundOpenAndRealizedCostDenom > 0)
+                    if (!fundMonthlyDetailExpandable) return null
+                    return (
+                      <div className="mt-3 pt-3 border-t border-dashed border-slate-200 dark:border-slate-600">
+                        <button
+                          type="button"
+                          className="flex w-full items-center justify-between gap-2 rounded-lg py-1.5 text-left outline-none ring-offset-2 ring-offset-white focus-visible:ring-2 focus-visible:ring-indigo-400 dark:ring-offset-slate-900"
+                          aria-expanded={wealthMonthlyFundRealizedOpen}
+                          onClick={() => setWealthMonthlyFundRealizedOpen((v) => !v)}
+                        >
+                          <span className="text-[11px] sm:text-xs font-bold text-slate-600 dark:text-slate-300">
+                            ファンドの実現損益・総収益率（詳細）
+                          </span>
+                          <ChevronDown
+                            size={18}
+                            className={`shrink-0 text-slate-400 transition-transform ${wealthMonthlyFundRealizedOpen ? 'rotate-180' : ''}`}
+                            aria-hidden
+                          />
+                        </button>
+                        {wealthMonthlyFundRealizedOpen ? (
+                          <div className="mt-2 space-y-3">
+                            {fundRealizedPnlSum !== 0 || stockRealizedWindow !== 'all' ? (
+                              <div className="rounded-lg border border-slate-100 bg-slate-50/80 px-2.5 py-2 dark:border-slate-700/80 dark:bg-slate-800/40">
+                                <div className="flex items-start justify-between gap-2.5">
+                                  <div className="text-xs sm:text-[13px] text-slate-500 dark:text-slate-400 leading-snug min-w-0">
+                                    <div className="font-semibold text-slate-600 dark:text-slate-300">
+                                      実現損益（ファンド・{stockRealizedWindowLabelJaCompact}）
+                                    </div>
+                                    <div className="mt-0.5 text-[10px] sm:text-[11px]">
+                                      「売却を記録」に基づく確定損益（ファンドのみ）。期間は<span className="font-black">ファンドタブ</span>のレポート上部「実現の期間」と同じです。
+                                    </div>
+                                  </div>
+                                  <div className={`shrink-0 font-black tabular-nums text-right ${signedReturnTextClassStrong(fundRealizedPnlSumWindow)}`}>
+                                    {fundRealizedPnlSumWindow >= 0 ? '+' : ''}¥{Math.round(fundRealizedPnlSumWindow).toLocaleString('ja-JP')}
+                                  </div>
+                                </div>
+                              </div>
+                            ) : null}
+                            {fundReturnWithRealizedPct != null && Number.isFinite(fundReturnWithRealizedPct) && fundOpenAndRealizedCostDenom > 0 ? (
+                              <div className="rounded-lg border border-slate-100 bg-slate-50/80 px-2.5 py-2 dark:border-slate-700/80 dark:bg-slate-800/40">
+                                <div className="flex items-start justify-between gap-2.5">
+                                  <div className="text-xs sm:text-[13px] text-slate-500 dark:text-slate-400 leading-snug min-w-0">
+                                    <div className="font-semibold text-slate-600 dark:text-slate-300">ファンド・総収益率（含み+実現）</div>
+                                    <div className="mt-0.5 text-[10px] sm:text-[11px]">
+                                      分母: 現在のファンド元本 + 売却済みロットの取得原価（累計）。
+                                    </div>
+                                  </div>
+                                  <div className={`shrink-0 font-black tabular-nums text-right ${signedReturnTextClassStrong(fundPnlWithRealizedJpy)}`}>
+                                    <div className={`text-base sm:text-[17px] ${signedReturnTextClassStrong(fundPnlWithRealizedJpy)}`}>
+                                      {fundPnlWithRealizedJpy >= 0 ? '+' : ''}¥{Math.round(fundPnlWithRealizedJpy).toLocaleString('ja-JP')}
+                                    </div>
+                                    <div className={`text-[11px] sm:text-xs font-bold mt-0.5 ${signedReturnTextClassStrong(fundPnlWithRealizedJpy)}`}>
+                                      （{fundReturnWithRealizedPct >= 0 ? '+' : ''}{fundReturnWithRealizedPct.toFixed(2)}%）
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </div>
+                    )
+                  })()}
+                </div>
               </div>
             </div>
-            <p className="mt-3 text-xs font-bold text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2">
-              {dominantContribution}
+            <div className="min-h-3 shrink-0 xl:flex-1" aria-hidden="true" />
+            <p className="mt-3 text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 leading-relaxed pt-3 border-t border-slate-200/90 dark:border-slate-700/80">
+              ※数値は保有一覧ベースです。評価は取得可能な最新終値、元本は登録済み約定です。株式・ファンドの実現損益は「売却を記録」に基づき、ロットは FIFO で自動減算されます。
             </p>
-            {assetDeltaFootnote ? (
-              <p className="mt-2 text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed px-0.5">{assetDeltaFootnote}</p>
-            ) : null}
+            </div>
           </div>
-          <div className="xl:col-span-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-5">
+          <div className="xl:col-span-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 p-5 flex flex-col min-h-0 max-xl:h-auto xl:h-full">
             <h3 className="font-black text-slate-900 dark:text-white flex items-center gap-2">
               <AlertTriangle size={16} className="text-rose-500" /> 今後予定 / リスク
             </h3>
-            <div className="mt-4 space-y-2 text-sm">
+            <div className="mt-4 flex flex-col min-h-0 xl:flex-1 xl:min-h-0">
+            <div className="space-y-2 text-sm">
               <div className="flex items-center justify-between rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2">
                 <span className="text-slate-500">満期迫る（保険/ポイント）</span>
                 <span className="inline-flex items-center gap-2">
@@ -5617,8 +7537,8 @@ const WealthSection = ({
                       ポートフォリオ下落アラート（{portfolioDropThresholdPct == null ? 'オフ' : `${portfolioDropThresholdPct}%`}）
                     </span>
                     <span className="inline-flex items-center gap-2">
-                      {hasVisiblePortfolioDropAlert ? <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-rose-500 text-white">優先</span> : null}
-                      <span className={`font-black ${hasVisiblePortfolioDropAlert ? 'text-rose-600 dark:text-rose-400' : 'text-slate-900 dark:text-white'}`}>
+                      {hasVisiblePortfolioDropAlert ? <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-blue-600 text-white">優先</span> : null}
+                      <span className={`font-black ${hasVisiblePortfolioDropAlert ? 'text-blue-600 dark:text-blue-400' : 'text-slate-900 dark:text-white'}`}>
                         {hasVisiblePortfolioDropAlert ? `${visiblePortfolioDropAlerts.length}件` : 'なし'}
                       </span>
                     </span>
@@ -5652,8 +7572,8 @@ const WealthSection = ({
                       ポートフォリオ上昇アラート（{portfolioRiseThresholdPct == null ? 'オフ' : `+${portfolioRiseThresholdPct}%`}）
                     </span>
                     <span className="inline-flex items-center gap-2">
-                      {hasVisiblePortfolioRiseAlert ? <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-600 text-white">優先</span> : null}
-                      <span className={`font-black ${hasVisiblePortfolioRiseAlert ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-900 dark:text-white'}`}>
+                      {hasVisiblePortfolioRiseAlert ? <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-red-600 text-white">優先</span> : null}
+                      <span className={`font-black ${hasVisiblePortfolioRiseAlert ? 'text-red-600 dark:text-red-400' : 'text-slate-900 dark:text-white'}`}>
                         {hasVisiblePortfolioRiseAlert ? `${visiblePortfolioRiseAlerts.length}件` : 'なし'}
                       </span>
                     </span>
@@ -5672,7 +7592,7 @@ const WealthSection = ({
                             onClick={() => handlePortfolioRiseThresholdChange(opt.value)}
                             className={`px-2 py-1 rounded-md text-[11px] font-black border transition ${
                               selected
-                                ? 'bg-slate-900 text-white border-slate-900 dark:bg-emerald-600 dark:border-emerald-600'
+                                ? 'bg-slate-900 text-white border-slate-900 dark:bg-red-600 dark:border-red-600'
                                 : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-300 dark:border-slate-600 hover:border-slate-500'
                             }`}
                           >
@@ -5682,6 +7602,16 @@ const WealthSection = ({
                       })}
                     </div>
                   </div>
+                  {isPaidMember ? (
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                      <span className="font-bold text-slate-600 dark:text-slate-300">アラートの見方: </span>
+                      閾値（例: -3%）は、登録中の株・ファンドの<strong className="text-slate-600 dark:text-slate-300">合計評価額</strong>が、
+                      <strong className="text-slate-600 dark:text-slate-300">前営業日</strong>の基準額、または<strong className="text-slate-600 dark:text-slate-300">約1週間前</strong>の基準額（いずれもその時点の終値ベース推計）に対して、
+                      下がり幅 / 上がり幅が条件を満たしたときに出ます。条件を満たす<strong className="text-slate-600 dark:text-slate-300">前日比</strong>と<strong className="text-slate-600 dark:text-slate-300">前週比</strong>は別々に数えるため、
+                      最大<strong className="text-slate-600 dark:text-slate-300">2件</strong>が同時に表示されることがあります。
+                      左の「株式比率ギャップ」等の<strong className="text-slate-600 dark:text-slate-300">構成比アラート</strong>は別の仕組みです。
+                    </p>
+                  ) : null}
                   {(hasVisiblePortfolioDropAlert || hasVisiblePortfolioRiseAlert) ? (
                     <div className="mt-1 space-y-2">
                       {hasVisiblePortfolioDropAlert ? (
@@ -5690,7 +7620,7 @@ const WealthSection = ({
                           <div className="mt-1.5 space-y-1">
                             {visiblePortfolioDropAlerts.map((row) => (
                               <p key={`portfolio-drop-alert-${row.key}`} className="text-[11px] text-rose-800 dark:text-rose-200 font-semibold leading-relaxed">
-                                {row.label} {row.pct.toFixed(2)}%（基準日 {formatDateJpSlash(row.baseDate)} / 基準額 ¥{Math.round(Number(row.baseValue || 0)).toLocaleString()}）
+                                {row.label} {row.pct.toFixed(2)}%（基準日 {formatDateJpSlash(row.baseDate)} / 基準額 ¥{Math.round(Number(row.baseValue || 0)).toLocaleString('ja-JP')}）
                               </p>
                             ))}
                           </div>
@@ -5702,7 +7632,7 @@ const WealthSection = ({
                           <div className="mt-1.5 space-y-1">
                             {visiblePortfolioRiseAlerts.map((row) => (
                               <p key={`portfolio-rise-alert-${row.key}`} className="text-[11px] text-emerald-800 dark:text-emerald-200 font-semibold leading-relaxed">
-                                {row.label} +{row.pct.toFixed(2)}%（基準日 {formatDateJpSlash(row.baseDate)} / 基準額 ¥{Math.round(Number(row.baseValue || 0)).toLocaleString()}）
+                                {row.label} +{row.pct.toFixed(2)}%（基準日 {formatDateJpSlash(row.baseDate)} / 基準額 ¥{Math.round(Number(row.baseValue || 0)).toLocaleString('ja-JP')}）
                               </p>
                             ))}
                           </div>
@@ -5720,22 +7650,84 @@ const WealthSection = ({
                 </div>
               </div>
             </div>
-            <p className="mt-3 text-[10px] text-slate-500 dark:text-slate-400">
+            <div className="min-h-3 shrink-0 xl:flex-1" aria-hidden="true" />
+            <p className="mt-3 text-[10px] text-slate-500 dark:text-slate-400 pt-3 border-t border-slate-200/90 dark:border-slate-700/80">
               ※ 参考情報であり、投資判断の助言ではありません。
             </p>
+            </div>
           </div>
         </div>
       )}
 
       {isStockTab && (
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/60">
-            <h3 className="font-black text-slate-900 dark:text-white">株式パフォーマンス</h3>
+      <div id="mypage-stock-holdings" className="scroll-mt-24 bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/60">
+            <div className="flex items-start justify-between gap-3">
+              <h3 id="stock-performance-heading" className="font-black text-slate-900 dark:text-white shrink-0">株式パフォーマンス</h3>
+              <button
+                type="button"
+                onClick={() => setStockTabHelpOpen(true)}
+                className="shrink-0 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 p-2 text-slate-500 hover:text-orange-600 dark:hover:text-orange-400 hover:border-orange-300 dark:hover:border-orange-500 transition-colors"
+                aria-label="保有株式の入力方法を表示"
+                aria-describedby="stock-performance-heading"
+                title="入力のしかた"
+              >
+                <HelpCircle className="w-5 h-5" aria-hidden />
+              </button>
+            </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">ウォッチリストとは別に、実際に買った銘柄を追加して損益率を管理できます。</p>
+            {userId ? (
+              <div
+                className="mt-3 rounded-xl border-2 border-amber-400 dark:border-amber-500 bg-amber-50 dark:bg-amber-950/40 px-3 py-2.5 shadow-sm ring-1 ring-amber-200/80 dark:ring-amber-700/50"
+                role="note"
+              >
+                <p className="text-[11px] sm:text-xs font-black text-amber-950 dark:text-amber-50 leading-relaxed">
+                  <span className="inline-flex items-center gap-1 rounded-md bg-amber-200/90 dark:bg-amber-800/80 px-1.5 py-0.5 text-[10px] font-black text-amber-950 dark:text-amber-50">
+                    自動連携
+                  </span>
+                  <span className="block sm:inline sm:ml-1 mt-1 sm:mt-0">
+                    ここで保有株式を追加・編集すると、
+                    <strong className="underline decoration-2 underline-offset-2 decoration-amber-700 dark:decoration-amber-300 mx-0.5">
+                      配当カレンダー
+                    </strong>
+                    タブの同一銘柄の株数に自動で反映されます。
+                  </span>
+                </p>
+                <p className="mt-1.5 text-[10px] font-semibold text-amber-900/90 dark:text-amber-100/90 leading-relaxed">
+                  ※ 配当カレンダー側で銘柄を削除しても、この株式タブの保有行は残ります（別機能です）。
+                </p>
+              </div>
+            ) : (
+              <div className="mt-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/50 px-3 py-2">
+                <p className="text-[10px] font-bold text-slate-600 dark:text-slate-300 leading-relaxed">
+                  ログインして保有を保存すると、入力した株数は<strong className="text-slate-800 dark:text-slate-100">配当カレンダー</strong>にも自動で連携されます。
+                </p>
+              </div>
+            )}
             <div className="mt-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white/70 dark:bg-slate-900/40 px-3 py-2">
               <p className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
-                例) 銘柄コード: `AAPL` または会社名: `Apple` / 買付日: `2026/01/15` / 保有数量: `10` / 買付価格: `195.2` → 「保有銘柄を追加」
+                例) 銘柄コード: `AAPL` または会社名: `Apple` / 買付日: `2026/01/15` / 保有数量: `10` または `12.345`（小数第3位まで） / 買付価格: `195.2` → 「保有銘柄を追加」
               </p>
+            </div>
+            <div className="mt-2 rounded-lg border border-indigo-200/80 dark:border-indigo-800/60 bg-indigo-50/60 dark:bg-indigo-950/25 px-3 py-2.5">
+              <p className="text-[10px] font-bold text-indigo-900 dark:text-indigo-100 leading-relaxed">
+                編集・削除・売却の違い
+              </p>
+              <ul className="mt-1.5 space-y-1.5 text-[10px] font-semibold text-slate-600 dark:text-slate-300 leading-relaxed list-disc pl-4">
+                <li>
+                  <span className="text-slate-800 dark:text-slate-200">フィールドの編集</span>
+                  （数量・買付価格・買付日）: 内容が保存され、含み損益・損益率・評価額に直ちに反映されます。ログイン中はクラウドにも同期されます。
+                </li>
+                <li>
+                  <span className="text-slate-800 dark:text-slate-200">取引（ロット）の削除</span>
+                  : 誤って追加した1行を消すだけです。売却記録ではないため、
+                  <span className="font-black text-slate-900 dark:text-white">実現損益の集計や売却履歴には影響しません</span>。
+                </li>
+                <li>
+                  <span className="text-slate-800 dark:text-slate-200">売却を記録</span>
+                  : 実際に売却したときに使います。FIFOで原価を消化し、実現損益に計上されます。
+                </li>
+              </ul>
             </div>
             <div className="mt-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-[2.2fr_1.1fr_1fr_1fr_auto] gap-3 md:gap-2 xl:items-end">
               {/*
@@ -5889,9 +7881,9 @@ const WealthSection = ({
                   type="text"
                   inputMode="decimal"
                   value={newOwnedQty}
-                  onChange={(e) => setNewOwnedQty(sanitizeDecimalOneInput(e.target.value))}
+                  onChange={(e) => setNewOwnedQty(sanitizeStockShareQtyInput(e.target.value))}
                   onKeyDown={onInputKeyDown}
-                  placeholder="例: 10 / 0.5"
+                  placeholder="例: 100 / 12.345"
                   className={ownedFieldInputRightClass}
                 />
               </div>
@@ -5929,64 +7921,88 @@ const WealthSection = ({
               groupedOwnedStocks.map((stock) => {
                 const avgBuyPrice = stock.totalQty > 0 ? (stock.totalCost / stock.totalQty) : 0
                 const isExpanded = Boolean(expandedSymbols[stock.symbol])
+                const symReal = realizedPnlBySymbol.get(stock.symbol) || 0
                 return (
-                  <div key={`m-owned-stock-${stock.symbol}`} className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 shadow-sm space-y-3">
+                  <div key={`m-owned-stock-${stock.symbol}`} className={ownedPortfolioMobileCardClass}>
                     <div>
                       <p className="font-bold text-slate-900 dark:text-white text-[15px] leading-snug">{stock.name || stock.code}</p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{stock.code}</p>
+                      <span className={`${ownedPortfolioTickerPillClass} mt-0.5`}>{stock.code}</span>
                     </div>
                     <dl className="grid grid-cols-2 gap-x-2 gap-y-2 text-sm">
+                      <dt className="text-slate-500 text-[11px] font-semibold">セクター</dt>
+                      <dd className="text-right font-bold text-violet-700 dark:text-violet-300 text-xs sm:text-sm">{sectorForOwnedStockPie(stock)}</dd>
                       <dt className="text-slate-500 text-[11px] font-semibold">取引数</dt>
                       <dd className="text-right font-semibold tabular-nums">{stock.lots.length}</dd>
                       <dt className="text-slate-500 text-[11px] font-semibold">保有数量</dt>
-                      <dd className="text-right font-semibold tabular-nums">{stock.totalQty.toLocaleString()}</dd>
+                      <dd className="text-right font-semibold tabular-nums">{stock.totalQty.toLocaleString('ja-JP')}</dd>
                       <dt className="text-slate-500 text-[11px] font-semibold">平均買付</dt>
                       <dd className="text-right font-semibold tabular-nums">{stock.totalQty > 0 ? avgBuyPrice.toFixed(2) : '--'}</dd>
                       <dt className="text-slate-500 text-[11px] font-semibold">最新価格</dt>
-                      <dd className="text-right font-semibold tabular-nums">{Number(stock.price || 0) > 0 ? Number(stock.price).toLocaleString() : '--'}</dd>
+                      <dd className="text-right font-semibold tabular-nums">{Number(stock.price || 0) > 0 ? Number(stock.price).toLocaleString('ja-JP') : '--'}</dd>
                       <dt className="text-slate-500 text-[11px] font-semibold">現在価値</dt>
-                      <dd className="text-right font-bold tabular-nums whitespace-nowrap min-w-0">{stock.currentValueJpy > 0 ? `¥${Math.round(stock.currentValueJpy).toLocaleString()}` : '--'}</dd>
+                      <dd className="text-right font-bold tabular-nums whitespace-nowrap min-w-0">{stock.currentValueJpy > 0 ? `¥${Math.round(stock.currentValueJpy).toLocaleString('ja-JP')}` : '--'}</dd>
                       <dt className="text-slate-500 text-[11px] font-semibold">損益率</dt>
-                      <dd className={`text-right font-black tabular-nums whitespace-nowrap ${stock.pnlRate == null ? 'text-slate-400' : stock.pnlRate >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                      <dd className={`text-right font-black tabular-nums whitespace-nowrap ${stock.pnlRate == null ? 'text-slate-400' : stock.pnlRate >= 0 ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'}`}>
                         {stock.pnlRate == null ? '--' : `${stock.pnlRate >= 0 ? '+' : ''}${stock.pnlRate.toFixed(2)}%`}
                       </dd>
+                      {symReal !== 0 ? (
+                        <>
+                          <dt className="text-slate-500 text-[11px] font-semibold">実現累計</dt>
+                          <dd className={`text-right font-black tabular-nums whitespace-nowrap ${symReal >= 0 ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'}`}>
+                            {symReal >= 0 ? '+' : ''}¥{Math.round(symReal).toLocaleString('ja-JP')}
+                          </dd>
+                        </>
+                      ) : null}
                     </dl>
                     {stock.tradeDate ? (
                       <p className="text-[10px] text-slate-400">価格基準日: {formatDateJpSlash(stock.tradeDate)}</p>
                     ) : null}
+                    <div className="flex flex-col gap-2">
+                    <div className="flex flex-row gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setExpandedSymbols((prev) => ({ ...prev, [stock.symbol]: !prev[stock.symbol] }))}
+                        className="flex-1 min-w-0 min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-600 text-sm font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/60"
+                      >
+                        {isExpanded ? '取引を隠す' : '取引を表示・編集'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!isPaidMember) {
+                            if (typeof onUiMessage === 'function') onUiMessage('平均取得単価計算の詳細シミュレーションはプレミアム限定です。', 'premium')
+                            navigate('/premium')
+                            return
+                          }
+                          const avgBuyPrice = stock.totalQty > 0 ? (stock.totalCost / stock.totalQty) : 0
+                          const currentPrice = Math.max(0, Number(stock.price || 0))
+                          setAvgDownSelectedStock({
+                            symbol: stock.symbol,
+                            name: stock.name || stock.code || stock.symbol,
+                            currency: stock.stockCurrency || inferStockCurrency(stock.symbol),
+                            avgBuyPrice,
+                            currentPrice,
+                            currentQty: Number(stock.totalQty || 0),
+                          })
+                          setAvgDownMode('target')
+                          setAvgDownTargetPriceInput(getAvgDownDefaultTargetPriceInput(avgBuyPrice, currentPrice))
+                          setAvgDownAddQtyInput(String(Math.max(1, Math.ceil(Number(stock.totalQty || 0) * 0.1))))
+                          setAvgDownModalOpen(true)
+                        }}
+                        className="flex-1 min-w-0 min-h-[44px] rounded-lg border border-orange-300 dark:border-orange-700 text-sm font-black text-orange-700 dark:text-orange-300 hover:bg-orange-50 dark:hover:bg-orange-950/20"
+                      >
+                        平均取得単価計算
+                      </button>
+                    </div>
                     <button
                       type="button"
-                      onClick={() => setExpandedSymbols((prev) => ({ ...prev, [stock.symbol]: !prev[stock.symbol] }))}
-                      className="w-full min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-600 text-sm font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/60"
+                      disabled={Number(stock.totalQty || 0) <= 0}
+                      onClick={() => openStockSellModal(stock)}
+                      className="w-full min-h-[44px] rounded-lg border border-indigo-300 dark:border-indigo-700 text-sm font-black text-indigo-800 dark:text-indigo-200 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 disabled:opacity-45 disabled:pointer-events-none"
                     >
-                      {isExpanded ? '取引を隠す' : '取引を表示・編集'}
+                      売却を記録（実現損益）
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (!isPaidMember) {
-                          if (typeof onUiMessage === 'function') onUiMessage('ナンピン詳細シミュレーションはプレミアム限定です。', 'premium')
-                          navigate('/premium')
-                          return
-                        }
-                        const avgBuyPrice = stock.totalQty > 0 ? (stock.totalCost / stock.totalQty) : 0
-                        const currentPrice = Math.max(0, Number(stock.price || 0))
-                        setAvgDownSelectedStock({
-                          symbol: stock.symbol,
-                          name: stock.name || stock.code || stock.symbol,
-                          avgBuyPrice,
-                          currentPrice,
-                          currentQty: Number(stock.totalQty || 0),
-                        })
-                        setAvgDownMode('target')
-                        setAvgDownTargetPriceInput(getAvgDownDefaultTargetPriceInput(avgBuyPrice, currentPrice))
-                        setAvgDownAddQtyInput(String(Math.max(1, Math.ceil(Number(stock.totalQty || 0) * 0.1))))
-                        setAvgDownModalOpen(true)
-                      }}
-                      className="w-full min-h-[44px] rounded-lg border border-orange-300 dark:border-orange-700 text-sm font-black text-orange-700 dark:text-orange-300 hover:bg-orange-50 dark:hover:bg-orange-950/20"
-                    >
-                      ナンピン計算（平均を下げる）
-                    </button>
+                    </div>
                     {isExpanded && stock.lots.map((lot) => {
                       const lotQty = Math.max(0, Number(lot.qty || 0))
                       const lotBuyPrice = Math.max(0, Number(lot.buyPrice || 0))
@@ -6002,7 +8018,7 @@ const WealthSection = ({
                               type="text"
                               inputMode="decimal"
                               value={getDraftFieldValue(ownedStockDrafts, lot.lotId, 'qty', lot.qty ?? '')}
-                              onChange={(e) => setDraftFieldValue(setOwnedStockDrafts, lot.lotId, 'qty', sanitizeDecimalOneInput(e.target.value))}
+                              onChange={(e) => setDraftFieldValue(setOwnedStockDrafts, lot.lotId, 'qty', sanitizeStockShareQtyInput(e.target.value))}
                               onBlur={() => commitOwnedStockDraftField(lot.lotId, 'qty', lot.qty ?? '')}
                               onKeyDown={(e) => {
                                 if (e.key !== 'Enter') return
@@ -6038,10 +8054,10 @@ const WealthSection = ({
                               className={`${ownedFieldInputClass} w-full max-w-none mt-1 tabular-nums`}
                             />
                           </div>
-                          <p className={`text-xs font-black tabular-nums ${lotPnlRate == null ? 'text-slate-400' : lotPnlRate >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                          <p className={`text-xs font-black tabular-nums ${lotPnlRate == null ? 'text-slate-400' : lotPnlRate >= 0 ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'}`}>
                             取引損益率 {lotPnlRate == null ? '--' : `${lotPnlRate >= 0 ? '+' : ''}${lotPnlRate.toFixed(2)}%`}
                           </p>
-                          <div className="flex flex-col gap-2 pt-1">
+                          <div className="pt-1 flex flex-col gap-2">
                             <button
                               type="button"
                               onClick={() => onLoadOwnedStockPrice?.(lot.lotId, stock.symbol, lot.buyDate)}
@@ -6051,10 +8067,13 @@ const WealthSection = ({
                             </button>
                             <button
                               type="button"
-                              onClick={() => onRemoveOwnedStock?.(lot.lotId)}
-                              className="min-h-[44px] w-full rounded-lg border border-red-200 dark:border-red-800 text-sm font-bold text-red-600"
+                              onClick={() => {
+                                if (!window.confirm(CONFIRM_DELETE_OWNED_LOT_JA)) return
+                                onRemoveOwnedStock?.(lot.lotId)
+                              }}
+                              className="min-h-[44px] w-full rounded-lg border border-red-200 dark:border-red-800 text-sm font-bold text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/30"
                             >
-                              削除
+                              取引を削除
                             </button>
                           </div>
                         </div>
@@ -6065,36 +8084,37 @@ const WealthSection = ({
               })
             )}
             {groupedOwnedStocks.length > 0 && (
-              <div className="rounded-xl border-2 border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/30 p-3 space-y-2 text-sm">
-                <div className="flex justify-between gap-3 font-bold text-slate-600 dark:text-slate-400">
+              <div className={ownedPortfolioMobileTotalsClass}>
+                <div className="flex justify-between gap-3 font-bold text-slate-700 dark:text-slate-300">
                   <span>投資元本合計（円換算）</span>
-                  <span className="tabular-nums shrink-0">¥{Math.round(stockTotalInvestedJpy).toLocaleString()}</span>
+                  <span className="tabular-nums shrink-0">¥{Math.round(stockTotalInvestedJpy).toLocaleString('ja-JP')}</span>
                 </div>
-                <div className="flex justify-between gap-3 font-black text-slate-900 dark:text-white">
+                <div className="flex justify-between gap-3 font-black text-indigo-900 dark:text-indigo-200">
                   <span>現在評価額合計</span>
-                  <span className="tabular-nums shrink-0">¥{Math.round(stockTotalCurrentJpy).toLocaleString()}</span>
+                  <span className="tabular-nums shrink-0">¥{Math.round(stockTotalCurrentJpy).toLocaleString('ja-JP')}</span>
                 </div>
               </div>
             )}
           </div>
-          <div className="hidden lg:block overflow-x-auto touch-pan-x">
-            <table className="w-full min-w-[1080px] xl:min-w-[1160px] text-base lg:text-sm tabular-nums">
-              <thead className="bg-slate-50 dark:bg-slate-800/40">
-                <tr className="text-left text-slate-500 text-xs uppercase tracking-wider">
-                  <th className="px-3 py-3.5 lg:px-5 lg:py-3 whitespace-nowrap align-bottom max-w-[14rem] xl:max-w-[18rem]">会社名</th>
-                  <th className="px-3 py-3.5 lg:px-5 lg:py-3 text-right whitespace-nowrap align-bottom">取引数</th>
-                  <th className="px-3 py-3.5 lg:px-5 lg:py-3 text-right whitespace-nowrap align-bottom">総保有数量</th>
-                  <th className="px-3 py-3.5 lg:px-5 lg:py-3 text-right whitespace-nowrap align-bottom">平均買付価格</th>
-                  <th className="px-3 py-3.5 lg:px-5 lg:py-3 text-right whitespace-nowrap align-bottom">最新価格</th>
-                  <th className="px-3 py-3.5 lg:px-5 lg:py-3 text-right whitespace-nowrap align-bottom">現在価値(円)</th>
-                  <th className="px-3 py-3.5 lg:px-5 lg:py-3 text-right whitespace-nowrap align-bottom">合算損益率</th>
-                  <th className="px-3 py-3.5 lg:px-5 lg:py-3 text-right whitespace-nowrap align-bottom">管理</th>
+          <div className={ownedPortfolioTableScrollWrapClass}>
+            <table className={`${ownedPortfolioTableBaseClass} min-w-[1180px] xl:min-w-[1260px]`}>
+              <thead>
+                <tr className={`text-left ${ownedPortfolioTheadRowClass}`}>
+                  <th className={`${ownedPortfolioThBaseClass} text-left max-w-[14rem] xl:max-w-[18rem]`}>会社名</th>
+                  <th className={`${ownedPortfolioThBaseClass} text-left whitespace-nowrap`}>セクター</th>
+                  <th className={`${ownedPortfolioThBaseClass} text-right`}>取引数</th>
+                  <th className={`${ownedPortfolioThBaseClass} text-right`}>総保有数量</th>
+                  <th className={`${ownedPortfolioThBaseClass} text-right`}>平均買付価格</th>
+                  <th className={`${ownedPortfolioThBaseClass} text-right`}>最新価格</th>
+                  <th className={`${ownedPortfolioThBaseClass} text-right`}>現在価値(円)</th>
+                  <th className={`${ownedPortfolioThBaseClass} text-right`}>合算損益率</th>
+                  <th className={`${ownedPortfolioThBaseClass} text-right`}>管理</th>
                 </tr>
               </thead>
               <tbody>
                 {groupedOwnedStocks.length === 0 && (
                   <tr className="border-t border-slate-100 dark:border-slate-800">
-                    <td colSpan={8} className="px-4 py-8 text-center text-sm text-slate-500 dark:text-slate-400">
+                    <td colSpan={9} className="px-4 py-8 text-center text-sm text-slate-500 dark:text-slate-400">
                       保有銘柄がまだありません。上のフォームから追加してください。
                     </td>
                   </tr>
@@ -6102,34 +8122,45 @@ const WealthSection = ({
                 {groupedOwnedStocks.map((stock) => {
                   const avgBuyPrice = stock.totalQty > 0 ? (stock.totalCost / stock.totalQty) : 0
                   const isExpanded = Boolean(expandedSymbols[stock.symbol])
+                  const symReal = realizedPnlBySymbol.get(stock.symbol) || 0
                   return (
                     <Fragment key={`wealth-stock-group-${stock.symbol}`}>
-                      <tr key={`wealth-stock-summary-${stock.symbol}`} className="border-t border-slate-100 dark:border-slate-800">
-                        <td className="px-3 py-4 sm:px-5 align-top min-w-0 max-w-[14rem] xl:max-w-[18rem]">
-                          <p className="font-bold text-slate-800 dark:text-slate-200 text-[15px] lg:text-sm break-words leading-snug">{stock.name || stock.code}</p>
-                          <p className="text-xs sm:text-xs text-slate-500 dark:text-slate-400 break-all">{stock.code}</p>
+                      <tr key={`wealth-stock-summary-${stock.symbol}`} className={ownedPortfolioTbodyRowClass}>
+                        <td className={ownedPortfolioNameCellClass}>
+                          <p className="font-bold text-slate-900 dark:text-slate-50 text-[15px] lg:text-sm break-words leading-snug">{stock.name || stock.code}</p>
+                          <span className={`${ownedPortfolioTickerPillClass} break-all`}>{stock.code}</span>
+                        </td>
+                        <td className="px-3 py-4 sm:px-5 align-top whitespace-nowrap max-w-[7.5rem]">
+                          <span className="inline-flex items-center rounded-lg border border-violet-200/80 dark:border-violet-900/50 bg-violet-50/80 dark:bg-violet-950/30 px-2 py-1 text-[11px] sm:text-xs font-bold text-violet-800 dark:text-violet-200">
+                            {sectorForOwnedStockPie(stock)}
+                          </span>
                         </td>
                         <td className="px-3 py-4 sm:px-5 text-right font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap">{stock.lots.length}</td>
-                        <td className="px-3 py-4 sm:px-5 text-right font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap">{stock.totalQty.toLocaleString()}</td>
+                        <td className="px-3 py-4 sm:px-5 text-right font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap">{stock.totalQty.toLocaleString('ja-JP')}</td>
                         <td className="px-3 py-4 sm:px-5 text-right font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap">
                           {stock.totalQty > 0 ? avgBuyPrice.toFixed(2) : '--'}
                         </td>
                         <td className="px-3 py-4 sm:px-5 text-right font-semibold text-slate-900 dark:text-white whitespace-nowrap">
-                          {Number(stock.price || 0) > 0 ? Number(stock.price).toLocaleString() : '--'}
+                          {Number(stock.price || 0) > 0 ? Number(stock.price).toLocaleString('ja-JP') : '--'}
                           <p className="text-xs lg:text-[11px] text-slate-400 whitespace-normal">{stock.tradeDate ? formatDateJpSlash(stock.tradeDate) : ''}</p>
                         </td>
-                        <td className="px-3 py-4 sm:px-5 text-right font-bold text-slate-900 dark:text-white text-[15px] lg:text-sm whitespace-nowrap">
-                          {stock.currentValueJpy > 0 ? `¥${Math.round(stock.currentValueJpy).toLocaleString()}` : '--'}
+                        <td className="px-3 py-4 sm:px-5 text-right font-black text-indigo-900 dark:text-indigo-200 text-[15px] lg:text-sm whitespace-nowrap">
+                          {stock.currentValueJpy > 0 ? `¥${Math.round(stock.currentValueJpy).toLocaleString('ja-JP')}` : '--'}
                         </td>
-                        <td className={`px-3 py-4 sm:px-5 text-right font-black text-[15px] lg:text-sm whitespace-nowrap tabular-nums ${stock.pnlRate == null ? 'text-slate-400' : stock.pnlRate >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                        <td className={`px-3 py-4 sm:px-5 text-right font-black text-[15px] lg:text-sm whitespace-nowrap tabular-nums ${stock.pnlRate == null ? 'text-slate-400' : stock.pnlRate >= 0 ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'}`}>
                           {stock.pnlRate == null ? '--' : `${stock.pnlRate >= 0 ? '+' : ''}${stock.pnlRate.toFixed(2)}%`}
+                          {symReal !== 0 ? (
+                            <span className={`mt-1 block text-[10px] lg:text-[9px] font-bold tabular-nums ${symReal >= 0 ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'}`}>
+                              実現累計 {symReal >= 0 ? '+' : ''}¥{Math.round(symReal).toLocaleString('ja-JP')}
+                            </span>
+                          ) : null}
                         </td>
-                        <td className="px-3 py-4 sm:px-5 text-right whitespace-nowrap">
-                          <div className="flex flex-col items-end gap-2">
+                        <td className="px-3 py-4 sm:px-5 text-right whitespace-nowrap align-middle">
+                          <div className="flex flex-row flex-wrap items-center justify-end gap-2">
                             <button
                               type="button"
                               onClick={() => setExpandedSymbols((prev) => ({ ...prev, [stock.symbol]: !prev[stock.symbol] }))}
-                              className="min-h-[44px] lg:min-h-0 px-3 py-2.5 lg:py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-sm lg:text-xs font-bold text-slate-600 dark:text-slate-300 hover:border-orange-400"
+                              className="min-h-[44px] lg:min-h-0 shrink-0 px-3 py-2.5 lg:py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-sm lg:text-xs font-bold text-slate-600 dark:text-slate-300 hover:border-orange-400"
                             >
                               {isExpanded ? '取引を隠す' : '取引を表示'}
                             </button>
@@ -6137,7 +8168,7 @@ const WealthSection = ({
                               type="button"
                               onClick={() => {
                                 if (!isPaidMember) {
-                                  if (typeof onUiMessage === 'function') onUiMessage('ナンピン詳細シミュレーションはプレミアム限定です。', 'premium')
+                                  if (typeof onUiMessage === 'function') onUiMessage('平均取得単価計算の詳細シミュレーションはプレミアム限定です。', 'premium')
                                   navigate('/premium')
                                   return
                                 }
@@ -6146,6 +8177,7 @@ const WealthSection = ({
                                 setAvgDownSelectedStock({
                                   symbol: stock.symbol,
                                   name: stock.name || stock.code || stock.symbol,
+                                  currency: stock.stockCurrency || inferStockCurrency(stock.symbol),
                                   avgBuyPrice,
                                   currentPrice,
                                   currentQty: Number(stock.totalQty || 0),
@@ -6155,9 +8187,17 @@ const WealthSection = ({
                                 setAvgDownAddQtyInput(String(Math.max(1, Math.ceil(Number(stock.totalQty || 0) * 0.1))))
                                 setAvgDownModalOpen(true)
                               }}
-                              className="min-h-[44px] lg:min-h-0 px-3 py-2.5 lg:py-1.5 rounded-lg border border-orange-300 dark:border-orange-700 text-sm lg:text-xs font-black text-orange-700 dark:text-orange-300 hover:bg-orange-50 dark:hover:bg-orange-950/20"
+                              className="min-h-[44px] lg:min-h-0 shrink-0 px-3 py-2.5 lg:py-1.5 rounded-lg border border-orange-300 dark:border-orange-700 text-sm lg:text-xs font-black text-orange-700 dark:text-orange-300 hover:bg-orange-50 dark:hover:bg-orange-950/20"
                             >
-                              ナンピン計算
+                              平均取得単価計算
+                            </button>
+                            <button
+                              type="button"
+                              disabled={Number(stock.totalQty || 0) <= 0}
+                              onClick={() => openStockSellModal(stock)}
+                              className="min-h-[44px] lg:min-h-0 shrink-0 px-3 py-2.5 lg:py-1.5 rounded-lg border border-indigo-300 dark:border-indigo-700 text-sm lg:text-xs font-black text-indigo-800 dark:text-indigo-200 hover:bg-indigo-50 dark:hover:bg-indigo-950/25 disabled:opacity-45 disabled:pointer-events-none"
+                            >
+                              売却記録
                             </button>
                           </div>
                         </td>
@@ -6169,15 +8209,16 @@ const WealthSection = ({
                           ? ((Number(stock.price) - lotBuyPrice) / lotBuyPrice) * 100
                           : null
                         return (
-                          <tr key={`wealth-stock-lot-${lot.lotId}`} className="border-t border-slate-100 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-900/30">
+                          <tr key={`wealth-stock-lot-${lot.lotId}`} className={ownedPortfolioLotRowClass}>
                             <td className="px-3 py-3 sm:px-5 text-sm lg:text-xs text-slate-500 dark:text-slate-400 align-top min-w-0 max-w-[14rem] xl:max-w-[18rem]">└ 取引</td>
+                            <td className="px-3 py-3 sm:px-5 text-sm lg:text-xs text-slate-400 dark:text-slate-500 whitespace-nowrap">—</td>
                             <td className="px-3 py-3 sm:px-5 text-right text-sm lg:text-xs text-slate-400 dark:text-slate-500 whitespace-nowrap">-</td>
                             <td className="px-3 py-3 sm:px-5 text-right whitespace-nowrap">
                               <input
                                 type="text"
                                 inputMode="decimal"
                                 value={getDraftFieldValue(ownedStockDrafts, lot.lotId, 'qty', lot.qty ?? '')}
-                                onChange={(e) => setDraftFieldValue(setOwnedStockDrafts, lot.lotId, 'qty', sanitizeDecimalOneInput(e.target.value))}
+                                onChange={(e) => setDraftFieldValue(setOwnedStockDrafts, lot.lotId, 'qty', sanitizeStockShareQtyInput(e.target.value))}
                                 onBlur={() => commitOwnedStockDraftField(lot.lotId, 'qty', lot.qty ?? '')}
                                 onKeyDown={(e) => {
                                   if (e.key !== 'Enter') return
@@ -6212,11 +8253,11 @@ const WealthSection = ({
                               />
                             </td>
                             <td className="px-3 py-3 sm:px-5 text-right text-sm lg:text-xs text-slate-400 whitespace-nowrap">—</td>
-                            <td className={`px-3 py-3 sm:px-5 text-right font-black text-sm lg:text-xs whitespace-nowrap tabular-nums ${lotPnlRate == null ? 'text-slate-400' : lotPnlRate >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                            <td className={`px-3 py-3 sm:px-5 text-right font-black text-sm lg:text-xs whitespace-nowrap tabular-nums ${lotPnlRate == null ? 'text-slate-400' : lotPnlRate >= 0 ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'}`}>
                               {lotPnlRate == null ? '--' : `${lotPnlRate >= 0 ? '+' : ''}${lotPnlRate.toFixed(2)}%`}
                             </td>
                             <td className="px-3 py-3 sm:px-5 text-right whitespace-nowrap">
-                              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2">
+                              <div className="flex flex-col gap-1.5 items-end">
                                 <button
                                   type="button"
                                   onClick={() => onLoadOwnedStockPrice?.(lot.lotId, stock.symbol, lot.buyDate)}
@@ -6226,10 +8267,13 @@ const WealthSection = ({
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => onRemoveOwnedStock?.(lot.lotId)}
-                                  className="min-h-[44px] sm:min-h-0 px-3 py-2.5 sm:px-2 sm:py-1 rounded-lg border border-red-200 dark:border-red-800 text-sm sm:text-[11px] font-bold text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+                                  onClick={() => {
+                                    if (!window.confirm(CONFIRM_DELETE_OWNED_LOT_JA)) return
+                                    onRemoveOwnedStock?.(lot.lotId)
+                                  }}
+                                  className="min-h-[44px] sm:min-h-0 px-3 py-2.5 sm:px-2 sm:py-1 rounded-lg border border-red-200 dark:border-red-800 text-sm sm:text-[11px] font-bold text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/30"
                                 >
-                                  削除
+                                  取引削除
                                 </button>
                               </div>
                             </td>
@@ -6240,16 +8284,16 @@ const WealthSection = ({
                   )
                 })}
               </tbody>
-              <tfoot className="bg-slate-50 dark:bg-slate-800/50 border-t-2 border-slate-200 dark:border-slate-700">
+              <tfoot className={ownedPortfolioTfootClass}>
                 <tr>
-                  <td colSpan={5} className="px-3 py-2.5 sm:px-5 sm:py-2 text-right font-bold text-slate-600 dark:text-slate-400 text-sm lg:text-xs">投資元本合計（円換算）</td>
-                  <td className="px-3 py-2.5 sm:px-5 sm:py-2 text-right font-bold text-slate-800 dark:text-slate-200 text-[15px] lg:text-sm whitespace-nowrap tabular-nums">¥{Math.round(stockTotalInvestedJpy).toLocaleString()}</td>
+                  <td colSpan={6} className="px-3 py-2.5 sm:px-5 sm:py-2 text-right font-bold text-slate-700 dark:text-slate-300 text-sm lg:text-xs">投資元本合計（円換算）</td>
+                  <td className="px-3 py-2.5 sm:px-5 sm:py-2 text-right font-bold text-slate-900 dark:text-slate-100 text-[15px] lg:text-sm whitespace-nowrap tabular-nums">¥{Math.round(stockTotalInvestedJpy).toLocaleString('ja-JP')}</td>
                   <td className="px-3 sm:px-5 py-2" />
                   <td className="px-3 sm:px-5 py-2" />
                 </tr>
                 <tr>
-                  <td colSpan={5} className="px-3 py-3.5 sm:px-5 sm:py-3 text-right font-black text-slate-800 dark:text-slate-200 text-sm lg:text-xs">現在評価額合計</td>
-                  <td className="px-3 py-3.5 sm:px-5 sm:py-3 text-right font-black text-slate-900 dark:text-white text-[15px] lg:text-sm whitespace-nowrap tabular-nums">¥{Math.round(stockTotalCurrentJpy).toLocaleString()}</td>
+                  <td colSpan={6} className="px-3 py-3.5 sm:px-5 sm:py-3 text-right font-black text-slate-800 dark:text-slate-100 text-sm lg:text-xs">現在評価額合計</td>
+                  <td className="px-3 py-3.5 sm:px-5 sm:py-3 text-right font-black text-indigo-900 dark:text-indigo-200 text-[15px] lg:text-sm whitespace-nowrap tabular-nums">¥{Math.round(stockTotalCurrentJpy).toLocaleString('ja-JP')}</td>
                   <td className="px-3 sm:px-5 py-3" />
                   <td className="px-3 sm:px-5 py-3" />
                 </tr>
@@ -6258,13 +8302,18 @@ const WealthSection = ({
           </div>
           <p className="px-4 sm:px-5 py-3 text-xs sm:text-[11px] text-slate-500 dark:text-slate-400 border-t border-slate-100 dark:border-slate-800 leading-relaxed">
             ※ 買付日を入力後「終値反映」を押すと、その日付以前の直近終値を買付価格として自動入力します（買付日そのものは変更しません。DBに当日行が無い場合は直近の取引日行の終値になり、ステータスに注意が出ます）。
+            <span className="block mt-2">
+              数量・買付価格・買付日の編集は保存され、損益率に反映されます。誤追加した取引は各行から削除できます（
+              <span className="font-bold text-slate-700 dark:text-slate-200">削除は売却記録ではなく実現損益に影響しません</span>
+              ）。実売却で减少させる場合は「売却を記録（実現損益）」を使ってください。
+            </span>
           </p>
       </div>
       )}
 
       {isStockTab && (
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/60">
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/60">
             <h3 className="text-lg font-black text-slate-900 dark:text-white">株式ウォッチリスト</h3>
           </div>
           <div className="p-5">
@@ -6289,9 +8338,9 @@ const WealthSection = ({
                         <p className="text-sm text-slate-500 dark:text-slate-400">{stock.code}</p>
                         <div className="mt-1.5 flex flex-wrap items-center gap-2 text-sm">
                           <span className="font-semibold text-slate-700 dark:text-slate-200">
-                            {Number(stock.price || 0) > 0 ? `¥${Math.round(Number(stock.price || 0)).toLocaleString()}` : '--'}
+                            {Number(stock.price || 0) > 0 ? `¥${Math.round(Number(stock.price || 0)).toLocaleString('ja-JP')}` : '--'}
                           </span>
-                          <span className={`font-black tabular-nums ${Number(stock.rate || 0) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                          <span className={`font-black tabular-nums ${Number(stock.rate || 0) >= 0 ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'}`}>
                             {Number.isFinite(Number(stock.rate)) ? `${Number(stock.rate || 0) >= 0 ? '+' : ''}${Number(stock.rate || 0).toFixed(2)}%` : '--'}
                           </span>
                         </div>
@@ -6320,6 +8369,150 @@ const WealthSection = ({
           </div>
         </div>
       )}
+
+      {stockTabHelpOpen ? (
+        <div
+          className="fixed inset-0 z-[100] flex items-end justify-center sm:items-center p-4 bg-black/45 backdrop-blur-[1px]"
+          role="presentation"
+          onClick={() => setStockTabHelpOpen(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="stock-tab-help-title"
+            className="relative w-full max-w-lg max-h-[min(85vh,720px)] overflow-y-auto rounded-2xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 shadow-xl shadow-slate-900/20 dark:shadow-black/40 p-5 sm:p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setStockTabHelpOpen(false)}
+              className="absolute top-3 right-3 rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100 transition"
+              aria-label="閉じる"
+            >
+              <X size={20} aria-hidden />
+            </button>
+            <h2 id="stock-tab-help-title" className="text-base font-black text-slate-900 dark:text-white pr-10 leading-snug">
+              保有株式の登録のしかた
+            </h2>
+            <ol className="mt-3 space-y-2 text-[11px] font-semibold text-slate-700 dark:text-slate-300 leading-relaxed list-decimal pl-4 marker:font-black marker:text-orange-700 dark:marker:text-orange-300">
+              <li>
+                <span className="text-slate-900 dark:text-white">銘柄</span>
+                ：下の「銘柄コード／会社名」に入力すると候補が出ます。
+                <strong className="font-black text-slate-900 dark:text-white">一覧からタップして確定</strong>
+                するか、正しいコード（例: <span className="font-mono text-[10px]">7203</span>、<span className="font-mono text-[10px]">AAPL</span>）をそのまま入れてください。
+              </li>
+              <li>
+                <span className="text-slate-900 dark:text-white">保有数量</span>
+                ：今もっている株数（株の単位）。端株は小数で入力できます（小数第3位まで）。
+              </li>
+              <li>
+                <span className="text-slate-900 dark:text-white">買付価格</span>
+                ：そのロットの
+                <strong className="font-black text-slate-900 dark:text-white">1株あたりの取得単価</strong>
+                （購入時の平均単価）。米国株はドル建ての単価です。
+              </li>
+              <li>
+                <span className="text-slate-900 dark:text-white">買付日</span>
+                ：その買い付けに対応する日付（忘れた場合はおおよその日付でも構いません）。
+              </li>
+            </ol>
+            <p className="mt-3 text-[10px] font-bold text-slate-600 dark:text-slate-400 leading-relaxed">
+              入力できたら右端の
+              <span className="text-slate-900 dark:text-white">「保有銘柄を追加」</span>
+              を押してください。キーボードの Enter でも送信できます。
+            </p>
+            <button
+              type="button"
+              onClick={() => setStockTabHelpOpen(false)}
+              className="mt-4 w-full min-h-[44px] rounded-xl bg-slate-900 dark:bg-indigo-600 text-white text-sm font-black hover:opacity-90"
+            >
+              閉じる
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {fundTabHelpOpen ? (
+        <div
+          className="fixed inset-0 z-[100] flex items-end justify-center sm:items-center p-4 bg-black/45 backdrop-blur-[1px]"
+          role="presentation"
+          onClick={() => setFundTabHelpOpen(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="fund-tab-help-title"
+            className="relative w-full max-w-lg max-h-[min(85vh,720px)] overflow-y-auto rounded-2xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 shadow-xl shadow-slate-900/20 dark:shadow-black/40 p-5 sm:p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setFundTabHelpOpen(false)}
+              className="absolute top-3 right-3 rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100 transition"
+              aria-label="閉じる"
+            >
+              <X size={20} aria-hidden />
+            </button>
+            <h2 id="fund-tab-help-title" className="text-base font-black text-slate-900 dark:text-white pr-10 leading-snug">
+              保有ファンドの登録のしかた
+            </h2>
+            <ol className="mt-3 space-y-2 text-[11px] font-semibold text-slate-700 dark:text-slate-300 leading-relaxed list-decimal pl-4 marker:font-black marker:text-orange-700 dark:marker:text-orange-300">
+              <li>
+                <span className="text-slate-900 dark:text-white">ファンドコード／名称</span>
+                ：「ファンドコード／名称」に入力すると候補が出ます。
+                <strong className="font-black text-slate-900 dark:text-white">一覧からタップして確定</strong>
+                するか、正しいコード（例: <span className="font-mono text-[10px]">2558.T</span>）をそのまま入れてください。
+              </li>
+              <li>
+                <span className="text-slate-900 dark:text-white">投資元本</span>
+                ：その取引に対応する投資元本（円）。
+              </li>
+              <li>
+                <span className="text-slate-900 dark:text-white">買付日</span>
+                ：その買い付けに対応する日付（忘れた場合はおおよその日付でも構いません）。
+              </li>
+              <li>
+                <span className="text-slate-900 dark:text-white">買付価格（基準価格）</span>
+                ：その時点の基準価格（ナビなど、銘柄により単位が異なる場合があります）。
+              </li>
+            </ol>
+            <p className="mt-3 text-[10px] font-bold text-slate-600 dark:text-slate-400 leading-relaxed">
+              例) ファンドコード: <span className="font-mono text-[10px] text-slate-800 dark:text-slate-200">2558.T</span>
+              {' '}/ 投資元本: <span className="font-mono text-[10px] text-slate-800 dark:text-slate-200">10000000</span>
+              {' '}/ 買付日: <span className="font-mono text-[10px] text-slate-800 dark:text-slate-200">2026/01/15</span>
+              {' '}/ 買付価格: <span className="font-mono text-[10px] text-slate-800 dark:text-slate-200">300000</span>
+              {' '}→ <span className="text-slate-900 dark:text-white">「保有ファンドを追加」</span>
+            </p>
+            <p className="mt-3 text-[10px] font-bold text-indigo-900 dark:text-indigo-100 leading-relaxed">
+              編集・削除・売却の違い
+            </p>
+            <ul className="mt-1.5 space-y-1.5 text-[10px] font-semibold text-slate-600 dark:text-slate-300 leading-relaxed list-disc pl-4">
+              <li>
+                <span className="text-slate-800 dark:text-slate-200">数量・買付価格・買付日の編集</span>
+                は保存され、損益率・評価額に直ちに反映されます（ログイン中はクラウド同期）。
+              </li>
+              <li>
+                <span className="text-slate-800 dark:text-slate-200">取引行の削除</span>
+                は誤入力の取り消しです。売却記録ではないため、
+                <span className="font-black text-slate-900 dark:text-white">実現損益には影響しません</span>
+                。実売却は銘柄の「売却を記録（実現損益）」を使ってください。
+              </li>
+            </ul>
+            <p className="mt-3 text-[10px] font-bold text-slate-600 dark:text-slate-400 leading-relaxed">
+              入力できたら
+              <span className="text-slate-900 dark:text-white">「保有ファンドを追加」</span>
+              を押してください。キーボードの Enter でも送信できます。
+            </p>
+            <button
+              type="button"
+              onClick={() => setFundTabHelpOpen(false)}
+              className="mt-4 w-full min-h-[44px] rounded-xl bg-slate-900 dark:bg-indigo-600 text-white text-sm font-black hover:opacity-90"
+            >
+              閉じる
+            </button>
+          </div>
+        </div>
+      ) : null}
 
     </div>
   )
@@ -6815,7 +9008,7 @@ const BudgetSection = ({
   return (
     <div className="grid md:grid-cols-2 gap-4 md:gap-8">
       {showBankWatchlist && (
-        <div className="md:col-span-2 bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+        <div className="md:col-span-2 bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30">
           <h3 className="font-bold text-slate-900 dark:text-white mb-3 flex items-center gap-2">
             <Wallet size={18} className="text-blue-500" /> 銀行商品ウォッチリスト
           </h3>
@@ -6838,7 +9031,7 @@ const BudgetSection = ({
           )}
         </div>
       )}
-      <div className="bg-white dark:bg-slate-900 p-4 sm:p-6 rounded-2xl sm:rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm min-w-0">
+      <div className="bg-white dark:bg-slate-900 p-4 sm:p-6 rounded-2xl sm:rounded-[2rem] border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 min-w-0">
         <div className="flex justify-between items-center mb-6">
           <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
             <Wallet size={20} className="text-orange-500" /> 支出トラッカー
@@ -6894,11 +9087,11 @@ const BudgetSection = ({
           <div className="flex justify-between items-end mb-2">
             <div>
               <p className="text-xs text-green-600 dark:text-green-400 font-bold mb-1">今月の支出</p>
-              <p className="text-3xl font-black text-green-700 dark:text-green-400">¥{thisMonthTotal.toLocaleString()}</p>
+              <p className="text-3xl font-black text-green-700 dark:text-green-400">¥{thisMonthTotal.toLocaleString('ja-JP')}</p>
             </div>
             <div className="text-right">
               <p className="text-xs text-green-600 dark:text-green-400 font-bold mb-1">予算目標</p>
-            <p className="text-lg font-bold text-green-700 dark:text-green-400">¥{budgetTargetYen.toLocaleString()}</p>
+            <p className="text-lg font-bold text-green-700 dark:text-green-400">¥{budgetTargetYen.toLocaleString('ja-JP')}</p>
             </div>
           </div>
         <div className="mt-3 flex items-center gap-2">
@@ -6921,7 +9114,7 @@ const BudgetSection = ({
           </div>
           <div className="flex justify-between mt-2 text-[10px] font-bold text-green-600 dark:text-green-400">
             <span>{usedPct.toFixed(1)}% 使用中</span>
-            <span>残り ¥{Math.max(budgetTargetYen - thisMonthTotal, 0).toLocaleString()}</span>
+            <span>残り ¥{Math.max(budgetTargetYen - thisMonthTotal, 0).toLocaleString('ja-JP')}</span>
           </div>
         </div>
 
@@ -6936,14 +9129,14 @@ const BudgetSection = ({
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                 <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} tickFormatter={(v) => `${Math.round(v / 1000)}k`} />
-                <Tooltip formatter={(v) => `¥${Number(v).toLocaleString()}`} />
+                <Tooltip formatter={(v) => `¥${Number(v).toLocaleString('ja-JP')}`} />
                 <Bar dataKey="amount" fill="#f97316" radius={[6, 6, 0, 0]} barSize={24} />
               </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm min-w-0">
+        <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 min-w-0">
           <div className="flex items-center justify-between mb-3">
             <h4 className="font-bold text-slate-800 dark:text-slate-200 text-sm">カテゴリ支出</h4>
             <select
@@ -6967,7 +9160,7 @@ const BudgetSection = ({
                       <Cell key={`cell-${index}`} fill={entry.color} />
                     ))}
                   </Pie>
-                  <Tooltip formatter={(v) => `¥${Number(v).toLocaleString()}`} />
+                  <Tooltip formatter={(v) => `¥${Number(v).toLocaleString('ja-JP')}`} />
                 </RechartsPieChart>
               </ResponsiveContainer>
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -6981,7 +9174,7 @@ const BudgetSection = ({
                     <span className="w-2 h-2 rounded-full" style={{ backgroundColor: d.color }} />
                     <span className="text-slate-500 dark:text-slate-400 font-bold">{d.name}</span>
                   </div>
-                  <span className="font-black text-slate-900 dark:text-white">¥{d.value.toLocaleString()}</span>
+                  <span className="font-black text-slate-900 dark:text-white">¥{d.value.toLocaleString('ja-JP')}</span>
                 </div>
               ))}
               {categorySeries.length === 0 && (
@@ -7051,7 +9244,7 @@ const BudgetSection = ({
                         </div>
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
-                        <span className="font-black text-slate-900 dark:text-white text-xs">¥{Number(tx.amount || 0).toLocaleString()}</span>
+                        <span className="font-black text-slate-900 dark:text-white text-xs">¥{Number(tx.amount || 0).toLocaleString('ja-JP')}</span>
                         <button onClick={() => { setExpenseForm({ category: tx.category || '食費', merchant: tx.merchant || '', amount: String(tx.amount || ''), payment_method: tx.payment_method || '', spent_on: (tx.spent_on || '').slice(0, 10), notes: tx.notes || '' }); setEditingExpenseId(tx.id) }} className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-blue-500" title="編集"><Pencil size={13} /></button>
                         <button onClick={() => onDeleteExpense?.(tx.id)} className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-red-500">
                           <Trash2 size={13} />
@@ -7146,7 +9339,7 @@ const BudgetSection = ({
                   <div className="min-w-0 flex-1">
                     <p className="text-[10px] font-black text-orange-500 tracking-wide">SHIBA LIVE REPORT</p>
                     <p className="text-sm font-black text-slate-800 dark:text-slate-100 leading-snug">{spendForecastHeadline}</p>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">見込み ¥{spendingRunRateYen.toLocaleString()} / 予算 ¥{Number(budgetTargetYen || 0).toLocaleString()}</p>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">見込み ¥{spendingRunRateYen.toLocaleString('ja-JP')} / 予算 ¥{Number(budgetTargetYen || 0).toLocaleString('ja-JP')}</p>
                   </div>
                 </div>
               </div>
@@ -7161,7 +9354,7 @@ const BudgetSection = ({
                         ? 'text-emerald-600 dark:text-emerald-300'
                         : 'text-slate-700 dark:text-slate-200'
                   }`}>
-                    ¥{spendingRunRateYen.toLocaleString()}
+                    ¥{spendingRunRateYen.toLocaleString('ja-JP')}
                   </p>
                 </div>
                 <div className="rounded-xl border border-orange-100 dark:border-orange-900/40 bg-white dark:bg-slate-900 p-3">
@@ -7197,8 +9390,8 @@ const BudgetSection = ({
                   </div>
                   <p className="text-xs font-bold text-slate-700 dark:text-slate-200">
                     {projectedDeficitYen > 0
-                      ? `今月は ${projectedDeficitYen.toLocaleString()}円 の不足見込みです。`
-                      : `月末の余剰見込みは ${projectedFreeCashYen.toLocaleString()}円 です。`}
+                      ? `今月は ${projectedDeficitYen.toLocaleString('ja-JP')}円 の不足見込みです。`
+                      : `月末の余剰見込みは ${projectedFreeCashYen.toLocaleString('ja-JP')}円 です。`}
                   </p>
                   <div className="mt-2 h-2 rounded-full bg-emerald-100 dark:bg-emerald-900/40 overflow-hidden">
                     <div className="h-full rounded-full bg-emerald-500" style={{ width: `${freeCashProgressPct}%` }} />
@@ -7216,7 +9409,7 @@ const BudgetSection = ({
                   <p className="text-xs font-bold text-slate-700 dark:text-slate-200 leading-relaxed">
                     {topSpendingInsight.amountYen > 0 ? (
                       <>
-                        今月の最多支出は <span className="text-violet-600 dark:text-violet-300">{topSpendingInsight.label}</span>（¥{topSpendingInsight.amountYen.toLocaleString()} / {topSpendingInsight.sharePct.toFixed(1)}%）。
+                        今月の最多支出は <span className="text-violet-600 dark:text-violet-300">{topSpendingInsight.label}</span>（¥{topSpendingInsight.amountYen.toLocaleString('ja-JP')} / {topSpendingInsight.sharePct.toFixed(1)}%）。
                         同額をモック換算すると <span className="text-violet-600 dark:text-violet-300">{topSpendingMockUnits.toFixed(2)}口</span> です。
                       </>
                     ) : (
@@ -7240,7 +9433,7 @@ const BudgetSection = ({
           </div>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 p-4 sm:p-6 rounded-2xl sm:rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm min-w-0 min-h-[330px] flex flex-col">
+        <div className="bg-white dark:bg-slate-900 p-4 sm:p-6 rounded-2xl sm:rounded-[2rem] border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 min-w-0 min-h-[330px] flex flex-col">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
             <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
             <Coins size={20} className="text-yellow-500" /> ポイント管理
@@ -7268,12 +9461,12 @@ const BudgetSection = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
             <div className="relative p-4 bg-orange-50 dark:bg-orange-900/20 rounded-2xl border border-orange-100 dark:border-orange-900/50">
               <p className="text-xs text-orange-600 dark:text-orange-400 font-bold mb-1">総ポイント</p>
-              <p className="text-3xl font-black text-orange-500">{pointTotal.toLocaleString()}</p>
+              <p className="text-3xl font-black text-orange-500">{pointTotal.toLocaleString('ja-JP')}</p>
               <Coins className="text-orange-200 dark:text-orange-800 absolute top-4 right-4" size={40} />
             </div>
             <div className="relative p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700">
               <p className="text-xs text-slate-500 font-bold mb-1">30日以内に失効</p>
-              <p className={`text-3xl font-black ${expiringPoints > 0 ? 'text-red-500 animate-pulse' : 'text-slate-400'}`}>{expiringPoints.toLocaleString()}</p>
+              <p className={`text-3xl font-black ${expiringPoints > 0 ? 'text-red-500 animate-pulse' : 'text-slate-400'}`}>{expiringPoints.toLocaleString('ja-JP')}</p>
               <AlertTriangle className="text-slate-200 dark:text-slate-600 absolute top-4 right-4" size={40} />
             </div>
           </div>
@@ -7308,7 +9501,7 @@ const BudgetSection = ({
                     </div>
                     <div className="text-right flex items-center gap-2">
                       <div className="min-w-0">
-                        <p className="font-black text-slate-900 dark:text-white">{Number(p.balance || 0).toLocaleString()} P</p>
+                        <p className="font-black text-slate-900 dark:text-white">{Number(p.balance || 0).toLocaleString('ja-JP')} P</p>
                         <p className={`text-[10px] ${p.isExpiringSoon ? 'text-red-500 dark:text-red-300 font-bold' : 'text-slate-400'}`}>有効期限: {p.expiry || '-'}</p>
                       </div>
                       <button onClick={() => { setPointForm({ name: p.name || '', balance: String(p.balance ?? ''), expiry: (p.expiry || '').slice(0, 10) }); setEditingPointId(p.id) }} className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-blue-500" title="編集"><Pencil size={14} /></button>
@@ -7323,7 +9516,7 @@ const BudgetSection = ({
           </div>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 p-4 sm:p-6 rounded-2xl sm:rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm min-w-0 min-h-[330px] flex flex-col">
+        <div className="bg-white dark:bg-slate-900 p-4 sm:p-6 rounded-2xl sm:rounded-[2rem] border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 min-w-0 min-h-[330px] flex flex-col">
           <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
             <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
               <ShieldCheck size={20} className="text-blue-500" /> My Insurance
@@ -7384,7 +9577,7 @@ const BudgetSection = ({
                       <div className="flex justify-between items-start mb-2">
                         <div>
                           <p className="font-bold text-slate-900 dark:text-white">{ins.product_name}</p>
-                          <p className="text-xs text-slate-500 dark:text-slate-400">{ins.provider || '-'} • 保険料: ¥{Number(ins.monthly_premium || 0).toLocaleString()}/月</p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">{ins.provider || '-'} • 保険料: ¥{Number(ins.monthly_premium || 0).toLocaleString('ja-JP')}/月</p>
                         </div>
                         <div className="flex items-center gap-2">
                           {dayLeft !== null && (
@@ -7456,6 +9649,7 @@ const BudgetSectionV2 = ({
   const [expenseName, setExpenseName] = useState('')
   const [expenseRecurringType, setExpenseRecurringType] = useState('none')
   const [expenseRecurringEndOn, setExpenseRecurringEndOn] = useState('')
+  const [expenseRecurringEndDraft, setExpenseRecurringEndDraft] = useState('')
   const [editingRecurringLocked, setEditingRecurringLocked] = useState(false)
   const [editingRecurringParentId, setEditingRecurringParentId] = useState('')
   const [showExpiryForm, setShowExpiryForm] = useState(false)
@@ -7465,6 +9659,7 @@ const BudgetSectionV2 = ({
   const [expiryDateValue, setExpiryDateValue] = useState('')
   const [expiryAmount, setExpiryAmount] = useState('')
   const [expenseTrendMonths, setExpenseTrendMonths] = useState(6)
+  const [householdMainTab, setHouseholdMainTab] = useState('flow')
 
   useEffect(() => {
     const next = Math.max(0, Number(budgetTargetYen || 0))
@@ -7473,27 +9668,62 @@ const BudgetSectionV2 = ({
     if (next <= 0) setIsEditingBudget(true)
   }, [budgetTargetYen])
 
+  useEffect(() => {
+    setExpenseRecurringEndDraft(expenseRecurringEndOn ? formatHouseholdDateSlash(expenseRecurringEndOn) : '')
+  }, [expenseRecurringEndOn])
+
+  useEffect(() => {
+    if (expenseRecurringType === 'none') {
+      setExpenseRecurringEndOn('')
+      setExpenseRecurringEndDraft('')
+    }
+  }, [expenseRecurringType])
+
   const categories = {
     food: { label: '食費', icon: UtensilsCrossed, color: 'text-orange-500', bg: 'bg-orange-100', hex: '#f97316' },
+    dining: { label: '外食・飲み会', icon: ForkKnifeCrossed, color: 'text-amber-600', bg: 'bg-amber-100', hex: '#d97706' },
     transport: { label: '交通費', icon: Bus, color: 'text-blue-500', bg: 'bg-blue-100', hex: '#3b82f6' },
     shopping: { label: '日用品・買い物', icon: ShoppingCart, color: 'text-purple-500', bg: 'bg-purple-100', hex: '#a855f7' },
     housing: { label: '住宅・固定費', icon: Home, color: 'text-teal-500', bg: 'bg-teal-100', hex: '#14b8a6' },
+    entertainment: { label: '趣味・娯楽', icon: Gamepad2, color: 'text-pink-500', bg: 'bg-pink-100', hex: '#ec4899' },
+    medical: { label: '医療・健康', icon: Stethoscope, color: 'text-rose-500', bg: 'bg-rose-100', hex: '#f43f5e' },
+    education: { label: '教育・習い事', icon: GraduationCap, color: 'text-indigo-500', bg: 'bg-indigo-100', hex: '#6366f1' },
+    travel: { label: '旅行・宿泊', icon: Plane, color: 'text-sky-500', bg: 'bg-sky-100', hex: '#0ea5e9' },
+    fashion: { label: '衣服・美容', icon: Shirt, color: 'text-fuchsia-500', bg: 'bg-fuchsia-100', hex: '#d946ef' },
+    pet: { label: 'ペット', icon: Dog, color: 'text-lime-600', bg: 'bg-lime-100', hex: '#65a30d' },
+    misc: { label: 'その他', icon: MoreHorizontal, color: 'text-slate-500', bg: 'bg-slate-100', hex: '#64748b' },
   }
   const categoryToDbLabel = {
     food: '食費',
+    dining: '外食・飲み会',
     transport: '交通',
     shopping: 'ショッピング',
     housing: '住宅・固定費',
+    entertainment: '趣味・娯楽',
+    medical: '医療・健康',
+    education: '教育・習い事',
+    travel: '旅行・宿泊',
+    fashion: '衣服・美容',
+    pet: 'ペット',
+    misc: 'その他',
   }
   const dbLabelToCategory = (label = '', merchant = '') => {
     const raw = String(label || '')
     const hint = `${raw} ${String(merchant || '')}`
-    if (raw.includes('食')) return 'food'
-    if (raw.includes('交')) return 'transport'
+    if (raw.includes('その他')) return 'misc'
+    if (raw.includes('外食') || raw.includes('飲み会')) return 'dining'
+    if (/(医療|病院|クリニック|歯科|診療|薬局|処方|健診)/.test(hint)) return 'medical'
+    if (raw.includes('趣味') || raw.includes('娯楽')) return 'entertainment'
+    if (raw.includes('教育') || raw.includes('習い事')) return 'education'
+    if (raw.includes('旅行') || raw.includes('宿泊')) return 'travel'
+    if (raw.includes('衣服') || raw.includes('美容')) return 'fashion'
+    if (raw.includes('ペット')) return 'pet'
+    if (raw.includes('食費') || (raw.includes('食') && !raw.includes('外食'))) return 'food'
+    if (raw.includes('交') || raw.includes('交通')) return 'transport'
     if (/(住宅|固定費|家賃|住居|光熱|水道|ガス|電気|通信|携帯|ネット|保険|ローン)/.test(hint)) return 'housing'
     if (raw.includes('ショッピング') || raw.includes('日用品')) return 'shopping'
     if (raw.includes('住') || raw.includes('光熱')) return 'housing'
-    return 'shopping'
+    return 'misc'
   }
   const formatCurrency = (amount) => new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY', maximumFractionDigits: 0 }).format(Math.max(0, Number(amount || 0)))
   const formatNumber = (num) => new Intl.NumberFormat('ja-JP').format(Math.max(0, Number(num || 0)))
@@ -7595,6 +9825,18 @@ const BudgetSectionV2 = ({
     if (!selectedTxMonth) return transactions
     return transactions.filter((t) => String(t?.date || '').startsWith(selectedTxMonth))
   }, [transactions, selectedTxMonth])
+
+  const calendarCurrentMonthKey = (() => {
+    const n = new Date()
+    return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}`
+  })()
+  /** プロフィールの予算は「暦の当月」の一覧・達成率のみに使う（過去月を見ているときは数値が書き換わって見えないようにする） */
+  const budgetAppliesToSelectedMonth = Boolean(selectedTxMonth) && selectedTxMonth === calendarCurrentMonthKey
+
+  useEffect(() => {
+    if (!budgetAppliesToSelectedMonth) setIsEditingBudget(false)
+  }, [budgetAppliesToSelectedMonth])
+
   const [txLedgerPage, setTxLedgerPage] = useState(1)
   useEffect(() => {
     setTxLedgerPage(1)
@@ -7650,10 +9892,23 @@ const BudgetSectionV2 = ({
   }, [pointAccounts, insurances, expiryNowTs])
 
   const hasUrgentAlert = processedExpiries.some((e) => e.isAlert)
+
+  const pointsInsuranceStrip = useMemo(() => {
+    const pointRows = processedExpiries.filter((e) => e.type === 'point')
+    const insRows = processedExpiries.filter((e) => e.type === 'insurance')
+    const totalPt = pointRows.reduce((s, e) => s + Number(e.amount || 0), 0)
+    const expiringSoonPt = pointRows.filter((e) => e.isAlert).reduce((s, e) => s + Number(e.amount || 0), 0)
+    const insMonthly = insRows.reduce((s, e) => s + Number(e.amount || 0), 0)
+    const upcoming = processedExpiries.filter((e) => e.daysLeft >= 0 && e.daysLeft < 9000)
+    const nextDays = upcoming.length ? Math.min(...upcoming.map((e) => e.daysLeft)) : null
+    return { totalPt, expiringSoonPt, insMonthly, nextDays }
+  }, [processedExpiries])
+
   const summaryData = useMemo(() => {
     const scopedRows = Array.isArray(filteredTransactions) ? filteredTransactions : []
     const totalSpent = scopedRows.reduce((sum, t) => sum + t.amount, 0)
-    const budgetUsagePercent = monthlyBudget > 0 ? Math.min(100, (totalSpent / monthlyBudget) * 100) : 0
+    const budgetForUsage = budgetAppliesToSelectedMonth ? monthlyBudget : 0
+    const budgetUsagePercent = budgetForUsage > 0 ? Math.min(100, (totalSpent / budgetForUsage) * 100) : 0
     const categoryTotals = scopedRows.reduce((acc, t) => {
       acc[t.category] = (acc[t.category] || 0) + t.amount
       return acc
@@ -7675,7 +9930,7 @@ const BudgetSectionV2 = ({
     }, { cumulative: 0, stops: [] })
     const pieGradientStops = gradientBuild.stops.join(', ')
     return { totalSpent, budgetUsagePercent, sortedCategories, pieGradientStops: pieGradientStops || '#f3f4f6 0% 100%' }
-  }, [filteredTransactions, monthlyBudget, categories])
+  }, [filteredTransactions, monthlyBudget, categories, budgetAppliesToSelectedMonth])
 
   const currentMonthBudgetUsage = useMemo(
     () => getCurrentMonthBudgetUsage(expenses, monthlyBudget),
@@ -7697,14 +9952,31 @@ const BudgetSectionV2 = ({
     }, 0)
   }, [expenses])
 
+  /** 一覧の表示月と無関係に、暦「今月・本日まで」の支出（インサイト文言と整合） */
+  const calendarMonthToDateSpentYen = useMemo(() => {
+    const rows = Array.isArray(expenses) ? expenses : []
+    const now = new Date()
+    const y = now.getFullYear()
+    const mo = now.getMonth()
+    const day = now.getDate()
+    const curStart = new Date(y, mo, 1)
+    const todayEnd = new Date(y, mo, day, 23, 59, 59, 999)
+    return rows.reduce((sum, row) => {
+      const dt = new Date(row?.spent_on || '')
+      if (Number.isNaN(dt.getTime())) return sum
+      if (dt >= curStart && dt <= todayEnd) return sum + Math.max(0, Number(row?.amount || 0))
+      return sum
+    }, 0)
+  }, [expenses])
+
   const insightData = useMemo(() => {
-    const savedAmount = lastMonthTotalSamePeriod - summaryData.totalSpent
+    const savedAmount = lastMonthTotalSamePeriod - calendarMonthToDateSpentYen
     const isSaving = savedAmount > 0
     const annualReturnRate = 0.05
     const years = 10
     const simulatedFutureValue = isSaving ? Math.floor(savedAmount * Math.pow(1 + annualReturnRate, years)) : 0
     return { savedAmount, isSaving, simulatedFutureValue, years, annualReturnRate }
-  }, [lastMonthTotalSamePeriod, summaryData.totalSpent])
+  }, [lastMonthTotalSamePeriod, calendarMonthToDateSpentYen])
 
   /** 暦「今月」〜今日 vs 前月同日まで。カテゴリは取引一覧と同じ dbLabelToCategory ルール。 */
   const householdInsightMetrics = useMemo(() => {
@@ -7811,7 +10083,90 @@ const BudgetSectionV2 = ({
     })
   }, [expenses, expenseTrendMonths])
 
+  const prevMonthYm = useMemo(() => {
+    if (!selectedTxMonth) return ''
+    const [y, m] = selectedTxMonth.split('-').map(Number)
+    if (!y || !m) return ''
+    const pm = m === 1 ? 12 : m - 1
+    const py = m === 1 ? y - 1 : y
+    return `${py}-${String(pm).padStart(2, '0')}`
+  }, [selectedTxMonth])
+
+  const prevMonthTotalSameCalendar = useMemo(() => {
+    if (!prevMonthYm) return 0
+    return (Array.isArray(expenses) ? expenses : []).reduce((sum, row) => {
+      const ym = String(row?.spent_on || '').slice(0, 7)
+      if (ym !== prevMonthYm) return sum
+      return sum + Math.max(0, Number(row?.amount || 0))
+    }, 0)
+  }, [expenses, prevMonthYm])
+
+  const momVsPrevMonthPct = useMemo(() => {
+    if (prevMonthTotalSameCalendar <= 0) return null
+    return ((summaryData.totalSpent - prevMonthTotalSameCalendar) / prevMonthTotalSameCalendar) * 100
+  }, [summaryData.totalSpent, prevMonthTotalSameCalendar])
+
+  const estimatedNetMonthlyIncomeYen = useMemo(
+    () => Math.max(0, Number(annualIncomeManwon || 0)) * 10000 / 12,
+    [annualIncomeManwon],
+  )
+
+  const savingsRateVsIncome = useMemo(() => {
+    if (estimatedNetMonthlyIncomeYen <= 0) return null
+    const net = estimatedNetMonthlyIncomeYen - summaryData.totalSpent
+    return Math.max(-999, Math.min(999, (net / estimatedNetMonthlyIncomeYen) * 100))
+  }, [estimatedNetMonthlyIncomeYen, summaryData.totalSpent])
+
+  const selectedMonthTitleJp = useMemo(() => {
+    if (!selectedTxMonth) return '—'
+    const [y, m] = selectedTxMonth.split('-').map(Number)
+    return `${y}年${m}月`
+  }, [selectedTxMonth])
+
+  const shiftTxMonth = useCallback((deltaTowardOlder) => {
+    if (txMonthOptions.length === 0 || !selectedTxMonth) return
+    const i = txMonthOptions.indexOf(selectedTxMonth)
+    if (i < 0) return
+    const nextIdx = i + deltaTowardOlder
+    if (nextIdx < 0 || nextIdx >= txMonthOptions.length) return
+    setSelectedTxMonth(txMonthOptions[nextIdx])
+  }, [txMonthOptions, selectedTxMonth])
+
+  const trendBarCss = useMemo(() => {
+    const rows = monthlyTrendData
+    if (!rows.length) return []
+    const max = Math.max(1, ...rows.map((r) => Number(r.amount || 0)))
+    return rows.map((r, i) => ({
+      label: r.month,
+      pct: Math.max(4, Math.round((Number(r.amount || 0) / max) * 100)),
+      isCurrent: i === rows.length - 1,
+    }))
+  }, [monthlyTrendData])
+
+  const trendAvgYen = useMemo(() => {
+    const rows = monthlyTrendData
+    if (!rows.length) return 0
+    const sum = rows.reduce((s, r) => s + Number(r.amount || 0), 0)
+    return Math.round(sum / rows.length)
+  }, [monthlyTrendData])
+
+  const categoryEmoji = {
+    food: '🍚',
+    dining: '🍽',
+    transport: '🚃',
+    shopping: '📦',
+    housing: '🏠',
+    entertainment: '🎮',
+    medical: '💊',
+    education: '📚',
+    travel: '✈️',
+    fashion: '👔',
+    pet: '🐕',
+    misc: '⋯',
+  }
+
   const handleSaveBudget = async () => {
+    if (!budgetAppliesToSelectedMonth) return
     const next = Math.max(0, Number(tempBudget || 0))
     try {
       await onSaveBudgetTarget?.(next)
@@ -7821,7 +10176,8 @@ const BudgetSectionV2 = ({
       /* 親が dataStatus。失敗時は編集モードのまま */
     }
   }
-  const openNewTransaction = () => {
+  /** 記録成功後（または新規追加モーダルオープン時）に共有フォームを初期値へ戻す */
+  const resetExpenseFormForNewEntry = () => {
     setEditingTxId(null)
     setExpenseAmount('')
     setExpenseCategory('food')
@@ -7832,13 +10188,31 @@ const BudgetSectionV2 = ({
     setExpenseRecurringEndOn('')
     setEditingRecurringLocked(false)
     setEditingRecurringParentId('')
+  }
+  const openNewTransaction = () => {
+    resetExpenseFormForNewEntry()
     setShowExpenseForm(true)
+  }
+  const commitRecurringEndDraftOnBlur = () => {
+    const raw = expenseRecurringEndDraft.trim()
+    if (!raw) {
+      setExpenseRecurringEndOn('')
+      setExpenseRecurringEndDraft('')
+      return
+    }
+    const iso = parseHouseholdDateSlash(raw)
+    if (iso) {
+      setExpenseRecurringEndOn(iso)
+      setExpenseRecurringEndDraft(formatHouseholdDateSlash(iso))
+    } else {
+      setExpenseRecurringEndDraft(expenseRecurringEndOn ? formatHouseholdDateSlash(expenseRecurringEndOn) : '')
+    }
   }
   const openEditTransaction = (tx) => {
     const recurringMeta = resolveRecurringEditMeta(tx)
     setEditingTxId(tx.id)
     setExpenseAmount(String(tx.amount || ''))
-    setExpenseCategory(tx.category || 'shopping')
+    setExpenseCategory(categories[tx.category] ? tx.category : 'misc')
     setExpensePaymentMethod(tx.payment_method_key || toPaymentMethodKey(tx.payment_method))
     setExpenseDate(tx.date || new Date().toISOString().split('T')[0])
     setExpenseName(String(tx.name || '').replace(/\s·\s定期$/, ''))
@@ -7852,8 +10226,24 @@ const BudgetSectionV2 = ({
     e.preventDefault()
     const amountNum = Math.max(0, Number(expenseAmount || 0))
     if (!user?.id || amountNum <= 0) return
+    const spentDateIso = String(expenseDate || '').slice(0, 10)
+    if (!HOUSEHOLD_ISO_DATE_RE.test(spentDateIso)) {
+      alert('日付を選択してください')
+      return
+    }
+    let recurringEndIso = ''
+    if (expenseRecurringType !== 'none' && !editingRecurringLocked) {
+      const raw = expenseRecurringEndDraft.trim()
+      if (raw) {
+        recurringEndIso = parseHouseholdDateSlash(raw)
+        if (!recurringEndIso) {
+          alert('繰り返し終了日は YYYY/MM/DD 形式で入力するか、未入力のままにしてください。')
+          return
+        }
+      }
+    }
     const payload = {
-      spent_on: expenseDate,
+      spent_on: spentDateIso,
       category: categoryToDbLabel[expenseCategory] || 'その他',
       merchant: (expenseName || categories[expenseCategory]?.label || '手動入力').trim(),
       amount: amountNum,
@@ -7869,17 +10259,17 @@ const BudgetSectionV2 = ({
             ? expenseRecurringType
             : null
           if (recurringType) {
-            if (expenseRecurringEndOn && expenseRecurringEndOn < expenseDate) {
+            if (recurringEndIso && recurringEndIso < spentDateIso) {
               alert('繰り返し終了日は開始日以降を選択してください。')
               setShowExpenseForm(true)
               return
             }
             payload.recurring_type = recurringType
-            payload.recurring_start_on = expenseDate
+            payload.recurring_start_on = spentDateIso
             payload.recurring_anchor_day = recurringType === 'monthly'
-              ? Math.max(1, Math.min(31, Number(String(expenseDate || '').slice(8, 10) || 1)))
+              ? Math.max(1, Math.min(31, Number(String(spentDateIso || '').slice(8, 10) || 1)))
               : null
-            payload.recurring_end_on = expenseRecurringEndOn || null
+            payload.recurring_end_on = recurringEndIso || null
           } else {
             payload.recurring_type = null
             payload.recurring_start_on = null
@@ -7893,31 +10283,64 @@ const BudgetSectionV2 = ({
           ? expenseRecurringType
           : null
         if (recurringType) {
-          if (expenseRecurringEndOn && expenseRecurringEndOn < expenseDate) {
+          if (recurringEndIso && recurringEndIso < spentDateIso) {
             alert('繰り返し終了日は開始日以降を選択してください。')
             setShowExpenseForm(true)
             return
           }
           payload.recurring_type = recurringType
-          payload.recurring_start_on = expenseDate
+          payload.recurring_start_on = spentDateIso
           payload.recurring_anchor_day = recurringType === 'monthly'
-            ? Math.max(1, Math.min(31, Number(String(expenseDate || '').slice(8, 10) || 1)))
+            ? Math.max(1, Math.min(31, Number(String(spentDateIso || '').slice(8, 10) || 1)))
             : null
-          payload.recurring_end_on = expenseRecurringEndOn || null
+          payload.recurring_end_on = recurringEndIso || null
           payload.recurring_parent_id = null
         }
         await onAddExpense?.({ user_id: user.id, ...payload })
       }
+      resetExpenseFormForNewEntry()
     } catch {
       setShowExpenseForm(true)
       /* 親が dataStatus */
     }
   }
+
+  const handleQuickAddExpense = async (e) => {
+    e.preventDefault()
+    const amountNum = Math.max(0, Number(expenseAmount || 0))
+    if (!user?.id || amountNum <= 0) return
+    const spentDateIso = String(expenseDate || '').slice(0, 10)
+    if (!HOUSEHOLD_ISO_DATE_RE.test(spentDateIso)) {
+      alert('日付を選択してください')
+      return
+    }
+    const payload = {
+      spent_on: spentDateIso,
+      category: categoryToDbLabel[expenseCategory] || 'その他',
+      merchant: (expenseName || categories[expenseCategory]?.label || '手動入力').trim(),
+      amount: amountNum,
+      payment_method: toPaymentMethodLabel(expensePaymentMethod),
+      notes: '',
+      recurring_type: null,
+      recurring_start_on: null,
+      recurring_anchor_day: null,
+      recurring_end_on: null,
+      recurring_parent_id: null,
+    }
+    try {
+      await onAddExpense?.({ user_id: user.id, ...payload })
+      resetExpenseFormForNewEntry()
+    } catch {
+      /* 親が dataStatus */
+    }
+  }
+
   const handleDeleteTransaction = async () => {
     if (!editingTxId) return
     try {
       await onDeleteExpense?.(editingTxId)
       setShowExpenseForm(false)
+      resetExpenseFormForNewEntry()
     } catch {
       /* 親が dataStatus */
     }
@@ -7926,10 +10349,10 @@ const BudgetSectionV2 = ({
     if (!editingRecurringParentId) return null
     return transactionById.get(String(editingRecurringParentId)) || null
   }, [editingRecurringParentId, transactionById])
-  const openNewExpiry = () => {
+  const openNewExpiry = (initialType = 'point') => {
     setEditingExpiryId(null)
     setExpiryName('')
-    setExpiryType('point')
+    setExpiryType(initialType === 'insurance' ? 'insurance' : 'point')
     setExpiryDateValue('')
     setExpiryAmount('')
     setShowExpiryForm(true)
@@ -7968,141 +10391,286 @@ const BudgetSectionV2 = ({
     setShowExpiryForm(false)
   }
 
+  const txMonthNavIndex = txMonthOptions.indexOf(selectedTxMonth)
+  const canShiftMonthOlder = txMonthNavIndex >= 0 && txMonthNavIndex < txMonthOptions.length - 1
+  const canShiftMonthNewer = txMonthNavIndex > 0
+
+  const formatTxLedgerDayLabel = (iso) => {
+    const d = String(iso || '').slice(0, 10)
+    if (!d) return ''
+    const today = new Date().toISOString().slice(0, 10)
+    const yest = new Date(Date.now() - 86400000).toISOString().slice(0, 10)
+    const [yy, mm, dd] = d.split('-').map(Number)
+    if (d === today) return `今日 · ${mm}月${dd}日`
+    if (d === yest) return `昨日 · ${mm}月${dd}日`
+    return `${mm}月${dd}日`
+  }
+
   const actionButtons = (
-    <div className="flex gap-2 shrink-0">
-      <button onClick={openNewExpiry} className="bg-white border border-gray-200 text-gray-700 px-5 py-3 rounded-xl font-bold text-sm hover:bg-gray-50 transition-colors shadow-sm">+ 期限・資産追加</button>
-      <button onClick={openNewTransaction} className="bg-[#1e2330] text-white px-5 py-3 rounded-xl font-bold text-sm hover:bg-gray-800 transition-colors shadow-sm">+ 支出記録</button>
+    <div className="flex flex-wrap gap-2 shrink-0 justify-end">
+      <button
+        type="button"
+        onClick={() => openNewExpiry('point')}
+        className="rounded-[10px] border-[1.5px] border-[#E8E2DC] bg-white px-3.5 py-2 text-[14px] font-semibold text-[#4A4540] hover:border-[#D4722A] hover:text-[#D4722A] transition-colors"
+      >
+        ＋ 期限・資産
+      </button>
+      <button
+        type="button"
+        onClick={openNewTransaction}
+        className="rounded-[10px] bg-[#D4722A] px-4 py-2 text-[14px] font-bold text-white hover:opacity-90 transition-opacity shadow-[0_4px_14px_rgba(212,114,42,0.35)]"
+      >
+        ＋ 支出記録
+      </button>
     </div>
   )
 
   return (
-    <div className="w-full bg-[#F4F6F8] px-2 md:px-3 lg:px-4 py-0 font-sans text-gray-800 pb-24">
-      <div className="w-full max-w-none mx-0 space-y-8">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-2">
+    <div className="w-full bg-slate-100 dark:bg-slate-950 py-3 md:py-4 pb-28 text-[#1A1714] dark:text-slate-100 font-sans">
+      <div className="w-full space-y-4 md:space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 md:gap-4">
           <div>
-            <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight flex items-center gap-2">
-              <PieChart className="text-[#3b66f5]" size={30} />
-              家計・資産ダッシュボード
-            </h1>
-            <p className="text-base text-gray-500 mt-1">支出分析からポイント・保険の満期まで、資産の全体像を客観的に把握します。</p>
+            <p className="text-[11px] font-black tracking-[0.18em] text-[#D4722A] uppercase mb-0.5">家計管理</p>
+            <h1 className="text-[28px] sm:text-[32px] font-black tracking-tight text-[#1A1714] leading-none">家計簿</h1>
+            <p className="text-sm text-[#8A8480] mt-1 max-w-xl leading-snug">収支・予算・ポイント・保険をまとめて管理。繰り返し支出は「支出記録」フォームから設定します。</p>
           </div>
-          <div className="hidden md:block md:sticky md:top-20 md:z-30 md:bg-[#F4F6F8] md:py-2 md:-my-2">
-            {actionButtons}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+            <div className="flex items-center gap-2 rounded-xl border-[1.5px] border-[#E8E2DC] bg-white px-3 py-2">
+              <button
+                type="button"
+                aria-label="前の月"
+                disabled={!canShiftMonthOlder}
+                onClick={() => shiftTxMonth(1)}
+                className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-[#8A8480] hover:bg-slate-200 hover:text-[#1A1714] disabled:opacity-30 disabled:pointer-events-none"
+              >
+                <ChevronLeft size={16} />
+              </button>
+              <span className="min-w-[7.5rem] text-center text-base font-black tabular-nums">{selectedMonthTitleJp}</span>
+              <button
+                type="button"
+                aria-label="次の月"
+                disabled={!canShiftMonthNewer}
+                onClick={() => shiftTxMonth(-1)}
+                className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-[#8A8480] hover:bg-slate-200 hover:text-[#1A1714] disabled:opacity-30 disabled:pointer-events-none"
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
+            <div className="hidden sm:block">{actionButtons}</div>
           </div>
         </div>
 
-        {/* モバイル: 常に表示される固定アクションバー */}
-        <div className="md:hidden fixed bottom-20 left-0 right-0 z-40 px-4 py-3 bg-white/95 backdrop-blur-sm border-t border-gray-200 shadow-[0_-4px_12px_rgba(0,0,0,0.08)] safe-area-pb">
-          <div className="max-w-[1400px] mx-auto flex gap-2 justify-center">
-            {actionButtons}
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
+          <div className="rounded-2xl border-[1.5px] border-[#1A1714] bg-[#1A1714] px-4 py-3.5 md:px-5 md:py-4 shadow-[0_4px_24px_rgba(0,0,0,0.1)] text-white">
+            <p className="text-xs font-bold uppercase tracking-wider text-white/40 mb-1">月内支出</p>
+            <p className="text-[22px] sm:text-[26px] font-black tabular-nums leading-none">{formatCurrency(summaryData.totalSpent)}</p>
+            <p className="text-xs text-white/40 mt-1.5">
+              先月比{' '}
+              {momVsPrevMonthPct == null ? (
+                '—'
+              ) : (
+                <span className={momVsPrevMonthPct > 0 ? 'text-[#E89560] font-bold' : 'text-emerald-300 font-bold'}>
+                  {momVsPrevMonthPct > 0 ? '▲' : '▼'} {momVsPrevMonthPct > 0 ? '+' : ''}
+                  {momVsPrevMonthPct.toFixed(1)}%
+                </span>
+              )}
+            </p>
+          </div>
+          <div className="rounded-2xl border-[1.5px] border-[#E8E2DC] bg-white dark:bg-slate-900 px-4 py-3.5 md:px-5 md:py-4 shadow-[0_1px_8px_rgba(0,0,0,0.06)]">
+            <p className="text-xs font-bold uppercase tracking-wider text-[#8A8480] dark:text-slate-400 mb-1">月次予算</p>
+            {budgetAppliesToSelectedMonth ? (
+              <>
+                {!isEditingBudget ? (
+                  <button type="button" onClick={() => setIsEditingBudget(true)} className="text-left w-full">
+                    <p className="text-[22px] sm:text-[26px] font-black text-[#1A1714] tabular-nums leading-none">
+                      {monthlyBudget > 0 ? formatCurrency(monthlyBudget) : '未設定'}
+                    </p>
+                  </button>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      value={tempBudget}
+                      onChange={(e) => setTempBudget(sanitizeNumericInput(e.target.value))}
+                      className="w-32 rounded-lg border border-[#E8E2DC] bg-white px-2 py-1.5 text-lg font-black tabular-nums"
+                      placeholder="例: 200000"
+                    />
+                    <button type="button" onClick={handleSaveBudget} className="rounded-lg bg-[#D4722A] px-3 py-1.5 text-xs font-bold text-white">
+                      保存
+                    </button>
+                  </div>
+                )}
+                <div className="mt-2">
+                  <div className="h-1.5 w-full rounded-full bg-[#E8E2DC] overflow-hidden">
+                    <div className="h-full rounded-full bg-[#D4722A] transition-all" style={{ width: `${Math.min(100, summaryData.budgetUsagePercent)}%` }} />
+                  </div>
+                  <div className="mt-0.5 flex justify-between text-xs font-semibold text-[#8A8480]">
+                    <span>使用 {summaryData.budgetUsagePercent.toFixed(1)}%</span>
+                    <span className="tabular-nums">残 {formatCurrency(Math.max(0, monthlyBudget - summaryData.totalSpent))}</span>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-[22px] sm:text-[26px] font-black text-[#1A1714] dark:text-slate-100 tabular-nums leading-none">
+                  {monthlyBudget > 0 ? formatCurrency(monthlyBudget) : '未設定'}
+                </p>
+                <p className="text-[11px] text-[#8A8480] dark:text-slate-400 mt-1.5 leading-snug">
+                  設定している予算は「暦の当月」の達成率だけに使います。過去月・未来月を表示しているときは、左の「月内支出」との比率は出しません。
+                </p>
+                <div className="mt-2">
+                  <div className="h-1.5 w-full rounded-full bg-[#E8E2DC] dark:bg-slate-700 overflow-hidden">
+                    <div className="h-full w-0 rounded-full bg-[#D4722A]" aria-hidden />
+                  </div>
+                  <div className="mt-0.5 flex justify-between text-xs font-semibold text-[#8A8480] dark:text-slate-500">
+                    <span>使用 —</span>
+                    <span className="tabular-nums">残 —</span>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+          <div className="rounded-2xl border-[1.5px] border-[#E8E2DC] bg-white dark:bg-slate-900 px-4 py-3.5 md:px-5 md:py-4 shadow-[0_1px_8px_rgba(0,0,0,0.06)]">
+            <p className="text-xs font-bold uppercase tracking-wider text-[#8A8480] dark:text-slate-400 mb-1">貯蓄率（参考）</p>
+            <p className={`text-[22px] sm:text-[26px] font-black tabular-nums leading-none ${savingsRateVsIncome != null ? 'text-[#D4722A]' : 'text-[#8A8480]'}`}>
+              {savingsRateVsIncome != null ? `${savingsRateVsIncome.toFixed(1)}%` : '—'}
+            </p>
+            <p className="text-xs text-[#8A8480] mt-1.5 tabular-nums">
+              {savingsRateVsIncome != null
+                ? `${formatCurrency(Math.max(0, estimatedNetMonthlyIncomeYen - summaryData.totalSpent))} 相当`
+                : '年収未設定'}
+            </p>
           </div>
         </div>
 
+        <div className="flex gap-8 md:gap-10 border-b border-slate-200/50 dark:border-slate-700 pt-0.5">
+          <button
+            type="button"
+            onClick={() => setHouseholdMainTab('flow')}
+            className={`pb-2.5 text-base font-black transition-colors border-b-[3px] -mb-px ${
+              householdMainTab === 'flow' ? 'border-[#1A1714] text-[#1A1714]' : 'border-transparent text-[#8A8480] hover:text-[#1A1714]'
+            }`}
+          >
+            収支・カテゴリ
+          </button>
+          <button
+            type="button"
+            onClick={() => setHouseholdMainTab('assets')}
+            className={`pb-2.5 text-base font-black transition-colors border-b-[3px] -mb-px ${
+              householdMainTab === 'assets' ? 'border-[#D4722A] text-[#1A1714]' : 'border-transparent text-[#8A8480] hover:text-[#1A1714]'
+            }`}
+          >
+            ポイント・保険
+          </button>
+        </div>
+
+        <div className="sm:hidden">{actionButtons}</div>
+
+        <div className="md:hidden fixed bottom-20 left-0 right-0 z-40 px-5 sm:px-6 py-3 bg-white/95 backdrop-blur-sm border-t border-[#E8E2DC] shadow-[0_-4px_12px_rgba(0,0,0,0.08)] safe-area-pb">
+          <div className="w-full flex gap-3 justify-center">{actionButtons}</div>
+        </div>
+
+        {householdMainTab === 'flow' ? (
+          <>
         {currentMonthBudgetUsage.hasTarget ? (
           <div
-            className={`rounded-2xl border px-4 py-3.5 ${
+            className={`rounded-xl border-[1.5px] px-4 py-3 ${
               currentMonthBudgetUsage.over80
-                ? 'border-red-200 bg-red-50/90'
-                : 'border-slate-200 bg-white border shadow-sm'
+                ? 'border-red-200 bg-[#FEF2F2] shadow-sm'
+                : 'border-slate-200/90 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-[0_1px_8px_rgba(0,0,0,0.05)]'
             }`}
             role="status"
           >
             <div className="flex flex-wrap items-start gap-3">
-              <div className={`rounded-xl p-2 shrink-0 ${currentMonthBudgetUsage.over80 ? 'bg-red-100' : 'bg-slate-100'}`}>
-                <Wallet size={22} className={currentMonthBudgetUsage.over80 ? 'text-red-600' : 'text-[#3b66f5]'} aria-hidden />
+              <div className={`rounded-xl p-2 shrink-0 ${currentMonthBudgetUsage.over80 ? 'bg-red-100' : 'bg-slate-100 dark:bg-slate-800'}`}>
+                <Wallet size={22} className={currentMonthBudgetUsage.over80 ? 'text-red-600' : 'text-[#D4722A]'} aria-hidden />
               </div>
               <div className="min-w-0 flex-1">
-                <p className={`text-sm font-black ${currentMonthBudgetUsage.over80 ? 'text-red-800' : 'text-gray-900'}`}>
-                  今月の予算対比{' '}
-                  <span className={currentMonthBudgetUsage.over80 ? 'text-red-600' : 'text-[#3b66f5]'}>
+                <p className={`text-sm font-black ${currentMonthBudgetUsage.over80 ? 'text-red-800' : 'text-[#1A1714]'}`}>
+                  暦「今月」の予算対比{' '}
+                  <span className={currentMonthBudgetUsage.over80 ? 'text-red-600' : 'text-[#D4722A]'}>
                     {currentMonthBudgetUsage.pct != null ? `${currentMonthBudgetUsage.pct.toFixed(1)}%` : '—'}
                   </span>
                 </p>
-                <p className={`text-xs mt-1 ${currentMonthBudgetUsage.over80 ? 'text-red-800' : 'text-gray-600'}`}>
+                <p className={`text-xs mt-1 ${currentMonthBudgetUsage.over80 ? 'text-red-800' : 'text-[#4A4540]'}`}>
                   支出 {formatCurrency(currentMonthBudgetUsage.spent)} / 目標 {formatCurrency(currentMonthBudgetUsage.target)}
                 </p>
                 {currentMonthBudgetUsage.over80 ? (
                   <p className="text-xs font-bold text-red-700 mt-2">予算の80%に達しました。内訳を確認してください。</p>
                 ) : (
-                  <p className="text-xs text-gray-500 mt-1.5">カレンダー「今月」の支出のみ集計しています（選択中の月とは別）。</p>
+                  <p className="text-xs text-[#8A8480] mt-1.5">一覧の「表示月」とは別に、今日までの今月分のみを集計しています。</p>
                 )}
               </div>
             </div>
           </div>
         ) : null}
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 md:gap-7">
           {isPaidMember ? (
             <>
-              <div className={`col-span-1 rounded-[2.5rem] p-7 border shadow-sm relative overflow-hidden ${insightData.isSaving ? 'bg-blue-50 border-blue-100' : 'bg-orange-50 border-orange-100'}`}>
+              <div className={`col-span-1 rounded-[18px] border-[1.5px] p-5 sm:p-6 shadow-sm relative overflow-hidden ${insightData.isSaving ? 'border-blue-200 bg-blue-50' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900'}`}>
                 <div className="absolute top-4 right-4 text-6xl opacity-20">🐕</div>
-                <p className={`text-[14px] leading-relaxed font-medium ${insightData.isSaving ? 'text-blue-800' : 'text-orange-800'}`}>
-                  ワン！先月同時期と比べて <span className="font-bold">{formatCurrency(Math.abs(insightData.savedAmount))}</span> の
+                <p className={`text-sm leading-relaxed font-bold ${insightData.isSaving ? 'text-blue-800' : 'text-[#4A4540]'}`}>
+                  ワン！先月同時期と比べて <span className="font-black">{formatCurrency(Math.abs(insightData.savedAmount))}</span> の
                   {insightData.isSaving ? '支出減' : '支出増'} だワン。
                 </p>
                 {hasUrgentAlert && <div className="mt-4 inline-flex items-center gap-1.5 text-xs font-bold text-red-600 bg-red-100/50 px-3 py-1.5 rounded-lg"><AlertTriangle size={14} /> 30日以内に満期項目あり</div>}
               </div>
-              <div className="col-span-1 lg:col-span-2 bg-[#1e2330] rounded-[2.5rem] p-7 sm:p-9 text-white shadow-lg relative overflow-hidden">
+              <div className="col-span-1 lg:col-span-2 bg-[#1A1714] rounded-[18px] p-5 sm:p-7 text-white shadow-lg relative overflow-hidden">
                 <div className="flex items-center gap-2 mb-1">
-                  <Sparkles className="text-yellow-400 shrink-0" size={18} aria-hidden />
-                  <h3 className="text-[13px] font-bold text-gray-400 tracking-wide">家計インサイト</h3>
+                  <Sparkles className="text-[#E89560] shrink-0" size={18} aria-hidden />
+                  <h3 className="text-sm font-bold text-white/50 tracking-wide">家計インサイト（暦・今月）</h3>
                 </div>
-                <p className="text-[11px] text-gray-500 mb-4">今月の支出（暦・本日まで）をカテゴリ別に集計。前月は同日までの同時期と比較しています。</p>
-
+                <p className="text-xs text-white/40 mb-4">今月の支出（暦・本日まで）をカテゴリ別に集計。前月は同日までの同時期と比較しています。</p>
                 {householdInsightMetrics.totalCur > 0 ? (
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
                     {householdInsightMetrics.topCategories.map((c) => (
-                      <div
-                        key={c.id}
-                        className="rounded-2xl bg-white/5 border border-white/10 px-4 py-3"
-                      >
-                        <p className="text-[11px] font-bold text-gray-400 truncate">{c.label}</p>
+                      <div key={c.id} className="rounded-2xl bg-white/5 border border-white/10 px-4 py-3">
+                        <p className="text-xs font-bold text-white/40 truncate">{c.label}</p>
                         <p className="text-lg font-black text-white mt-1 tabular-nums">{formatCurrency(c.amount)}</p>
-                        <p className="text-[10px] text-gray-500 mt-0.5 tabular-nums">{c.pct.toFixed(1)}% / 今月合計</p>
+                        <p className="text-xs text-white/40 mt-0.5 tabular-nums">{c.pct.toFixed(1)}% / 今月合計</p>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-sm text-gray-400 mb-5">
+                  <p className="text-sm text-white/40 mb-5">
                     {householdInsightMetrics.hasAnySlice
-                      ? '今月（暦）の支出記録がまだありません。支出を追加するとここに上位カテゴリが表示されます。'
-                      : '支出データがまだありません。記録を追加するとカテゴリ別の内訳が表示されます。'}
+                      ? '今月（暦）の支出記録がまだありません。'
+                      : '支出データがまだありません。'}
                   </p>
                 )}
-
                 {householdInsightMetrics.momIncreases.length > 0 ? (
-                  <div className="mb-5 rounded-2xl bg-amber-500/10 border border-amber-500/25 px-4 py-3">
-                    <p className="text-[11px] font-bold text-amber-200/90 mb-2">前月同時期より増加したカテゴリ</p>
+                  <div className="mb-5 rounded-2xl bg-[#D4722A]/15 border border-[#D4722A]/30 px-4 py-3">
+                    <p className="text-xs font-bold text-[#E89560] mb-2">前月同時期より増加したカテゴリ</p>
                     <ul className="space-y-2">
                       {householdInsightMetrics.momIncreases.map((x) => (
                         <li key={x.id} className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
-                          <span className="text-gray-200 font-medium">{x.label}</span>
-                          <span className="text-amber-100 font-black tabular-nums">
+                          <span className="text-white/80 font-medium">{x.label}</span>
+                          <span className="text-[#E89560] font-black tabular-nums">
                             +{formatCurrency(x.delta)}
-                            <span className="text-[10px] font-normal text-gray-500 ml-1">
-                              （前 {formatCurrency(x.prev)} → 今 {formatCurrency(x.cur)}）
-                            </span>
+                            <span className="text-xs font-normal text-white/40 ml-1">（前 {formatCurrency(x.prev)} → 今 {formatCurrency(x.cur)}）</span>
                           </span>
                         </li>
                       ))}
                     </ul>
                   </div>
                 ) : null}
-
                 {insightData.isSaving ? (
                   <div className={householdInsightMetrics.totalCur > 0 || householdInsightMetrics.momIncreases.length > 0 ? 'pt-2 border-t border-white/10' : ''}>
-                    <p className="text-sm text-gray-300 mb-2">削減できた支出を投資に回した場合の参考シミュレーション</p>
+                    <p className="text-sm text-white/50 mb-2">削減できた支出を投資に回した場合の参考シミュレーション</p>
                     <div className="flex items-end gap-3 mt-4">
-                      <p className="text-4xl sm:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-emerald-300 tracking-tight">{formatCurrency(insightData.simulatedFutureValue)}</p>
-                      <p className="text-sm text-gray-400 mb-2">/ {insightData.years}年後</p>
+                      <p className="text-4xl sm:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-emerald-300 to-emerald-100 tracking-tight">{formatCurrency(insightData.simulatedFutureValue)}</p>
+                      <p className="text-sm text-white/40 mb-2">/ {insightData.years}年後</p>
                     </div>
-                    <p className="mt-2 text-[11px] text-gray-400">※ 固定利回りを仮定した参考値であり、将来の結果を保証しません。</p>
+                    <p className="mt-2 text-xs text-white/40">※ 固定利回りを仮定した参考値であり、将来の結果を保証しません。</p>
                   </div>
                 ) : (
-                  <p className="text-sm text-gray-400">
+                  <p className="text-sm text-white/40">
                     {householdInsightMetrics.totalCur > 0
-                      ? '先月同時期より支出が増えています。上位カテゴリと増加内訳を確認してください。'
-                      : '先月同時期より支出が増えています。カテゴリ内訳を確認してください。'}
+                      ? '先月同時期より支出が増えています。上位カテゴリを確認してください。'
+                      : '先月同時期より支出が増えています。'}
                   </p>
                 )}
               </div>
@@ -8114,368 +10682,444 @@ const BudgetSectionV2 = ({
                 if (typeof onUiMessage === 'function') onUiMessage('家計インサイト詳細はプレミアム限定です。', 'premium')
                 navigate('/premium')
               }}
-              className="col-span-1 lg:col-span-3 rounded-[2.5rem] border border-amber-200 bg-gradient-to-r from-amber-50 to-white dark:from-amber-950/40 dark:to-slate-900 p-7 sm:p-9 text-left shadow-sm hover:border-amber-300"
+              className="col-span-1 lg:col-span-3 rounded-[18px] border-[1.5px] border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-5 sm:p-7 text-left shadow-sm hover:border-[#D4722A] transition-colors"
             >
-              <div className="flex items-center gap-2 text-amber-700 dark:text-amber-300">
+              <div className="flex items-center gap-2 text-[#D4722A]">
                 <Sparkles size={16} />
-                <p className="text-[12px] font-black tracking-wide uppercase">HOUSEHOLD INSIGHT (PREMIUM)</p>
+                <p className="text-sm font-black tracking-wide uppercase">プレミアム・インサイト</p>
               </div>
-              <p className="mt-3 text-lg font-black text-slate-900 dark:text-white">家計インサイト詳細はプレミアム限定でご利用いただけます。</p>
-              <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">今月のカテゴリ上位や前月同時期との差分など、記録データに基づくインサイトを表示します。</p>
-              <p className="mt-3 inline-flex items-center rounded-full bg-amber-100 dark:bg-amber-900/40 px-3 py-1 text-xs font-black text-amber-700 dark:text-amber-200">クリックしてプレミアムで確認</p>
+              <p className="mt-3 text-lg font-black text-[#1A1714]">暦ベースの詳細インサイトはプレミアムでご利用いただけます。</p>
+              <p className="mt-2 text-sm text-[#4A4540]">カテゴリ上位や前月同時期との差分などを表示します。</p>
             </button>
           )}
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
-          <div className="lg:col-span-6 flex">
-            <div className="bg-white rounded-[2.5rem] p-7 sm:p-9 border border-gray-100 shadow-sm h-full min-h-[460px] flex flex-col w-full">
-              <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4">
-                <div>
-                  <p className="text-[12px] font-bold text-gray-500 uppercase tracking-wider">目標予算 (月額)</p>
-                  {!isEditingBudget ? (
-                    <button onClick={() => setIsEditingBudget(true)} className="mt-1 text-2xl font-bold text-gray-900">
-                      {monthlyBudget > 0 ? formatCurrency(monthlyBudget) : '未設定'}
-                    </button>
-                  ) : (
-                    <div className="flex items-center gap-2 mt-1">
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        pattern="[0-9]*"
-                        value={tempBudget}
-                        onChange={(e) => setTempBudget(sanitizeNumericInput(e.target.value))}
-                        className="w-36 bg-gray-50 border border-gray-200 text-gray-900 text-xl font-bold rounded-lg px-2 py-1"
-                        placeholder="例: 200000"
-                      />
-                      <button onClick={handleSaveBudget} className="text-xs font-bold text-white bg-[#3b66f5] px-3 py-2 rounded-lg">保存</button>
+        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(300px,28rem)] gap-4 md:gap-5 items-start">
+          <div className="space-y-3 md:space-y-4 min-w-0">
+            <div className="rounded-[18px] border-[1.5px] border-[#E8E2DC] bg-white dark:bg-slate-900 p-4 md:p-5 shadow-[0_1px_8px_rgba(0,0,0,0.06)]">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                <div className="flex items-center gap-2 text-base font-black text-[#1A1714]">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-[15px]">🗂</span>
+                  カテゴリ別内訳
+                </div>
+                <span className="text-sm font-bold text-[#8A8480]">{selectedMonthTitleJp} 合計</span>
+              </div>
+              {summaryData.totalSpent > 0 ? (
+                <>
+                  <div className="flex flex-col sm:flex-row gap-3 items-center sm:items-start mb-3">
+                    <div className="w-36 h-36 shrink-0 rounded-full relative ring-4 ring-slate-100" style={{ background: `conic-gradient(${summaryData.pieGradientStops})` }}>
+                      <div className="absolute inset-0 m-auto w-[5.5rem] h-[5.5rem] bg-white rounded-full flex flex-col items-center justify-center border border-[#E8E2DC] shadow-sm">
+                        <span className="text-sm font-black text-[#1A1714] tabular-nums leading-tight text-center px-1">{formatCurrency(summaryData.totalSpent)}</span>
+                        <span className="text-[11px] text-[#8A8480]">支出計</span>
+                      </div>
                     </div>
-                  )}
-                </div>
-                <div className="text-right"><p className="text-[12px] font-bold text-gray-500 uppercase tracking-wider">今月の支出</p><p className="text-2xl font-black text-[#d96a35] mt-1">{formatCurrency(summaryData.totalSpent)}</p></div>
-              </div>
-              <div className="mb-6 flex items-center justify-between gap-4">
-                <div className="rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-2">
-                  <p className="text-[11px] font-bold text-slate-500">予算残高</p>
-                  <p className={`text-lg font-black mt-0.5 ${monthlyBudget - Number(summaryData.totalSpent || 0) >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                    {formatSignedCurrency(monthlyBudget - Number(summaryData.totalSpent || 0))}
-                  </p>
-                </div>
-              </div>
-              <div className="mb-8">
-                <div className="flex justify-between text-[11px] font-bold text-gray-400 mb-2"><span>使用率</span><span>{summaryData.budgetUsagePercent.toFixed(1)}%</span></div>
-                <div className="h-3 w-full bg-gray-100 rounded-full overflow-hidden"><div className="h-full rounded-full bg-gradient-to-r from-blue-400 to-[#3b66f5]" style={{ width: `${summaryData.budgetUsagePercent}%` }} /></div>
-              </div>
-              <h3 className="text-[14px] font-bold text-gray-800 mb-4 flex items-center gap-2"><PieChart size={16} className="text-gray-400" /> カテゴリ別分析</h3>
-              {summaryData.totalSpent > 0 ? <div className="flex gap-8 items-center"><div className="w-48 h-48 shrink-0 rounded-full relative" style={{ background: `conic-gradient(${summaryData.pieGradientStops})` }}><div className="absolute inset-0 m-auto w-[100px] h-[100px] bg-white rounded-full flex items-center justify-center"><span className="text-base font-black text-gray-800">{selectedTxMonth ? `${Number(String(selectedTxMonth).split('-')[1] || 0)}月` : '--'}</span></div></div><div className="w-full space-y-3">{summaryData.sortedCategories.map((cat) => (<div key={cat.id} className="flex justify-between items-center text-[14px]"><div className="flex items-center gap-2.5 font-medium text-gray-700"><div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: categories[cat.id]?.hex || '#94a3b8' }} />{categories[cat.id]?.label || 'その他'}</div><span className="font-bold text-gray-900">{formatCurrency(cat.amount)}</span></div>))}</div></div> : <p className="text-center py-8 text-gray-400 text-sm font-medium">データがありません</p>}
-            </div>
-          </div>
-          <div className="lg:col-span-6 flex">
-            <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm overflow-hidden h-full flex flex-col min-h-[460px] w-full">
-              <div className="p-6 sm:p-7 border-b border-gray-50 flex justify-between items-center bg-gray-50/50 gap-3">
-                <h3 className="text-[15px] font-bold text-gray-900 flex items-center gap-2"><Calendar size={18} className="text-gray-400" /> 取引履歴の詳細</h3>
-                <select
-                  value={selectedTxMonth}
-                  onChange={(e) => setSelectedTxMonth(e.target.value)}
-                  className="px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-[12px] font-bold text-gray-600"
-                >
-                  {txMonthOptions.length === 0 ? (
-                    <option value="">月選択</option>
-                  ) : (
-                    txMonthOptions.map((m) => {
-                      const mm = Number(String(m).split('-')[1] || 0)
-                      return <option key={m} value={m}>{mm}月</option>
-                    })
-                  )}
-                </select>
-              </div>
-              <div className="p-5 sm:p-7 flex-1 overflow-y-auto flex flex-col">
-                <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-                  {filteredTransactions.length > 0 ? (
-                    <p className="text-[10px] font-bold text-gray-400">
-                      {filteredTransactions.length}件中{' '}
-                      {(txLedgerPageSafe - 1) * EXPENSE_LEDGER_PAGE_SIZE + 1}–
-                      {Math.min(txLedgerPageSafe * EXPENSE_LEDGER_PAGE_SIZE, filteredTransactions.length)}
-                      件を表示
-                    </p>
-                  ) : (
-                    <span className="text-[10px] font-bold text-gray-400" />
-                  )}
-                </div>
-                <div className="grid grid-cols-2 gap-2 sm:gap-3 flex-1 min-h-0 content-start auto-rows-min">
-                  {pagedFilteredTransactions.map((t) => {
-                    const categoryInfo = categories[t.category] || categories.shopping
-                    const Icon = categoryInfo.icon
-                    return (
-                      <div
-                        key={t.id}
-                        onClick={() => openEditTransaction(t)}
-                        className="flex items-center justify-between gap-2 min-w-0 p-3 sm:p-4 rounded-2xl border border-gray-100 bg-white hover:bg-gray-50 transition-all cursor-pointer group"
-                      >
-                        <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
-                          <div className={`w-10 h-10 sm:w-12 sm:h-12 shrink-0 rounded-xl flex items-center justify-center shadow-sm ${categoryInfo.bg}`}>
-                            <Icon size={20} className={categoryInfo.color} />
-                          </div>
-                          <div className="min-w-0">
-                            <p className="text-[13px] sm:text-[15px] font-bold text-gray-900 mb-0.5 truncate">{t.name}</p>
-                            <div className="flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-[11px] font-medium text-gray-400 truncate">
-                              <span className="shrink-0">{t.date}</span>
-                              <span className="w-1 h-1 rounded-full bg-gray-300 shrink-0" />
-                              <span className="truncate">{categoryInfo.label}</span>
-                            </div>
+                    <div className="flex-1 min-w-0 space-y-2 w-full">
+                      {summaryData.sortedCategories.map((cat) => (
+                        <div key={cat.id} className="flex items-center gap-2 text-sm">
+                          <div className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: categories[cat.id]?.hex }} />
+                          <span className="flex-1 truncate text-[#4A4540] font-semibold">{categories[cat.id]?.label}</span>
+                          <span className="font-black tabular-nums text-[#1A1714]">{formatCurrency(cat.amount)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    {summaryData.sortedCategories.map((cat) => (
+                      <div key={`bar-${cat.id}`} className="flex w-full items-center gap-3 rounded-xl border border-[#E8E2DC] bg-slate-50 p-2.5">
+                        <span className="text-xl shrink-0">{categoryEmoji[cat.id] || '📦'}</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-bold text-[#1A1714]">{categories[cat.id]?.label}</p>
+                          <div className="mt-1 h-1 rounded-full bg-[#E8E2DC] overflow-hidden">
+                            <div className="h-full rounded-full bg-[#D4722A]" style={{ width: `${Math.min(100, cat.percent)}%` }} />
                           </div>
                         </div>
                         <div className="text-right shrink-0">
-                          <p className="text-[14px] sm:text-[18px] font-black text-gray-900 whitespace-nowrap">-{formatCurrency(t.amount)}</p>
-                          <p className="text-[10px] text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity mt-1 flex items-center justify-end gap-1">
-                            <ArrowUpRight size={10} /> 編集
-                          </p>
+                          <p className="text-base font-black tabular-nums text-[#1A1714]">{formatCurrency(cat.amount)}</p>
+                          <p className="text-xs font-semibold text-[#8A8480]">{cat.percent.toFixed(0)}%</p>
                         </div>
                       </div>
-                    )
-                  })}
-                  {filteredTransactions.length === 0 && (
-                    <div className="col-span-2 text-center py-20 text-gray-400 text-sm font-medium">選択した月の取引履歴がありません</div>
-                  )}
-                </div>
-                {txLedgerPageCount > 1 ? (
-                  <div className="mt-4 pt-3 border-t border-gray-100 flex flex-wrap items-center justify-center gap-1.5 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => setTxLedgerPage((p) => Math.max(1, p - 1))}
-                      disabled={txLedgerPageSafe <= 1}
-                      className="min-h-[36px] px-2.5 rounded-lg border border-gray-200 text-[11px] font-bold text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:pointer-events-none"
-                    >
-                      前へ
-                    </button>
-                    {txLedgerPageButtons.map((item, idx) =>
-                      item === '…' ? (
-                        <span key={`tx-ellipsis-${idx}`} className="px-1 text-[11px] font-bold text-gray-400" aria-hidden>
-                          …
-                        </span>
-                      ) : (
-                        <button
-                          key={`tx-page-${item}`}
-                          type="button"
-                          onClick={() => setTxLedgerPage(item)}
-                          className={`min-h-[36px] min-w-[36px] px-2 rounded-lg text-[11px] font-black transition ${
-                            item === txLedgerPageSafe
-                              ? 'bg-[#3b66f5] text-white shadow-sm'
-                              : 'border border-gray-200 text-gray-700 hover:bg-gray-50'
-                          }`}
-                        >
-                          {item}
-                        </button>
-                      ),
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => setTxLedgerPage((p) => Math.min(txLedgerPageCount, p + 1))}
-                      disabled={txLedgerPageSafe >= txLedgerPageCount}
-                      className="min-h-[36px] px-2.5 rounded-lg border border-gray-200 text-[11px] font-bold text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:pointer-events-none"
-                    >
-                      次へ
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-[2.5rem] p-7 sm:p-8 border border-gray-100 shadow-sm">
-          <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-            <h3 className="text-[16px] font-bold text-gray-900 flex items-center gap-2">
-              <TrendingUp size={18} className="text-[#3b66f5]" /> 月別支出トレンド
-            </h3>
-            <div className="flex items-center gap-2">
-              <select value={expenseTrendMonths} onChange={(e) => setExpenseTrendMonths(e.target.value === 'all' ? 'all' : Number(e.target.value))} className="px-2.5 py-1 rounded-lg border border-gray-200 bg-white text-[12px] font-bold text-gray-600">
-                <option value={6}>6ヶ月</option>
-                <option value={12}>12ヶ月</option>
-                <option value={24}>24ヶ月</option>
-                <option value="all">全期間</option>
-              </select>
-              <span className="text-[11px] font-bold text-gray-400">単位: 円</span>
-            </div>
-          </div>
-          <div className="h-56">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={monthlyTrendData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
-                <XAxis dataKey="month" tick={{ fontSize: 12, fill: '#6b7280' }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 12, fill: '#6b7280' }} axisLine={false} tickLine={false} tickFormatter={(v) => `${Math.round(Number(v || 0) / 1000)}k`} />
-                <Tooltip formatter={(v) => formatCurrency(v)} />
-                <Bar dataKey="amount" fill="#3b66f5" radius={[8, 8, 0, 0]} barSize={30} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-[2.5rem] p-8 border border-gray-100 shadow-sm -mt-1 md:-mt-2">
-          <h3 className="text-lg font-bold text-gray-900 mb-5 flex items-center gap-2"><FileText size={20} className="text-[#3b66f5]" /> ポイント・保険の管理</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-            {processedExpiries.map((exp) => (
-              <div
-                key={exp.id}
-                onClick={() => openEditExpiry(exp)}
-                className="relative overflow-hidden rounded-2xl cursor-pointer transition-all hover:scale-[1.02] hover:shadow-lg bg-white border border-gray-100 shadow-sm"
-              >
-                <div className="relative p-5 flex items-start gap-4">
-                  <div className={`shrink-0 w-12 h-12 rounded-xl flex items-center justify-center ${
-                    exp.type === 'point'
-                      ? 'bg-gradient-to-br from-amber-400 via-yellow-500 to-amber-600'
-                      : 'bg-gradient-to-br from-blue-500 via-blue-600 to-indigo-700'
-                  }`}>
-                    {exp.type === 'point' ? <CreditCard size={24} className="text-white" /> : <ShieldCheck size={24} className="text-white" />}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-bold text-gray-900 text-sm">{exp.type === 'point' ? exp.name : (exp.provider || exp.name)}</p>
-                    <p className="text-xl font-black text-gray-900 mt-0.5">
-                      {exp.type === 'point' ? `${formatNumber(exp.amount)} P` : formatCurrency(exp.amount)}
-                    </p>
-                    {exp.type === 'point' && exp.expiryDate && (
-                      <p className="text-[12px] text-gray-500 mt-0.5">({exp.expiryDate} 失効予定)</p>
-                    )}
-                    {exp.type === 'insurance' && exp.expiryDate && (
-                      <p className="text-[12px] text-gray-500 mt-0.5">(次回納付日: {exp.expiryDate})</p>
-                    )}
-                    {exp.type === 'insurance' && exp.coverageSummary && (
-                      <p className="text-[11px] text-gray-500 mt-1">保険期間: 1年間 • 補償内容: {exp.coverageSummary}</p>
-                    )}
-                    {exp.type === 'insurance' && !exp.coverageSummary && (
-                      <p className="text-[11px] text-gray-500 mt-1">保険期間: 1年間</p>
-                    )}
-                    <div className="flex items-center gap-1 mt-2 text-[11px] text-gray-400">
-                      <Calendar size={12} />
-                      <span>{exp.expiryDate || '--'}</span>
-                    </div>
-                  </div>
-                  {exp.daysLeft >= 0 && exp.daysLeft <= 365 && (
-                    <span className={`shrink-0 text-[11px] font-black px-2.5 py-1 rounded-full ${exp.isAlert ? 'bg-red-50 text-red-600' : 'bg-gray-100 text-red-600'}`}>残り{exp.daysLeft}日</span>
-                  )}
-                </div>
-              </div>
-            ))}
-            <div onClick={openNewExpiry} className="p-5 rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50/50 flex flex-col items-center justify-center text-gray-400 hover:text-[#3b66f5] hover:border-[#3b66f5] transition-colors cursor-pointer min-h-[200px]"><Plus size={32} className="mb-2" /><p className="text-sm font-bold">期限・資産を追加</p></div>
-          </div>
-          {processedExpiries.length > 0 && (
-            <div className="mt-4 flex flex-wrap items-center gap-2 text-sm text-gray-600">
-              <span className="font-bold">登録済み資産: {processedExpiries.length}件</span>
-              <span className="text-gray-400">|</span>
-              <span className="font-bold">合計価値(推定): {formatCurrency(processedExpiries.reduce((sum, e) => sum + (e.type === 'point' ? Number(e.amount || 0) : Number(e.amount || 0)), 0))} 相当</span>
-            </div>
-          )}
-        </div>
-
-        {showExpenseForm && (
-          <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden">
-              <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50"><h3 className="font-bold text-gray-900 flex items-center gap-2"><PieChart size={18} className="text-[#3b66f5]" /> {editingTxId ? '支出を編集' : '支出を追加'}</h3><button onClick={() => setShowExpenseForm(false)} className="p-2 bg-white hover:bg-gray-200 rounded-full transition-colors"><X size={18} className="text-gray-500" /></button></div>
-              <form onSubmit={handleSaveTransaction} className="p-6 space-y-4">
-                <input type="number" required value={expenseAmount} onChange={(e) => setExpenseAmount(e.target.value)} className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-2xl font-black rounded-xl px-4 py-3" placeholder="金額" />
-                <div className="grid grid-cols-2 gap-3">
-                  <input type="date" required value={expenseDate} onChange={(e) => setExpenseDate(e.target.value)} className={`bg-gray-50 border border-gray-200 font-bold rounded-xl px-3 py-3 ${myPageNativeDateInputTouchClass}`} />
-                  <input type="text" value={expenseName} onChange={(e) => setExpenseName(e.target.value)} className="bg-gray-50 border border-gray-200 font-bold rounded-xl px-3 py-3" placeholder="メモ・内容" />
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-gray-500 mb-2">支払い方法</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setExpensePaymentMethod('card')}
-                      className={`py-3 rounded-xl border text-sm font-bold transition ${
-                        expensePaymentMethod === 'card'
-                          ? 'bg-white border-[#3b66f5] text-[#3b66f5]'
-                          : 'bg-gray-50 border-gray-200 text-gray-600'
-                      }`}
-                    >
-                      カード
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setExpensePaymentMethod('cash')}
-                      className={`py-3 rounded-xl border text-sm font-bold transition ${
-                        expensePaymentMethod === 'cash'
-                          ? 'bg-white border-[#3b66f5] text-[#3b66f5]'
-                          : 'bg-gray-50 border-gray-200 text-gray-600'
-                      }`}
-                    >
-                      現金
-                    </button>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-2">{Object.keys(categories).map((key) => {
-                  const cat = categories[key]
-                  const Icon = cat.icon
-                  return (
-                    <button key={key} type="button" onClick={() => setExpenseCategory(key)} className={`flex items-center justify-center gap-2 p-3 rounded-xl border text-sm font-bold transition ${expenseCategory === key ? 'bg-white border-[#3b66f5] text-[#3b66f5]' : 'bg-gray-50 border-gray-200 text-gray-600'}`}>
-                      <span className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${expenseCategory === key ? 'bg-[#3b66f5]/10' : 'bg-gray-200/60'}`}><Icon size={18} className={expenseCategory === key ? 'text-[#3b66f5]' : 'text-gray-500'} /></span>
-                      {cat.label}
-                    </button>
-                  )
-                })}</div>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-xs font-bold text-gray-500">繰り返し設定</p>
-                    {editingTxId && expenseRecurringType !== 'none' ? (
-                      <span className="text-[10px] font-black rounded-full bg-blue-50 text-blue-700 px-2 py-0.5">
-                        定期: {recurringTypeLabel(expenseRecurringType)}
-                      </span>
-                    ) : null}
-                  </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    {[
-                      { key: 'none', label: 'なし' },
-                      { key: 'weekly', label: '毎週' },
-                      { key: 'monthly', label: '毎月' },
-                    ].map((item) => (
-                      <button
-                        key={item.key}
-                        type="button"
-                        disabled={editingRecurringLocked}
-                        onClick={() => setExpenseRecurringType(item.key)}
-                        className={`py-2 rounded-xl border text-xs font-bold transition ${
-                          expenseRecurringType === item.key
-                            ? 'bg-white border-[#3b66f5] text-[#3b66f5]'
-                            : 'bg-gray-50 border-gray-200 text-gray-600'
-                        } ${editingRecurringLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
-                      >
-                        {item.label}
-                      </button>
                     ))}
                   </div>
-                  {expenseRecurringType !== 'none' && (
-                    <input
-                      type="date"
-                      disabled={editingRecurringLocked}
-                      value={expenseRecurringEndOn}
-                      onChange={(e) => setExpenseRecurringEndOn(e.target.value)}
-                      className={`w-full bg-gray-50 border border-gray-200 font-bold rounded-xl px-3 py-3 ${myPageNativeDateInputTouchClass} ${editingRecurringLocked ? 'opacity-60 cursor-not-allowed' : ''}`}
-                      placeholder="終了日(任意)"
-                    />
-                  )}
-                  {editingRecurringLocked ? (
-                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
-                      <p className="text-[11px] font-bold text-amber-800">
-                        この取引は定期支出から自動生成された明細です。繰り返し設定は原本で編集できます。
-                      </p>
-                      {editingRecurringParentTx ? (
+                </>
+              ) : (
+                <p className="text-center py-8 text-[#8A8480] text-sm border border-dashed border-[#E8E2DC] rounded-xl">データがありません</p>
+              )}
+            </div>
+
+            <div className="rounded-[18px] border-[1.5px] border-[#E8E2DC] bg-white dark:bg-slate-900 p-4 md:p-5 shadow-[0_1px_8px_rgba(0,0,0,0.06)]">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                <div className="flex items-center gap-2 text-base font-black text-[#1A1714]">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-[15px]">📈</span>
+                  月別支出トレンド
+                </div>
+                <select value={expenseTrendMonths} onChange={(e) => setExpenseTrendMonths(e.target.value === 'all' ? 'all' : Number(e.target.value))} className="rounded-lg border border-[#E8E2DC] bg-white px-2 py-1.5 text-sm font-bold text-[#4A4540]">
+                  <option value={3}>3ヶ月</option>
+                  <option value={6}>6ヶ月</option>
+                  <option value={12}>12ヶ月</option>
+                  <option value={24}>24ヶ月</option>
+                  <option value="all">全期間</option>
+                </select>
+              </div>
+              <div className="flex items-end gap-2 h-[100px] px-1">
+                {trendBarCss.map((b) => (
+                  <div key={b.label} className="flex-1 flex flex-col items-center gap-0.5 h-full justify-end min-w-0">
+                    <div className="w-full flex flex-col justify-end h-[72px]">
+                      <div className={`w-full rounded-t-md transition-all ${b.isCurrent ? 'bg-[#D4722A]' : 'bg-[#E8E2DC]'}`} style={{ height: `${b.pct}%` }} />
+                    </div>
+                    <span className={`text-[11px] font-bold truncate max-w-full text-center ${b.isCurrent ? 'text-[#D4722A]' : 'text-[#8A8480]'}`}>{b.label}</span>
+                  </div>
+                ))}
+              </div>
+              <p className="text-right text-xs font-bold text-[#8A8480] mt-1.5 tabular-nums">平均 {formatCurrency(trendAvgYen)} / 期間</p>
+            </div>
+          </div>
+
+          <div className="space-y-3 md:space-y-4 min-w-0">
+            <form onSubmit={handleQuickAddExpense} className="rounded-[18px] bg-[#1A1714] p-4 md:p-5 shadow-[0_4px_24px_rgba(0,0,0,0.12)] space-y-3">
+              <p className="text-sm font-bold text-white/50 tracking-wide">支出を記録する</p>
+              <div>
+                <p className="text-xs font-bold text-white/40 uppercase mb-1">金額</p>
+                <input type="number" value={expenseAmount} onChange={(e) => setExpenseAmount(e.target.value)} className="w-full rounded-[10px] border border-white/15 bg-white/10 px-3 py-2.5 text-lg font-black text-white placeholder:text-white/25" placeholder="0" />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <p className="text-xs font-bold text-white/40 uppercase mb-1">カテゴリ</p>
+                  <select value={expenseCategory} onChange={(e) => setExpenseCategory(e.target.value)} className="w-full rounded-[10px] border border-white/15 bg-white/10 px-2 py-2.5 text-sm font-bold text-white">
+                    {Object.keys(categories).map((k) => (
+                      <option key={k} value={k} className="bg-[#1A1714]">{categories[k].label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-white/40 uppercase mb-1">日付</p>
+                  <input
+                    type="date"
+                    value={expenseDate}
+                    onChange={(e) => setExpenseDate(e.target.value)}
+                    className={`w-full rounded-[10px] border border-white/15 bg-white/10 px-2 py-2.5 text-sm text-white ${myPageNativeDateInputTouchClass}`}
+                  />
+                </div>
+              </div>
+              <div>
+                <p className="text-xs font-bold text-white/40 uppercase mb-1">メモ（任意）</p>
+                <input type="text" value={expenseName} onChange={(e) => setExpenseName(e.target.value)} className="w-full rounded-[10px] border border-white/15 bg-white/10 px-3 py-2.5 text-sm text-white placeholder:text-white/25" placeholder="店名・内容" />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button" onClick={() => setExpensePaymentMethod('card')} className={`rounded-[10px] py-2 text-sm font-bold ${expensePaymentMethod === 'card' ? 'bg-[#D4722A] text-white' : 'bg-white/10 text-white/60 border border-white/10'}`}>カード</button>
+                <button type="button" onClick={() => setExpensePaymentMethod('cash')} className={`rounded-[10px] py-2 text-sm font-bold ${expensePaymentMethod === 'cash' ? 'bg-[#D4722A] text-white' : 'bg-white/10 text-white/60 border border-white/10'}`}>現金</button>
+              </div>
+              <button type="submit" disabled={expenseSaving} className="w-full rounded-xl bg-[#D4722A] py-3 text-base font-black text-white disabled:opacity-50">＋ 記録する</button>
+              <button type="button" onClick={openNewTransaction} className="w-full rounded-xl border border-white/15 py-2.5 text-sm font-bold text-white/70 hover:bg-white/5">繰り返し・編集は詳細フォームへ</button>
+            </form>
+
+            <div className="rounded-[18px] border-[1.5px] border-[#E8E2DC] bg-white dark:bg-slate-900 p-4 md:p-5 shadow-[0_1px_8px_rgba(0,0,0,0.06)]">
+              <div className="flex items-center justify-between mb-2 gap-2">
+                <div className="flex items-center gap-2 text-base font-black text-[#1A1714]">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-[15px]">📋</span>
+                  取引履歴
+                </div>
+                <select value={selectedTxMonth} onChange={(e) => setSelectedTxMonth(e.target.value)} className="rounded-lg border border-[#E8E2DC] bg-white px-2 py-1.5 text-sm font-bold text-[#4A4540] shrink-0">
+                  {txMonthOptions.length === 0 ? <option value="">月</option> : txMonthOptions.map((m) => (
+                    <option key={m} value={m}>{Number(String(m).split('-')[1])}月</option>
+                  ))}
+                </select>
+              </div>
+              {filteredTransactions.length > 0 ? (
+                <p className="text-xs font-bold text-[#8A8480] mb-1.5">
+                  {filteredTransactions.length}件中 {(txLedgerPageSafe - 1) * EXPENSE_LEDGER_PAGE_SIZE + 1}–{Math.min(txLedgerPageSafe * EXPENSE_LEDGER_PAGE_SIZE, filteredTransactions.length)} 件
+                </p>
+              ) : null}
+              <div className="space-y-2 max-h-[min(520px,55vh)] overflow-y-auto pr-1">
+                {filteredTransactions.length === 0 ? (
+                  <p className="text-center text-sm text-[#8A8480] py-6 border border-dashed border-[#E8E2DC] rounded-xl">取引がありません</p>
+                ) : (
+                  pagedFilteredTransactions.map((t, idx) => {
+                    const prev = idx > 0 ? pagedFilteredTransactions[idx - 1] : null
+                    const showDate = !prev || prev.date !== t.date
+                    return (
+                      <Fragment key={t.id}>
+                        {showDate ? (
+                          <p className="text-xs font-bold text-[#8A8480] uppercase tracking-wide pl-0.5 pt-1">{formatTxLedgerDayLabel(t.date)}</p>
+                        ) : null}
                         <button
                           type="button"
-                          onClick={() => openEditTransaction(editingRecurringParentTx)}
-                          className="mt-2 text-[11px] font-black text-blue-700 underline"
+                          onClick={() => openEditTransaction(t)}
+                          className="flex w-full items-center gap-2 rounded-xl border border-[#E8E2DC] bg-slate-50 p-2.5 text-left hover:bg-white hover:border-[#D4722A] transition-colors"
                         >
-                          原本（{String(editingRecurringParentTx?.date || '').replaceAll('-', '/')}）を編集
+                          <span className="text-lg shrink-0">{categoryEmoji[t.category] || '📦'}</span>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-bold text-[#1A1714] truncate">{t.name}</p>
+                            <p className="text-xs font-semibold text-[#8A8480]">{(categories[t.category] || categories.misc).label}</p>
+                          </div>
+                          <span className="text-base font-black text-[#991B1B] tabular-nums shrink-0">−{formatCurrency(t.amount)}</span>
                         </button>
-                      ) : null}
-                    </div>
+                      </Fragment>
+                    )
+                  })
+                )}
+              </div>
+              {txLedgerPageCount > 1 ? (
+                <div className="mt-3 pt-2 flex flex-wrap items-center justify-center gap-1.5 border-t border-[#E8E2DC]">
+                  <button type="button" onClick={() => setTxLedgerPage((p) => Math.max(1, p - 1))} disabled={txLedgerPageSafe <= 1} className="min-h-[32px] px-2 rounded-lg border border-[#E8E2DC] text-sm font-bold text-[#4A4540] disabled:opacity-40">前へ</button>
+                  {txLedgerPageButtons.map((item, idx) =>
+                    item === '…' ? (
+                      <span key={`tx-el-${idx}`} className="text-sm text-[#8A8480]">…</span>
+                    ) : (
+                      <button
+                        key={`tx-p-${item}`}
+                        type="button"
+                        onClick={() => setTxLedgerPage(item)}
+                        className={`min-h-[32px] min-w-[32px] rounded-lg text-sm font-black ${item === txLedgerPageSafe ? 'bg-[#D4722A] text-white' : 'border border-[#E8E2DC] text-[#1A1714]'}`}
+                      >
+                        {item}
+                      </button>
+                    ),
+                  )}
+                  <button type="button" onClick={() => setTxLedgerPage((p) => Math.min(txLedgerPageCount, p + 1))} disabled={txLedgerPageSafe >= txLedgerPageCount} className="min-h-[32px] px-2 rounded-lg border border-[#E8E2DC] text-sm font-bold disabled:opacity-40">次へ</button>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+          </>
+        ) : (
+          <>
+            <div className="rounded-[18px] bg-[#1A1714] px-4 py-4 text-white shadow-lg">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center sm:text-left">
+                <div className="sm:border-r sm:border-white/10 sm:pr-3">
+                  <p className="text-xs font-bold text-white/40 uppercase">ポイント合計</p>
+                  <p className="text-lg font-black tabular-nums mt-1">{formatNumber(pointsInsuranceStrip.totalPt)} pt</p>
+                </div>
+                <div className="sm:border-r sm:border-white/10 sm:pr-3">
+                  <p className="text-xs font-bold text-[#E89560] uppercase">30日以内注意</p>
+                  <p className="text-lg font-black text-[#E89560] tabular-nums mt-1">{formatNumber(pointsInsuranceStrip.expiringSoonPt)} pt</p>
+                </div>
+                <div className="sm:border-r sm:border-white/10 sm:pr-3">
+                  <p className="text-xs font-bold text-white/40 uppercase">保険 月額計</p>
+                  <p className="text-lg font-black tabular-nums mt-1">{formatCurrency(pointsInsuranceStrip.insMonthly)}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-white/40 uppercase">次の期限まで</p>
+                  <p className="text-lg font-black text-[#E89560] tabular-nums mt-1">{pointsInsuranceStrip.nextDays != null ? `${pointsInsuranceStrip.nextDays}日` : '—'}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8">
+              <div className="rounded-[18px] border-[1.5px] border-[#E8E2DC] bg-white dark:bg-slate-900 p-4 md:p-6 shadow-sm">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2 font-black text-[#1A1714] text-base">
+                    <Gift size={18} className="text-[#D4722A]" />
+                    ポイント管理
+                  </div>
+                  <button type="button" onClick={() => openNewExpiry('point')} className="text-sm font-black text-[#D4722A]">＋ 追加</button>
+                </div>
+                <div className="space-y-2">
+                  {processedExpiries.filter((e) => e.type === 'point').length === 0 ? (
+                    <p className="text-sm text-[#8A8480] py-6 text-center border border-dashed border-[#E8E2DC] rounded-xl">登録がありません</p>
                   ) : (
-                    <p className="text-[11px] text-gray-400">
-                      繰り返しを設定すると、同じ金額/カテゴリで今後の月・週に自動登録されます。
-                    </p>
+                    processedExpiries.filter((e) => e.type === 'point').map((exp) => (
+                      <button key={exp.id} type="button" onClick={() => openEditExpiry(exp)} className="flex w-full items-center gap-3 rounded-xl border border-[#E8E2DC] bg-white p-3 text-left hover:border-[#D4722A] transition-colors">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-amber-400 to-amber-600">
+                          <CreditCard size={20} className="text-white" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-bold text-[#1A1714] truncate">{exp.name}</p>
+                          {exp.isAlert ? (
+                            <p className="text-xs font-bold text-red-600 flex items-center gap-1 mt-0.5"><AlertTriangle size={12} /> 期限が近いです</p>
+                          ) : (
+                            <p className="text-xs text-[#8A8480]">{exp.expiryDate || '期限未設定'}</p>
+                          )}
+                        </div>
+                        <span className="text-sm font-black tabular-nums text-[#1A1714]">{formatNumber(exp.amount)} P</span>
+                      </button>
+                    ))
                   )}
                 </div>
-                <div className="pt-3 mt-2 border-t border-gray-100 flex gap-3">
+                <button type="button" onClick={() => openNewExpiry('point')} className="mt-3 flex w-full flex-col items-center justify-center rounded-xl border-2 border-dashed border-[#D4722A]/40 bg-slate-50 py-4 text-[#D4722A] hover:bg-slate-100 transition-colors">
+                  <Plus size={24} className="mb-1" />
+                  <span className="text-base font-black">ポイントを追加</span>
+                </button>
+              </div>
+
+              <div className="rounded-[18px] border-[1.5px] border-[#E8E2DC] bg-white dark:bg-slate-900 p-4 md:p-6 shadow-sm">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2 font-black text-[#1A1714] text-base">
+                    <ShieldCheck size={18} className="text-emerald-600" />
+                    保険管理
+                  </div>
+                  <button type="button" onClick={() => openNewExpiry('insurance')} className="text-sm font-black text-[#D4722A]">＋ 追加</button>
+                </div>
+                <div className="space-y-3">
+                  {processedExpiries.filter((e) => e.type === 'insurance').length === 0 ? (
+                    <p className="text-sm text-[#8A8480] py-6 text-center border border-dashed border-[#E8E2DC] rounded-xl">登録がありません</p>
+                  ) : (
+                    processedExpiries.filter((e) => e.type === 'insurance').map((exp) => (
+                      <button key={exp.id} type="button" onClick={() => openEditExpiry(exp)} className="w-full rounded-xl border border-[#E8E2DC] bg-white p-4 text-left hover:border-emerald-500/50 transition-colors">
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                          <span className="text-xs font-bold text-[#8A8480]">保険</span>
+                          <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-black text-emerald-700">有効</span>
+                        </div>
+                        <p className="text-base font-black text-[#1A1714]">{exp.name}</p>
+                        <div className="mt-3 space-y-2 border-t border-[#E8E2DC] pt-3 text-sm">
+                          <div className="flex justify-between gap-2">
+                            <span className="text-[#8A8480]">月額保険料</span>
+                            <span className="font-black tabular-nums">{formatCurrency(exp.amount)}</span>
+                          </div>
+                          <div className="flex justify-between gap-2">
+                            <span className="text-[#8A8480]">満期・更新</span>
+                            <span className="font-bold tabular-nums">{exp.expiryDate || '—'}</span>
+                          </div>
+                          {exp.coverageSummary ? (
+                            <div className="flex justify-between gap-2">
+                              <span className="text-[#8A8480]">補償メモ</span>
+                              <span className="font-medium text-right line-clamp-2">{exp.coverageSummary}</span>
+                            </div>
+                          ) : null}
+                        </div>
+                        {exp.daysLeft >= 0 && exp.daysLeft <= 365 ? (
+                          <p className="mt-2 text-sm font-black text-red-600">残り{exp.daysLeft}日</p>
+                        ) : null}
+                      </button>
+                    ))
+                  )}
+                </div>
+                <button type="button" onClick={() => openNewExpiry('insurance')} className="mt-3 flex w-full flex-col items-center justify-center rounded-xl border-2 border-dashed border-[#E8E2DC] bg-slate-50 py-4 text-[#8A8480] hover:border-[#D4722A] hover:text-[#D4722A] transition-colors">
+                  <Plus size={24} className="mb-1" />
+                  <span className="text-base font-black">保険を追加</span>
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+
+        {showExpenseForm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto overscroll-y-contain bg-gray-900/60 backdrop-blur-sm p-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
+            <div className="my-auto flex w-full max-w-md min-h-0 max-h-[min(92dvh,calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-2rem))] flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+              <div className="flex shrink-0 items-center justify-between border-b border-gray-100 bg-gray-50/50 px-6 py-4">
+                <h3 className="flex items-center gap-2 font-bold text-gray-900">
+                  <PieChart size={18} className="text-[#3b66f5]" /> {editingTxId ? '支出を編集' : '支出を追加'}
+                </h3>
+                <button type="button" onClick={() => setShowExpenseForm(false)} className="rounded-full bg-white p-2 transition-colors hover:bg-gray-200">
+                  <X size={18} className="text-gray-500" />
+                </button>
+              </div>
+              <form onSubmit={handleSaveTransaction} className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-y-contain px-6 pt-6">
+                  <input type="number" required value={expenseAmount} onChange={(e) => setExpenseAmount(e.target.value)} className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-2xl font-black rounded-xl px-4 py-3" placeholder="金額" />
+                  <div className="grid grid-cols-2 gap-3">
+                    <input
+                      type="date"
+                      required
+                      value={expenseDate}
+                      onChange={(e) => setExpenseDate(e.target.value)}
+                      className={`bg-gray-50 border border-gray-200 font-bold rounded-xl px-3 py-3 text-gray-900 ${myPageNativeDateInputTouchClass}`}
+                    />
+                    <input type="text" value={expenseName} onChange={(e) => setExpenseName(e.target.value)} className="bg-gray-50 border border-gray-200 font-bold rounded-xl px-3 py-3" placeholder="メモ・内容" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-gray-500 mb-2">支払い方法</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setExpensePaymentMethod('card')}
+                        className={`py-3 rounded-xl border text-sm font-bold transition ${
+                          expensePaymentMethod === 'card'
+                            ? 'bg-white border-[#3b66f5] text-[#3b66f5]'
+                            : 'bg-gray-50 border-gray-200 text-gray-600'
+                        }`}
+                      >
+                        カード
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setExpensePaymentMethod('cash')}
+                        className={`py-3 rounded-xl border text-sm font-bold transition ${
+                          expensePaymentMethod === 'cash'
+                            ? 'bg-white border-[#3b66f5] text-[#3b66f5]'
+                            : 'bg-gray-50 border-gray-200 text-gray-600'
+                        }`}
+                      >
+                        現金
+                      </button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{Object.keys(categories).map((key) => {
+                    const cat = categories[key]
+                    const Icon = cat.icon
+                    return (
+                      <button key={key} type="button" onClick={() => setExpenseCategory(key)} className={`flex items-center justify-center gap-2 p-2.5 sm:p-3 rounded-xl border text-xs sm:text-sm font-bold transition ${expenseCategory === key ? 'bg-white border-[#3b66f5] text-[#3b66f5]' : 'bg-gray-50 border-gray-200 text-gray-600'}`}>
+                        <span className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${expenseCategory === key ? 'bg-[#3b66f5]/10' : 'bg-gray-200/60'}`}><Icon size={18} className={expenseCategory === key ? 'text-[#3b66f5]' : 'text-gray-500'} /></span>
+                        <span className="text-left leading-tight">{cat.label}</span>
+                      </button>
+                    )
+                  })}</div>
+                  <div className="space-y-2 pb-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs font-bold text-gray-500">繰り返し設定</p>
+                      {editingTxId && expenseRecurringType !== 'none' ? (
+                        <span className="text-[10px] font-black rounded-full bg-blue-50 text-blue-700 px-2 py-0.5">
+                          定期: {recurringTypeLabel(expenseRecurringType)}
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { key: 'none', label: 'なし' },
+                        { key: 'weekly', label: '毎週' },
+                        { key: 'monthly', label: '毎月' },
+                      ].map((item) => (
+                        <button
+                          key={item.key}
+                          type="button"
+                          disabled={editingRecurringLocked}
+                          onClick={() => setExpenseRecurringType(item.key)}
+                          className={`py-2 rounded-xl border text-xs font-bold transition ${
+                            expenseRecurringType === item.key
+                              ? 'bg-white border-[#3b66f5] text-[#3b66f5]'
+                              : 'bg-gray-50 border-gray-200 text-gray-600'
+                          } ${editingRecurringLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+                    {expenseRecurringType !== 'none' && (
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        autoComplete="off"
+                        disabled={editingRecurringLocked}
+                        value={expenseRecurringEndDraft}
+                        onChange={(e) => setExpenseRecurringEndDraft(e.target.value)}
+                        onBlur={commitRecurringEndDraftOnBlur}
+                        className={`w-full bg-gray-50 border border-gray-200 font-bold rounded-xl px-3 py-3 ${myPageNativeDateInputTouchClass} ${editingRecurringLocked ? 'opacity-60 cursor-not-allowed' : ''}`}
+                        placeholder="終了日（任意）YYYY/MM/DD"
+                      />
+                    )}
+                    {editingRecurringLocked ? (
+                      <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
+                        <p className="text-[11px] font-bold text-amber-800">
+                          この取引は定期支出から自動生成された明細です。繰り返し設定は原本で編集できます。
+                        </p>
+                        {editingRecurringParentTx ? (
+                          <button
+                            type="button"
+                            onClick={() => openEditTransaction(editingRecurringParentTx)}
+                            className="mt-2 text-[11px] font-black text-blue-700 underline"
+                          >
+                            原本（{String(editingRecurringParentTx?.date || '').replaceAll('-', '/')}）を編集
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <p className="text-[11px] text-gray-400">
+                        繰り返しを設定すると、同じ金額/カテゴリで今後の月・週に自動登録されます。
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <div className="flex shrink-0 gap-3 border-t border-gray-100 bg-white px-6 pb-6 pt-3 mt-0">
                   {editingTxId && <button type="button" onClick={handleDeleteTransaction} disabled={expenseSaving} className="px-4 bg-red-50 text-red-600 rounded-xl font-bold disabled:opacity-60"><Trash2 size={20} /></button>}
                   <button type="submit" disabled={expenseSaving} className="flex-1 bg-[#1e2330] text-white font-bold text-[15px] py-3.5 rounded-xl shadow-md disabled:opacity-60">{editingTxId ? '更新する' : '記録する'}</button>
                 </div>
@@ -8507,7 +11151,7 @@ const BudgetSectionV2 = ({
           </div>
         )}
 
-        <div className="mt-8 flex gap-3 text-[11px] text-gray-400 leading-relaxed bg-white border border-gray-200 p-5 rounded-2xl shadow-sm">
+        <div className="mt-5 flex gap-3 text-sm text-slate-500 dark:text-slate-400 leading-relaxed rounded-xl border border-slate-200/90 dark:border-slate-700 bg-white/80 dark:bg-slate-900/70 p-4 shadow-sm shadow-slate-900/5">
           <AlertTriangle size={18} className="shrink-0 mt-0.5" />
           <div className="space-y-1.5 font-medium">
             <p>{MM_SIMULATION_PAST_PERFORMANCE_JA}</p>
@@ -8665,7 +11309,7 @@ const DebtSection = ({
   return (
     <div className="grid md:grid-cols-12 gap-8">
       <div className="md:col-span-4 space-y-6 md:sticky md:top-24 self-start">
-        <div className="bg-white dark:bg-slate-900 p-6 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm">
+        <div className="bg-white dark:bg-slate-900 p-6 rounded-[2rem] border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30">
           <h3 className="font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
             <Wallet size={20} className="text-emerald-500" /> あなたの収入
           </h3>
@@ -8697,7 +11341,7 @@ const DebtSection = ({
           </div>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 p-6 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm">
+        <div className="bg-white dark:bg-slate-900 p-6 rounded-[2rem] border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30">
           <h3 className="font-bold text-slate-900 dark:text-white mb-6 flex items-center gap-2">
             <AlertTriangle size={20} className="text-red-500" /> 負債状況
           </h3>
@@ -8709,7 +11353,7 @@ const DebtSection = ({
                 <input
                   type="text"
                   inputMode="numeric"
-                  value={debtRemainingInput === '' ? '' : Number(debtRemainingInput).toLocaleString()}
+                  value={debtRemainingInput === '' ? '' : Number(debtRemainingInput).toLocaleString('ja-JP')}
                   onChange={(e) => {
                     const raw = String(e.target.value || '')
                     const halfWidth = raw.replace(/[０-９]/g, (digit) => String.fromCharCode(digit.charCodeAt(0) - 0xFEE0))
@@ -8719,7 +11363,7 @@ const DebtSection = ({
                     onDebtRemainingChange?.(normalized === '' ? 0 : Number(normalized) * 10000)
                   }}
                   className="w-full bg-transparent text-3xl font-black text-slate-900 dark:text-white outline-none"
-                  placeholder={Math.round(Number(principalYen || 0) / 10000).toLocaleString()}
+                  placeholder={Math.round(Number(principalYen || 0) / 10000).toLocaleString('ja-JP')}
                 />
                 <span className="font-bold text-slate-400 text-xl whitespace-nowrap">万円</span>
               </div>
@@ -8772,7 +11416,7 @@ const DebtSection = ({
           </div>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 p-6 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm">
+        <div className="bg-white dark:bg-slate-900 p-6 rounded-[2rem] border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30">
           <h3 className="font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
             <Bell size={20} className="text-orange-500" /> ローンアラート
           </h3>
@@ -8796,7 +11440,7 @@ const DebtSection = ({
 
       <div className="md:col-span-8 space-y-4">
 
-        <div className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white p-8 rounded-[2rem] shadow-sm border border-slate-200 dark:border-slate-800 relative overflow-hidden">
+        <div className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white p-8 rounded-[2rem] border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 relative overflow-hidden">
           <div className="relative z-10">
             <div className="mb-8">
               <span className="bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-300 text-[10px] font-bold px-2 py-1 rounded border border-blue-100 dark:border-blue-800 mb-2 inline-block">シミュレーション</span>
@@ -8811,7 +11455,7 @@ const DebtSection = ({
               <div className="text-center mb-5">
                 <h4 className="text-2xl md:text-3xl font-black text-blue-900 dark:text-blue-100">金利上昇による月返済額の変化</h4>
                 <p className="mt-1 text-xs md:text-sm text-slate-600 dark:text-slate-300">
-                  借入額 ¥{principalYen.toLocaleString()} ・ 返済期間 {remainingYears}年 ・ 元利均等返済
+                  借入額 ¥{principalYen.toLocaleString('ja-JP')} ・ 返済期間 {remainingYears}年 ・ 元利均等返済
                 </p>
               </div>
 
@@ -8827,7 +11471,7 @@ const DebtSection = ({
                       domain={[0, (dataMax) => Math.ceil((Number(dataMax || 0) * 1.12) / 1000) * 1000]}
                       tickFormatter={(v) => `${Math.round(Number(v || 0) / 10000)}万円`}
                     />
-                    <Tooltip formatter={(v) => [`¥${Number(v || 0).toLocaleString()}`, '月返済額']} />
+                    <Tooltip formatter={(v) => [`¥${Number(v || 0).toLocaleString('ja-JP')}`, '月返済額']} />
                     <Bar dataKey="monthlyYen" radius={[8, 8, 0, 0]} barSize={24}>
                       {interestRateTrendData.map((entry) => (
                         <Cell key={entry.rateLabel} fill={entry.fill} />
@@ -8835,7 +11479,7 @@ const DebtSection = ({
                       <LabelList
                         dataKey="monthlyYen"
                         position="top"
-                        formatter={(v) => `¥${Number(v || 0).toLocaleString()}`}
+                        formatter={(v) => `¥${Number(v || 0).toLocaleString('ja-JP')}`}
                         style={{ fill: '#0f172a', fontSize: 11, fontWeight: 800 }}
                         offset={8}
                       />
@@ -8847,12 +11491,12 @@ const DebtSection = ({
               <div className="mt-4 grid md:grid-cols-2 gap-3">
                 <div className="rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-4">
                   <p className="text-xs text-slate-500 dark:text-slate-300 font-bold">1.0%上昇時の増加額</p>
-                  <p className="mt-1 text-2xl font-black text-rose-600 dark:text-rose-300">+¥{onePctIncreaseYen.toLocaleString()}</p>
+                  <p className="mt-1 text-2xl font-black text-rose-600 dark:text-rose-300">+¥{onePctIncreaseYen.toLocaleString('ja-JP')}</p>
                 </div>
                 <div className="rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-4">
                   <p className="text-xs text-slate-500 dark:text-slate-300 font-bold">金利 1% → 2%</p>
                   <p className="mt-1 text-lg font-black text-slate-900 dark:text-white">
-                    月 ¥{Math.round(monthlyAt1PctYen).toLocaleString()} → ¥{Math.round(monthlyAt2PctYen).toLocaleString()}
+                    月 ¥{Math.round(monthlyAt1PctYen).toLocaleString('ja-JP')} → ¥{Math.round(monthlyAt2PctYen).toLocaleString('ja-JP')}
                   </p>
                 </div>
               </div>
@@ -8939,7 +11583,7 @@ const DebtSection = ({
                 </div>
                 <div className="rounded-xl bg-white dark:bg-slate-900 p-3 border border-slate-200 dark:border-slate-700">
                   <p className="text-xs text-slate-500 dark:text-slate-300 mb-1">毎月返済（合計）</p>
-                  <div className="text-lg font-black">¥{Math.round(acceleratedPaymentYen).toLocaleString()}</div>
+                  <div className="text-lg font-black">¥{Math.round(acceleratedPaymentYen).toLocaleString('ja-JP')}</div>
                 </div>
               </div>
               <input
@@ -8954,7 +11598,7 @@ const DebtSection = ({
               />
               <div className="mt-1 flex justify-between text-[10px] font-bold text-slate-400">
                 <span>¥0</span>
-                <span>¥{extraMonthlyMax.toLocaleString()}</span>
+                <span>¥{extraMonthlyMax.toLocaleString('ja-JP')}</span>
               </div>
               <div className="mt-4 rounded-xl bg-white dark:bg-slate-900 p-3 border border-slate-200 dark:border-slate-700">
                 <p className="text-xs text-slate-500 dark:text-slate-300 mb-1">返済構成（年間）：元金・利息 + 残高推移</p>
@@ -8966,7 +11610,7 @@ const DebtSection = ({
                       <XAxis dataKey="yearLabel" tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} />
                       <YAxis yAxisId="left" tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} unit="万円" />
                       <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} unit="万円" />
-                      <Tooltip formatter={(v) => `${Number(v || 0).toLocaleString()}万円`} />
+                      <Tooltip formatter={(v) => `${Number(v || 0).toLocaleString('ja-JP')}万円`} />
                       <Legend wrapperStyle={{ fontSize: 11 }} />
                       <Bar yAxisId="left" dataKey="principalManwon" name="元金（年）" stackId="pay" fill="#34d399" radius={[4, 4, 0, 0]} />
                       <Bar yAxisId="left" dataKey="interestManwon" name="利息（年）" stackId="pay" fill="#fdba74" radius={[4, 4, 0, 0]} />
@@ -8985,11 +11629,11 @@ const DebtSection = ({
                 </div>
                 <div className="rounded-xl bg-white dark:bg-slate-900 p-3 border border-slate-200 dark:border-slate-700">
                   <p className="text-xs text-slate-500 dark:text-slate-300">総利息（現状）</p>
-                  <p className="font-black">¥{baseTotalInterestYen.toLocaleString()}</p>
+                  <p className="font-black">¥{baseTotalInterestYen.toLocaleString('ja-JP')}</p>
                 </div>
                 <div className="rounded-xl bg-white dark:bg-slate-900 p-3 border border-slate-200 dark:border-slate-700">
                   <p className="text-xs text-slate-500 dark:text-slate-300">利息削減見込み</p>
-                  <p className="font-black text-emerald-600 dark:text-emerald-300">¥{interestSavingYen.toLocaleString()}</p>
+                  <p className="font-black text-emerald-600 dark:text-emerald-300">¥{interestSavingYen.toLocaleString('ja-JP')}</p>
                 </div>
               </div>
             </div>
@@ -9118,7 +11762,7 @@ const CoachSection = ({
   const nisaTaxSavingYen = estimatedProfitYen * 0.20315
   const totalSavedAmountYen = Math.max(0, expectedTaxSavingYen + nisaTaxSavingYen)
 
-  const formatCurrency = (amount) => `¥${Math.round(Math.max(0, Number(amount || 0))).toLocaleString()}`
+  const formatCurrency = (amount) => `¥${Math.round(Math.max(0, Number(amount || 0))).toLocaleString('ja-JP')}`
   const topOffer = Array.isArray(refinanceOffers) && refinanceOffers.length > 0 ? refinanceOffers[0] : null
   const totalDebtBalance = Array.isArray(revolvingDebts) && revolvingDebts.length > 0
     ? revolvingDebts.reduce((s, d) => s + Math.max(0, Number(d.balance_yen || 0)), 0)
@@ -9196,7 +11840,7 @@ const CoachSection = ({
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           <div className="lg:col-span-5 space-y-6">
             <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800">
-              <h3 className="text-lg font-black text-slate-900 dark:text-white pb-3 mb-4 border-b border-slate-100 dark:border-slate-800">1. 基本情報</h3>
+              <h3 className="text-lg font-black text-slate-900 dark:text-white pb-3 mb-4 border-b border-slate-200 dark:border-slate-700">1. 基本情報</h3>
               <div className="space-y-5">
                 <div>
                   <label className="block text-sm font-bold text-slate-600 dark:text-slate-300 mb-2">働き方</label>
@@ -9246,7 +11890,7 @@ const CoachSection = ({
             </div>
 
             <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800">
-              <h3 className="text-lg font-black text-slate-900 dark:text-white pb-3 mb-4 border-b border-slate-100 dark:border-slate-800">2. 制度利用状況</h3>
+              <h3 className="text-lg font-black text-slate-900 dark:text-white pb-3 mb-4 border-b border-slate-200 dark:border-slate-700">2. 制度利用状況</h3>
               <div className="space-y-6">
                 <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-3 bg-slate-50 dark:bg-slate-800/60">
                   <p className="text-xs font-black text-slate-500 dark:text-slate-400 mb-2">節税計算モード</p>
@@ -9373,15 +12017,15 @@ const CoachSection = ({
             <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800">
               <h4 className="text-xs font-black text-slate-500 dark:text-slate-400 mb-4">メリットの内訳</h4>
               <ul className="space-y-4">
-                <li className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+                <li className="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">
                   <span className="text-sm text-slate-600 dark:text-slate-300">iDeCo年間拠出額</span>
                   <span className="text-lg font-black text-slate-900 dark:text-white">{formatCurrency(idecoAnnualYen)}</span>
                 </li>
-                <li className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+                <li className="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">
                   <span className="text-sm text-slate-600 dark:text-slate-300">ふるさと納税控除（概算）</span>
                   <span className="text-lg font-black text-slate-900 dark:text-white">{formatCurrency(furusatoDeductionYen)}</span>
                 </li>
-                <li className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+                <li className="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">
                   <span className="text-sm text-emerald-700 dark:text-emerald-300 font-bold">税負担軽減（DBルール反映）</span>
                   <span className="text-lg font-black text-emerald-700 dark:text-emerald-300">{formatCurrency(expectedTaxSavingYen)}</span>
                 </li>
@@ -9488,7 +12132,7 @@ const CoachSection = ({
               <div className="bg-orange-600 p-2 rounded-full text-white">
                 <Target size={18} />
               </div>
-              <h3 className="text-xl font-black text-slate-900 dark:text-white">カリカエ・シミュレーター</h3>
+              <h3 className="text-xl font-black text-slate-900 dark:text-white">借り換えシミュレーター</h3>
             </div>
             <p className="text-sm text-slate-500 dark:text-slate-400 mb-5">現在維持 vs 借り換え実行の24ヶ月総コストを比較します。</p>
 
@@ -9556,7 +12200,7 @@ const CoachSection = ({
 
             {Array.isArray(refinanceOffers) && refinanceOffers.length > 0 && (
               <div className="mt-5 bg-amber-950 rounded-2xl p-4 border border-amber-900 space-y-3">
-                <p className="text-[11px] font-black text-amber-200 tracking-wider uppercase">Market Competitive Rates / 条件一致</p>
+                <p className="text-[11px] font-black text-amber-200 tracking-wider">市場競争金利 / 条件一致</p>
                 {refinanceOffers.slice(0, 3).map((offer, index) => (
                   <div key={offer.offerId || `${offer.bankName}-${index}`} className={`rounded-xl p-4 border ${index === 0 ? 'bg-amber-700/40 border-amber-300/40' : 'bg-amber-900/40 border-amber-800/70'}`}>
                     <div className="flex items-center justify-between gap-3">
@@ -9826,9 +12470,9 @@ const CoachSection = ({
       <div className="mt-2 flex gap-2 text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-2xl">
         <AlertTriangle size={16} className="shrink-0 mt-0.5" />
         <div className="space-y-1 font-medium">
-          <p>{MM_SIMULATION_PAST_PERFORMANCE_JA}</p>
+          <p>{activeCoachTab === 'debt' ? MM_DEBT_SIMULATION_DISCLAIMER_JA : MM_SIMULATION_PAST_PERFORMANCE_JA}</p>
           <p>※ 本シミュレーションは入力値に基づく概算であり、将来の税額・金利・返済額を保証するものではありません。</p>
-          {activeCoachTab === 'debt' && <p>※ 実際の適用金利と借り換え可否は、各金融機関の審査結果によって異なります。</p>}
+          {activeCoachTab === 'debt' && <p>※ 実際の適用金利と借り換え可否は、各金融機関の審査結果によって異なる場合があります。</p>}
           {!isDebtOnly && activeCoachTab === 'tax' && <p>※ NISAの利回りは想定値であり、投資には元本割れリスクがあります。</p>}
         </div>
       </div>
@@ -9836,611 +12480,6 @@ const CoachSection = ({
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  配当カレンダー管理セクション (マイページ専用・保存機能あり)
-// ─────────────────────────────────────────────────────────────────────────────
-const MONTHS_JP_MP = ["1月","2月","3月","4月","5月","6月","7月","8月","9月","10月","11月","12月"]
-
-function DividendCalendarSection({
-  userId, watchlist, loading, saving, status,
-  isPaidMember = false,
-  onUiMessage = null,
-  onOpenPremium = null,
-  highlightSignal,
-  showAdd, onShowAdd,
-  divStockLookupLoading = false,
-  editingStockId = null,
-  newStockId, newStockName, newStockFlag, newStockSector, newStockPrice, newStockQty, newStockNisa, newDividends,
-  onNewStockId, onNewStockName, onNewStockFlag, onNewStockSector, onNewStockPrice, onNewStockQty, onNewStockNisa, onNewDividends,
-  onQtyChange, onDelete, onEdit, onAdd,
-  detailSuggestions = [],
-  onPickDetailSuggestion,
-  valuationUsdJpy = 150,
-  valuationFxDate = '',
-}) {
-  const [selMonth, setSelMonth] = useState(new Date().getMonth() + 1)
-  const [flashMonth, setFlashMonth] = useState(null)
-
-  const getQty = (item) => item.qty ?? 10
-  const fxUsdJpy = Number(valuationUsdJpy) > 0 ? Number(valuationUsdJpy) : 150
-
-  useEffect(() => {
-    const month = Number(highlightSignal?.month || 0)
-    if (!month) return undefined
-    setSelMonth(month)
-    setFlashMonth(month)
-    const timeoutId = window.setTimeout(() => {
-      setFlashMonth((prev) => (prev === month ? null : prev))
-    }, 1300)
-    return () => window.clearTimeout(timeoutId)
-  }, [highlightSignal?.token, highlightSignal?.month])
-
-  const monthlyEvents = useMemo(() => {
-    const map = {}
-    for (let m = 1; m <= 12; m++) map[m] = []
-    watchlist.forEach((item) => {
-      (item.dividends || []).forEach((d) => {
-        if (d?.month >= 1 && d?.month <= 12) {
-          const amount = Math.max(0, Number(d.amount || 0))
-          const qty = getQty(item)
-          const totalNative = amount * qty
-          const totalJpy = dividendCashToJpyApprox(totalNative, item, fxUsdJpy)
-          const netNative = getDividendNetCashInNative(totalNative, item)
-          const netJpy = getDividendNetJpyApprox(totalNative, item, fxUsdJpy)
-          map[d.month] = [...(map[d.month] || []), { item, amount, totalNative, totalJpy, netNative, netJpy }]
-        }
-      })
-    })
-    return map
-  }, [watchlist, fxUsdJpy])
-
-  const monthlyTotalsJpy = useMemo(() => Object.fromEntries(
-    Object.entries(monthlyEvents).map(([m, evs]) => [m, evs.reduce((s, e) => s + e.totalJpy, 0)]),
-  ), [monthlyEvents])
-  const monthlyTotalsNetJpy = useMemo(() => Object.fromEntries(
-    Object.entries(monthlyEvents).map(([m, evs]) => [m, evs.reduce((s, e) => s + e.netJpy, 0)]),
-  ), [monthlyEvents])
-
-  const yearTotalJpy = useMemo(() => (
-    Object.values(monthlyTotalsJpy).reduce((a, b) => a + b, 0)
-  ), [monthlyTotalsJpy])
-  const yearTotalNetJpy = useMemo(() => (
-    Object.values(monthlyTotalsNetJpy).reduce((a, b) => a + b, 0)
-  ), [monthlyTotalsNetJpy])
-
-  const maxM = Math.max(...Object.values(monthlyTotalsJpy), 1)
-
-  const hasUsdDiv = useMemo(() => watchlist.some(isLikelyUsdDivStock), [watchlist])
-
-  const divHighYield = (item) => {
-    const y = getDividendYieldPct(item.price, item.dividends)
-    return isHighYieldDetailSymbol(item.stock_id) || (y != null && y >= 4)
-  }
-
-  const [stockFilterQuery, setStockFilterQuery] = useState('')
-  const filteredWatchlist = useMemo(() => {
-    const q = stockFilterQuery.trim().toLowerCase()
-    if (!q) return watchlist
-    return watchlist.filter((item) => (`${item.stock_id || ''} ${item.stock_name || ''} ${item.sector || ''}`.toLowerCase().includes(q)))
-  }, [watchlist, stockFilterQuery])
-
-  const newItemStub = useMemo(() => ({
-    flag: newStockFlag,
-    stock_id: newStockId,
-    sector: newStockSector,
-    is_nisa: Boolean(newStockNisa),
-  }), [newStockFlag, newStockId, newStockSector, newStockNisa])
-
-  const updateDiv = (idx, field, val) => {
-    onNewDividends(prev => prev.map((d, i) => i === idx ? { ...d, [field]: field === 'amount' ? Number(val) : Number(val) } : d))
-  }
-  const addDivRow = () => onNewDividends(prev => [...prev, { month: 6, amount: 0 }])
-  const removeDivRow = (idx) => onNewDividends(prev => prev.filter((_, i) => i !== idx))
-  const handleNumericFocus = (e) => {
-    if (String(e?.target?.value ?? '').trim() === '0') e.target.select()
-  }
-  const openPremiumFromLock = () => {
-    if (typeof onUiMessage === 'function') {
-      onUiMessage('税引後表示はプレミアム限定です。7日無料体験でご利用いただけます。', 'premium')
-    }
-    if (typeof onOpenPremium === 'function') onOpenPremium()
-  }
-
-  return (
-    <div className="space-y-4">
-      <style>{`
-        @keyframes mm-dividend-pulse {
-          0% { transform: scale(1); box-shadow: 0 0 0 rgba(34,197,94,0); }
-          35% { transform: scale(1.04); box-shadow: 0 0 0 6px rgba(34,197,94,0.12); }
-          100% { transform: scale(1); box-shadow: 0 0 0 rgba(34,197,94,0); }
-        }
-      `}</style>
-      {/* ヘッダー */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-black text-slate-900 dark:text-white">配当カレンダー</h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400 font-bold mt-1">保有銘柄の配当スケジュールを管理</p>
-        </div>
-        <button
-          type="button"
-          onClick={() => onShowAdd(true)}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-sm font-bold shadow transition"
-        >
-          <Plus size={15} /> 銘柄を追加
-        </button>
-      </div>
-
-      {status && (
-        <p className="text-xs font-bold text-orange-500">{status}</p>
-      )}
-
-      {loading ? (
-        <div className="flex items-center gap-2 text-slate-400 text-sm font-bold py-8 justify-center">
-          <Loader2 size={18} className="animate-spin" /> 読み込み中…
-        </div>
-      ) : (
-        <>
-          {/* 年間サマリー */}
-          <div className="flex items-center justify-between bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl px-6 py-4">
-            <div>
-              <p className="text-xs text-slate-300 font-bold mb-1.5">年間予想配当受取額（円換算・税引前）</p>
-              <p className="font-mono text-4xl font-black text-green-400">¥{Math.round(yearTotalJpy).toLocaleString()}</p>
-              {isPaidMember ? (
-                <p className="mt-2 text-sm font-black text-emerald-300">
-                  税引後見込み受取額: ¥{Math.round(yearTotalNetJpy).toLocaleString()}
-                </p>
-              ) : (
-                <p className="mt-2 text-xs font-bold text-amber-300">
-                  税引後見込み受取額:{' '}
-                  <button
-                    type="button"
-                    onClick={openPremiumFromLock}
-                    title="税引後表示はプレミアム限定です"
-                    className="inline-flex items-center gap-1 rounded-md border border-amber-300/60 bg-amber-400/10 px-2 py-0.5 text-amber-200 hover:bg-amber-400/20 transition"
-                  >
-                    <span aria-hidden>🔒</span>
-                    プレミアムで確認
-                  </button>
-                </p>
-              )}
-              {hasUsdDiv ? (
-                <p className="text-xs text-slate-300 font-bold mt-2 leading-relaxed">
-                  <span className="text-slate-200">米国株（ドル建て）の配当は、資産タブと同じレートで概算換算しています。</span>
-                  <span className="block mt-1.5">1 USD = {fxUsdJpy.toLocaleString(undefined, { maximumFractionDigits: 2 })} JPY（適用日: {valuationFxDate?.trim() ? valuationFxDate : '—'}）。実際の入金レート・源泉税・為替差益課税は含みません。</span>
-                </p>
-              ) : (
-                <p className="text-xs text-slate-400 font-bold mt-2">円建て銘柄のみの合計です。</p>
-              )}
-            </div>
-            <div className="text-right">
-              <p className="text-sm text-slate-300">{watchlist.length}銘柄登録中</p>
-              {saving && <p className="text-xs text-orange-300 mt-1 flex items-center gap-1 justify-end"><Loader2 size={12} className="animate-spin"/>保存中</p>}
-            </div>
-          </div>
-
-          {watchlist.length > 0 && (
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl p-4">
-              <div className="text-sm font-bold text-slate-600 dark:text-slate-300 mb-2">現在の選択銘柄</div>
-              <div className="flex flex-wrap gap-2">
-                {watchlist.map((item) => (
-                  <div key={`selected-${item.stock_id}`} className="inline-flex items-center gap-2 rounded-full border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-1.5">
-                    <span className="text-base">{item.flag || '🏳️'}</span>
-                    <span className="text-sm font-bold text-slate-800 dark:text-white">{item.stock_name}</span>
-                    {divHighYield(item) ? (
-                      <span className="inline-flex items-center gap-0.5 rounded-full border border-amber-400/70 bg-amber-500/15 text-amber-800 dark:text-amber-200 dark:border-amber-600 px-1.5 py-0.5 text-[10px] font-black" title="配当利回り4%以上またはマスター高配当リスト">
-                        <Star size={11} className="shrink-0 fill-amber-400 text-amber-600 dark:fill-amber-300 dark:text-amber-200" aria-hidden />
-                        高配当
-                      </span>
-                    ) : null}
-                    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-bold ${getDividendCadenceMeta(item.dividends).className}`}>{getDividendCadenceMeta(item.dividends).label}</span>
-                    <span className="text-xs text-slate-500 dark:text-slate-400">{(item.dividends || []).map((d) => `${d.month}月`).join(' / ') || 'なし'}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 xl:grid-cols-[1.65fr_1fr] gap-4">
-            <div className="space-y-4">
-              {/* 月別カレンダーグリッド */}
-              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl p-4">
-                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
-                  {MONTHS_JP_MP.map((name, i) => {
-                    const m = i + 1
-                    const totalJpy = monthlyTotalsJpy[m] || 0
-                    const hasD = monthlyEvents[m]?.length > 0
-                    const isSel = selMonth === m
-                    return (
-                      <button
-                        key={m}
-                        type="button"
-                        onClick={() => setSelMonth(m)}
-                        className={`min-w-0 w-full rounded-xl p-2 sm:p-2.5 text-center transition border flex flex-col items-stretch overflow-hidden ${isSel ? 'border-green-500 bg-green-50 dark:bg-green-900/30 shadow-md' : hasD ? 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900' : 'border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50'}`}
-                        style={flashMonth === m ? { animation: 'mm-dividend-pulse 1.1s ease' } : undefined}
-                      >
-                        <p className={`shrink-0 text-sm font-bold ${isSel ? 'text-green-600 dark:text-green-400' : hasD ? 'text-slate-700 dark:text-slate-200' : 'text-slate-300 dark:text-slate-600'}`}>{name}</p>
-                        <div className="h-6 flex min-w-0 items-end justify-center my-1.5">
-                          {hasD
-                            ? <div className="w-3/4 max-w-full rounded-t" style={{ height: Math.max(3, (totalJpy / maxM) * 18), background: isSel ? '#4ade80' : '#bbf7d0' }} />
-                            : <div className="w-3/4 max-w-full h-0.5 bg-slate-100 dark:bg-slate-800 rounded" />}
-                        </div>
-                        {hasD
-                          ? (
-                            <p className={`w-full min-w-0 text-center text-xs sm:text-sm font-mono font-black tabular-nums leading-snug break-words [overflow-wrap:anywhere] hyphens-none ${isSel ? 'text-green-600 dark:text-green-400' : 'text-slate-600 dark:text-slate-300'}`}>
-                              ¥{Math.round(totalJpy).toLocaleString()}
-                            </p>
-                          )
-                          : <p className="text-xs text-slate-300 dark:text-slate-600">なし</p>}
-                      </button>
-                    )
-                  })}
-                </div>
-                {hasUsdDiv ? (
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-3 font-bold leading-relaxed">※ 配当予定・金額は各企業の発表に基づく参考値であり、変更・取消される場合があります。表示金額は税引前です。実際の受取額は課税状況により異なります。</p>
-                ) : null}
-              </div>
-
-              {/* 選択月の配当詳細 */}
-              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl p-4">
-                <div className="flex items-center justify-between mb-3 gap-3">
-                  <div>
-                    <p className="text-lg font-black text-slate-800 dark:text-white">{MONTHS_JP_MP[selMonth - 1]}の配当</p>
-                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">選択した銘柄のうち、{MONTHS_JP_MP[selMonth - 1]}に支払予定の項目を表示</p>
-                  </div>
-                  {(monthlyTotalsJpy[selMonth] || 0) > 0 && (
-                    <p className="font-mono text-xl font-black text-green-500 tabular-nums shrink-0">
-                      ¥{Math.round(monthlyTotalsJpy[selMonth]).toLocaleString()}
-                    </p>
-                  )}
-                </div>
-                {!monthlyEvents[selMonth]?.length ? (
-                  <p className="text-center text-slate-400 dark:text-slate-500 py-8 text-base">この月は配当がありません 📭</p>
-                ) : (
-                  <div className="space-y-2">
-                    {monthlyEvents[selMonth].map((ev, i) => (
-                      <div key={i} className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_auto] items-start gap-3 bg-slate-50 dark:bg-slate-800 rounded-xl px-3 py-3">
-                        <div className="min-w-0 flex items-start gap-2.5">
-                          <span className="text-2xl shrink-0 leading-none">{ev.item.flag || '🏳️'}</span>
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <p className="text-base font-bold text-slate-800 dark:text-white truncate">{ev.item.stock_name}</p>
-                              {getDividendItemIsNisa(ev.item) ? (
-                                <span className="inline-flex items-center rounded-full border border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-900/30 px-2 py-0.5 text-[10px] font-black text-emerald-700 dark:text-emerald-300">
-                                  NISA
-                                </span>
-                              ) : null}
-                              {divHighYield(ev.item) ? (
-                                <span className="inline-flex items-center gap-0.5 text-[10px] font-black text-amber-600 dark:text-amber-300" title="高配当">
-                                  <Star size={12} className="fill-amber-400 text-amber-600 dark:fill-amber-300 dark:text-amber-200 shrink-0" aria-hidden />
-                                </span>
-                              ) : null}
-                              <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-bold ${getDividendCadenceMeta(ev.item.dividends).className}`}>{getDividendCadenceMeta(ev.item.dividends).label}</span>
-                            </div>
-                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{ev.item.sector}</p>
-                          </div>
-                        </div>
-                        <div className="min-w-[168px] rounded-lg border border-slate-200/80 dark:border-slate-700 bg-white/80 dark:bg-slate-900/70 px-3 py-2">
-                          <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400">税引前配当</p>
-                          <p className="font-mono text-xl font-black text-green-500 tabular-nums">{formatDividendCash(ev.totalNative, ev.item)}</p>
-                          {isPaidMember ? (
-                            <p className="text-xs font-black text-emerald-600 dark:text-emerald-400 mt-1">
-                              税引後: {formatDividendCash(ev.netNative, ev.item)}
-                            </p>
-                          ) : (
-                            <p className="mt-1 text-xs font-bold text-amber-600 dark:text-amber-400">
-                              税引後:{' '}
-                              <button
-                                type="button"
-                                onClick={openPremiumFromLock}
-                                title="税引後表示はプレミアム限定です"
-                                className="inline-flex items-center gap-1 rounded border border-amber-300/70 bg-amber-50 px-1.5 py-0.5 text-amber-700 hover:bg-amber-100 dark:border-amber-700/70 dark:bg-amber-900/30 dark:text-amber-300 dark:hover:bg-amber-900/50"
-                              >
-                                <span aria-hidden>🔒</span>
-                                プレミアム
-                              </button>
-                            </p>
-                          )}
-                          {isLikelyUsdDivStock(ev.item) ? (
-                            <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400 mt-1">
-                              ≈ ¥{Math.round(ev.totalJpy).toLocaleString()}（換算）
-                            </p>
-                          ) : null}
-                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{formatDividendCash(ev.amount, ev.item)}/株 × {getQty(ev.item)}株</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* 우측 관리 패널 */}
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 h-fit">
-              <div className="flex items-center justify-between gap-2 mb-3">
-                <p className="text-base font-black text-slate-800 dark:text-white">銘柄追加 / 株数調整</p>
-                <button
-                  type="button"
-                  onClick={() => onShowAdd(true)}
-                  className="inline-flex items-center gap-1 rounded-lg bg-orange-500 hover:bg-orange-600 text-white text-sm font-bold px-3 py-1.5"
-                >
-                  <Plus size={14} /> 追加
-                </button>
-              </div>
-              <input
-                value={stockFilterQuery}
-                onChange={(e) => setStockFilterQuery(e.target.value)}
-                placeholder="銘柄名 / ティッカー / セクター検索"
-                className="w-full border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 rounded-lg px-3 py-2.5 text-sm text-slate-800 dark:text-white focus:outline-none focus:border-orange-400"
-              />
-              <div className="mt-3 space-y-2 max-h-[540px] overflow-y-auto pr-1">
-                {filteredWatchlist.map((item) => {
-                  const yieldPct = getDividendYieldPct(item.price, item.dividends)
-                  return (
-                    <div key={`panel-${item.stock_id}`} className="rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/50 px-3 py-3">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-lg">{item.flag || '🏳️'}</span>
-                            <p className="text-sm font-black text-slate-800 dark:text-white truncate">{item.stock_name}</p>
-                            {divHighYield(item) ? (
-                              <span className="inline-flex items-center gap-0.5 rounded-full border border-amber-400/60 bg-amber-500/10 text-[10px] font-black text-amber-700 dark:text-amber-300 px-1.5 py-0.5">
-                                <Star size={10} className="fill-amber-400 text-amber-600 shrink-0" aria-hidden />
-                                高配当
-                              </span>
-                            ) : null}
-                          </div>
-                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{item.stock_id} · {item.sector || '—'}</p>
-                          <div className="mt-1 flex items-center gap-2 flex-wrap">
-                            <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-bold ${getDividendCadenceMeta(item.dividends).className}`}>{getDividendCadenceMeta(item.dividends).label}</span>
-                            <span className="text-xs text-slate-500 dark:text-slate-400">{(item.dividends || []).map((d) => `${d.month}月`).join(' / ') || 'なし'}</span>
-                          </div>
-                          <p className="mt-1.5 text-sm font-bold text-emerald-600 dark:text-emerald-400">予想利回り {yieldPct == null ? '—' : `${yieldPct.toFixed(2)}%`}</p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => onDelete(item.stock_id)}
-                          className="text-xs font-bold text-red-400 hover:text-red-500 shrink-0"
-                        >
-                          削除
-                        </button>
-                      </div>
-                      <div className="mt-2 flex items-center justify-end gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => onEdit?.(item)}
-                          title="登録内容を編集"
-                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-orange-200 bg-orange-50 dark:bg-orange-900/20 dark:border-orange-800 text-xs font-black text-orange-600 dark:text-orange-300 hover:bg-orange-100 dark:hover:bg-orange-900/30 transition"
-                        >
-                          <Pencil size={12} />
-                          編集
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => onQtyChange(item.stock_id, Math.max(1, getQty(item) - 10))}
-                          className="w-6 h-6 rounded-md bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold text-sm flex items-center justify-center hover:bg-slate-200 dark:hover:bg-slate-600 transition"
-                        >−</button>
-                        <span className="font-mono text-sm font-bold w-9 text-center text-slate-800 dark:text-white">{getQty(item)}</span>
-                        <button
-                          type="button"
-                          onClick={() => onQtyChange(item.stock_id, getQty(item) + 10)}
-                          className="w-6 h-6 rounded-md bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold text-sm flex items-center justify-center hover:bg-slate-200 dark:hover:bg-slate-600 transition"
-                        >+</button>
-                        <span className="text-xs text-slate-500 dark:text-slate-400">株</span>
-                      </div>
-                    </div>
-                  )
-                })}
-                {filteredWatchlist.length === 0 && (
-                  <p className="text-center text-xs text-slate-400 py-6">検索条件に一致する銘柄がありません</p>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {watchlist.length === 0 && !loading && (
-            <div className="bg-white dark:bg-slate-900 border border-dashed border-slate-200 dark:border-slate-700 rounded-2xl p-8 text-center">
-              <Calendar size={32} className="mx-auto text-slate-300 dark:text-slate-600 mb-3" />
-              <p className="text-sm font-bold text-slate-400">配当銘柄がまだ登録されていません</p>
-              <p className="text-xs text-slate-300 mt-1">「銘柄を追加」から登録してください</p>
-            </div>
-          )}
-        </>
-      )}
-
-      {/* 銘柄追加モーダル */}
-      {showAdd && (
-        <>
-          <div className="fixed inset-0 z-[200] bg-black/50 backdrop-blur-sm" onClick={() => onShowAdd(false)} />
-          <div className="fixed inset-0 z-[210] flex items-center justify-center p-4 pointer-events-none overflow-y-auto">
-            <div className="pointer-events-auto my-auto w-full max-w-2xl max-h-[min(90vh,56rem)] flex flex-col bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
-              <div className="flex shrink-0 items-start justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-gradient-to-r from-orange-50 to-white dark:from-slate-900 dark:to-slate-900">
-                <div>
-                  <p className="text-sm font-black text-slate-900 dark:text-white">{editingStockId ? '配当銘柄を編集' : '配当銘柄を追加'}</p>
-                  <p className="mt-1 text-[11px] text-slate-500">{editingStockId ? '登録済み銘柄の配当月と配当金を更新できます' : '銘柄名・コードを入力すると一覧から選べます。マスター反映後は内容をご確認ください。'}</p>
-                </div>
-                <button type="button" onClick={() => onShowAdd(false)} className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition"><X size={18} /></button>
-              </div>
-              <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-6 space-y-4 bg-slate-50/60 dark:bg-slate-900/40">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="min-w-0">
-                    <label className="text-[11px] font-bold text-slate-500 block mb-1">ティッカー / 証券コード *</label>
-                    <div className="relative">
-                      <input value={newStockId} onChange={e => onNewStockId(e.target.value)} placeholder="例: 8306, KO, AAPL" disabled={Boolean(editingStockId)} autoComplete="off" className="w-full border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 rounded-lg px-3 py-2 text-sm font-mono font-bold text-slate-800 dark:text-white focus:outline-none focus:border-orange-400 disabled:opacity-60 disabled:cursor-not-allowed" />
-                      {divStockLookupLoading && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-orange-500 font-bold">検索中...</span>}
-                    </div>
-                    {editingStockId && (
-                      <p className="mt-1 text-[10px] text-slate-400">既存銘柄の編集ではティッカーは固定です。</p>
-                    )}
-                    {!editingStockId ? (
-                      <p className="mt-1 text-[10px] text-slate-400">会社名は下の「銘柄名」に英語・日本語どちらでも入力できます（候補はすぐ下に表示）。</p>
-                    ) : null}
-                  </div>
-                  <div>
-                    <label className="text-[11px] font-bold text-slate-500 block mb-1">国旗</label>
-                    <select value={newStockFlag} onChange={e => onNewStockFlag(e.target.value)} className="w-full border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 rounded-lg px-3 py-2 text-sm text-slate-800 dark:text-white focus:outline-none focus:border-orange-400">
-                      <option value="🇯🇵">🇯🇵 日本</option>
-                      <option value="🇺🇸">🇺🇸 米国</option>
-                      <option value="🇬🇧">🇬🇧 英国</option>
-                      <option value="🇪🇺">🇪🇺 欧州</option>
-                      <option value="🌏">🌏 その他</option>
-                    </select>
-                  </div>
-                </div>
-                <div>
-                  <label className="text-[11px] font-bold text-slate-500 block mb-1">銘柄名 *（英語・日本語可）</label>
-                  <input value={newStockName} onChange={e => onNewStockName(e.target.value)} placeholder="例: Apple、三菱UFJ、トヨタ、コカ・コーラ" autoComplete="off" className="w-full border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 rounded-lg px-3 py-2 text-sm text-slate-800 dark:text-white focus:outline-none focus:border-orange-400" />
-                  {!editingStockId ? (
-                    <p className="mt-1 text-[10px] text-slate-400">マスターに載っている銘柄は会社名だけでも検索→下の候補をタップでコード・配当を自動入力します。</p>
-                  ) : null}
-                </div>
-                {!editingStockId && Array.isArray(detailSuggestions) && detailSuggestions.length > 0 ? (
-                  <div className="rounded-xl border border-orange-200 dark:border-orange-900/50 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
-                    <p className="text-[10px] font-bold text-orange-600 dark:text-orange-400 px-3 py-2 bg-orange-50/80 dark:bg-orange-950/30 border-b border-orange-100 dark:border-orange-900/40">
-                      銘柄候補（コード・英語名・日本語名／部分一致・全角半角 NFKC）
-                    </p>
-                    <ul className="max-h-52 overflow-y-auto text-left">
-                      {detailSuggestions.map((r) => (
-                        <li key={r.symbol}>
-                          <button
-                            type="button"
-                            className="w-full text-left px-3 py-2 text-xs hover:bg-orange-50 dark:hover:bg-slate-800 border-b border-slate-100 dark:border-slate-800 last:border-b-0"
-                            onClick={() => onPickDetailSuggestion?.(r)}
-                          >
-                            <span className="font-mono font-black text-slate-900 dark:text-white">{r.symbol}</span>
-                            {r.highYield ? (
-                              <span className="ml-1.5 inline-flex items-center gap-0.5 text-[9px] font-black text-amber-600 dark:text-amber-400">
-                                <Star size={9} className="fill-amber-400 shrink-0" aria-hidden />
-                                高配当 {r.yieldPct != null ? `${r.yieldPct}%` : ''}
-                              </span>
-                            ) : null}
-                            <span className="block text-[11px] text-slate-500 truncate">{r.name}</span>
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : null}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-[11px] font-bold text-slate-500 block mb-1">セクター</label>
-                    <input value={newStockSector} onChange={e => onNewStockSector(e.target.value)} placeholder="例: 金融, 消費財" className="w-full border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 rounded-lg px-3 py-2 text-sm text-slate-800 dark:text-white focus:outline-none focus:border-orange-400" />
-                  </div>
-                  <div>
-                    <label className="text-[11px] font-bold text-slate-500 block mb-1">現在株価</label>
-                    <input type="number" min="0" step="0.01" value={newStockPrice} onFocus={handleNumericFocus} onChange={e => onNewStockPrice(e.target.value === '' ? 0 : Number(e.target.value))} placeholder="例: 2340" className="w-full border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 rounded-lg px-3 py-2 text-sm font-mono text-slate-800 dark:text-white focus:outline-none focus:border-orange-400" />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-[11px] font-bold text-slate-500 block mb-1">保有株数</label>
-                    <input type="number" min="1" value={newStockQty} onFocus={handleNumericFocus} onChange={e => onNewStockQty(Math.max(1, Number(e.target.value || 1)))} className="w-full border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 rounded-lg px-3 py-2 text-sm font-mono font-bold text-slate-800 dark:text-white focus:outline-none focus:border-orange-400" />
-                  </div>
-                  <div>
-                    <label className="text-[11px] font-bold text-slate-500 block mb-1">口座区分</label>
-                    <button
-                      type="button"
-                      onClick={() => onNewStockNisa(!newStockNisa)}
-                      className={`w-full h-[42px] rounded-lg border px-3 py-2 text-sm font-black transition ${
-                        newStockNisa
-                          ? 'border-emerald-400 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
-                          : 'border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
-                      }`}
-                    >
-                      {newStockNisa ? 'NISA適用' : '課税口座'}
-                    </button>
-                  </div>
-                  <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2">
-                    <div className="text-[10px] font-bold text-slate-500">予想年配当利回り</div>
-                    <div className="mt-1 font-mono text-sm font-black text-emerald-500">
-                      {getDividendYieldPct(newStockPrice, newDividends) == null ? '—' : `${getDividendYieldPct(newStockPrice, newDividends).toFixed(2)}%`}
-                    </div>
-                    <div className="mt-1 text-[10px] text-slate-400">
-                      年1株あたり配当（合計） {formatDividendCash(getAnnualDividendPerShare(newDividends), newItemStub)}
-                    </div>
-                    <div className="mt-2 pt-2 border-t border-slate-200 dark:border-slate-600 text-[10px] font-bold text-slate-500">
-                      年間配当受取額（予想・{Math.max(1, Number(newStockQty) || 1)}株）
-                    </div>
-                    <div className="mt-0.5 font-mono text-base font-black text-green-600 dark:text-green-400">
-                      {formatDividendCash(getAnnualDividendPerShare(newDividends) * Math.max(1, Number(newStockQty) || 1), newItemStub)}
-                    </div>
-                    {isPaidMember ? (
-                      <div className="mt-1 text-[11px] font-black text-emerald-600 dark:text-emerald-400">
-                        税引後見込み: {formatDividendCash(
-                          getDividendNetCashInNative(
-                            getAnnualDividendPerShare(newDividends) * Math.max(1, Number(newStockQty) || 1),
-                            newItemStub,
-                          ),
-                          newItemStub,
-                        )}
-                      </div>
-                    ) : (
-                      <div className="mt-1 text-[11px] font-bold text-amber-600 dark:text-amber-400">
-                        税引後見込み: 🔒 プレミアムで確認
-                      </div>
-                    )}
-                    {isLikelyUsdDivStock(newItemStub) ? (
-                      <div className="mt-2 space-y-0.5">
-                        <div className="font-mono text-sm font-black text-emerald-600 dark:text-emerald-400">
-                          ≈ ¥{Math.round(dividendCashToJpyApprox(
-                            getAnnualDividendPerShare(newDividends) * Math.max(1, Number(newStockQty) || 1),
-                            newItemStub,
-                            fxUsdJpy,
-                          )).toLocaleString()}
-                          <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 font-sans ml-1">（円換算）</span>
-                        </div>
-                        <p className="text-[9px] text-slate-400 leading-snug">
-                          1 USD = {fxUsdJpy.toLocaleString(undefined, { maximumFractionDigits: 2 })} JPY（適用日: {valuationFxDate?.trim() ? valuationFxDate : '—'}）。マイページの資産評価と同じ基準レートの概算です。
-                        </p>
-                      </div>
-                    ) : null}
-                    <p className="mt-1 text-[9px] text-slate-400 leading-snug">
-                      下の表の金額は<strong className="text-slate-500 dark:text-slate-400 font-bold">1株あたり</strong>です（会社の配当は株数に関係なく1株単位で決まります）。株数を変えても1株あたりは変わりません。<strong className="text-slate-500 dark:text-slate-400 font-bold">受け取り総額</strong>だけが上の緑字の「年間〜」や額×株数で増えます。
-                    </p>
-                  </div>
-                </div>
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="text-[11px] font-bold text-slate-500">配当スケジュール（月・金額）</label>
-                    <button type="button" onClick={addDivRow} className="text-[11px] font-bold text-orange-500 hover:text-orange-600 flex items-center gap-1"><Plus size={12}/> 追加</button>
-                  </div>
-                  <p className="mb-2 text-[10px] text-slate-400">一覧から銘柄を選ぶと月次・金額を自動入力します。各行は<strong className="font-bold text-slate-500 dark:text-slate-400">1株あたり</strong>の配当です。マスターは参照用です。実際の権利落ち・金額は各社の公告をご確認ください。</p>
-                  <div className="space-y-2">
-                    {newDividends.map((d, idx) => (
-                      <div key={idx} className="flex items-center gap-2">
-                        <select value={d.month} onChange={e => updateDiv(idx, 'month', e.target.value)} className="flex-1 border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-800 dark:text-white focus:outline-none focus:border-orange-400">
-                          {MONTHS_JP_MP.map((name, i) => <option key={i+1} value={i+1}>{name}</option>)}
-                        </select>
-                        <div className="flex items-center gap-1 flex-1">
-                          <span className="text-xs text-slate-400">{isLikelyUsdDivStock(newItemStub) ? '$' : '¥'}</span>
-                          <input type="number" min="0" step="0.01" value={d.amount} onFocus={handleNumericFocus} onChange={e => updateDiv(idx, 'amount', e.target.value)} placeholder="配当金額/株" className="w-full border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 rounded-lg px-2 py-1.5 text-xs font-mono text-slate-800 dark:text-white focus:outline-none focus:border-orange-400" />
-                        </div>
-                        {newDividends.length > 1 && (
-                          <button type="button" onClick={() => removeDivRow(idx)} className="text-slate-300 hover:text-red-400 transition"><X size={13}/></button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-              <div className="shrink-0 px-6 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] border-t border-slate-100 dark:border-slate-800 flex flex-wrap gap-2 justify-end bg-white dark:bg-slate-900">
-                <button type="button" onClick={() => onShowAdd(false)} className="px-4 py-2 rounded-xl text-sm font-bold text-slate-500 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 transition">キャンセル</button>
-                <button type="button" onClick={onAdd} disabled={!newStockId.trim() || !newStockName.trim()} className="px-5 py-2.5 rounded-xl text-sm font-bold bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white shadow transition disabled:opacity-40 disabled:cursor-not-allowed">
-                  {editingStockId ? '更新して保存' : (userId ? '保存して追加' : '追加（未ログイン）')}
-                </button>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
-
-      {!userId && (
-        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-4 py-3 text-xs font-bold text-amber-700 dark:text-amber-300">
-          ※ ログインすると配当カレンダーがクラウドに保存されます
-        </div>
-      )}
-    </div>
-  )
-}
 export default function MyPage({
   productInterests = [],
   fundWatchlist = [],
@@ -10453,18 +12492,36 @@ export default function MyPage({
   const navigate = useNavigate()
   const location = useLocation()
   const userId = user?.id || null
+  const { profile: exposureProfile, loading: exposureLoading } = usePortfolioExposureProfile(userId)
+  const [relatedNewsRows, setRelatedNewsRows] = useState([])
   const [activeTab, setActiveTab] = useState(() => {
     try {
       const tabFromUrl = typeof window !== 'undefined'
         ? new URLSearchParams(window.location.search).get('tab')
         : null
-      if (tabFromUrl && MYPAGE_ALLOWED_TABS.includes(tabFromUrl)) return normalizeMyPageTab(tabFromUrl)
+      const normalizedUrlTab = tabFromUrl ? normalizeMyPageTab(tabFromUrl) : null
+      if (normalizedUrlTab && MYPAGE_ALLOWED_TABS.includes(normalizedUrlTab)) return normalizedUrlTab
       const saved = localStorage.getItem(MYPAGE_TAB_STORAGE_KEY)
-      return MYPAGE_ALLOWED_TABS.includes(saved) ? normalizeMyPageTab(saved) : 'wealth'
+      const normalizedSaved = saved ? normalizeMyPageTab(saved) : null
+      return normalizedSaved && MYPAGE_ALLOWED_TABS.includes(normalizedSaved) ? normalizedSaved : 'wealth'
     } catch {
       return 'wealth'
     }
   })
+  useEffect(() => {
+    if (activeTab !== 'related') return undefined
+    let cancelled = false
+    ;(async () => {
+      try {
+        const { rows } = await fetchAiNewsData()
+        if (!cancelled) setRelatedNewsRows(Array.isArray(rows) ? rows.slice(0, 40) : [])
+      } catch {
+        if (!cancelled) setRelatedNewsRows([])
+      }
+    })()
+    return () => { cancelled = true }
+  }, [activeTab])
+
   const handleTabChange = (nextTab) => {
     const normalizedTab = MYPAGE_ALLOWED_TABS.includes(nextTab) ? normalizeMyPageTab(nextTab) : 'wealth'
     setActiveTab(normalizedTab)
@@ -10490,11 +12547,21 @@ export default function MyPage({
     }
   }
 
+  /** 資産運用タブの空状態などから、株式／ファンドタブへ切り替えつつ入力欄へスクロール */
+  const switchPortfolioTabAndScroll = (mode) => {
+    if (mode !== 'stock' && mode !== 'fund') return
+    handleTabChange(mode)
+    const anchor = mode === 'stock' ? 'mypage-stock-holdings' : 'mypage-owned-fund-section'
+    window.setTimeout(() => {
+      document.getElementById(anchor)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 160)
+  }
+
   useEffect(() => {
     try {
       const tabFromUrl = new URLSearchParams(location.search).get('tab')
-      if (!tabFromUrl || !MYPAGE_ALLOWED_TABS.includes(tabFromUrl)) return
-      const normalized = normalizeMyPageTab(tabFromUrl)
+      const normalized = tabFromUrl ? normalizeMyPageTab(tabFromUrl) : null
+      if (!normalized || !MYPAGE_ALLOWED_TABS.includes(normalized)) return
       setActiveTab((prev) => (prev === normalized ? prev : normalized))
       try {
         localStorage.setItem(MYPAGE_TAB_STORAGE_KEY, normalized)
@@ -10506,11 +12573,43 @@ export default function MyPage({
     }
   }, [location.search])
 
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(location.search || '')
+      if (params.get('verified') !== '1') return
+      onUiMessage?.('メール確認が完了しました。', 'info')
+      params.delete('verified')
+      const search = params.toString()
+      navigate({ pathname: '/mypage', search: search ? `?${search}` : '' }, { replace: true })
+    } catch {
+      // ignore
+    }
+  }, [location.search, navigate, onUiMessage])
+
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(location.search || '')
+      if (params.get('onboard') !== 'diagnosis') return
+      onUiMessage?.('診断の回答を保存しました。保有を1件登録すると、より詳しい分析が可能です。', 'info')
+      params.delete('onboard')
+      const search = params.toString()
+      navigate({ pathname: '/mypage', search: search ? `?${search}` : '' }, { replace: true })
+      window.setTimeout(() => {
+        document.getElementById('mypage-asset-diagnosis')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }, 400)
+    } catch {
+      // ignore
+    }
+  }, [location.search, navigate, onUiMessage])
+
   const [isLoanDiagnosisOpen, setIsLoanDiagnosisOpen] = useState(false)
   const [assetPositions, setAssetPositions] = useState([])
   const [localFundPositions, setLocalFundPositions] = useState([])
   const [stockWatchlistItems, setStockWatchlistItems] = useState([])
   const [ownedStocks, setOwnedStocks] = useState([])
+  /** loadDividendWatchlist の非同期完了後も最新の保有を参照する（タブ切替タイミングのずれ対策） */
+  const ownedStocksLatestRef = useRef(ownedStocks)
+  ownedStocksLatestRef.current = ownedStocks
   const [ownedStockItems, setOwnedStockItems] = useState([])
   const ownedStockItemsClearTimerRef = useRef(null)
   const [fxRatesByDate, setFxRatesByDate] = useState({})
@@ -10520,14 +12619,30 @@ export default function MyPage({
   const [ownedFundItems, setOwnedFundItems] = useState([])
   const ownedFundItemsClearTimerRef = useRef(null)
   const [fundOptimizerSets, setFundOptimizerSets] = useState(() => loadFundOptimizerWatchsets())
+  /** ファンドタブの DB 同期が遅延中に削除すると古い一覧で上書きされるのを防ぐ */
+  const fundOptimizerWatchsetsSyncGenRef = useRef(0)
   const [ownedAssetDbAvailable, setOwnedAssetDbAvailable] = useState(false)
   const [ownedAssetDbReady, setOwnedAssetDbReady] = useState(false)
+  /** v_stock_latest など取得中（※定期リフレッシュには掛けない — 体感チラつき防止） */
+  const [stockPortfolioQuotesHydrating, setStockPortfolioQuotesHydrating] = useState(false)
+  const [fundPortfolioQuotesHydrating, setFundPortfolioQuotesHydrating] = useState(false)
   /** 株とファンドで分離 — 株だけ触った状態でファンドを空配列として replace すると DB のファンドが全消去されるため */
   const ownedStockCloudTouchedRef = useRef(false)
   const ownedFundCloudTouchedRef = useRef(false)
   /** 空配列を DB に反映してよいのは「UI で最後の 1 件を削除した」ときだけ（myPageApi の allowEmpty* と併用） */
   const userExplicitlyClearedAllStocksRef = useRef(false)
   const userExplicitlyClearedAllFundsRef = useRef(false)
+  const [realizedStockTrades, setRealizedStockTrades] = useState([])
+  const [realizedDbAvailable, setRealizedDbAvailable] = useState(false)
+  const ownedRealizedCloudTouchedRef = useRef(false)
+  const [realizedFundTrades, setRealizedFundTrades] = useState([])
+  const [realizedFundDbAvailable, setRealizedFundDbAvailable] = useState(false)
+  const ownedRealizedFundCloudTouchedRef = useRef(false)
+  /** 定義位置が handleAddOwnedStock より下のため、配当↔保有同期の実体はここにぶら下げる */
+  const syncDividendFromOwnedRef = useRef(null)
+  /** アプリ等が user_owned_stocks のみ更新したとき Web で配当ウォッチへ反映するための差分追跡 */
+  const prevOwnedPositiveQtySymbolsRef = useRef(new Set())
+  const dividendOwnedReconcileUserIdRef = useRef(null)
   const lastOwnedSyncUserIdRef = useRef(null)
   const [pointAccounts, setPointAccounts] = useState([])
   const [expenses, setExpenses] = useState([])
@@ -10567,6 +12682,13 @@ export default function MyPage({
   const [referralShareHint, setReferralShareHint] = useState('')
 
   useEffect(() => {
+    if (!user?.id) {
+      setStockPortfolioQuotesHydrating(false)
+      setFundPortfolioQuotesHydrating(false)
+    }
+  }, [user?.id])
+
+  useEffect(() => {
     try {
       const q = new URLSearchParams(window.location.search)
       if (q.get('subscription') !== 'success') return
@@ -10601,12 +12723,14 @@ export default function MyPage({
       return
     }
     let cancelled = false
+    const syncBaselineGen = fundOptimizerWatchsetsSyncGenRef.current
     ;(async () => {
       try {
         // 1회 마이그레이션: localStorage → Supabase
         await migrateFundOptimizerSetsToDb(userId)
         const { data, available } = await loadFundOptimizerWatchsetsFromDb(userId)
         if (cancelled) return
+        if (fundOptimizerWatchsetsSyncGenRef.current !== syncBaselineGen) return
         if (available && data) {
           setFundOptimizerSets(data)
           saveFundOptimizerWatchsets(data) // localStorage도 동기화
@@ -10614,7 +12738,9 @@ export default function MyPage({
           setFundOptimizerSets(loadFundOptimizerWatchsets())
         }
       } catch {
-        if (!cancelled) setFundOptimizerSets(loadFundOptimizerWatchsets())
+        if (!cancelled && fundOptimizerWatchsetsSyncGenRef.current === syncBaselineGen) {
+          setFundOptimizerSets(loadFundOptimizerWatchsets())
+        }
       }
     })()
     return () => { cancelled = true }
@@ -10622,6 +12748,7 @@ export default function MyPage({
 
   const handleRemoveFundOptimizerSet = (setId) => {
     const userId = user?.id
+    fundOptimizerWatchsetsSyncGenRef.current += 1
     setFundOptimizerSets((prev) => {
       const next = prev.filter((row) => row.id !== setId)
       saveFundOptimizerWatchsets(next)
@@ -10639,7 +12766,8 @@ export default function MyPage({
     .replace(/^\s*(Mr\.?|Miss|Mrs\.?|Ms\.?)\s+/i, '')
     .trim() || 'Member'
   const planTier = String(userProfile?.planTier || '').toLowerCase()
-  const isPaidMember = isPaidPlanTier(planTier)
+  const premiumTrialEndsAt = userProfile?.premiumTrialEndsAt ?? userProfile?.premium_trial_ends_at ?? null
+  const isPaidMember = hasPremiumEntitlement({ planTier, premiumTrialEndsAt })
   const avatarInitial = String(displayName || 'M').trim().charAt(0).toUpperCase()
   const trackUserActivityEvent = async (eventName, eventMeta = {}) => {
     await recordUserActivityEvent(user?.id, eventName, eventMeta)
@@ -10802,6 +12930,8 @@ export default function MyPage({
       lastOwnedSyncUserIdRef.current = uid
       ownedStockCloudTouchedRef.current = false
       ownedFundCloudTouchedRef.current = false
+      ownedRealizedCloudTouchedRef.current = false
+      ownedRealizedFundCloudTouchedRef.current = false
       userExplicitlyClearedAllStocksRef.current = false
       userExplicitlyClearedAllFundsRef.current = false
     }
@@ -10814,38 +12944,95 @@ export default function MyPage({
         setOwnedFunds([])
         setOwnedStockItems([])
         setOwnedFundItems([])
+        setRealizedStockTrades([])
+        setRealizedDbAvailable(false)
+        setRealizedFundTrades([])
+        setRealizedFundDbAvailable(false)
         return
       }
       try {
         // Keep current snapshot while syncing to avoid value flicker.
         setOwnedAssetDbReady(false)
-        const result = await loadOwnedAssetPositions(user.id)
+        const result = await Promise.race([
+          loadOwnedAssetPositions(user.id),
+          new Promise((_, reject) => {
+            window.setTimeout(
+              () => reject(new Error('保有データの同期がタイムアウトしました')),
+              OWNED_ASSET_SYNC_TIMEOUT_MS,
+            )
+          }),
+        ])
         if (!alive) return
         setOwnedAssetDbAvailable(Boolean(result?.available))
+        setRealizedDbAvailable(Boolean(result?.realizedAvailable))
+        setRealizedFundDbAvailable(Boolean(result?.realizedFundAvailable))
+        if (result?.realizedAvailable) {
+          setRealizedStockTrades(normalizeRealizedStockTrades(result?.realizedStockTrades || []))
+        } else {
+          setRealizedStockTrades(loadLocalRealizedStockTradesList(user.id))
+        }
+        if (result?.realizedFundAvailable) {
+          setRealizedFundTrades(normalizeRealizedFundTrades(result?.realizedFundTrades || []))
+        } else {
+          setRealizedFundTrades(loadLocalRealizedFundTradesList(user.id))
+        }
         const dbStocks = normalizeOwnedLots(result?.ownedStocks || [])
-        const dbFunds = normalizeOwnedFundAmounts(result?.ownedFunds || [])
-        const hasDbData = dbStocks.length > 0 || dbFunds.length > 0
-        if (hasDbData) {
+        const rawOwnedFunds = normalizeOwnedFundAmounts(result?.ownedFunds || [])
+        const dbFunds = rawOwnedFunds.filter(
+          (r) => !isMisclassifiedStockHeldAsFundSymbol(String(r.symbol || '')),
+        )
+        const strippedMisclassifiedOwnedFunds = rawOwnedFunds.length - dbFunds.length
+        const hadAnyDbOwnedRows = dbStocks.length > 0 || rawOwnedFunds.length > 0
+        if (hadAnyDbOwnedRows) {
           setOwnedStocks(dbStocks)
           setOwnedFunds(dbFunds)
           userExplicitlyClearedAllStocksRef.current = false
           userExplicitlyClearedAllFundsRef.current = false
           clearLegacyOwnedPortfolioLocalStorage(user.id)
-          setDataStatus('保有株式・ファンドをクラウドから同期しました。')
+          if (strippedMisclassifiedOwnedFunds > 0) {
+            if (result?.available) {
+              try {
+                await replaceOwnedAssetPositions({
+                  userId: user.id,
+                  ownedStocks: dbStocks,
+                  ownedFunds: dbFunds,
+                  persistStocks: false,
+                  persistFunds: true,
+                  allowEmptyFundsReplace: dbFunds.length === 0,
+                })
+                setDataStatus(
+                  '保有ファンドに誤って登録されていた個別株を除外し、クラウドの保有ファンドを更新しました。',
+                )
+              } catch (persistErr) {
+                setDataStatus(
+                  `保有ファンドの自動修正に失敗しました: ${persistErr?.message || 'unknown error'}`,
+                )
+              }
+            } else {
+              setDataStatus(
+                '保有ファンドから個別株とみなせる銘柄を表示から除外しました（クラウド更新は利用できません）。',
+              )
+            }
+          } else {
+            setDataStatus('保有株式・ファンドをクラウドから同期しました。')
+          }
         } else {
           const localStocks = normalizeOwnedLots(loadLocalList(getOwnedStocksStorageKey(user.id)))
-          const localFunds = normalizeOwnedFundAmounts(loadLocalList(getOwnedFundsStorageKey(user.id)))
-          if (result?.available && (localStocks.length > 0 || localFunds.length > 0)) {
+          const localFundsRaw = normalizeOwnedFundAmounts(loadLocalList(getOwnedFundsStorageKey(user.id)))
+          const localFundsForUi = localFundsRaw.filter(
+            (r) => !isMisclassifiedStockHeldAsFundSymbol(String(r.symbol || '')),
+          )
+          if (result?.available && (localStocks.length > 0 || localFundsRaw.length > 0)) {
             await replaceOwnedAssetPositions({
               userId: user.id,
               ownedStocks: localStocks,
-              ownedFunds: localFunds,
+              ownedFunds: localFundsRaw,
               persistStocks: localStocks.length > 0,
-              persistFunds: localFunds.length > 0,
+              persistFunds: localFundsRaw.length > 0,
             })
             if (!alive) return
             setOwnedStocks(localStocks)
-            setOwnedFunds(localFunds)
+            setOwnedFunds(localFundsForUi)
             clearLegacyOwnedPortfolioLocalStorage(user.id)
             setDataStatus('ローカル保有データをクラウドへ初回同期しました。')
           }
@@ -10853,9 +13040,17 @@ export default function MyPage({
       } catch (err) {
         if (!alive) return
         setOwnedAssetDbAvailable(false)
+        setRealizedDbAvailable(false)
+        setRealizedFundDbAvailable(false)
+        if (user?.id) {
+          setRealizedStockTrades(loadLocalRealizedStockTradesList(user.id))
+          setRealizedFundTrades(loadLocalRealizedFundTradesList(user.id))
+        }
         setDataStatus(`保有データ同期失敗: ${err?.message || 'unknown error'}`)
       } finally {
-        if (alive) setOwnedAssetDbReady(true)
+        if (alive) {
+          setOwnedAssetDbReady(true)
+        }
       }
     }
     syncFromDb()
@@ -10918,6 +13113,86 @@ export default function MyPage({
     }
   }, [user?.id, ownedAssetDbAvailable, ownedAssetDbReady, ownedFunds])
 
+  useEffect(() => {
+    if (!user?.id || !ownedAssetDbReady) return
+    if (!realizedDbAvailable) {
+      try {
+        localStorage.setItem(
+          getOwnedRealizedStockTradesStorageKey(user.id),
+          JSON.stringify(normalizeRealizedStockTrades(realizedStockTrades)),
+        )
+      } catch {
+        // ignore
+      }
+      return
+    }
+    if (!ownedAssetDbAvailable) return
+    const n = Array.isArray(realizedStockTrades) ? realizedStockTrades.length : 0
+    if (n === 0 && !ownedRealizedCloudTouchedRef.current) return
+    let alive = true
+    const timer = window.setTimeout(async () => {
+      try {
+        await replaceOwnedAssetPositions({
+          userId: user.id,
+          ownedStocks,
+          ownedFunds,
+          realizedStockTrades: normalizeRealizedStockTrades(realizedStockTrades),
+          persistStocks: false,
+          persistFunds: false,
+          persistRealized: true,
+          allowEmptyRealizedReplace: n === 0 && ownedRealizedCloudTouchedRef.current,
+        })
+      } catch (err) {
+        if (!alive) return
+        setDataStatus(`実現損益ログの保存失敗: ${err?.message || 'unknown error'}`)
+      }
+    }, 300)
+    return () => {
+      alive = false
+      window.clearTimeout(timer)
+    }
+  }, [user?.id, ownedAssetDbAvailable, ownedAssetDbReady, realizedDbAvailable, realizedStockTrades])
+
+  useEffect(() => {
+    if (!user?.id || !ownedAssetDbReady) return
+    if (!realizedFundDbAvailable) {
+      try {
+        localStorage.setItem(
+          getOwnedRealizedFundTradesStorageKey(user.id),
+          JSON.stringify(normalizeRealizedFundTrades(realizedFundTrades)),
+        )
+      } catch {
+        // ignore
+      }
+      return
+    }
+    if (!ownedAssetDbAvailable) return
+    const n = Array.isArray(realizedFundTrades) ? realizedFundTrades.length : 0
+    if (n === 0 && !ownedRealizedFundCloudTouchedRef.current) return
+    let alive = true
+    const timer = window.setTimeout(async () => {
+      try {
+        await replaceOwnedAssetPositions({
+          userId: user.id,
+          ownedStocks,
+          ownedFunds,
+          realizedFundTrades: normalizeRealizedFundTrades(realizedFundTrades),
+          persistStocks: false,
+          persistFunds: false,
+          persistRealizedFunds: true,
+          allowEmptyRealizedFundReplace: n === 0 && ownedRealizedFundCloudTouchedRef.current,
+        })
+      } catch (err) {
+        if (!alive) return
+        setDataStatus(`ファンド実現損益ログの保存失敗: ${err?.message || 'unknown error'}`)
+      }
+    }, 300)
+    return () => {
+      alive = false
+      window.clearTimeout(timer)
+    }
+  }, [user?.id, ownedAssetDbAvailable, ownedAssetDbReady, realizedFundDbAvailable, realizedFundTrades])
+
 
   const fetchLatestCloseByDate = async (symbol, baseDate) => {
     const symbolCode = String(symbol || '').trim()
@@ -10941,19 +13216,59 @@ export default function MyPage({
     const raw = String(inputValue || '').trim()
     if (!raw) return []
     const q = raw.toLowerCase()
-    const localRows = STOCK_LIST_400
-      .filter((row) => {
-        const symbol = String(row?.symbol || '').toLowerCase()
-        const name = String(row?.name || '').toLowerCase()
-        const fallbackName = String(getStockNameFallback(row?.symbol) || '').toLowerCase()
-        return symbol.includes(q) || name.includes(q) || fallbackName.includes(q)
-      })
-      .slice(0, 12)
-      .map((row) => ({ symbol: row.symbol, name: getStockNameFallback(row.symbol) || row.name || row.symbol }))
+    const mergeSuggestionParts = (prev, next) => {
+      const pick = (a, b) => String(b || '').trim() || String(a || '').trim() || ''
+      return {
+        symbol: String(next.symbol || prev.symbol || '').trim().toUpperCase(),
+        stockSymbolName: pick(prev.stockSymbolName, next.stockSymbolName),
+        profileJp: pick(prev.profileJp, next.profileJp),
+        profileEn: pick(prev.profileEn, next.profileEn),
+      }
+    }
+    const finalizeSuggestions = (mergedMap, order) => (
+      order
+        .map((key) => mergedMap.get(key))
+        .filter(Boolean)
+        .map((parts) => {
+          const sym = String(parts.symbol || '').trim().toUpperCase()
+          return {
+            symbol: sym,
+            name: resolveOwnedStockDisplayName(
+              sym,
+              parts.stockSymbolName,
+              parts.profileJp,
+              parts.profileEn,
+              getStockNameFallback(sym) || '',
+            ),
+          }
+        })
+    )
+
+    const localMatches = STOCK_LIST_400.filter((row) => {
+      if (isRetiredStockSymbol(row?.symbol)) return false
+      const symbol = String(row?.symbol || '').toLowerCase()
+      const name = String(row?.name || '').toLowerCase()
+      const fallbackName = String(getStockNameFallback(row?.symbol) || '').toLowerCase()
+      return symbol.includes(q) || name.includes(q) || fallbackName.includes(q)
+    }).slice(0, 12)
+
+    const localMerged = new Map()
+    const localOrder = []
+    for (const row of localMatches) {
+      const sym = String(row?.symbol || '').trim().toUpperCase()
+      if (!sym || isRetiredStockSymbol(sym)) continue
+      const parts = { symbol: sym, stockSymbolName: row.name, profileJp: '', profileEn: '' }
+      if (!localMerged.has(sym)) {
+        localOrder.push(sym)
+        localMerged.set(sym, parts)
+      } else {
+        localMerged.set(sym, mergeSuggestionParts(localMerged.get(sym), parts))
+      }
+    }
 
     try {
       const safe = raw.replace(/[,%]/g, '').trim()
-      if (!safe) return localRows
+      if (!safe) return finalizeSuggestions(localMerged, localOrder).slice(0, 20)
       const [{ data, error }, { data: profileData, error: profileErr }] = await Promise.all([
         supabase
           .from('stock_symbols')
@@ -10974,33 +13289,45 @@ export default function MyPage({
           row,
         ])
       )
-      const dbRows = (Array.isArray(data) ? data : []).map((row) => {
-        const symbol = String(row.symbol || '').trim().toUpperCase()
-        const profile = profileMap.get(symbol)
-        return {
-          symbol,
-          name: profile?.name_jp || profile?.name_en || row.name || getStockNameFallback(symbol) || symbol,
+      const merged = new Map(localMerged)
+      const order = [...localOrder]
+
+      const upsert = (parts) => {
+        const key = String(parts.symbol || '').trim().toUpperCase()
+        if (!key || isRetiredStockSymbol(key)) return
+        if (!merged.has(key)) {
+          order.push(key)
+          merged.set(key, parts)
+          return
         }
-      })
-      const profileOnlyRows = (Array.isArray(profileData) ? profileData : [])
-        .map((row) => {
-          const symbol = String(row?.symbol || '').trim().toUpperCase()
-          if (!symbol) return null
-          return {
-            symbol,
-            name: row?.name_jp || row?.name_en || getStockNameFallback(symbol) || symbol,
-          }
+        merged.set(key, mergeSuggestionParts(merged.get(key), parts))
+      }
+
+      for (const row of Array.isArray(data) ? data : []) {
+        const symbol = String(row.symbol || '').trim().toUpperCase()
+        if (!symbol) continue
+        const profile = profileMap.get(symbol)
+        upsert({
+          symbol,
+          stockSymbolName: row.name,
+          profileJp: profile?.name_jp || '',
+          profileEn: profile?.name_en || '',
         })
-        .filter(Boolean)
-      const dedup = new Map()
-      ;[...localRows, ...dbRows, ...profileOnlyRows].forEach((row) => {
-        const key = String(row.symbol || '').trim().toUpperCase()
-        if (!key || dedup.has(key)) return
-        dedup.set(key, { ...row, symbol: key })
-      })
-      return [...dedup.values()].slice(0, 20)
+      }
+      for (const row of Array.isArray(profileData) ? profileData : []) {
+        const symbol = String(row?.symbol || '').trim().toUpperCase()
+        if (!symbol) continue
+        upsert({
+          symbol,
+          stockSymbolName: '',
+          profileJp: row?.name_jp || '',
+          profileEn: row?.name_en || '',
+        })
+      }
+
+      return finalizeSuggestions(merged, order).slice(0, 20)
     } catch {
-      return localRows
+      return finalizeSuggestions(localMerged, localOrder).slice(0, 20)
     }
   }
 
@@ -11013,19 +13340,26 @@ export default function MyPage({
     return list
       .filter((row) => {
         const symbol = String(row?.symbol || '').toLowerCase()
-        const name = String(row?.jpName || row?.name || '').toLowerCase()
-        return symbol.includes(q) || name.includes(q)
+        const symKey = String(row?.symbol || '').trim().toUpperCase()
+        const resolved = resolveFundDisplayName(symKey, {}, row, null)
+        const nameHay = String(resolved || '').toLowerCase()
+        return symbol.includes(q) || nameHay.includes(q)
       })
       .slice(0, 20)
-      .map((row) => ({
-        symbol: row.symbol,
-        name: decodeHtmlEntities(String(row.jpName || row.name || row.symbol)),
-      }))
+      .map((row) => {
+        const symKey = String(row?.symbol || '').trim().toUpperCase()
+        const name = resolveFundDisplayName(symKey, {}, row, null)
+        return {
+          symbol: row.symbol,
+          name: name || symKey,
+        }
+      })
   }
 
   const resolveStockSymbol = async (inputValue) => {
     const raw = String(inputValue || '').trim()
     if (!raw) return null
+    if (isRetiredStockSymbol(raw)) return null
     const upper = raw.toUpperCase()
     const lower = raw.toLowerCase()
     const localExact = (Array.isArray(stockWatchlistItems) ? stockWatchlistItems : []).find((row) => {
@@ -11035,9 +13369,13 @@ export default function MyPage({
       return id === upper || code === upper || name === lower
     })
     if (localExact?.id) {
-      return {
-        symbol: String(localExact.id),
-        name: localExact.name || localExact.code || localExact.id,
+      const wid = String(localExact.id || '').trim().toUpperCase()
+      const wcode = String(localExact.code || '').trim().toUpperCase()
+      if (!isRetiredStockSymbol(wid) && !isRetiredStockSymbol(wcode)) {
+        return {
+          symbol: String(localExact.id),
+          name: localExact.name || localExact.code || localExact.id,
+        }
       }
     }
 
@@ -11049,6 +13387,8 @@ export default function MyPage({
         .limit(1)
       if (exactErr) throw exactErr
       if (Array.isArray(exactRows) && exactRows.length > 0) {
+        const sym = String(exactRows[0].symbol || '').trim().toUpperCase()
+        if (isRetiredStockSymbol(sym)) return null
         return {
           symbol: exactRows[0].symbol,
           name: exactRows[0].name || exactRows[0].symbol,
@@ -11088,10 +13428,10 @@ export default function MyPage({
           symbol,
           name: profile?.name_jp || profile?.name_en || row?.name || getStockNameFallback(symbol) || symbol,
         }
-      })
+      }).filter((row) => !isRetiredStockSymbol(row.symbol))
       for (const row of (Array.isArray(profileRows) ? profileRows : [])) {
         const symbol = String(row?.symbol || '').trim().toUpperCase()
-        if (!symbol || rows.some((x) => x.symbol === symbol)) continue
+        if (!symbol || isRetiredStockSymbol(symbol) || rows.some((x) => x.symbol === symbol)) continue
         rows.push({
           symbol,
           name: row?.name_jp || row?.name_en || getStockNameFallback(symbol) || symbol,
@@ -11119,12 +13459,13 @@ export default function MyPage({
       return { symbol: top.symbol, name: top.name || top.symbol }
     } catch {
       const localMatch = STOCK_LIST_400.find((row) => {
+        if (isRetiredStockSymbol(row?.symbol)) return false
         const symbol = String(row?.symbol || '').toUpperCase()
         const name = String(row?.name || '').toLowerCase()
         const fallbackName = String(getStockNameFallback(symbol) || '').toLowerCase()
         return symbol === upper || symbol.includes(upper) || name.includes(lower) || fallbackName.includes(lower)
       })
-      if (localMatch?.symbol) {
+      if (localMatch?.symbol && !isRetiredStockSymbol(localMatch.symbol)) {
         return {
           symbol: localMatch.symbol,
           name: getStockNameFallback(localMatch.symbol) || localMatch.name || localMatch.symbol,
@@ -11150,7 +13491,7 @@ export default function MyPage({
     let resolvedDate = requestedIso || String(buyDate || '').trim()
     let resolvedBuyPrice = Number(buyPrice || 0)
     const resolvedQtyRaw = Math.max(0, Number(qty || 0))
-    const resolvedQty = Number.isFinite(resolvedQtyRaw) ? Number(resolvedQtyRaw.toFixed(1)) : 0
+    const resolvedQty = Number.isFinite(resolvedQtyRaw) ? roundStockShareQty(resolvedQtyRaw) : 0
     let priceFromFallbackDate = ''
     if (resolvedDate && !(resolvedBuyPrice > 0)) {
       try {
@@ -11167,16 +13508,25 @@ export default function MyPage({
     }
     userExplicitlyClearedAllStocksRef.current = false
     ownedStockCloudTouchedRef.current = true
-    setOwnedStocks((prev) => [
-      ...prev,
-      {
-        lotId: createOwnedLotId(),
-        symbol: code,
-        buyDate: resolvedDate || '',
-        buyPrice: resolvedBuyPrice > 0 ? resolvedBuyPrice : '',
-        qty: resolvedQty > 0 ? resolvedQty : '',
-      },
-    ])
+    setOwnedStocks((prev) => {
+      const next = [
+        ...prev,
+        {
+          lotId: createOwnedLotId(),
+          symbol: code,
+          buyDate: resolvedDate || '',
+          buyPrice: resolvedBuyPrice > 0 ? resolvedBuyPrice : '',
+          qty: resolvedQty > 0 ? resolvedQty : '',
+        },
+      ]
+      if (user?.id) {
+        queueMicrotask(() => {
+          const fn = syncDividendFromOwnedRef.current
+          if (fn) void fn(code, next, String(resolved?.name || '').trim() || null)
+        })
+      }
+      return next
+    })
     const fallbackNote = priceFromFallbackDate
       ? `（指定日に行が無く、${priceFromFallbackDate} 終値を価格に使用。DBの欠損要確認）`
       : ''
@@ -11187,22 +13537,26 @@ export default function MyPage({
   const handleUpdateOwnedStock = (lotId, patch = {}) => {
     if (!lotId) return
     ownedStockCloudTouchedRef.current = true
-    setOwnedStocks((prev) => prev.map((item) => (
-      item.lotId === lotId
-        ? { ...item, ...patch }
-        : item
-    )))
-  }
-
-  const handleRemoveOwnedStock = (lotId) => {
-    if (!lotId) return
-    ownedStockCloudTouchedRef.current = true
     setOwnedStocks((prev) => {
-      const next = prev.filter((item) => item.lotId !== lotId)
-      if (prev.length > 0 && next.length === 0) userExplicitlyClearedAllStocksRef.current = true
+      const next = prev.map((item) => (
+        item.lotId === lotId
+          ? { ...item, ...patch }
+          : item
+      ))
+      const row = next.find((x) => x.lotId === lotId) || prev.find((x) => x.lotId === lotId)
+      const sym = String(
+        (patch && patch.symbol) || row?.symbol || '',
+      )
+        .trim()
+        .toUpperCase()
+      if (sym && user?.id) {
+        queueMicrotask(() => {
+          const fn = syncDividendFromOwnedRef.current
+          if (fn) void fn(sym, next, null)
+        })
+      }
       return next
     })
-    setDataStatus('保有取引を削除しました。')
   }
 
   const handleLoadOwnedStockPrice = async (lotId, symbol, buyDate) => {
@@ -11243,6 +13597,14 @@ export default function MyPage({
       return false
     }
     const code = String(resolved.symbol).trim().toUpperCase()
+    if (isMisclassifiedStockHeldAsFundSymbol(code)) {
+      setDataStatus(
+        `「${code}」は個別株として管理されています。「株式」タブの保有銘柄から追加してください（この欄は日本上場の投信・ETF向けです）。`,
+      )
+      return false
+    }
+    const etfMetaRow = MY_PAGE_ETF_META_BY_SYMBOL.get(code) || null
+    const fundDisplayName = resolveFundDisplayName(code, { name: resolved.name || '' }, etfMetaRow, null)
     const resolvedDate = toIsoDate(buyDate || '')
     let resolvedBuyPrice = Math.max(0, Number(buyPrice || 0))
     if (!resolvedBuyPrice && resolvedDate) {
@@ -11269,7 +13631,7 @@ export default function MyPage({
       {
         id: createOwnedLotId(),
         symbol: code,
-        name: resolved.name || code,
+        name: fundDisplayName || resolved.name || code,
         investAmount: normalizedInvest,
         buyDate: resolvedDate || '',
         buyPrice: resolvedBuyPrice,
@@ -11303,7 +13665,32 @@ export default function MyPage({
       if (prev.length > 0 && next.length === 0) userExplicitlyClearedAllFundsRef.current = true
       return next
     })
-    setDataStatus('保有ファンドを削除しました。')
+    setDataStatus('保有ファンドの取引を削除しました（実現損益には計上されません）。')
+  }
+
+  const handleRemoveOwnedStock = (lotId) => {
+    if (!lotId) return
+    let didRemove = false
+    let symForSync = ''
+    let nextForSync = []
+    setOwnedStocks((prev) => {
+      const row = prev.find((x) => x.lotId === lotId)
+      if (!row) return prev
+      didRemove = true
+      ownedStockCloudTouchedRef.current = true
+      symForSync = String(row.symbol || '').trim().toUpperCase()
+      nextForSync = prev.filter((item) => item.lotId !== lotId)
+      if (prev.length > 0 && nextForSync.length === 0) userExplicitlyClearedAllStocksRef.current = true
+      return nextForSync
+    })
+    if (!didRemove) return
+    if (symForSync && user?.id) {
+      queueMicrotask(() => {
+        const fn = syncDividendFromOwnedRef.current
+        if (fn) void fn(symForSync, nextForSync, null)
+      })
+    }
+    setDataStatus('保有株式の取引を削除しました（実現損益には計上されません）。')
   }
 
   const handleLoadOwnedFundPrice = async (id, symbol, buyDate) => {
@@ -11355,9 +13742,10 @@ export default function MyPage({
 
   useEffect(() => {
     let alive = true
-    const loadOwnedLiveRows = async () => {
+    const loadOwnedLiveRows = async (silentRefresh = false) => {
       const list = Array.isArray(ownedStocks) ? ownedStocks : []
       if (list.length === 0) {
+        if (!silentRefresh && alive) setStockPortfolioQuotesHydrating(false)
         // Keep previous rows for a short moment to avoid flicker during transient sync states.
         if (ownedStockItemsClearTimerRef.current) window.clearTimeout(ownedStockItemsClearTimerRef.current)
         ownedStockItemsClearTimerRef.current = window.setTimeout(() => {
@@ -11369,98 +13757,130 @@ export default function MyPage({
         window.clearTimeout(ownedStockItemsClearTimerRef.current)
         ownedStockItemsClearTimerRef.current = null
       }
-      const ids = [...new Set(list.map((item) => String(item.symbol || '').trim().toUpperCase()).filter(Boolean))]
-      const latestRows = []
-      try {
-        for (let i = 0; i < ids.length; i += 80) {
-          const batch = ids.slice(i, i + 80)
-          const { data, error } = await supabase
-            .from('v_stock_latest')
-            .select('symbol,trade_date,close')
-            .in('symbol', batch)
-          if (error) throw error
-          latestRows.push(...(data || []))
-        }
-      } catch {
-        // continue with fallback only
-      }
-      let symbolNameMap = new Map()
-      let symbolProfileNameMap = new Map()
-      try {
-        const [{ data }, { data: profileRows }] = await Promise.all([
-          supabase
-            .from('stock_symbols')
-            .select('symbol,name')
-            .in('symbol', ids),
-          supabase
-            .from('stock_symbol_profiles')
-            .select('symbol,name_jp,name_en')
-            .in('symbol', ids),
-        ])
-        symbolNameMap = new Map((data || []).map((row) => [String(row.symbol || '').trim().toUpperCase(), row.name]))
-        symbolProfileNameMap = new Map(
-          (profileRows || []).map((row) => [
-            String(row.symbol || '').trim().toUpperCase(),
-            { name_jp: row?.name_jp || '', name_en: row?.name_en || '' },
-          ])
-        )
-      } catch {
-        // no-op
-      }
-      const symbolProfileSectorMap = new Map()
-      const symbolProfileIndustryMap = new Map()
-      try {
-        for (let i = 0; i < ids.length; i += 80) {
-          const batch = ids.slice(i, i + 80)
-          const { data, error } = await supabase
-            .from('stock_symbol_profiles')
-            .select('symbol,sector,industry,name_jp,name_en')
-            .in('symbol', batch)
-          if (error) throw error
-          ;(data || []).forEach((row) => {
-            const sym = String(row?.symbol || '').trim().toUpperCase()
-            if (!sym) return
-            if (row.sector != null && String(row.sector).trim()) symbolProfileSectorMap.set(sym, String(row.sector).trim())
-            if (row.industry != null && String(row.industry).trim()) symbolProfileIndustryMap.set(sym, String(row.industry).trim())
-            if (row.name_jp != null || row.name_en != null) {
-              symbolProfileNameMap.set(sym, { name_jp: row?.name_jp || '', name_en: row?.name_en || '' })
+      if (!silentRefresh && alive) setStockPortfolioQuotesHydrating(true)
+      const hydrateTimeoutId = (!silentRefresh && list.length > 0)
+        ? window.setTimeout(() => {
+          if (alive) setStockPortfolioQuotesHydrating(false)
+        }, PORTFOLIO_QUOTES_HYDRATE_TIMEOUT_MS)
+        : null
+      /** DB フェッチより先にグルーピング用の最小行で埋める（上段レポートが空枠になりにくい） */
+      if (alive) {
+        setOwnedStockItems(
+          list.map((item) => {
+            const symbol = String(item.symbol || '').trim().toUpperCase()
+            return {
+              lotId: item.lotId || createOwnedLotId(),
+              symbol,
+              code: symbol,
+              name: symbol,
+              buyDate: item.buyDate || '',
+              buyPrice: item.buyPrice ?? '',
+              qty: item.qty ?? '',
+              price: 0,
+              tradeDate: '',
+              profileSector: '',
+              profileIndustry: '',
             }
-          })
-        }
-      } catch {
-        // profiles optional
+          }),
+        )
       }
-      const watchMap = new Map((Array.isArray(stockWatchlistItems) ? stockWatchlistItems : []).map((row) => [String(row.id || '').trim().toUpperCase(), row]))
-      const latestMap = new Map(latestRows.map((row) => [String(row.symbol || '').trim().toUpperCase(), row]))
-      const rows = list.map((item) => {
-        const symbol = String(item.symbol || '').trim().toUpperCase()
-        const watch = watchMap.get(symbol) || {}
-        const live = latestMap.get(symbol) || {}
-        const close = normalizeOwnedDisplayPrice(symbol, Number(live.close || watch.price || 0))
-        return {
-          lotId: item.lotId || createOwnedLotId(),
-          symbol,
-          code: symbol,
-          name: resolveOwnedStockDisplayName(
-            symbol,
-            symbolNameMap.get(symbol),
-            symbolProfileNameMap.get(symbol)?.name_jp,
-            symbolProfileNameMap.get(symbol)?.name_en,
-            watch.name,
-          ),
-          buyDate: item.buyDate || '',
-          buyPrice: item.buyPrice || '',
-          qty: item.qty || '',
-          price: Number.isFinite(close) && close > 0 ? close : 0,
-          tradeDate: live.trade_date || watch.tradeDate || '',
-          profileSector: symbolProfileSectorMap.get(symbol) || '',
-          profileIndustry: symbolProfileIndustryMap.get(symbol) || '',
+      try {
+        const ids = [...new Set(list.map((item) => String(item.symbol || '').trim().toUpperCase()).filter(Boolean))]
+        const latestRows = []
+        try {
+          for (let i = 0; i < ids.length; i += 80) {
+            const batch = ids.slice(i, i + 80)
+            const { data, error } = await supabase
+              .from('v_stock_latest')
+              .select('symbol,trade_date,close')
+              .in('symbol', batch)
+            if (error) throw error
+            latestRows.push(...(data || []))
+          }
+        } catch {
+          // continue with fallback only
         }
-      })
-      if (alive) setOwnedStockItems(rows)
+        let symbolNameMap = new Map()
+        let symbolProfileNameMap = new Map()
+        try {
+          const [{ data }, { data: profileRows }] = await Promise.all([
+            supabase
+              .from('stock_symbols')
+              .select('symbol,name')
+              .in('symbol', ids),
+            supabase
+              .from('stock_symbol_profiles')
+              .select('symbol,name_jp,name_en')
+              .in('symbol', ids),
+          ])
+          symbolNameMap = new Map((data || []).map((row) => [String(row.symbol || '').trim().toUpperCase(), row.name]))
+          symbolProfileNameMap = new Map(
+            (profileRows || []).map((row) => [
+              String(row.symbol || '').trim().toUpperCase(),
+              { name_jp: row?.name_jp || '', name_en: row?.name_en || '' },
+            ])
+          )
+        } catch {
+          // no-op
+        }
+        const symbolProfileSectorMap = new Map()
+        const symbolProfileIndustryMap = new Map()
+        try {
+          for (let i = 0; i < ids.length; i += 80) {
+            const batch = ids.slice(i, i + 80)
+            const { data, error } = await supabase
+              .from('stock_symbol_profiles')
+              .select('symbol,sector,industry,name_jp,name_en')
+              .in('symbol', batch)
+            if (error) throw error
+            ;(data || []).forEach((row) => {
+              const sym = String(row?.symbol || '').trim().toUpperCase()
+              if (!sym) return
+              if (row.sector != null && String(row.sector).trim()) symbolProfileSectorMap.set(sym, String(row.sector).trim())
+              if (row.industry != null && String(row.industry).trim()) symbolProfileIndustryMap.set(sym, String(row.industry).trim())
+              if (row.name_jp != null || row.name_en != null) {
+                symbolProfileNameMap.set(sym, { name_jp: row?.name_jp || '', name_en: row?.name_en || '' })
+              }
+            })
+          }
+        } catch {
+          // profiles optional
+        }
+        const watchMap = new Map((Array.isArray(stockWatchlistItems) ? stockWatchlistItems : []).map((row) => [String(row.id || '').trim().toUpperCase(), row]))
+        const latestMap = new Map(latestRows.map((row) => [String(row.symbol || '').trim().toUpperCase(), row]))
+        const rows = list.map((item) => {
+          const symbol = String(item.symbol || '').trim().toUpperCase()
+          const watch = watchMap.get(symbol) || {}
+          const live = latestMap.get(symbol) || {}
+          const close = normalizeOwnedDisplayPrice(symbol, Number(live.close || watch.price || 0))
+          return {
+            lotId: item.lotId || createOwnedLotId(),
+            symbol,
+            code: symbol,
+            name: resolveOwnedStockDisplayName(
+              symbol,
+              symbolNameMap.get(symbol),
+              symbolProfileNameMap.get(symbol)?.name_jp,
+              symbolProfileNameMap.get(symbol)?.name_en,
+              watch.name,
+            ),
+            buyDate: item.buyDate || '',
+            buyPrice: item.buyPrice || '',
+            qty: item.qty || '',
+            price: Number.isFinite(close) && close > 0 ? close : 0,
+            tradeDate: live.trade_date || watch.tradeDate || '',
+            profileSector: symbolProfileSectorMap.get(symbol) || '',
+            profileIndustry: symbolProfileIndustryMap.get(symbol) || '',
+          }
+        })
+        if (alive) setOwnedStockItems(rows)
+      } finally {
+        if (hydrateTimeoutId) window.clearTimeout(hydrateTimeoutId)
+        if (alive && !silentRefresh) setStockPortfolioQuotesHydrating(false)
+      }
     }
-    loadOwnedLiveRows()
-    const intervalId = window.setInterval(loadOwnedLiveRows, DAILY_REFRESH_MS)
+    loadOwnedLiveRows(false)
+    const intervalId = window.setInterval(() => { void loadOwnedLiveRows(true) }, DAILY_REFRESH_MS)
     return () => {
       alive = false
       window.clearInterval(intervalId)
@@ -11526,9 +13946,10 @@ export default function MyPage({
 
   useEffect(() => {
     let alive = true
-    const loadOwnedFundLiveRows = async () => {
+    const loadOwnedFundLiveRows = async (silentRefresh = false) => {
       const list = Array.isArray(ownedFunds) ? ownedFunds : []
       if (list.length === 0) {
+        if (!silentRefresh && alive) setFundPortfolioQuotesHydrating(false)
         // Keep previous rows for a short moment to avoid flicker during transient sync states.
         if (ownedFundItemsClearTimerRef.current) window.clearTimeout(ownedFundItemsClearTimerRef.current)
         ownedFundItemsClearTimerRef.current = window.setTimeout(() => {
@@ -11540,56 +13961,85 @@ export default function MyPage({
         window.clearTimeout(ownedFundItemsClearTimerRef.current)
         ownedFundItemsClearTimerRef.current = null
       }
-      const ids = [...new Set(list.map((item) => String(item.symbol || '').trim().toUpperCase()).filter(Boolean))]
-      const latestRows = []
-      try {
-        for (let i = 0; i < ids.length; i += 80) {
-          const batch = ids.slice(i, i + 80)
-          const { data, error } = await supabase
-            .from('v_stock_latest')
-            .select('symbol,trade_date,close')
-            .in('symbol', batch)
-          if (error) throw error
-          latestRows.push(...(data || []))
-        }
-      } catch {
-        // continue with stored values only
-      }
-      let symbolNameMap = new Map()
-      try {
-        const { data } = await supabase
-          .from('stock_symbols')
-          .select('symbol,name')
-          .in('symbol', ids)
-        symbolNameMap = new Map(
-          (data || []).map((row) => [String(row.symbol || '').trim().toUpperCase(), row.name])
+      if (!silentRefresh && alive) setFundPortfolioQuotesHydrating(true)
+      const hydrateTimeoutId = (!silentRefresh && list.length > 0)
+        ? window.setTimeout(() => {
+          if (alive) setFundPortfolioQuotesHydrating(false)
+        }, PORTFOLIO_QUOTES_HYDRATE_TIMEOUT_MS)
+        : null
+      if (alive) {
+        setOwnedFundItems(
+          list.map((item) => {
+            const symbol = String(item.symbol || '').trim().toUpperCase()
+            return {
+              id: item.id || createOwnedLotId(),
+              symbol,
+              code: symbol,
+              name: resolveOwnedFundDisplayName(symbol, undefined, item.name),
+              investAmount: Math.max(0, Number(item.investAmount || 0)),
+              buyDate: toIsoDate(item.buyDate || ''),
+              buyPrice: Math.max(0, Number(item.buyPrice || 0)),
+              latestPrice: 0,
+              tradeDate: '',
+            }
+          }),
         )
-      } catch {
-        // no-op
       }
-
-      const latestMap = new Map(latestRows.map((row) => [String(row.symbol || '').trim().toUpperCase(), row]))
-      const rows = list.map((item) => {
-        const symbol = String(item.symbol || '').trim().toUpperCase()
-        const live = latestMap.get(symbol) || {}
-        const latestClose = normalizeOwnedDisplayPrice(symbol, Number(live.close || 0))
-        const stockNm = symbolNameMap.get(symbol)
-        return {
-          id: item.id || createOwnedLotId(),
-          symbol,
-          code: symbol,
-          name: resolveOwnedFundDisplayName(symbol, stockNm, item.name),
-          investAmount: Math.max(0, Number(item.investAmount || 0)),
-          buyDate: toIsoDate(item.buyDate || ''),
-          buyPrice: Math.max(0, Number(item.buyPrice || 0)),
-          latestPrice: Number.isFinite(latestClose) && latestClose > 0 ? latestClose : 0,
-          tradeDate: live.trade_date || '',
+      try {
+        const ids = [...new Set(list.map((item) => String(item.symbol || '').trim().toUpperCase()).filter(Boolean))]
+        const latestRows = []
+        try {
+          for (let i = 0; i < ids.length; i += 80) {
+            const batch = ids.slice(i, i + 80)
+            const { data, error } = await supabase
+              .from('v_stock_latest')
+              .select('symbol,trade_date,close')
+              .in('symbol', batch)
+            if (error) throw error
+            latestRows.push(...(data || []))
+          }
+        } catch {
+          // continue with stored values only
         }
-      })
-      if (alive) setOwnedFundItems(rows)
+        let symbolNameMap = new Map()
+        try {
+          const { data } = await supabase
+            .from('stock_symbols')
+            .select('symbol,name')
+            .in('symbol', ids)
+          symbolNameMap = new Map(
+            (data || []).map((row) => [String(row.symbol || '').trim().toUpperCase(), row.name])
+          )
+        } catch {
+          // no-op
+        }
+
+        const latestMap = new Map(latestRows.map((row) => [String(row.symbol || '').trim().toUpperCase(), row]))
+        const rows = list.map((item) => {
+          const symbol = String(item.symbol || '').trim().toUpperCase()
+          const live = latestMap.get(symbol) || {}
+          const latestClose = normalizeOwnedDisplayPrice(symbol, Number(live.close || 0))
+          const stockNm = symbolNameMap.get(symbol)
+          return {
+            id: item.id || createOwnedLotId(),
+            symbol,
+            code: symbol,
+            name: resolveOwnedFundDisplayName(symbol, stockNm, item.name),
+            investAmount: Math.max(0, Number(item.investAmount || 0)),
+            buyDate: toIsoDate(item.buyDate || ''),
+            buyPrice: Math.max(0, Number(item.buyPrice || 0)),
+            latestPrice: Number.isFinite(latestClose) && latestClose > 0 ? latestClose : 0,
+            tradeDate: live.trade_date || '',
+          }
+        })
+        if (alive) setOwnedFundItems(rows)
+      } finally {
+        if (hydrateTimeoutId) window.clearTimeout(hydrateTimeoutId)
+        if (alive && !silentRefresh) setFundPortfolioQuotesHydrating(false)
+      }
     }
-    loadOwnedFundLiveRows()
-    const intervalId = window.setInterval(loadOwnedFundLiveRows, DAILY_REFRESH_MS)
+    loadOwnedFundLiveRows(false)
+    const intervalId = window.setInterval(() => { void loadOwnedFundLiveRows(true) }, DAILY_REFRESH_MS)
     return () => {
       alive = false
       window.clearInterval(intervalId)
@@ -11702,6 +14152,28 @@ export default function MyPage({
   const headerTotalInvest = headerFundInvestJpy + headerStockInvestJpy
   const headerPnL = headerTotalValue - headerTotalInvest
   const headerRate = headerTotalInvest > 0 ? (headerPnL / headerTotalInvest) * 100 : 0
+  /** v_stock_latest 反映待ちは「--」ではなくスピナーへ（中間値のチラ見え回避） */
+  const portfolioQuotesHydratingUi =
+    Boolean(user?.id && (stockPortfolioQuotesHydrating || fundPortfolioQuotesHydrating))
+  const myPageRawStockSlots = Array.isArray(ownedStocks) ? ownedStocks.length : 0
+  const myPageRawFundSlots = Array.isArray(ownedFunds) ? ownedFunds.length : 0
+  const myPageHasRawStockHoldings = myPageRawStockSlots > 0
+  const myPageHasRawFundHoldings = myPageRawFundSlots > 0
+  /** WealthSection 内と同条件。ヘッダーが live 行未構築の瞬間に総資産を出さないため。 */
+  const ownedLiveRowsSynced = (
+    (!myPageHasRawStockHoldings
+      || (Array.isArray(ownedStockItems) && ownedStockItems.length === myPageRawStockSlots))
+    && (!myPageHasRawFundHoldings
+      || (Array.isArray(ownedFundItems) && ownedFundItems.length === myPageRawFundSlots))
+  )
+  const showHeaderAssetOnboardingHint = Boolean(
+    user?.id
+    && myPageDbAvailable
+    && ownedAssetDbReady
+    && ownedLiveRowsSynced
+    && headerTotalValue < 1
+    && headerTotalInvest < 1,
+  )
   const insuranceSummary = {
     registered: effectiveInsurances.length,
     expiringSoon: effectiveInsurances.filter((ins) => {
@@ -11744,8 +14216,24 @@ export default function MyPage({
       }
       try {
         const taxYear = new Date().getFullYear()
-        const data = await loadMyPageData(user.id)
+        const [data, side] = await Promise.all([
+          loadMyPageData(user.id),
+          Promise.all([
+            loadRefinanceProducts().catch(() => ({ rows: [] })),
+            loadUserRevolvingDebts(user.id).catch(() => ({ rows: [] })),
+            loadTaxShieldRules(taxYear).catch(() => ({ rows: [] })),
+            loadUserTaxShieldProfile(user.id, taxYear).catch(() => ({ profile: {} })),
+            loadUserCashFlowOptimizerProfile(user.id, taxYear).catch(() => ({ profile: {} })),
+          ]),
+        ])
         if (!alive) return
+        const [
+          refinanceProductRes,
+          debtsRes,
+          taxShieldRulesRes,
+          taxShieldProfileRes,
+          cashFlowProfileRes,
+        ] = side
         setExpenses(data.expenses || [])
         setInsurances(data.insurances || [])
         setAssetPositions(data.assetPositions || [])
@@ -11758,30 +14246,19 @@ export default function MyPage({
           annual_income_manwon: Number(data.profile?.annual_income_manwon ?? 0),
           budget_target_yen: Number(data.profile?.budget_target_yen ?? 0),
         })
-        setDataStatus(data.available ? 'Myデータを同期しました。' : 'MyPage DBテーブル未設定のため表示用データを使用中。')
+        setDataStatus(data.available ? 'データを同期しました。' : 'MyPage DBテーブル未設定のため表示用データを使用中。')
 
-        Promise.all([
-          loadRefinanceProducts(),
-          loadUserRevolvingDebts(user.id),
-          loadTaxShieldRules(taxYear),
-          loadUserTaxShieldProfile(user.id, taxYear),
-          loadUserCashFlowOptimizerProfile(user.id, taxYear),
-        ])
-          .then(([refinanceProductRes, debtsRes, taxShieldRulesRes, taxShieldProfileRes, cashFlowProfileRes]) => {
-            if (!alive) return
-            setRefinanceProducts(refinanceProductRes?.rows || [])
-            setRevolvingDebts(debtsRes?.rows || [])
-            setTaxShieldRules(taxShieldRulesRes?.rows || [])
-            setTaxShieldProfile({
-              ...DEFAULT_TAX_SHIELD_PROFILE,
-              ...(taxShieldProfileRes?.profile || {}),
-            })
-            setCashFlowProfile({
-              ...DEFAULT_CASH_FLOW_PROFILE,
-              ...(cashFlowProfileRes?.profile || {}),
-            })
-          })
-          .catch(() => {})
+        setRefinanceProducts(refinanceProductRes?.rows || [])
+        setRevolvingDebts(debtsRes?.rows || [])
+        setTaxShieldRules(taxShieldRulesRes?.rows || [])
+        setTaxShieldProfile({
+          ...DEFAULT_TAX_SHIELD_PROFILE,
+          ...(taxShieldProfileRes?.profile || {}),
+        })
+        setCashFlowProfile({
+          ...DEFAULT_CASH_FLOW_PROFILE,
+          ...(cashFlowProfileRes?.profile || {}),
+        })
       } catch (err) {
         if (!alive) return
         setDataStatus(`データ読み込み失敗: ${err?.message || 'unknown error'}`)
@@ -12148,7 +14625,7 @@ export default function MyPage({
         status: result.status,
         resultJson: result,
       })
-      setTaxShieldStatus(`節税シミュレーションを保存しました。見込み節税額 ¥${Math.abs(Number(result.potentialTaxSavingYen || 0)).toLocaleString()}`)
+      setTaxShieldStatus(`節税シミュレーションを保存しました。見込み節税額 ¥${Math.abs(Number(result.potentialTaxSavingYen || 0)).toLocaleString('ja-JP')}`)
     } catch (err) {
       setTaxShieldStatus(`シミュレーション保存に失敗: ${err?.message || 'unknown error'}`)
     }
@@ -12209,7 +14686,7 @@ export default function MyPage({
           ...result,
         },
       })
-      setCashFlowStatus(`資金フロー試算を保存しました。追加利息見込み ¥${Math.abs(Number(result.additionalInterestYen || 0)).toLocaleString()}`)
+      setCashFlowStatus(`資金フロー試算を保存しました。追加利息見込み ¥${Math.abs(Number(result.additionalInterestYen || 0)).toLocaleString('ja-JP')}`)
     } catch (err) {
       setCashFlowStatus(`資金フロー試算に失敗: ${err?.message || 'unknown error'}`)
     }
@@ -12277,7 +14754,7 @@ export default function MyPage({
         setDataStatus('比較可能な借り換え商品が見つかりません。金額レンジを確認してください。')
       } else {
         const best = ranked[0]
-        setDataStatus(`最適候補: ${best.bankName} / ${best.productName} (24ヶ月節約見込み ¥${Math.abs(Number(best.savings24mYen || 0)).toLocaleString()})`)
+        setDataStatus(`最適候補: ${best.bankName} / ${best.productName} (24ヶ月節約見込み ¥${Math.abs(Number(best.savings24mYen || 0)).toLocaleString('ja-JP')})`)
       }
     } catch (err) {
       setDataStatus(`借り換え試算に失敗: ${err?.message || 'unknown error'}`)
@@ -12412,6 +14889,8 @@ export default function MyPage({
   const [newDivStockPrice, setNewDivStockPrice] = useState(0)
   const [newDivStockQty, setNewDivStockQty] = useState(10)
   const [newDivStockNisa, setNewDivStockNisa] = useState(false)
+  const [newDivStockBuyDate, setNewDivStockBuyDate] = useState('')
+  const [newDivStockBuyPrice, setNewDivStockBuyPrice] = useState('')
   const [newDivDividends, setNewDivDividends] = useState([{ month: 6, amount: 0 }])
   const [divDetailSuggestions, setDivDetailSuggestions] = useState([])
   const [divStockLookupLoading, setDivStockLookupLoading] = useState(false)
@@ -12474,25 +14953,185 @@ export default function MyPage({
     if (!row) return { item: row, changed: false }
     const stockId = String(row.stock_id || '').trim().toUpperCase()
     if (!stockId) return { item: row, changed: false }
-    const detail = getDividendCalendarDetailRecord(stockId)
+    let item = { ...row, stock_id: stockId }
+    let changed = false
+    const normFlag = normalizeDividendStockFlag(item.flag, item)
+    if (normFlag !== item.flag) {
+      item = { ...item, flag: normFlag }
+      changed = true
+    }
+    const masterRec = getDividendCalendarDetailRecord(stockId)
+    const detail = masterRec
       || lookupDividendStockBySymbol(stockId)
-      || { symbol: stockId, category: row.sector || '' }
-    const normalizedDividends = normalizeAutofillDividendRows(row.dividends, detail)
+      || { symbol: stockId, category: item.sector || '' }
+    /** マスタ（dividendCalendarDetail.generated）に行がある銘柄は、App 配布時点の月・1株額に同期。未掲載・手動のみの銘柄は従来どおりユーザー値を正規化 */
+    const normalizedDividends = (masterRec && Array.isArray(masterRec.dividends) && masterRec.dividends.length > 0)
+      ? normalizeAutofillDividendRows(masterRec.dividends, masterRec)
+      : normalizeAutofillDividendRows(item.dividends, detail)
     if (normalizedDividends.length === 0) {
-      return { item: { ...row, stock_id: stockId }, changed: false }
+      return { item, changed }
     }
-    const before = JSON.stringify(toCanonicalDividendRows(row.dividends))
+    const before = JSON.stringify(toCanonicalDividendRows(item.dividends))
     const after = JSON.stringify(toCanonicalDividendRows(normalizedDividends))
-    const changed = before !== after
-    return {
-      item: {
-        ...row,
-        stock_id: stockId,
-        dividends: changed ? normalizedDividends : row.dividends,
-      },
-      changed,
+    if (before !== after) {
+      item = { ...item, dividends: normalizedDividends }
+      changed = true
     }
+    return { item, changed }
   }, [normalizeAutofillDividendRows, toCanonicalDividendRows])
+
+  syncDividendFromOwnedRef.current = async (stockId, nextOwned, nameHint) => {
+    if (!user?.id) return
+    const id = String(stockId || '')
+      .trim()
+      .toUpperCase()
+    if (!id) return
+    const rows = Array.isArray(nextOwned) ? nextOwned : []
+    const totalQty = rows
+      .filter((s) => String(s?.symbol || '').trim().toUpperCase() === id)
+      .reduce((sum, s) => {
+        const q = Number(String(s?.qty ?? '').trim().replace(/,/g, ''))
+        if (!Number.isFinite(q) || q < 0) return sum
+        return sum + q
+      }, 0)
+    if (!(totalQty > 0)) {
+      try {
+        const list = await loadDividendWatchlist(user.id)
+        const cur = Array.isArray(list) ? list : []
+        const toRemove = [...new Set(
+          cur
+            .filter((r) => ownedSymbolMatchesDividendStockId(id, r.stock_id))
+            .map((r) => String(r.stock_id || '').trim())
+            .filter(Boolean),
+        )]
+        for (const sid of toRemove) {
+          await deleteDividendWatchlistItem(user.id, sid)
+        }
+        const reloaded = await loadDividendWatchlist(user.id)
+        setDividendWatchlist(Array.isArray(reloaded) ? reloaded : [])
+        try {
+          window.dispatchEvent(new CustomEvent('mm-dividend-bell-refresh'))
+        } catch {
+          // ignore
+        }
+      } catch (err) {
+        const msg = `配当カレンダー同期失敗: ${err?.message || 'unknown error'}`
+        setDataStatus((p) => {
+          const t = String(p || '')
+          if (!t) return msg
+          if (t.includes('配当カレンダー同期失敗')) return t
+          return `${t} ${msg}`
+        })
+      }
+      return
+    }
+    try {
+      const master = getDividendCalendarDetailRecord(id)
+      const preset = lookupDividendStockBySymbol(id) || null
+      const detail = master || preset || { symbol: id, name: nameHint || id, category: '' }
+      const stockName = String(
+        detail.name || nameHint || preset?.name || getStockNameFallback(id) || id,
+      )
+        .trim() || id
+      const sector = String(
+        (detail && detail.category) || preset?.sector || '',
+      )
+        .trim()
+      const cat = String((detail && detail.category) || sector || '')
+      let nextFlag = '🇯🇵'
+      if (cat.includes('米国')) nextFlag = '🇺🇸'
+      else if (cat.includes('日本')) nextFlag = '🇯🇵'
+      else if (preset?.region === 'US' || (master && String(master.category || '').includes('米国'))) nextFlag = '🇺🇸'
+      const flag = normalizeDividendStockFlag(nextFlag, { stock_id: id, sector })
+      const price = Math.max(0, Number((detail && detail.price) || preset?.price || 0))
+      const rawDivs = (master && Array.isArray(master.dividends) && master.dividends.length)
+        ? master.dividends
+        : (Array.isArray(preset?.dividends) && preset.dividends.length
+          ? preset.dividends
+          : [{ month: 6, amount: 0 }])
+      const dividends = normalizeAutofillDividendRows(rawDivs, master || detail)
+      const built = {
+        stock_id: id,
+        stock_name: stockName,
+        flag,
+        sector,
+        color: '#f97316',
+        price,
+        qty: roundStockShareQty(totalQty),
+        is_nisa: false,
+        notes: '',
+        dividends: dividends.length
+          ? dividends
+          : [{ month: 6, amount: 0 }],
+      }
+      const { item: normItem } = normalizePersistedDividendItem(built)
+      const toSave = normItem && String(normItem.stock_id || '').trim() ? normItem : built
+      await upsertDividendWatchlistItem(user.id, toSave)
+      const reloaded = await loadDividendWatchlist(user.id)
+      setDividendWatchlist(Array.isArray(reloaded) ? reloaded : [])
+      try {
+        window.dispatchEvent(new CustomEvent('mm-dividend-bell-refresh'))
+      } catch {
+        // ignore
+      }
+    } catch (err) {
+      const msg = `配当カレンダー同期失敗: ${err?.message || 'unknown error'}`
+      setDataStatus((p) => {
+        const t = String(p || '')
+        if (!t) return msg
+        if (t.includes('配当カレンダー同期失敗')) return t
+        return `${t} ${msg}`
+      })
+    }
+  }
+
+  // アプリから保有株だけ同期された場合でも、配当カレンダー用テーブルへ寄せる（Web で株を触ったときと同じ upsert / 売り尽くし時は削除）
+  useEffect(() => {
+    if (user?.id !== dividendOwnedReconcileUserIdRef.current) {
+      dividendOwnedReconcileUserIdRef.current = user?.id ?? null
+      prevOwnedPositiveQtySymbolsRef.current = new Set()
+    }
+    if (!user?.id || !ownedAssetDbReady) return
+    const fn = syncDividendFromOwnedRef.current
+    if (!fn) return
+    const list = Array.isArray(ownedStocks) ? ownedStocks : []
+    const totals = new Map()
+    for (const row of list) {
+      const sym = String(row?.symbol || '').trim().toUpperCase()
+      if (!sym) continue
+      const q = Number(String(row?.qty ?? '').trim().replace(/,/g, ''))
+      const qn = Number.isFinite(q) && q >= 0 ? roundStockShareQty(q) : 0
+      totals.set(sym, (totals.get(sym) || 0) + qn)
+    }
+    const positive = new Set(
+      [...totals.entries()].filter(([, qty]) => qty > 0).map(([s]) => s),
+    )
+    const prev = prevOwnedPositiveQtySymbolsRef.current
+    const toClear = [...prev].filter((s) => !positive.has(s))
+    const toUpsert = [...positive]
+    if (toClear.length === 0 && toUpsert.length === 0) return
+
+    let cancelled = false
+    const timer = window.setTimeout(async () => {
+      try {
+        for (const sym of toClear) {
+          if (cancelled) return
+          await fn(sym, list, null)
+        }
+        for (const sym of toUpsert) {
+          if (cancelled) return
+          await fn(sym, list, null)
+        }
+        if (!cancelled) prevOwnedPositiveQtySymbolsRef.current = positive
+      } catch {
+        // fn 側が setDataStatus する。prev は成功時のみ進める。
+      }
+    }, 450)
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [user?.id, ownedAssetDbReady, ownedStocks])
 
   const applyDividendMasterDetail = useCallback((detail) => {
     if (!detail) return
@@ -12501,7 +15140,7 @@ export default function MyPage({
     const cat = String(detail.category || '')
     if (cat.includes('米国')) setNewDivStockFlag('🇺🇸')
     else if (cat.includes('日本')) setNewDivStockFlag('🇯🇵')
-    else setNewDivStockFlag('🌏')
+    else setNewDivStockFlag(normalizeDividendStockFlag('🇯🇵', { stock_id: detail.symbol, sector: cat }))
     if (Number(detail.price) > 0) setNewDivStockPrice(Number(detail.price))
     const normalizedDividends = normalizeAutofillDividendRows(detail.dividends, detail)
     if (normalizedDividends.length > 0) {
@@ -12521,13 +15160,31 @@ export default function MyPage({
       setDivDetailSuggestions([])
       return
     }
-    const q = String(newDivStockName || newDivStockId || '').trim()
-    if (q.length < 1) {
+    const nameQ = String(newDivStockName || '').trim()
+    const idQ = String(newDivStockId || '').trim()
+    if (nameQ.length < 1 && idQ.length < 1) {
       setDivDetailSuggestions([])
       return
     }
     const tid = window.setTimeout(() => {
-      setDivDetailSuggestions(searchDividendCalendarRecords(q, 12))
+      // 銘柄名が自動補完されたあとも、ティッカー欄の入力（例: AP）と併せて検索する。
+      // 単一の q = name || id だと長い社名が常に優先され、社名欄で「apple」と打っても候補が効かないことがある。
+      const norm = (s) => String(s || '').trim().toLowerCase()
+      const chunks = []
+      if (nameQ.length > 0) chunks.push(...searchDividendCalendarRecords(nameQ, 12))
+      if (idQ.length > 0 && norm(idQ) !== norm(nameQ)) {
+        chunks.push(...searchDividendCalendarRecords(idQ, 12))
+      }
+      const seen = new Set()
+      const out = []
+      for (const r of chunks) {
+        const sym = String(r?.symbol || '').trim().toUpperCase()
+        if (!sym || seen.has(sym)) continue
+        seen.add(sym)
+        out.push(r)
+        if (out.length >= 12) break
+      }
+      setDivDetailSuggestions(out)
     }, 180)
     return () => window.clearTimeout(tid)
   }, [showAddDivStock, editingDivStockId, newDivStockId, newDivStockName])
@@ -12567,6 +15224,7 @@ export default function MyPage({
       if (preset.sector) setNewDivStockSector(preset.sector)
       if (preset.region === 'JP') setNewDivStockFlag('🇯🇵')
       else if (preset.region === 'US') setNewDivStockFlag('🇺🇸')
+      else setNewDivStockFlag(normalizeDividendStockFlag('🇯🇵', { stock_id: sanitized, sector: preset.sector }))
       if (Array.isArray(preset.dividends) && preset.dividends.length > 0) {
         const presetRows = normalizeAutofillDividendRows(preset.dividends, preset)
         if (presetRows.length > 0) setNewDivDividends(presetRows)
@@ -12582,6 +15240,7 @@ export default function MyPage({
       if (result.sector) setNewDivStockSector(result.sector)
       if (result.region === 'JP') setNewDivStockFlag('🇯🇵')
       else if (result.region === 'US') setNewDivStockFlag('🇺🇸')
+      else setNewDivStockFlag(normalizeDividendStockFlag('🇯🇵', { stock_id: sanitized, sector: result.sector }))
     }).catch(() => {
       setDivStockLookupLoading(false)
     })
@@ -12609,46 +15268,78 @@ export default function MyPage({
 
   useEffect(() => {
     if (activeTab !== 'dividend' || !user?.id) return
+    let cancelled = false
     setDividendLoading(true)
     loadDividendWatchlist(user.id)
       .then(async (rows) => {
+        if (cancelled) return
         const loadedRows = Array.isArray(rows) ? rows : []
         const normalized = loadedRows.map((row) => normalizePersistedDividendItem(row))
         const normalizedRows = normalized.map((r) => r.item)
         const changedRows = normalized.filter((r) => r.changed).map((r) => r.item)
         setDividendWatchlist(normalizedRows)
 
-        if (changedRows.length === 0) return
-        try {
-          await Promise.all(changedRows.map((item) => upsertDividendWatchlistItem(user.id, item)))
-          setDividendStatus(`既存データを自動補正しました（${changedRows.length}件）`)
+        if (changedRows.length > 0) {
           try {
-            window.dispatchEvent(new CustomEvent('mm-dividend-bell-refresh'))
+            await Promise.all(changedRows.map((item) => upsertDividendWatchlistItem(user.id, item)))
+            if (!cancelled) {
+              setDividendStatus(`既存データを自動補正しました（${changedRows.length}件）`)
+              try {
+                window.dispatchEvent(new CustomEvent('mm-dividend-bell-refresh'))
+              } catch {
+                // ignore
+              }
+              setTimeout(() => setDividendStatus(''), 2800)
+            }
           } catch {
-            // ignore
+            // Keep UI responsive even if a subset of auto-fixes fail.
           }
-          setTimeout(() => setDividendStatus(''), 2800)
-        } catch {
-          // Keep UI responsive even if a subset of auto-fixes fail.
+        }
+
+        // 「株式」タブで追加した保有が user_dividend_watchlist にまだ無い／同期が遅れた場合に合わせる
+        const fn = syncDividendFromOwnedRef.current
+        const list = Array.isArray(ownedStocksLatestRef.current) ? ownedStocksLatestRef.current : []
+        if (!fn || list.length === 0 || cancelled) return
+        const totals = new Map()
+        for (const row of list) {
+          const sym = String(row?.symbol || '').trim().toUpperCase()
+          if (!sym) continue
+          const q = Number(String(row?.qty ?? '').trim().replace(/,/g, ''))
+          const qn = Number.isFinite(q) && q >= 0 ? roundStockShareQty(q) : 0
+          totals.set(sym, (totals.get(sym) || 0) + qn)
+        }
+        const symbols = [...totals.entries()].filter(([, qty]) => qty > 0).map(([s]) => s)
+        for (const sym of symbols) {
+          if (cancelled) return
+          await fn(sym, list, null)
         }
       })
       .catch(() => setDividendStatus('データの読み込みに失敗しました'))
-      .finally(() => setDividendLoading(false))
+      .finally(() => {
+        if (!cancelled) setDividendLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [activeTab, normalizePersistedDividendItem, user?.id])
 
   const handleDividendQtyChange = async (stockId, newQty) => {
-    setDividendWatchlist(prev => prev.map(r => r.stock_id === stockId ? { ...r, qty: newQty } : r))
+    const q = roundStockShareQty(newQty)
+    if (!Number.isFinite(q) || !(q > 0)) return
+    setDividendWatchlist(prev => prev.map(r => r.stock_id === stockId ? { ...r, qty: q } : r))
     if (!user?.id) return
     try {
-      await updateDividendWatchlistQty(user.id, stockId, newQty)
+      await updateDividendWatchlistQty(user.id, stockId, q)
     } catch { /* ignore */ }
   }
 
   const handleDividendDelete = async (stockId) => {
-    setDividendWatchlist(prev => prev.filter(r => r.stock_id !== stockId))
+    const id = String(stockId || '').trim()
+    if (!id) return
+    setDividendWatchlist((prev) => prev.filter((r) => r.stock_id !== id))
     if (!user?.id) return
     try {
-      await deleteDividendWatchlistItem(user.id, stockId)
+      await deleteDividendWatchlistItem(user.id, id)
     } catch { /* ignore */ }
   }
 
@@ -12661,6 +15352,8 @@ export default function MyPage({
     setNewDivStockPrice(0)
     setNewDivStockQty(10)
     setNewDivStockNisa(false)
+    setNewDivStockBuyDate('')
+    setNewDivStockBuyPrice('')
     setNewDivDividends([{ month: 6, amount: 0 }])
     setDivStockLookupLoading(false)
     setDivDetailSuggestions([])
@@ -12676,10 +15369,13 @@ export default function MyPage({
     setEditingDivStockId(item.stock_id || null)
     setNewDivStockId(String(item.stock_id || '').toUpperCase())
     setNewDivStockName(item.stock_name || '')
-    setNewDivStockFlag(item.flag || '🏳️')
+    setNewDivStockFlag(normalizeDividendStockFlag(item.flag || '🏳️', item))
     setNewDivStockSector(item.sector || '')
     setNewDivStockPrice(Math.max(0, Number(item.price || 0)))
-    setNewDivStockQty(Math.max(1, Number(item.qty || 10)))
+    const rqEdit = Number(item.qty)
+    const baseEdit = Number.isFinite(rqEdit) && rqEdit > 0 ? rqEdit : 10
+    const rEdit = roundStockShareQty(baseEdit)
+    setNewDivStockQty(rEdit > 0 ? rEdit : 10)
     setNewDivStockNisa(getDividendItemIsNisa(item))
     const normalizedDividends = Array.isArray(item.dividends) && item.dividends.length > 0
       ? item.dividends
@@ -12693,17 +15389,35 @@ export default function MyPage({
     setShowAddDivStock(true)
   }
 
-  const handleDividendAdd = async () => {
+  const handleDividendAdd = async (submitOpts = {}) => {
     if (!newDivStockId.trim() || !newDivStockName.trim()) return
     const isEditing = Boolean(editingDivStockId)
+    const symInputUpper = newDivStockId.trim().toUpperCase()
+    const hadOwnedForSymbol = ownedStocks.some((s) => s.symbol === symInputUpper)
+    const capOwnedBuyDateIso = toIsoDate(String(newDivStockBuyDate || ''))
+    const capOwnedBuyPriceNum = (() => {
+      const t = String(newDivStockBuyPrice ?? '')
+        .trim()
+        .replace(/,/g, '')
+      if (!t) return 0
+      const n = Number(t)
+      return Number.isFinite(n) && n >= 0 ? n : 0
+    })()
+    const resolvedQtyInput = submitOpts?.qty != null ? submitOpts.qty : newDivStockQty
     const item = {
       stock_id:   newDivStockId.trim().toUpperCase(),
       stock_name: newDivStockName.trim(),
-      flag:       newDivStockFlag,
+      flag:       normalizeDividendStockFlag(newDivStockFlag, {
+        stock_id: newDivStockId.trim().toUpperCase(),
+        sector: newDivStockSector,
+      }),
       sector:     newDivStockSector,
       color:      '#f97316',
       price:      Math.max(0, Number(newDivStockPrice || 0)),
-      qty:        newDivStockQty,
+      qty:        (() => {
+        const r = roundStockShareQty(resolvedQtyInput)
+        return r > 0 ? r : 10
+      })(),
       is_nisa:    Boolean(newDivStockNisa),
       notes:      '',
       dividends:  newDivDividends
@@ -12751,21 +15465,235 @@ export default function MyPage({
       await upsertDividendWatchlistItem(user.id, item)
       const rows = await loadDividendWatchlist(user.id)
       setDividendWatchlist(rows)
+      if (!isEditing && !MY_PAGE_ETF_META_BY_SYMBOL.has(item.stock_id) && !hadOwnedForSymbol) {
+        userExplicitlyClearedAllStocksRef.current = false
+        ownedStockCloudTouchedRef.current = true
+        setOwnedStocks((prev) => {
+          if (prev.some((s) => s.symbol === item.stock_id)) return prev
+          const q = roundStockShareQty(item.qty)
+          const qty = (Number.isFinite(q) && q > 0) ? q : 10
+          return [
+            ...prev,
+            {
+              lotId: createOwnedLotId(),
+              symbol: item.stock_id,
+              buyDate: capOwnedBuyDateIso || '',
+              buyPrice: capOwnedBuyPriceNum > 0 ? capOwnedBuyPriceNum : '',
+              qty,
+            },
+          ]
+        })
+      }
       recordUserActivityEvent(user.id, isEditing ? 'dividend_watch_update' : 'dividend_watch_add', {
         stock_id: item.stock_id,
         flag: item.flag,
       })
-      setDividendStatus(statusOk(isEditing ? '更新しました' : '保存しました', false))
+      const shouldMirrorOwned = !isEditing && !MY_PAGE_ETF_META_BY_SYMBOL.has(item.stock_id) && !hadOwnedForSymbol
+      const hasBothBuyFields = Boolean(capOwnedBuyDateIso) && capOwnedBuyPriceNum > 0
+      const ownedMsg = (shouldMirrorOwned && !hasBothBuyFields)
+        ? '未入力の買付価格・日付は「株式」タブで入力できます。'
+        : ''
+      setDividendStatus(
+        `${statusOk(isEditing ? '更新しました' : '保存しました', false)}${ownedMsg ? ` ${ownedMsg}` : ''}`.trim(),
+      )
       try {
         window.dispatchEvent(new CustomEvent('mm-dividend-bell-refresh'))
       } catch { /* ignore */ }
-      setTimeout(() => setDividendStatus(''), masterMatch ? 4500 : 2000)
+      const clearAfterMs = (masterMatch ? 4500 : 2000) + (ownedMsg ? 3500 : 0)
+      setTimeout(() => setDividendStatus(''), clearAfterMs)
     } catch (err) {
       setDividendStatus(`保存失敗: ${err?.message}`)
     } finally {
       setDividendSaving(false)
     }
   }
+
+  const handleRecordStockSale = useCallback(async ({ symbol, sellDate, sellQty, sellPrice }) => {
+    const symU = String(symbol || '').trim().toUpperCase()
+    const iso = toIsoDate(sellDate || '')
+    const sq = Number(sanitizeDecimalManyInput(String(sellQty ?? ''), 8))
+    const sp = Number(sanitizeDecimalInput(String(sellPrice ?? '')))
+    if (!symU || !iso) {
+      setDataStatus('売却日を入力してください。')
+      return
+    }
+    if (!Number.isFinite(sq) || sq <= 0 || !Number.isFinite(sp) || sp <= 0) {
+      setDataStatus('売却数量・売却単価を正しく入力してください。')
+      return
+    }
+    let fxMap = fxRatesByDate
+    if (inferStockCurrency(symU) === 'USD' && iso && (fxMap[iso] == null || !Number.isFinite(Number(fxMap[iso])))) {
+      try {
+        const r = await fetch(`/api/fx?date=${iso}`)
+        const j = await r.json()
+        const u = Number(j?.rates?.USD)
+        if (Number.isFinite(u) && u > 0) {
+          fxMap = { ...fxMap, [iso]: u }
+          setFxRatesByDate((prev) => ({ ...prev, [iso]: u }))
+        }
+      } catch {
+        // fallback rate inside stockSaleProceedsJpy
+      }
+    }
+    const fifo = fifoStockSellFromLots({ symbol: symU, sellQty: sq, ownedLots: ownedStocks, fxByDate: fxMap })
+    if (!fifo.ok) {
+      setDataStatus(fifo.reason)
+      return
+    }
+    const proceedsJpy = stockSaleProceedsJpy(symU, sq, sp, iso, fxMap)
+    const realizedPnlJpy = proceedsJpy - fifo.costBasisJpy
+    const trade = {
+      tradeId: `sld_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+      symbol: symU,
+      sellDate: iso,
+      qty: sq,
+      sellPrice: sp,
+      costBasisJpy: fifo.costBasisJpy,
+      proceedsJpy,
+      realizedPnlJpy,
+    }
+    ownedStockCloudTouchedRef.current = true
+    ownedRealizedCloudTouchedRef.current = true
+    const nextStocks = fifo.updatedOwned
+    if (!Array.isArray(nextStocks) || nextStocks.length === 0) {
+      userExplicitlyClearedAllStocksRef.current = true
+    } else {
+      userExplicitlyClearedAllStocksRef.current = false
+    }
+    setOwnedStocks(nextStocks)
+    setRealizedStockTrades((prev) => [...normalizeRealizedStockTrades(prev), trade])
+    if (user?.id) {
+      queueMicrotask(() => {
+        const fn = syncDividendFromOwnedRef.current
+        if (fn) void fn(symU, nextStocks, null)
+      })
+    }
+    setDataStatus(
+      `${symU} の売却を記録しました（実現損益 ${realizedPnlJpy >= 0 ? '+' : ''}¥${Math.round(realizedPnlJpy).toLocaleString('ja-JP')}）。`,
+    )
+  }, [ownedStocks, realizedStockTrades, fxRatesByDate, user?.id, ownedAssetDbAvailable])
+
+  const handleRecordFundSale = useCallback(async ({ symbol, sellDate, sellUnits, sellPrice }) => {
+    const symU = String(symbol || '').trim().toUpperCase()
+    const iso = toIsoDate(sellDate || '')
+    const su = Number(sanitizeDecimalManyInput(String(sellUnits ?? ''), 16))
+    const sp = Number(sanitizeDecimalInput(String(sellPrice ?? '')))
+    if (!symU || !iso) {
+      setDataStatus('売却日を入力してください。')
+      return
+    }
+    if (!Number.isFinite(su) || su <= 0 || !Number.isFinite(sp) || sp <= 0) {
+      setDataStatus('売却口数・売却単価を正しく入力してください。')
+      return
+    }
+    let fxMap = fxRatesByDate
+    if (inferStockCurrency(symU) === 'USD' && iso && (fxMap[iso] == null || !Number.isFinite(Number(fxMap[iso])))) {
+      try {
+        const r = await fetch(`/api/fx?date=${iso}`)
+        const j = await r.json()
+        const u = Number(j?.rates?.USD)
+        if (Number.isFinite(u) && u > 0) {
+          fxMap = { ...fxMap, [iso]: u }
+          setFxRatesByDate((prev) => ({ ...prev, [iso]: u }))
+        }
+      } catch {
+        // fallback rate inside stockSaleProceedsJpy
+      }
+    }
+    const fifo = fifoFundSellFromLots({ symbol: symU, sellUnits: su, ownedFundLots: ownedFunds, fxByDate: fxMap })
+    if (!fifo.ok) {
+      setDataStatus(fifo.reason)
+      return
+    }
+    const proceedsJpy = stockSaleProceedsJpy(symU, su, sp, iso, fxMap)
+    const realizedPnlJpy = proceedsJpy - fifo.costBasisJpy
+    const trade = {
+      tradeId: `fld_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+      symbol: symU,
+      sellDate: iso,
+      qty: su,
+      sellPrice: sp,
+      costBasisJpy: fifo.costBasisJpy,
+      proceedsJpy,
+      realizedPnlJpy,
+    }
+    ownedFundCloudTouchedRef.current = true
+    ownedRealizedFundCloudTouchedRef.current = true
+    const nextFunds = fifo.updatedOwned
+    if (!Array.isArray(nextFunds) || nextFunds.length === 0) {
+      userExplicitlyClearedAllFundsRef.current = true
+    } else {
+      userExplicitlyClearedAllFundsRef.current = false
+    }
+    setOwnedFunds(nextFunds)
+    setRealizedFundTrades((prev) => [...normalizeRealizedFundTrades(prev), trade])
+    setDataStatus(
+      `${symU} の売却を記録しました（実現損益 ${realizedPnlJpy >= 0 ? '+' : ''}¥${Math.round(realizedPnlJpy).toLocaleString('ja-JP')}）。`,
+    )
+  }, [ownedFunds, realizedFundTrades, fxRatesByDate])
+
+  const handleUpdateStockRealizedTrade = useCallback((tradeId, patch) => {
+    const tid = String(tradeId || '').trim()
+    if (!tid || !patch || typeof patch !== 'object') return
+    ownedRealizedCloudTouchedRef.current = true
+    setRealizedStockTrades((prev) => {
+      const norm = normalizeRealizedStockTrades(prev)
+      let hit = false
+      const next = norm.map((t) => {
+        if (t.tradeId !== tid) return t
+        hit = true
+        const merged = { ...t, ...patch }
+        const proceeds = Number(merged.proceedsJpy)
+        const cost = Number(merged.costBasisJpy)
+        merged.realizedPnlJpy = Number.isFinite(proceeds) && Number.isFinite(cost) ? proceeds - cost : Number(merged.realizedPnlJpy || 0)
+        return merged
+      })
+      return hit ? next : prev
+    })
+    setDataStatus('株式の売却記録を更新しました。')
+  }, [])
+
+  const handleDeleteStockRealizedTrade = useCallback((tradeId) => {
+    const tid = String(tradeId || '').trim()
+    if (!tid) return
+    ownedRealizedCloudTouchedRef.current = true
+    setRealizedStockTrades((prev) => normalizeRealizedStockTrades(prev).filter((t) => t.tradeId !== tid))
+    setDataStatus('株式の売却記録を削除しました。')
+  }, [])
+
+  const handleUpdateFundRealizedTrade = useCallback((tradeId, patch) => {
+    const tid = String(tradeId || '').trim()
+    if (!tid || !patch || typeof patch !== 'object') return
+    ownedRealizedFundCloudTouchedRef.current = true
+    setRealizedFundTrades((prev) => {
+      const norm = normalizeRealizedFundTrades(prev)
+      let hit = false
+      const next = norm.map((t) => {
+        if (t.tradeId !== tid) return t
+        hit = true
+        const merged = { ...t, ...patch }
+        const proceeds = Number(merged.proceedsJpy)
+        const cost = Number(merged.costBasisJpy)
+        merged.realizedPnlJpy = Number.isFinite(proceeds) && Number.isFinite(cost) ? proceeds - cost : Number(merged.realizedPnlJpy || 0)
+        return merged
+      })
+      return hit ? next : prev
+    })
+    setDataStatus('ファンドの売却記録を更新しました。')
+  }, [])
+
+  const handleDeleteFundRealizedTrade = useCallback((tradeId) => {
+    const tid = String(tradeId || '').trim()
+    if (!tid) return
+    ownedRealizedFundCloudTouchedRef.current = true
+    setRealizedFundTrades((prev) => normalizeRealizedFundTrades(prev).filter((t) => t.tradeId !== tid))
+    setDataStatus('ファンドの売却記録を削除しました。')
+  }, [])
+
+  const computeSaleProceedsJpyForHistoryEdit = useCallback(
+    (sym, qty, price, iso) => stockSaleProceedsJpy(sym, qty, price, iso, fxRatesByDate),
+    [fxRatesByDate],
+  )
 
   const renderContent = () => {
     switch (activeTab) {
@@ -12785,8 +15713,8 @@ export default function MyPage({
             searchFundSuggestions={searchFundSuggestions}
             onRemoveStockWatchlist={handleRemoveStockWatchlist}
             onUpdateOwnedStock={handleUpdateOwnedStock}
-            onLoadOwnedStockPrice={handleLoadOwnedStockPrice}
             onRemoveOwnedStock={handleRemoveOwnedStock}
+            onLoadOwnedStockPrice={handleLoadOwnedStockPrice}
             onAddOwnedFund={handleAddOwnedFund}
             onRemoveOwnedFund={handleRemoveOwnedFund}
             onUpdateOwnedFund={handleUpdateOwnedFund}
@@ -12807,7 +15735,13 @@ export default function MyPage({
             pointAccounts={effectivePointAccounts}
             insurances={effectiveInsurances}
             tabMode="wealth"
+            realizedStockTrades={realizedStockTrades}
+            onRecordStockSale={handleRecordStockSale}
+            realizedFundTrades={realizedFundTrades}
+            onRecordFundSale={handleRecordFundSale}
             isPaidMember={isPaidMember}
+            portfolioQuotesHydrating={stockPortfolioQuotesHydrating || fundPortfolioQuotesHydrating}
+            onSwitchPortfolioTab={switchPortfolioTabAndScroll}
           />
         )
       case 'stock':
@@ -12826,8 +15760,8 @@ export default function MyPage({
             searchFundSuggestions={searchFundSuggestions}
             onRemoveStockWatchlist={handleRemoveStockWatchlist}
             onUpdateOwnedStock={handleUpdateOwnedStock}
-            onLoadOwnedStockPrice={handleLoadOwnedStockPrice}
             onRemoveOwnedStock={handleRemoveOwnedStock}
+            onLoadOwnedStockPrice={handleLoadOwnedStockPrice}
             onAddOwnedFund={handleAddOwnedFund}
             onRemoveOwnedFund={handleRemoveOwnedFund}
             onUpdateOwnedFund={handleUpdateOwnedFund}
@@ -12848,7 +15782,13 @@ export default function MyPage({
             pointAccounts={effectivePointAccounts}
             insurances={effectiveInsurances}
             tabMode="stock"
+            realizedStockTrades={realizedStockTrades}
+            onRecordStockSale={handleRecordStockSale}
+            realizedFundTrades={realizedFundTrades}
+            onRecordFundSale={handleRecordFundSale}
             isPaidMember={isPaidMember}
+            portfolioQuotesHydrating={stockPortfolioQuotesHydrating || fundPortfolioQuotesHydrating}
+            onSwitchPortfolioTab={switchPortfolioTabAndScroll}
           />
         )
       case 'fund':
@@ -12867,8 +15807,8 @@ export default function MyPage({
             searchFundSuggestions={searchFundSuggestions}
             onRemoveStockWatchlist={handleRemoveStockWatchlist}
             onUpdateOwnedStock={handleUpdateOwnedStock}
-            onLoadOwnedStockPrice={handleLoadOwnedStockPrice}
             onRemoveOwnedStock={handleRemoveOwnedStock}
+            onLoadOwnedStockPrice={handleLoadOwnedStockPrice}
             onAddOwnedFund={handleAddOwnedFund}
             onRemoveOwnedFund={handleRemoveOwnedFund}
             onUpdateOwnedFund={handleUpdateOwnedFund}
@@ -12889,7 +15829,13 @@ export default function MyPage({
             pointAccounts={effectivePointAccounts}
             insurances={effectiveInsurances}
             tabMode="fund"
+            realizedStockTrades={realizedStockTrades}
+            onRecordStockSale={handleRecordStockSale}
+            realizedFundTrades={realizedFundTrades}
+            onRecordFundSale={handleRecordFundSale}
             isPaidMember={isPaidMember}
+            portfolioQuotesHydrating={stockPortfolioQuotesHydrating || fundPortfolioQuotesHydrating}
+            onSwitchPortfolioTab={switchPortfolioTabAndScroll}
           />
         )
       case 'point':
@@ -12978,45 +15924,95 @@ export default function MyPage({
           </div>
         )
       case 'dividend':
-        return <DividendCalendarSection
-          userId={user?.id}
-          isPaidMember={isPaidMember}
-          onUiMessage={onUiMessage}
-          onOpenPremium={() => navigate('/premium')}
-          valuationUsdJpy={valuationUsdJpy}
-          valuationFxDate={valuationFxDate}
-          watchlist={dividendWatchlist}
-          loading={dividendLoading}
-          saving={dividendSaving}
-          status={dividendStatus}
-          highlightSignal={dividendHighlightSignal}
-          showAdd={showAddDivStock}
-          onShowAdd={(open) => { if (!open) handleDividendAddClose(); else setShowAddDivStock(true); }}
-          divStockLookupLoading={divStockLookupLoading}
-          editingStockId={editingDivStockId}
-          newStockId={newDivStockId}
-          newStockName={newDivStockName}
-          newStockFlag={newDivStockFlag}
-          newStockSector={newDivStockSector}
-          newStockPrice={newDivStockPrice}
-          newStockQty={newDivStockQty}
-          newStockNisa={newDivStockNisa}
-          newDividends={newDivDividends}
-          onNewStockId={handleDividendStockIdInput}
-          onNewStockName={handleDividendStockNameInput}
-          onNewStockFlag={setNewDivStockFlag}
-          onNewStockSector={setNewDivStockSector}
-          onNewStockPrice={setNewDivStockPrice}
-          onNewStockQty={setNewDivStockQty}
-          onNewStockNisa={setNewDivStockNisa}
-          onNewDividends={setNewDivDividends}
-          onQtyChange={handleDividendQtyChange}
-          onDelete={handleDividendDelete}
-          onEdit={handleDividendEditStart}
-          onAdd={handleDividendAdd}
-          detailSuggestions={divDetailSuggestions}
-          onPickDetailSuggestion={handlePickDividendDetailRecord}
-        />
+        return (
+          <Suspense fallback={(
+            <div className="py-16 text-center text-sm font-bold text-slate-500 dark:text-slate-400">
+              配当カレンダーを読み込み中...
+            </div>
+          )}
+          >
+            <DividendCalendarSection
+              userId={user?.id}
+              isPaidMember={isPaidMember}
+              onUiMessage={onUiMessage}
+              onOpenPremium={() => navigate('/premium')}
+              valuationUsdJpy={valuationUsdJpy}
+              valuationFxDate={valuationFxDate}
+              watchlist={dividendWatchlist}
+              loading={dividendLoading}
+              saving={dividendSaving}
+              status={dividendStatus}
+              highlightSignal={dividendHighlightSignal}
+              showAdd={showAddDivStock}
+              onShowAdd={(open) => { if (!open) handleDividendAddClose(); else setShowAddDivStock(true); }}
+              divStockLookupLoading={divStockLookupLoading}
+              editingStockId={editingDivStockId}
+              newStockId={newDivStockId}
+              newStockName={newDivStockName}
+              newStockFlag={newDivStockFlag}
+              newStockSector={newDivStockSector}
+              newStockPrice={newDivStockPrice}
+              newStockQty={newDivStockQty}
+              newStockNisa={newDivStockNisa}
+              newStockBuyDate={newDivStockBuyDate}
+              newStockBuyPrice={newDivStockBuyPrice}
+              newDividends={newDivDividends}
+              onNewStockId={handleDividendStockIdInput}
+              onNewStockName={handleDividendStockNameInput}
+              onNewStockFlag={setNewDivStockFlag}
+              onNewStockSector={setNewDivStockSector}
+              onNewStockPrice={setNewDivStockPrice}
+              onNewStockQty={setNewDivStockQty}
+              onNewStockNisa={setNewDivStockNisa}
+              onNewStockBuyDate={setNewDivStockBuyDate}
+              onNewStockBuyPrice={setNewDivStockBuyPrice}
+              onNewDividends={setNewDivDividends}
+              onQtyChange={handleDividendQtyChange}
+              onDelete={handleDividendDelete}
+              onEdit={handleDividendEditStart}
+              onAdd={handleDividendAdd}
+              detailSuggestions={divDetailSuggestions}
+              onPickDetailSuggestion={handlePickDividendDetailRecord}
+            />
+          </Suspense>
+        )
+      case 'related':
+        return (
+          <div className="space-y-4">
+            <PortfolioRelatedPanel
+              exposureProfile={exposureProfile}
+              loading={exposureLoading}
+              newsRows={relatedNewsRows}
+            />
+          </div>
+        )
+      case 'sellhistory':
+        return (
+          <Suspense
+            fallback={(
+              <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/40 p-10 flex justify-center items-center min-h-[180px]" aria-busy="true">
+                <Loader2 className="animate-spin text-slate-400" size={28} aria-hidden />
+              </div>
+            )}
+          >
+            <SellHistorySection
+              stockTrades={realizedStockTrades}
+              fundTrades={realizedFundTrades}
+              ownedFunds={ownedFunds}
+              isLoggedIn={Boolean(user?.id)}
+              assetsReady={ownedAssetDbReady}
+              stockRealizedDbReady={realizedDbAvailable}
+              fundRealizedDbReady={realizedFundDbAvailable}
+              onGoStockTab={() => handleTabChange('stock')}
+              onGoFundTab={() => handleTabChange('fund')}
+              onUpdateStockTrade={handleUpdateStockRealizedTrade}
+              onDeleteStockTrade={handleDeleteStockRealizedTrade}
+              onUpdateFundTrade={handleUpdateFundRealizedTrade}
+              onDeleteFundTrade={handleDeleteFundRealizedTrade}
+              computeSaleProceedsJpy={computeSaleProceedsJpyForHistoryEdit}
+            />
+          </Suspense>
+        )
       default:
         return (
           <WealthSection
@@ -13033,8 +16029,8 @@ export default function MyPage({
             searchFundSuggestions={searchFundSuggestions}
             onRemoveStockWatchlist={handleRemoveStockWatchlist}
             onUpdateOwnedStock={handleUpdateOwnedStock}
-            onLoadOwnedStockPrice={handleLoadOwnedStockPrice}
             onRemoveOwnedStock={handleRemoveOwnedStock}
+            onLoadOwnedStockPrice={handleLoadOwnedStockPrice}
             onAddOwnedFund={handleAddOwnedFund}
             onRemoveOwnedFund={handleRemoveOwnedFund}
             onUpdateOwnedFund={handleUpdateOwnedFund}
@@ -13052,43 +16048,82 @@ export default function MyPage({
             onDeleteAsset={handleDeleteAsset}
             pointAccounts={effectivePointAccounts}
             insurances={effectiveInsurances}
+            tabMode="wealth"
+            realizedStockTrades={realizedStockTrades}
+            onRecordStockSale={handleRecordStockSale}
+            realizedFundTrades={realizedFundTrades}
+            onRecordFundSale={handleRecordFundSale}
             isPaidMember={isPaidMember}
             onUiMessage={onUiMessage}
+            portfolioQuotesHydrating={stockPortfolioQuotesHydrating || fundPortfolioQuotesHydrating}
+            onSwitchPortfolioTab={switchPortfolioTabAndScroll}
           />
         )
     }
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 font-sans pb-44 md:pb-36">
+    <div className="min-h-screen bg-slate-100 dark:bg-slate-950 font-sans pb-44 md:pb-36">
       <main className="max-w-[1400px] mx-auto p-4 lg:p-8">
-        <header className="relative flex flex-col md:flex-row md:items-start justify-between gap-6 mb-5">
-          <div className="relative z-20 flex items-center gap-4 flex-1 min-w-0">
-            <div className="w-16 h-16 rounded-full bg-slate-900 dark:bg-orange-500 text-white flex items-center justify-center text-2xl font-black shadow-lg">
-              {avatarInitial}
+        <header className="relative flex flex-col md:flex-row md:items-start justify-between gap-4 mb-3">
+          <div className="relative z-20 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between flex-1 min-w-0">
+            <div className="flex items-center gap-4 min-w-0">
+              <div className="w-16 h-16 rounded-full bg-slate-900 dark:bg-orange-500 text-white flex items-center justify-center text-2xl font-black shadow-lg shrink-0">
+                {avatarInitial}
+              </div>
+              <div className="min-w-0">
+                <h1 className="text-2xl font-black text-slate-900 dark:text-white">
+                  こんにちは、{displayName}
+                </h1>
+                <p className="mt-1.5 md:mt-2 text-slate-400 font-bold text-sm leading-tight">MoneyMartへようこそ</p>
+              </div>
             </div>
-            <div className="min-w-0">
-              <h1 className="text-2xl font-black text-slate-900 dark:text-white">
-                こんにちは、{displayName}
-              </h1>
-              <p className="mt-1.5 md:mt-2 text-slate-400 font-bold text-sm leading-tight">MoneyMartへようこそ</p>
-            </div>
+            {showHeaderAssetOnboardingHint ? (
+              <div className="rounded-2xl border border-orange-200/90 dark:border-orange-800/80 bg-orange-50/95 dark:bg-orange-950/35 px-4 py-3 max-w-full lg:max-w-[min(100%,22rem)] xl:max-w-md shrink-0 shadow-sm shadow-orange-500/10">
+                <p className="text-xs font-black text-orange-800 dark:text-orange-200 mb-1.5">
+                  まずは保有資産の登録から
+                </p>
+                <p className="text-[11px] md:text-xs leading-relaxed text-slate-700 dark:text-slate-300 mb-3">
+                  株式や投資信託を登録すると、総資産や評価損益がまとめて確認できます。画面下の
+                  <span className="font-bold text-slate-900 dark:text-white">「株式」</span>
+                  または
+                  <span className="font-bold text-slate-900 dark:text-white">「ファンド」</span>
+                  タブを開き、銘柄・数量・取得単価などを入力してください。
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleTabChange('stock')}
+                    className="inline-flex items-center justify-center rounded-xl bg-slate-900 dark:bg-orange-500 px-3 py-2 text-[11px] font-black text-white hover:opacity-95 transition"
+                  >
+                    株式タブへ
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleTabChange('fund')}
+                    className="inline-flex items-center justify-center rounded-xl border-2 border-orange-400 dark:border-orange-600 bg-white dark:bg-slate-900 px-3 py-2 text-[11px] font-black text-orange-800 dark:text-orange-200 hover:bg-orange-50 dark:hover:bg-orange-950/50 transition"
+                  >
+                    ファンドタブへ
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </div>
 
           <div className="relative z-10 w-full md:w-auto shrink-0 flex flex-col items-start md:items-end gap-3">
             <div className="flex gap-4">
-            <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm min-w-[180px]">
+            <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 min-w-[180px]">
               <p className="text-xs text-slate-400 font-bold mb-1">総資産</p>
-              {user?.id && !ownedAssetDbReady ? (
-                <>
-                  <p className="text-2xl font-black text-slate-400 dark:text-slate-500">--</p>
-                  <p className="text-xs font-bold text-slate-400">読み込み中...</p>
-                </>
+              {user?.id && (!ownedAssetDbReady || portfolioQuotesHydratingUi) ? (
+                <div className="flex flex-col items-start gap-1.5 pt-1" aria-busy="true">
+                  <Loader2 className="animate-spin text-orange-500 shrink-0" size={26} aria-hidden />
+                  <p className="text-[11px] font-bold text-slate-400">評価額・損益を同期中…</p>
+                </div>
               ) : (
                 <>
-                  <p className="text-2xl font-black text-slate-900 dark:text-white">¥{Math.round(headerTotalValue).toLocaleString()}</p>
-                  <p className={`text-xs font-bold flex items-center gap-1 ${headerPnL >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                    <TrendingUp size={12} /> {headerPnL >= 0 ? '+' : ''}¥{Math.round(headerPnL).toLocaleString()} ({headerRate.toFixed(1)}%)
+                  <p className="text-2xl font-black text-slate-900 dark:text-white">¥{Math.round(headerTotalValue).toLocaleString('ja-JP')}</p>
+                  <p className={`text-xs font-bold flex items-center gap-1 ${signedReturnTextClassStrong(headerPnL)}`}>
+                    <TrendingUp size={12} /> {headerPnL >= 0 ? '+' : ''}¥{Math.round(headerPnL).toLocaleString('ja-JP')} ({headerRate.toFixed(1)}%)
                   </p>
                 </>
               )}
@@ -13097,67 +16132,22 @@ export default function MyPage({
           </div>
         </header>
 
-        {REFERRAL_INVITE_UI_ENABLED && user?.id && referralInviteCode ? (
-          <div className="mb-5 rounded-2xl border border-orange-200 dark:border-orange-900/50 bg-orange-50/90 dark:bg-orange-950/25 px-4 py-3">
-            <p className="text-sm font-black text-slate-900 dark:text-white mb-1">友だち招待リンク</p>
-            <p className="text-xs text-slate-600 dark:text-slate-400 mb-2 leading-relaxed">
-              このURLをシェアすると、友だちが<span className="font-bold text-orange-600 dark:text-orange-400">無料登録</span>したときにあなたの紹介として記録されます。
-            </p>
-            <code className="block text-[11px] font-mono break-all text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-900 border border-orange-200/80 dark:border-orange-900/40 rounded-xl px-2.5 py-2 mb-2">
-              {typeof window !== 'undefined' ? `${window.location.origin}/?ref=${referralInviteCode}` : ''}
-            </code>
-            <div className="flex flex-col sm:flex-row gap-2">
-              <button
-                type="button"
-                onClick={async () => {
-                  const url = `${window.location.origin}/?ref=${referralInviteCode}`
-                  setReferralShareHint('')
-                  try {
-                    await navigator.clipboard.writeText(url)
-                    setReferralCopied(true)
-                    window.setTimeout(() => setReferralCopied(false), 2000)
-                  } catch {
-                    setReferralCopied(false)
-                    setReferralShareHint('コピーできませんでした')
-                  }
-                }}
-                className="flex-1 h-10 px-4 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-black"
-              >
-                {referralCopied ? 'コピーしました' : 'リンクをコピー'}
-              </button>
-              <ReferralShareMenu
-                inviteUrl={typeof window !== 'undefined' ? `${window.location.origin}/?ref=${referralInviteCode}` : ''}
-                onNotify={(msg) => {
-                  setReferralShareHint(msg)
-                  window.setTimeout(() => setReferralShareHint(''), 2500)
-                }}
-                triggerClassName={
-                  'flex-1 h-10 px-4 rounded-xl border-2 border-orange-400 dark:border-orange-600 ' +
-                  'text-orange-800 dark:text-orange-200 bg-white dark:bg-slate-900 text-xs font-black ' +
-                  'inline-flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none w-full'
-                }
-              />
-            </div>
-            {referralShareHint ? (
-              <p className="mt-2 text-xs font-bold text-emerald-600 dark:text-emerald-400">{referralShareHint}</p>
-            ) : null}
-          </div>
-        ) : null}
-
-        <div className="sticky top-16 z-30 -mx-4 lg:-mx-8 px-4 lg:px-8 pt-2 pb-4 mb-4 bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800">
-          {dataStatus ? <p className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-2">{dataStatus}</p> : null}
-          <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-3">
+        <div className="sticky top-16 z-30 -mx-4 lg:-mx-8 px-4 lg:px-8 pt-1 pb-2 mb-3 bg-slate-100 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800">
+          {dataStatus ? <p className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">{dataStatus}</p> : null}
+          <p className="text-[11px] leading-snug text-slate-500 dark:text-slate-400 mb-1.5">
             ※ 株式・ファンドのUSD建て評価額は、最新価格に本日基準の為替（USD/JPY {Number(valuationUsdJpy || 0).toFixed(2)}、適用日: {valuationFxDate || '--'}）で円換算しています。取得原価は各買付日の為替を使用します。
           </p>
 
-          <div className="flex overflow-x-auto gap-2 pb-2 scrollbar-hide pointer-events-auto">
+          <div className="flex overflow-x-auto gap-2 pb-0.5 scrollbar-hide pointer-events-auto">
             {[
               { id: 'wealth', label: '資産運用' },
               { id: 'stock', label: '株式' },
               { id: 'fund', label: 'ファンド' },
+              { id: 'related', label: '保有との関連' },
+              { id: 'sellhistory', label: '売却履歴' },
+              { id: 'dividend', label: '配当カレンダー' },
               { id: 'point', label: '家計簿' },
               { id: 'debt', label: 'ローン・負債管理' },
-              { id: 'dividend', label: '配当カレンダー' },
             ].map((tab) => (
               <button
                 key={`primary-tab-${tab.id}`}
@@ -13175,9 +16165,18 @@ export default function MyPage({
           </div>
         </div>
 
-        <div className="animate-fadeIn mb-8 md:mb-12">
+        <div className="animate-fadeIn mb-6 md:mb-8">
           {renderContent()}
         </div>
+
+        <MyPagePromotionsSection
+          user={user}
+          referralInviteCode={referralInviteCode}
+          referralCopied={referralCopied}
+          onReferralCopied={setReferralCopied}
+          referralShareHint={referralShareHint}
+          onReferralShareHint={setReferralShareHint}
+        />
 
         {activeTab === 'wealth' && (
         <div className="max-w-[1400px] mx-auto px-4 lg:px-8 mb-6">

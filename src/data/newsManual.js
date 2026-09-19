@@ -75,7 +75,7 @@ export const NEWS_MARKET_TICKER = [
     url: "https://news.google.com/rss/articles/CBMiYEFVX3lxTE52NFVWTVRUVkdhSVFtTTBwbXh1dWlVQkFXcThzMV9qQ1V1YWc5TnBhaHduUjB6NzB6YUhCdkFwN2hOTGJnRmIzeGJ4WTcyNWpmV1RkMXNUbnM0MEQtMDZVNg?oc=5",
     imageUrl: "",
     publishedAt: "2026-02-17 22:30:00",
-    description: "【注目】 今朝の注目ニュース! ★SDSHD、ステムリム、ノジマなどに注目! 株探【明日の好悪材料】を開示情報でチェック! (2月17日発表分)(株探ニュース) Yahoo!ファイナンス【特報】 寄前【板状況】動向 【買いトップ】SDSHD 【売りトップ】アズ企画設計 [08:35] 株探【株式会社地域新聞社】株主優待「千葉県を中心に利用可能な割引券」対象店舗詳細および利用条件緩和のお知らせ PR TIMESノジマが3日続伸、取得上限300万株の自己株取得枠を設定 速報 kabushiki.jp",
+    description: "【注目】 今朝の注目ニュース! ★SDSHD、ステムリム、ノジマなどに注目! 株探【明日の好悪材料】を開示情報でチェック! (2月17日発表分)(株探ニュース) Yahoo!ファイナンス【特報】 寄前【板状況】動向 【買いトップ】SDSHD 【売りトップ】アズ企画設計 [08:35] 株探【株式会社地域新聞社】株主優待「千葉県を中心に利用可能な割引券」対象店舗詳細および利用条件緩和のお知らせ PR TIMESノジマが3日続伸、取得上限300万株の自己株取得枠を設定",
     language: "ja",
   },
   {

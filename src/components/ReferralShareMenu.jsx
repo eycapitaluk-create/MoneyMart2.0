@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ChevronDown, Share2 } from 'lucide-react'
 import {
+  getReferralCopyUrl,
   getReferralNativeSharePayload,
   openReferralShareOnFacebook,
   openReferralShareOnLine,
@@ -68,7 +69,7 @@ export function ReferralShareMenu({ inviteUrl, onShareMethod, onNotify, triggerC
       }
     }
     try {
-      await navigator.clipboard.writeText(inviteUrl)
+      await navigator.clipboard.writeText(getReferralCopyUrl(inviteUrl))
       onShareMethod?.('native_fallback_copy')
       onNotify?.('リンクをコピーしました')
     } catch {

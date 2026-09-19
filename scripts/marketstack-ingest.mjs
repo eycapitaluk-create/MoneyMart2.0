@@ -4,7 +4,7 @@ const DEFAULT_MARKETSTACK_SYMBOLS = [
   'AAPL', 'MSFT', 'NVDA', 'AMZN', 'META', 'GOOGL', 'GOOG', 'TSLA', 'AVGO', 'AMD',
   'ORCL', 'NFLX', 'CRM', 'ADBE', 'INTC', 'QCOM', 'TXN', 'MU', 'CSCO', 'IBM',
   'PLTR', 'JPM', 'GS', 'MS', 'BAC', 'WFC', 'C', 'BLK', 'V', 'MA',
-  'AXP', 'PYPL', 'SCHW', 'USB', 'PNC', 'COF', 'BK', 'SPGI', 'ICE', 'JNJ',
+  'AXP', 'PYPL', 'SCHW', 'USB', 'PNC', 'COF', 'BNY', 'SPGI', 'ICE', 'JNJ',
   'PFE', 'MRK', 'UNH', 'ABBV', 'LLY', 'TMO', 'ABT', 'DHR', 'ISRG', 'BMY',
   'GILD', 'AMGN', 'VRTX', 'VRT', 'CVS', 'MDT', 'SYK', 'ZTS', 'REGN', 'CI', 'XOM',
   'CVX', 'COP', 'SLB', 'EOG', 'MPC', 'PSX', 'VLO', 'OKE', 'KMI', 'WMB',

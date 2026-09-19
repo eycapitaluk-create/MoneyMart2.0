@@ -65,17 +65,17 @@ export default function PrimePage() {
       {/* 1. Hero Section */}
       <section className="pt-24 pb-20 px-6 text-center max-w-5xl mx-auto">
         <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-300 text-xs font-bold uppercase tracking-wider mb-8 animate-fadeIn">
-          <Crown size={14} fill="currentColor" /> Premium Membership
+          <Crown size={14} fill="currentColor" /> Prime（準備中）
         </span>
 
         <h1 className="text-5xl md:text-7xl font-black text-slate-900 dark:text-white tracking-tighter mb-6 leading-tight">
           資産運用の<br className="md:hidden" />
-          <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-500 to-amber-500">次元を変える。</span>
+          <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-500 to-amber-500">検討を、もっと整理しやすく。</span>
         </h1>
 
         <p className="text-lg md:text-xl text-slate-500 dark:text-slate-300 font-medium max-w-2xl mx-auto leading-relaxed mb-12">
-          AIによる高度な分析、リアルタイムの市場データ。<br />
-          プロレベルの環境を、あなたの手に。
+          AI による情報整理の補助、取得可能な範囲の市場データの確認。<br />
+          検討を進めやすい環境を目指しています（特定銘柄の売買を勧誘するものではありません）。
         </p>
 
         <div className="flex justify-center mb-16">
@@ -100,14 +100,14 @@ export default function PrimePage() {
       <section className="max-w-6xl mx-auto px-4 grid md:grid-cols-2 gap-8 mb-32 items-center">
         <div className="space-y-8 pl-4 md:pl-12">
                 <h2 className="text-3xl font-black text-slate-900 dark:text-white leading-tight">
-            ただのツールではありません。<br />
-            <span className="text-orange-500">成功への投資</span>です。
+            情報整理を、<br />
+            <span className="text-orange-500">もっと見やすく</span>します。
           </h2>
           <div className="space-y-6">
             {[
-              { title: 'AI ポートフォリオ診断', desc: 'あなたの資産状況を24時間365日モニタリング。リバランス判断に必要な分析情報を可視化します。' },
-              { title: '米国株 リアルタイム株価', desc: '15分の遅延なし。機関投資家と同じタイミングで市場の動きを把握できます。' },
-              { title: '会員限定レポート', desc: '毎朝配信されるプロのアナリストによる市場分析レポートが読み放題。' },
+              { title: 'AI ポートフォリオ参考レポート', desc: '入力された資産状況をもとに、分散やリスクの観点を可視化します。' },
+              { title: '米国株データ確認', desc: '取得可能な最新データをもとに、市場の動きを確認しやすくします。' },
+              { title: '会員限定レポート', desc: '市場データをもとにした参考レポートを確認できます。' },
             ].map((item, i) => (
               <div key={i} className="flex gap-4">
                 <div className="w-12 h-12 rounded-2xl bg-orange-50 dark:bg-orange-900/30 text-orange-600 dark:text-orange-300 flex items-center justify-center shrink-0">
@@ -127,11 +127,11 @@ export default function PrimePage() {
 
           <div className="relative bg-white dark:bg-slate-900 rounded-[2.5rem] p-10 shadow-2xl border border-slate-100 dark:border-slate-700 overflow-hidden">
             <div className="absolute top-0 right-0 bg-orange-500 text-white text-xs font-bold px-4 py-2 rounded-bl-2xl">
-              MOST POPULAR
+              構想プラン
             </div>
 
             <div className="mb-8">
-              <p className="text-slate-500 dark:text-slate-300 font-bold uppercase tracking-wider text-xs mb-2">MoneyMart Prime</p>
+              <p className="text-slate-500 dark:text-slate-300 font-bold uppercase tracking-wider text-xs mb-2">MoneyMart Prime（別プラン・準備中）</p>
               <div className="flex items-baseline gap-1">
                 <span className="text-6xl font-black text-slate-900 dark:text-white tracking-tighter">
                   ¥{isYearly ? '9,800' : '980'}
@@ -146,7 +146,10 @@ export default function PrimePage() {
                 </span>
               </div>
               <p className="text-sm text-slate-400 dark:text-slate-300 font-medium mt-2">
-                {isYearly ? '月額換算 ¥816 (2ヶ月分無料)' : 'いつでも解約可能'}
+                {isYearly ? '月額換算 ¥816 (2ヶ月分無料・構想値)' : 'いつでも解約可能（構想段階の案内）'}
+              </p>
+              <p className="text-xs text-amber-800 dark:text-amber-200 font-bold mt-3 leading-relaxed bg-amber-50 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-800/60 rounded-xl px-3 py-2">
+                ※ 表示の料金・機能は構想段階の参考値です。現在は先行案内のみで、決済・提供はありません。既存の「Premium」（税込月額・App Store／ウェブの PAY.JP）は別プランです。
               </p>
             </div>
 
@@ -186,7 +189,7 @@ export default function PrimePage() {
       {/* 3. Feature Grid (Bento Style) */}
       <section className="max-w-6xl mx-auto px-6 mb-24">
         <h2 className="text-center text-2xl font-black text-slate-900 dark:text-white mb-12">
-          すべての機能が、<br />あなたの資産を加速させる。
+          さまざまな機能で、<br />金融情報の確認を支える工夫を進めています。
         </h2>
 
         <div className="grid md:grid-cols-3 gap-6">
@@ -196,7 +199,7 @@ export default function PrimePage() {
             </div>
             <h3 className="font-bold text-xl text-slate-900 dark:text-white mb-2">高度なチャート分析</h3>
             <p className="text-slate-500 dark:text-slate-300 text-sm font-medium leading-relaxed">
-              高度なインジケーターと可視化機能で、市場分析をより深く行えます。
+              インジケーターと可視化で、チャートを読み解きやすくします（売買を指示するものではありません）。
             </p>
           </div>
 
@@ -204,9 +207,9 @@ export default function PrimePage() {
             <div className="w-14 h-14 bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-300 rounded-2xl flex items-center justify-center mb-6">
               <Sparkles size={28} />
             </div>
-            <h3 className="font-bold text-xl text-slate-900 dark:text-white mb-2">AI 投資アシスト</h3>
+            <h3 className="font-bold text-xl text-slate-900 dark:text-white mb-2">AI 情報整理アシスト</h3>
             <p className="text-slate-500 dark:text-slate-300 text-sm font-medium leading-relaxed">
-              市場データをもとに、投資判断に役立つ分析インサイトを提供。
+              市場データをもとに、確認材料を整理しやすくします。
             </p>
           </div>
 
@@ -214,9 +217,9 @@ export default function PrimePage() {
             <div className="w-14 h-14 bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-300 rounded-2xl flex items-center justify-center mb-6">
               <ShieldCheck size={28} />
             </div>
-            <h3 className="font-bold text-xl text-slate-900 dark:text-white mb-2">広告完全非表示</h3>
+            <h3 className="font-bold text-xl text-slate-900 dark:text-white mb-2">広告表示の抑制（構想）</h3>
             <p className="text-slate-500 dark:text-slate-300 text-sm font-medium leading-relaxed">
-              ストレスのない快適な取引環境を提供します。
+              広告を抑え、情報確認に集中しやすい画面を目指します（提供範囲はリリース時に確定）。
             </p>
           </div>
         </div>
@@ -235,8 +238,8 @@ export default function PrimePage() {
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
               {[
-                { name: 'リアルタイム株価', free: false, prime: true },
-                { name: 'AI ポートフォリオ診断', free: false, prime: true },
+                { name: '株価データ確認', free: false, prime: true },
+                { name: 'AI ポートフォリオ参考レポート', free: false, prime: true },
                 { name: 'ウォッチリスト登録数', free: '10件', prime: '無制限' },
                 { name: '広告表示', free: 'あり', prime: 'なし' },
                 { name: 'カスタマーサポート', free: 'メール', prime: 'メール' },
@@ -259,7 +262,7 @@ export default function PrimePage() {
       {/* 5. Footer CTA */}
       <section className="text-center pb-20 px-6">
         <p className="text-slate-400 dark:text-slate-300 font-bold text-sm mb-4">
-          まずは30日間、無料でお試しください。
+          先行案内にご登録いただくと、リリース情報をお届けします。
         </p>
         <button
           onClick={handlePrimeStart}

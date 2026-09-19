@@ -101,3 +101,39 @@ export function findBaseCloseByCalendarOffset(history, offset, adjustedCloses = 
   }
   return result.close
 }
+
+/**
+ * 上場から1年未満の銘柄向け: 利用可能な履歴スパンから年率換算リターン(%)を算出。
+ * 1年リターン / シャープ（リスク対リターン）が空になるのを防ぐ。
+ * @param {{ close: number, baseClose: number, spanDays: number, minSpanDays?: number }} args
+ * @returns {number | null}
+ */
+export function computeAnnualizedReturnPct({ close, baseClose, spanDays, minSpanDays = 90 } = {}) {
+  const c = Number(close)
+  const b = Number(baseClose)
+  const days = Number(spanDays)
+  const minDays = Number.isFinite(Number(minSpanDays)) ? Number(minSpanDays) : 90
+  if (!Number.isFinite(c) || c <= 0) return null
+  if (!Number.isFinite(b) || b <= 0) return null
+  if (!Number.isFinite(days) || days < minDays) return null
+  const total = (c - b) / b
+  if (!Number.isFinite(total) || total <= -1) return null
+  const years = days / 365.25
+  if (!(years > 0)) return null
+  const annualized = (Math.pow(1 + total, 1 / years) - 1) * 100
+  return Number.isFinite(annualized) ? annualized : null
+}
+
+/** 履歴先頭の有効終値（分割調整済みがあればそちら） */
+export function findFirstPositiveClose(history, adjustedCloses = null) {
+  if (!Array.isArray(history) || history.length === 0) return null
+  for (let i = 0; i < history.length; i += 1) {
+    if (Array.isArray(adjustedCloses) && i < adjustedCloses.length) {
+      const adj = Number(adjustedCloses[i])
+      if (Number.isFinite(adj) && adj > 0) return adj
+    }
+    const raw = Number(history[i]?.close)
+    if (Number.isFinite(raw) && raw > 0) return raw
+  }
+  return null
+}

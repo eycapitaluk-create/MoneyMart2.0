@@ -1,7 +1,7 @@
 import { Info } from 'lucide-react'
 
 /**
- * EODベースのデータ取り込み時刻の目安（日本時間）。投資助言ではありません。
+ * EODベースのデータ更新タイミングの目安（日本時間）。投資助言ではありません。
  * @param {{ variant?: 'fund' | 'stock' }} props
  */
 export default function MarketDataEodFreshnessNote({ variant = 'fund' }) {
@@ -19,7 +19,7 @@ export default function MarketDataEodFreshnessNote({ variant = 'fund' }) {
       <p className="min-w-0">
         {intro}
         原則として<strong>各取引所の前営業日終値（EOD）</strong>をもとに更新されるデータです。
-        取り込みの目安は、<strong>国内上場（東証など）は日本時間の午後（おおむね16時頃）</strong>、
+        更新タイミングの目安は、<strong>国内上場（東証など）は日本時間の午後（おおむね16時頃）</strong>、
         <strong>米国上場は翌営業日の日本時間の朝（おおむね8時頃）</strong>です。
         休場日・祝日・データ提供元の遅延により前後することがあります。
       </p>

@@ -46,9 +46,9 @@ export function evaluateCashFlowOptimizer({
 
   const tasks = []
   if (status === 'buffer_shortage') {
-    tasks.push(`予備資金が不足しています。まずは ¥${shortageYen.toLocaleString()} を確保しましょう。`)
+    tasks.push(`予備資金が不足しています。まずは ¥${shortageYen.toLocaleString('ja-JP')} を確保しましょう。`)
   } else if (idleCashYen > 0) {
-    tasks.push(`余剰現金 ¥${idleCashYen.toLocaleString()} の移動余地があります。`)
+    tasks.push(`余剰現金 ¥${idleCashYen.toLocaleString('ja-JP')} の移動余地があります。`)
   } else {
     tasks.push('現金配分は概ね最適化されています。')
   }
@@ -57,7 +57,7 @@ export function evaluateCashFlowOptimizer({
   }
   tasks.push('自動振替を設定して毎月の余剰資金を運用待機口座へ移しましょう。')
 
-  const insight = `過去3ヶ月で平均 ¥${idleCashYen.toLocaleString()} の余剰現金がありました。連携済み高金利普通預金へ移していれば、年+${(rateGap * 100).toFixed(1)}%で約¥${additionalInterestYen.toLocaleString()}の追加利息が見込めました。`
+  const insight = `過去3ヶ月で平均 ¥${idleCashYen.toLocaleString('ja-JP')} の余剰現金がありました。連携済み高金利普通預金へ移していれば、年+${(rateGap * 100).toFixed(1)}%で約¥${additionalInterestYen.toLocaleString('ja-JP')}の追加利息が見込めました。`
 
   return {
     reserveTargetYen,

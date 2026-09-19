@@ -39,13 +39,13 @@ private final class MarketRepository {
         ("IYE", "エネルギー"), ("IYM", "素材"), ("IYJ", "資本財・産業"),
         ("IYC", "一般消費財"), ("IYK", "生活必需品"), ("IYH", "ヘルスケア"),
         ("IYF", "金融"), ("IYW", "情報技術"), ("IYZ", "通信サービス"),
-        ("IDU", "公益事業"), ("IYR", "不動産")
+        ("IDU", "公益事業"), ("IYR", "不動産"),
     ]
 
     private let regionSymbols: [(String, String)] = [
         ("ACWI", "全世界株式市場"), ("MCHI", "中国株式市場"), ("1329.T", "日本株式市場(日経225)"),
         ("1475.T", "日本株式市場"), ("AAXJ", "アジア(除く日本)株式市場"),
-        ("EEM", "新興国株式市場"), ("IVV", "米国大型株市場"), ("IJH", "米国中型株市場"), ("IJR", "米国小型株市場")
+        ("EEM", "新興国株式市場"), ("IVV", "米国大型株市場"), ("IJH", "米国中型株市場"), ("IJR", "米国小型株市場"),
     ]
 
     func fetchHeatmaps() async throws -> (sectors: [HeatmapTile], regions: [HeatmapTile]) {

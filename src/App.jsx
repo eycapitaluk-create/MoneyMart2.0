@@ -109,6 +109,7 @@ const BriefArchivePage = lazyWithRetry(() => import('./pages/BriefArchivePage'))
 const LegalPage = lazyWithRetry(() => import('./pages/LegalPage'))
 const FAQPage = lazyWithRetry(() => import('./pages/FAQPage'))
 const AboutPage = lazyWithRetry(() => import('./pages/AboutPage'))
+const CareersPage = lazyWithRetry(() => import('./pages/CareersPage'))
 const ToolsHubPage = lazyWithRetry(() => import('./pages/ToolsHubPage'))
 const ToolLandingPage = lazyWithRetry(() => import('./pages/ToolLandingPage'))
 const NisaEtfChecklistPage = lazyWithRetry(() => import('./pages/NisaEtfChecklistPage'))
@@ -117,6 +118,7 @@ const InsightResearchMockPage = lazyWithRetry(() => import('./pages/InsightResea
 const NotFoundPage = lazyWithRetry(() => import('./pages/NotFoundPage'))
 const PremiumPage = lazyWithRetry(() => import('./pages/PremiumPage'))
 const CampaignCp2026SnsSepPage = lazyWithRetry(() => import('./pages/CampaignCp2026SnsSepPage'))
+const BusinessDemoPage = lazyWithRetry(() => import('./pages/BusinessDemoPage'))
 
 const RouteSkeleton = ({ title = 'ページを読み込み中...' }) => (
   <div className="min-h-[50vh] max-w-5xl mx-auto px-4 py-8">
@@ -938,6 +940,7 @@ const App = () => {
       fallback={<RouteSkeleton title="ページを読み込み中..." />}
     >
       <Routes>
+        <Route path="/business/demo" element={<BusinessDemoPage />} />
         <Route
           element={(
             <Layout
@@ -1132,6 +1135,7 @@ const App = () => {
           <Route path="/legal/:type" element={<LegalPage />} />
           <Route path="/faq" element={<FAQPage />} />
           <Route path="/about" element={<AboutPage />} />
+          <Route path="/careers" element={<CareersPage />} />
           <Route path="/tools" element={<ToolsHubPage session={session} />} />
           <Route path="/tools/nisa-etf-checklist" element={<NisaEtfChecklistPage />} />
           <Route path="/nisa-etf-checklist" element={<Navigate to="/tools/nisa-etf-checklist" replace />} />

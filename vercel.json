@@ -50,7 +50,7 @@
   ],
   "headers": [
     {
-      "source": "/(login|signup|forgot-password|reset-password|complete-profile)",
+      "source": "/(login|signup|forgot-password|reset-password|complete-profile|signup-complete)",
       "headers": [
         { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
       ]
@@ -63,6 +63,12 @@
     },
     {
       "source": "/admin(.*)",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
+      "source": "/(community|lounge|signup-complete)",
       "headers": [
         { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
       ]

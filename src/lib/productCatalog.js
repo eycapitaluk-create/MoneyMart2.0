@@ -6,6 +6,8 @@ const CATEGORY_SPEC_LABELS = {
   loans: ['金利', '限度額', '無利息期間'],
   insurance: ['保険料', '治療救援', 'サポート'],
   points: ['還元率', '獲得条件', '付与時期'],
+  /** 株式ページ「執行先比較」用（Admin で category=brokerage） */
+  brokerage: ['手数料', 'ポイント', '特徴'],
 }
 
 const toText = (value) => String(value ?? '').trim()
@@ -73,7 +75,7 @@ const normalizeProductRow = (row) => {
 export async function fetchActiveProducts() {
   const { data, error } = await supabase
     .from('products')
-    .select('id,category,name,link,description,spec,is_active,created_at')
+    .select('id,category,name,provider,link,description,spec,is_active,created_at,image_url,badge')
     .eq('is_active', true)
     .order('created_at', { ascending: false })
     .limit(500)
@@ -83,6 +85,47 @@ export async function fetchActiveProducts() {
   return (data || [])
     .map(normalizeProductRow)
     .filter((item) => item.id && item.name)
+}
+
+/** category=brokerage の商品のみ。株式ページ執行先比較で利用 */
+export async function fetchActiveBrokeragePartners() {
+  const { data, error } = await supabase
+    .from('products')
+    .select('id,category,name,provider,link,description,spec,is_active,created_at,image_url,badge')
+    .eq('is_active', true)
+    .eq('category', 'brokerage')
+    .order('created_at', { ascending: false })
+    .limit(200)
+
+  if (error) throw error
+
+  return (data || [])
+    .map(normalizeProductRow)
+    .filter((item) => item.id && item.name)
+}
+
+/** normalizeProductRow 済みの1件 → 執行先カード用 */
+export function mapProductToExecutionPartnerCard(product) {
+  const specs = Array.isArray(product?.specs) ? product.specs : []
+  const fee =
+    specs.find((s) => /手数料|fee|コスト|売買/i.test(String(s.label || '')))?.value
+    || specs[0]?.value
+    || '要確認'
+  const points =
+    specs.find((s) => /ポイント|還元|特典/i.test(String(s.label || '')))?.value
+    || specs[1]?.value
+    || '—'
+  const third = specs[2]
+  const noteExtra = third && third.value ? `${third.label}: ${third.value}` : ''
+  const url = String(product.apply_url || '').trim() || '#'
+  return {
+    id: String(product.id),
+    name: product.name,
+    fee,
+    points,
+    note: String(product.description || '').trim() || noteExtra || '',
+    url,
+  }
 }
 
 export async function fetchProductById(productId) {

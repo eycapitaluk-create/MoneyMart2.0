@@ -8,6 +8,7 @@ import AdBanner from '../components/AdBanner'
 import { trackAffiliateClick } from '../lib/affiliateTracking'
 import { trackAnalyticsEvent } from '../lib/analytics'
 import { fetchActiveProducts } from '../lib/productCatalog'
+import { LEGAL_NOTICE_TEMPLATES } from '../constants/legalNoticeTemplates'
 
 const CATEGORY_ICONS = {
   savings: Landmark,
@@ -67,6 +68,19 @@ const PRODUCT_DETAIL_FAQ = [
     a: '条件のわかりやすさ、使いやすさ、コスト構造など複数観点で整理しています。特定商品の提案ではなく、比較しやすい形で情報を表示しています。',
   },
 ]
+
+const PRODUCT_CATEGORY_NOTICES = {
+  savings:
+    '掲載している金利・手数料・キャンペーン条件は参考情報です。預金保険の対象範囲、適用条件、最新の金利は申込前に必ず公式サイトでご確認ください。',
+  cards:
+    '掲載している年会費・還元率・特典は条件付きの場合があります。審査結果、利用状況、対象加盟店、上限、除外条件により実際の内容は異なります。',
+  loans:
+    LEGAL_NOTICE_TEMPLATES.loan,
+  insurance:
+    LEGAL_NOTICE_TEMPLATES.insurance,
+  points:
+    'ポイント還元率や特典は対象サービス、上限、キャンペーン期間、利用条件により異なります。交換条件・失効期限・対象外条件を公式情報でご確認ください。',
+}
 
 export default function ProductDetailPage({ productInterestIds = [], toggleProductInterest }) {
   const { id } = useParams()
@@ -354,6 +368,8 @@ export default function ProductDetailPage({ productInterestIds = [], toggleProdu
               </h3>
               <p className="text-xs text-amber-700 dark:text-amber-300/90 leading-relaxed">
                 本ページの情報は2025年時点のものです。金利・手数料・条件等は変更される場合があります。申込前に必ず各金融機関の公式サイトで最新情報をご確認ください。
+                {PRODUCT_CATEGORY_NOTICES[product.category] ? ` ${PRODUCT_CATEGORY_NOTICES[product.category]}` : ''}
+                本ページは比較・情報提供を目的としており、申込・契約・審査通過・将来の便益を保証するものではありません。
               </p>
             </div>
 

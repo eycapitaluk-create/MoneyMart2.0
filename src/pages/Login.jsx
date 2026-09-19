@@ -2,8 +2,11 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useRef, useState } from 'react'
 import Card from '../components/ui/Card'
 import Button from '../components/ui/Button'
+import AppleSignInButton from '../components/auth/AppleSignInButton'
+import GoogleSignInButton, { AuthDivider } from '../components/auth/GoogleSignInButton'
 import { useAuth } from '../hooks/useAuth'
 import { sanitizeInternalRedirectPath } from '../lib/navigationGuards'
+import { supabase } from '../lib/supabase'
 
 export default function Login() {
   const navigate = useNavigate()
@@ -17,11 +20,19 @@ export default function Login() {
   const emailInputRef = useRef(null)
   const passwordInputRef = useRef(null)
   const redirectTo = sanitizeInternalRedirectPath(location.state?.from, '/')
+
   const handleSubmit = async (e) => {
     e.preventDefault()
     setMessage('')
     try {
-      await signIn(email, password)
+      const trimmedEmail = String(email || '').trim()
+      await signIn(trimmedEmail, password)
+      const { data: after } = await supabase.auth.getSession()
+      if (!after?.session?.user) {
+        setMessage('セッションを確立できませんでした。少し待ってから再度お試しください。')
+        return
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, 180))
       navigate(redirectTo, { replace: true })
     } catch (err) {
       setMessage(err?.message || 'ログインに失敗しました。')
@@ -51,10 +62,17 @@ export default function Login() {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 font-sans flex items-center justify-center px-4">
       <Card className="p-8 w-full max-w-md">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">ログイン</h1>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">ログイン</h1>
         <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
-          登録したメールアドレスとパスワードでログインしてください。
+          Google・Apple またはメールアドレスでログインできます。
         </p>
+
+        <div className="space-y-3 mb-6">
+          <GoogleSignInButton redirectAfterAuth={redirectTo} label="Googleでログイン" />
+          <AppleSignInButton redirectAfterAuth={redirectTo} label="Appleでログイン" />
+          <AuthDivider />
+        </div>
+
         <form className="space-y-4" onSubmit={handleSubmit}>
           <div>
             <label htmlFor="login-email" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">メールアドレス</label>
@@ -108,7 +126,7 @@ export default function Login() {
             </button>
           )}
           <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? 'ログイン中...' : 'ログイン'}
+            {loading ? 'ログイン中...' : 'メールでログイン'}
           </Button>
         </form>
         <p className="mt-4 text-center text-sm text-gray-600 dark:text-gray-400">

@@ -42,10 +42,11 @@ for each row execute function public.set_updated_at_insight_articles();
 alter table public.insight_articles enable row level security;
 
 drop policy if exists "insight_articles_public_read" on public.insight_articles;
-create policy "insight_articles_public_read"
+drop policy if exists "insight_articles_members_read" on public.insight_articles;
+create policy "insight_articles_members_read"
 on public.insight_articles
 for select
-to anon, authenticated
+to authenticated
 using (is_published = true);
 
 drop policy if exists "insight_articles_admin_manage" on public.insight_articles;

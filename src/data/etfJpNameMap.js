@@ -15,6 +15,7 @@ export const ETF_JP_NAME_MAP = {
   EFA: 'iシェアーズ MSCI EAFE ETF（先進国除外米国）',
   IEFA: 'iシェアーズ コア MSCI EAFE ETF',
   EEM: 'iシェアーズ MSCI 新興国ETF',
+  VWO: 'バンガード 新興国株式ETF',
   VEA: 'バンガード 先進国株式ETF',
   EWG: 'iシェアーズ MSCI ドイツETF',
   EWJ: 'iシェアーズ MSCI 日本ETF',
@@ -34,7 +35,7 @@ export const ETF_JP_NAME_MAP = {
   // REIT
   VNQ: 'バンガード 米国REIT ETF',
   VNQI: 'バンガード 国際REIT ETF',
-  // コモディティ
+  // 原材料
   GLD: 'SPDR 金ETF',
   SLV: 'iシェアーズ 銀ETF',
   USO: 'US 原油ETF',

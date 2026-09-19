@@ -1,5 +1,5 @@
 /**
- * Admin Basic Auth check — Stripe 일본 보안 요건 대응
+ * Admin Basic Auth check — 관리 화면 접근 제어
  * ADMIN_BASIC_USER / ADMIN_BASIC_PASS 환경변수로 인증
  */
 export default function handler(req, res) {

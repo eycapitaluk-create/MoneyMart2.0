@@ -2,10 +2,24 @@
  * JP ETF / 단일 .T 심볼 일별 시세 xlsx → stock_daily_prices
  *
  * 형식 A (기존): 1행 헤더 — symbol, trade_date|date, open, high, low, close, volume
+ * 형식 A2 (DATE + PRICE 종가열): 헤더 date + price(close), OHLC 없으면 종가로 채움. 심볼은 보통 --symbol=1545.T.
+ *    stock_daily_prices PK = (source, symbol, trade_date). **그래서 같은 날짜 줄을 진짜로 “덮어쓰려면” 이미 존재하는 행과 source가 같아야 함.**
+ *    이 레포에서는 일본 현물 ETF가 보통 **marketstack** 키로 적재되어 있어 A2 기본값이 marketstack; 다른 키에만 있으면 --source 로 맞춤.
+ *
  * 형식 B: 1행 제목, 2행 한국어 헤더(날짜·시가·고가·저가·종가·거래량·…), 이후 데이터, 하단 요약 블록은 자동 스킵
  *
  * 실행:
  *   node scripts/import-jp-etf-xlsx.mjs [경로.xlsx] [--symbol=314A.T] [--source=jp_etf_csv]
+ *
+ *   형식 A에서 파일에 행이 없거나 종가가 0 이하인 심볼은, DB 直近営業日の終値で
+ *   変化なし行を補完: --carry-forward-symbols=468A.T,2246.T,...
+ *
+ *   stock_symbols は更新せず日足のみ: --prices-only
+ *
+ *   DB に当該 source×trade_date で**有効な終値**（close > 0）が無い銘柄だけ upsert: --only-missing
+ *   （行が無い・終値が null/0 以下・非数 → 対象。既に正の終値があればスキップ）
+ *
+ *   終値なし・volume のみの行（jp_prices 等）: 直近営業日の終値でフラット OHLC + volume を upsert
  *
  * 형식 B 기본 source: jp_etf_csv (수동 적재). 형식 A 기본 source: marketstack (기존 배치와 동일).
  */
@@ -95,6 +109,65 @@ const displayNameFromTitleRow = (rows) => {
   return cut || null
 }
 
+const isDatePriceTwoColHeaderRow = (row) => {
+  if (!row || row.length < 2) return false
+  const a = String(row[0] || '').trim().toLowerCase()
+  const b = String(row[1] || '').trim().toLowerCase()
+  const dateOk =
+    a === 'date'
+    || a === 'trade_date'
+    || a === 'datetime'
+    || a === '날짜'
+  const priceOk =
+    b === 'price'
+    || b === 'close'
+    || b === 'adj close'
+    || b === 'adj_close'
+    || b === '종가'
+  return dateOk && priceOk
+}
+
+/**
+ * 헤더: DATE/TRADE_DATE + PRICE/CLOSE 두 열만 있는 과거 종가 적재용.
+ * OHLC 미기재 → open/high/low 모두 종가 동일值.
+ */
+const parseDatePriceWideFormat = (rows, symbol, source, fileBase, filePath, flagSymbol) => {
+  if (!rows.length || !isDatePriceTwoColHeaderRow(rows[0])) return null
+
+  const sym = (
+    normalizeSymbol(flagSymbol || symbol || extractSymbolFromTitleOrPath(rows, filePath) || '').toUpperCase()
+  )
+  if (!sym || !sym.endsWith('.T')) {
+    throw new Error(
+      'DATE/PRICE 두 열 형식: 종목 코드를 알 수 없습니다. --symbol=1545.T 로 지정하세요.',
+    )
+  }
+
+  const symbolRows = [{ symbol: sym, name: sym, is_active: true }]
+  const priceRows = []
+
+  for (const row of rows.slice(1)) {
+    const tradeDate = cellToTradeDate(row[0])
+    const close = toNum(row[1])
+    if (!tradeDate || close == null || close <= 0) continue
+
+    priceRows.push({
+      source,
+      symbol: sym,
+      trade_date: tradeDate,
+      open: close,
+      high: close,
+      low: close,
+      close,
+      volume: null,
+      raw: { imported_from: fileBase, format: 'two_col_date_price' },
+    })
+  }
+
+  if (priceRows.length === 0) return null
+  return { priceRows, symbolRows }
+}
+
 const parseStandardFormat = (rows, source, fileBase) => {
   const header = rows[0] || []
   const symbolIdx = header.findIndex((h) => String(h).toLowerCase() === 'symbol')
@@ -117,6 +190,7 @@ const parseStandardFormat = (rows, source, fileBase) => {
 
   const priceRows = []
   const symbolRows = []
+  const volumeOnlyRows = []
 
   for (const row of rows.slice(1)) {
     const symbol = normalizeSymbol(row[symbolIdx])
@@ -124,7 +198,16 @@ const parseStandardFormat = (rows, source, fileBase) => {
 
     const tradeDate = cellToTradeDate(row[dateIdx])
     const close = toNum(row[closeIdx])
-    if (!tradeDate || close == null || close <= 0) continue
+    const volume = volIdx >= 0 ? toNum(row[volIdx]) : null
+    if (!tradeDate) continue
+
+    if (close == null || close <= 0) {
+      if (volume != null && volume > 0) {
+        volumeOnlyRows.push({ symbol, trade_date: tradeDate, volume })
+        symbolRows.push({ symbol, name: symbol, is_active: true })
+      }
+      continue
+    }
 
     const aumVal = aumIdx >= 0 ? toNum(row[aumIdx]) : null
     const raw = { imported_from: fileBase }
@@ -139,12 +222,12 @@ const parseStandardFormat = (rows, source, fileBase) => {
       high: highIdx >= 0 ? toNum(row[highIdx]) : null,
       low: lowIdx >= 0 ? toNum(row[lowIdx]) : null,
       close,
-      volume: volIdx >= 0 ? toNum(row[volIdx]) : null,
+      volume,
       raw,
     })
   }
 
-  return { priceRows, symbolRows }
+  return { priceRows, symbolRows, volumeOnlyRows }
 }
 
 const parseSingleSymbolKoreanSheet = (rows, symbol, source, fileBase, friendlyName) => {
@@ -200,6 +283,178 @@ const parseSingleSymbolKoreanSheet = (rows, symbol, source, fileBase, friendlyNa
   return { priceRows, symbolRows }
 }
 
+const normalizeCarrySymbolList = (raw) => {
+  if (!raw || String(raw).trim() === '') return []
+  return String(raw)
+    .split(/[,，\s]+/)
+    .map((s) => normalizeSymbol(s).toUpperCase())
+    .filter(Boolean)
+}
+
+/** ファイルに無い・終値無効な銘柄を、同一 source で trade_date より前の最新行の終値でフラットに補完（volume は null） */
+const applyCarryForwardFromDb = async (supabase, {
+  priceByKey,
+  symbolByKey,
+  usedSource,
+  targetDates,
+  carrySymbols,
+  fileBase,
+}) => {
+  if (!carrySymbols.length || !targetDates.length) return
+
+  for (const targetDate of targetDates) {
+    for (const sym of carrySymbols) {
+      const key = `${usedSource}|${sym}|${targetDate}`
+      const existing = priceByKey.get(key)
+      const closeOk = existing && Number(existing.close) > 0
+      if (closeOk) continue
+
+      let prev = null
+      let prevErr = null
+      {
+        const res = await supabase
+          .from('stock_daily_prices')
+          .select('trade_date,open,high,low,close,volume,raw')
+          .eq('source', usedSource)
+          .eq('symbol', sym)
+          .lt('trade_date', targetDate)
+          .order('trade_date', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        prev = res.data
+        prevErr = res.error
+      }
+      if (prevErr) {
+        console.warn(`carry-forward ${sym} @ ${targetDate}: query error`, prevErr.message)
+        continue
+      }
+      if (!prev || !Number.isFinite(Number(prev.close)) || Number(prev.close) <= 0) {
+        const resAny = await supabase
+          .from('stock_daily_prices')
+          .select('trade_date,open,high,low,close,volume,raw,source')
+          .eq('symbol', sym)
+          .lt('trade_date', targetDate)
+          .order('trade_date', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        if (!resAny.error && resAny.data && Number(resAny.data.close) > 0) {
+          prev = resAny.data
+          console.log(`carry-forward ${sym} @ ${targetDate}: using prior from source=${resAny.data.source} ${resAny.data.trade_date}`)
+        }
+      }
+      if (!prev || !Number.isFinite(Number(prev.close)) || Number(prev.close) <= 0) {
+        console.warn(`carry-forward ${sym} @ ${targetDate}: no prior row with valid close`)
+        continue
+      }
+
+      const c = Number(prev.close)
+      const prevRaw = prev.raw && typeof prev.raw === 'object' && !Array.isArray(prev.raw) ? { ...prev.raw } : {}
+      const row = {
+        source: usedSource,
+        symbol: sym,
+        trade_date: targetDate,
+        open: c,
+        high: c,
+        low: c,
+        close: c,
+        volume: null,
+        raw: {
+          ...prevRaw,
+          imported_from: fileBase,
+          carry_forward_prior_close: true,
+          carry_forward_from_trade_date: prev.trade_date,
+        },
+      }
+      priceByKey.set(key, row)
+      if (!symbolByKey.has(sym)) {
+        symbolByKey.set(sym, { symbol: sym, name: sym, is_active: true })
+      }
+      console.log(`carry-forward ${sym} ${targetDate} ← prior ${prev.trade_date} close=${c}`)
+    }
+  }
+}
+
+/** volume のみ行: 直近終値でフラット OHLC + ファイルの volume */
+const applyVolumeOnlyRowsFromDb = async (supabase, {
+  priceByKey,
+  symbolByKey,
+  usedSource,
+  volumeOnlyRows,
+  fileBase,
+}) => {
+  if (!volumeOnlyRows?.length) return
+
+  for (const stub of volumeOnlyRows) {
+    const sym = normalizeSymbol(stub.symbol)
+    const targetDate = stub.trade_date
+    const volume = toNum(stub.volume)
+    if (!sym || !targetDate || volume == null || volume <= 0) continue
+
+    const key = `${usedSource}|${sym}|${targetDate}`
+    const existing = priceByKey.get(key)
+    if (existing && Number(existing.close) > 0) {
+      priceByKey.set(key, { ...existing, volume })
+      continue
+    }
+
+    let prev = null
+    {
+      const res = await supabase
+        .from('stock_daily_prices')
+        .select('trade_date,open,high,low,close,volume,raw,source')
+        .eq('source', usedSource)
+        .eq('symbol', sym)
+        .lt('trade_date', targetDate)
+        .order('trade_date', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      prev = res.data
+    }
+    if (!prev || !Number.isFinite(Number(prev.close)) || Number(prev.close) <= 0) {
+      const resAny = await supabase
+        .from('stock_daily_prices')
+        .select('trade_date,open,high,low,close,volume,raw,source')
+        .eq('symbol', sym)
+        .lt('trade_date', targetDate)
+        .order('trade_date', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (!resAny.error && resAny.data && Number(resAny.data.close) > 0) {
+        prev = resAny.data
+      }
+    }
+    if (!prev || !Number.isFinite(Number(prev.close)) || Number(prev.close) <= 0) {
+      console.warn(`volume-only ${sym} @ ${targetDate}: no prior row with valid close`)
+      continue
+    }
+
+    const c = Number(prev.close)
+    const prevRaw = prev.raw && typeof prev.raw === 'object' && !Array.isArray(prev.raw) ? { ...prev.raw } : {}
+    priceByKey.set(key, {
+      source: usedSource,
+      symbol: sym,
+      trade_date: targetDate,
+      open: c,
+      high: c,
+      low: c,
+      close: c,
+      volume: Math.round(volume),
+      raw: {
+        ...prevRaw,
+        imported_from: fileBase,
+        volume_only_import: true,
+        carry_forward_prior_close: true,
+        carry_forward_from_trade_date: prev.trade_date,
+        carry_forward_from_source: prev.source || usedSource,
+      },
+    })
+    if (!symbolByKey.has(sym)) {
+      symbolByKey.set(sym, { symbol: sym, name: sym, is_active: true })
+    }
+  }
+  console.log(`Volume-only rows resolved: ${volumeOnlyRows.length} input stubs`)
+}
+
 const run = async () => {
   await loadEnv()
   const supabaseUrl = process.env.SUPABASE_URL
@@ -222,39 +477,139 @@ const run = async () => {
 
   let priceRows
   let symbolRows
+  let volumeOnlyRows = []
   let usedSource
 
   if (standard) {
-    if (standard.priceRows.length === 0) {
+    if (standard.priceRows.length === 0 && (!standard.volumeOnlyRows || standard.volumeOnlyRows.length === 0)) {
       throw new Error(`형식 A로 읽었으나 유효 행이 없습니다. 헤더: ${(rows[0] || []).join(', ')}`)
     }
     usedSource = stdSource
     priceRows = standard.priceRows
     symbolRows = standard.symbolRows
+    volumeOnlyRows = standard.volumeOnlyRows || []
   } else {
-    usedSource = flags.source || 'jp_etf_csv'
-    const sym = flagSymbol || extractSymbolFromTitleOrPath(rows, xlsxPath)
-    const friendly = displayNameFromTitleRow(rows)
-    const parsed = parseSingleSymbolKoreanSheet(rows, sym, usedSource, fileBase, friendly)
-    priceRows = parsed.priceRows
-    symbolRows = parsed.symbolRows
+    /** 두 열 DATE+PRICE: 기존 일별행과 같은 PK로 덮어쓰려면 같은 source 필요. 레포에서는 대개 marketstack. */
+    const dpSource = flags.source || 'marketstack'
+    const datePrice = parseDatePriceWideFormat(rows, null, dpSource, fileBase, xlsxPath, flagSymbol)
+    if (datePrice) {
+      usedSource = dpSource
+      priceRows = datePrice.priceRows
+      symbolRows = datePrice.symbolRows
+    } else {
+      usedSource = flags.source || 'jp_etf_csv'
+      const sym = flagSymbol || extractSymbolFromTitleOrPath(rows, xlsxPath)
+      const friendly = displayNameFromTitleRow(rows)
+      const parsed = parseSingleSymbolKoreanSheet(rows, sym, usedSource, fileBase, friendly)
+      priceRows = parsed.priceRows
+      symbolRows = parsed.symbolRows
+    }
   }
 
-  if (priceRows.length === 0) {
+  if (priceRows.length === 0 && volumeOnlyRows.length === 0) {
     console.log('No valid rows in xlsx')
     return
   }
 
   const supabase = createClient(supabaseUrl, supabaseKey)
-  const dedupSymbols = [...new Map(symbolRows.map((r) => [r.symbol, r])).values()]
-  const dedupPrices = [
-    ...new Map(priceRows.map((r) => [`${r.source}|${r.symbol}|${r.trade_date}`, r])).values(),
-  ]
+  const carrySymbols = normalizeCarrySymbolList(flags['carry-forward-symbols'] || flags.carry_forward_symbols)
+
+  const priceByKey = new Map(priceRows.map((r) => [`${r.source}|${r.symbol}|${r.trade_date}`, r]))
+  const symbolByKey = new Map(symbolRows.map((r) => [r.symbol, r]))
+
+  const targetDates = [...new Set([
+    ...priceRows.map((r) => r.trade_date),
+    ...volumeOnlyRows.map((r) => r.trade_date),
+  ].filter(Boolean))].sort()
+
+  if (volumeOnlyRows.length > 0) {
+    await applyVolumeOnlyRowsFromDb(supabase, {
+      priceByKey,
+      symbolByKey,
+      usedSource,
+      volumeOnlyRows,
+      fileBase,
+    })
+  }
+
+  if (carrySymbols.length > 0) {
+    await applyCarryForwardFromDb(supabase, {
+      priceByKey,
+      symbolByKey,
+      usedSource,
+      targetDates,
+      carrySymbols,
+      fileBase,
+    })
+  }
+
+  const dedupSymbols = [...symbolByKey.values()]
+  let dedupPrices = [...priceByKey.values()]
+
+  const onlyMissing =
+    flags['only-missing'] === 'true'
+    || flags['only-missing'] === '1'
+    || flags.only_missing === 'true'
+    || flags.only_missing === '1'
+
+  if (onlyMissing) {
+    const dates = [...new Set(dedupPrices.map((r) => r.trade_date).filter(Boolean))].sort()
+    /** @type {Map<string, Set<string>>} */
+    const symbolsWithValidCloseByDate = new Map()
+    for (const d of dates) {
+      const validSet = new Set()
+      let from = 0
+      const pageSize = 1000
+      for (;;) {
+        const { data, error } = await supabase
+          .from('stock_daily_prices')
+          .select('symbol, close')
+          .eq('source', usedSource)
+          .eq('trade_date', d)
+          .order('symbol', { ascending: true })
+          .range(from, from + pageSize - 1)
+        if (error) throw error
+        const chunk = data || []
+        for (const row of chunk) {
+          const sym = String(row.symbol || '').trim().toUpperCase()
+          const c = Number(row.close)
+          if (sym && Number.isFinite(c) && c > 0) validSet.add(sym)
+        }
+        if (chunk.length < pageSize) break
+        from += pageSize
+      }
+      symbolsWithValidCloseByDate.set(d, validSet)
+    }
+    const before = dedupPrices.length
+    dedupPrices = dedupPrices.filter((r) => {
+      const sym = String(r.symbol || '').trim().toUpperCase()
+      const ok = symbolsWithValidCloseByDate.get(r.trade_date)
+      return ok && !ok.has(sym)
+    })
+    console.log(
+      `Only-missing (no valid close): ${dedupPrices.length} / ${before} rows (skipped ${before - dedupPrices.length} already have close>0)`,
+    )
+  }
+
+  if (dedupPrices.length === 0) {
+    console.log('Nothing to upsert.')
+    return
+  }
 
   console.log(`Importing ${dedupPrices.length} rows from ${fileBase} (source=${usedSource})`)
 
-  const { error: symErr } = await supabase.from('stock_symbols').upsert(dedupSymbols, { onConflict: 'symbol' })
-  if (symErr) throw symErr
+  const pricesOnly =
+    flags['prices-only'] === 'true'
+    || flags['prices-only'] === '1'
+    || flags.prices_only === 'true'
+    || flags.prices_only === '1'
+
+  if (!pricesOnly) {
+    const { error: symErr } = await supabase.from('stock_symbols').upsert(dedupSymbols, { onConflict: 'symbol' })
+    if (symErr) throw symErr
+  } else {
+    console.log('Skip stock_symbols upsert (--prices-only)')
+  }
 
   const { error: priceErr } = await supabase
     .from('stock_daily_prices')

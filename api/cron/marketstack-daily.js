@@ -14,7 +14,7 @@ const DEFAULT_MARKETSTACK_SYMBOLS = [
   'NVDA','AAPL','MSFT','AMZN','GOOGL','META','TSLA','AVGO','GOOG','COST',
   'NFLX','TMUS','ADBE','AMD','PEP','LIN','CSCO','INTU','ISRG','AMGN',
   'QCOM','TXN','HON','AMAT','BKNG','ADP','SBUX','MDLZ','GILD','ADI',
-  'MU','REGN','VRTX','VRT','PANW','SNPS','CDNS','KLAC','ASML','PYPL','MELI',
+  'MU','REGN','VRTX','VRT','PANW','SNPS','CDNS','KLAC','ASML','SKHY','PYPL','MELI',
   'MAR','LRCX','NXPI','CTAS','ORLY','FTNT','MNST','ADSK','WDAY','PDD',
   'AEP','MCHP','KDP','CPRT','CHTR','KHC','IDXX','EXC','ROST','PAYX',
   'PCAR','DXCM','MRVL','CSX','GEHC','TEAM','AZN','BKR','ON',
@@ -75,6 +75,8 @@ const MARKETSTACK_TEMP_BAD_SYMBOLS = new Set([
 // EU/UK 제외 (EUNK.DE 등)
 const REQUIRED_HEATMAP_SYMBOLS = [
   'ACWI', 'MCHI', '1329.T', '1475.T', 'AAXJ', 'EEM', 'IVV', 'IJH', 'IJR',
+  'VOO', 'QQQ', 'VWO', 'VT', 'BND',
+  'VEA', 'LQD', 'IEF', 'VNQ', 'VTI',
   'IYE', 'IYM', 'IYJ', 'IYC', 'IYK', 'IYH', 'IYF', 'IYW', 'IYZ', 'IDU', 'IYR',
   'TLT', '2621.T',
   // 원자재 (Commodities via ETF proxies, fallback when commodity_daily_prices empty)

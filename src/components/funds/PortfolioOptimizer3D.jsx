@@ -28,6 +28,18 @@ const fmt = (v, d = 2) => {
   return n.toFixed(d)
 }
 
+/** 初回表示のカメラ（信託報酬×リスク面を斜め上から見る構図） */
+const SCENE_CAMERA_DESKTOP = {
+  eye: { x: 1.78, y: 1.52, z: 1.22 },
+  center: { x: 0.06, y: 0, z: 0.1 },
+  up: { x: 0, y: 0, z: 1 },
+}
+const SCENE_CAMERA_MOBILE = {
+  eye: { x: 2.05, y: 1.68, z: 1.3 },
+  center: { x: 0.05, y: 0, z: 0.08 },
+  up: { x: 0, y: 0, z: 1 },
+}
+
 const expandAxisRange = (minValue, maxValue, fallbackPad = 1) => {
   const min = Number(minValue)
   const max = Number(maxValue)
@@ -225,9 +237,14 @@ export default function PortfolioOptimizer3D({
       })
     }
 
+    const sceneCamera = isMobileViewport ? SCENE_CAMERA_MOBILE : SCENE_CAMERA_DESKTOP
+
     const layout = {
       autosize: true,
-      margin: { l: 0, r: 0, b: 0, t: 0 },
+      uirevision: 'portfolio-optimizer-3d',
+      margin: isMobileViewport
+        ? { l: 4, r: 4, b: 6, t: 4 }
+        : { l: 0, r: 0, b: 0, t: 0 },
       paper_bgcolor: 'rgba(0,0,0,0)',
       plot_bgcolor: 'rgba(0,0,0,0)',
       scene: {
@@ -271,7 +288,11 @@ export default function PortfolioOptimizer3D({
           tickfont: { size: axisTickFontSize, family: 'Inter, system-ui, sans-serif' },
         },
         bgcolor: 'rgba(0,0,0,0)',
-        camera: { eye: { x: 1.55, y: -1.45, z: 1.03 } },
+        aspectmode: 'manual',
+        aspectratio: isMobileViewport
+          ? { x: 1.1, y: 1, z: 0.72 }
+          : { x: 1.2, y: 1, z: 0.82 },
+        camera: sceneCamera,
       },
       showlegend: false,
     }
@@ -334,7 +355,7 @@ export default function PortfolioOptimizer3D({
         <div className="rounded-lg border border-emerald-200 bg-white/95 px-2.5 py-1.5 dark:border-emerald-700 dark:bg-slate-900/95">
           <p className="text-[10px] font-black text-emerald-700 dark:text-emerald-300">現在の配分</p>
           <p className="text-[10px] font-semibold text-slate-600 dark:text-slate-300 mt-0.5 leading-snug">
-            R {fmt(currentPoint.ret, 1)}% / Risk {fmt(currentPoint.risk, 1)}% / Fee {fmt(currentPoint.fee, 2)}%
+            リターン {fmt(currentPoint.ret, 1)}% / リスク {fmt(currentPoint.risk, 1)}% / 費用 {fmt(currentPoint.fee, 2)}%
           </p>
         </div>
       ) : null}
@@ -342,7 +363,7 @@ export default function PortfolioOptimizer3D({
         <div className="rounded-lg border border-orange-200 bg-white/95 px-2.5 py-1.5 dark:border-orange-700 dark:bg-slate-900/95">
           <p className="text-[10px] font-black text-orange-700 dark:text-orange-300">最適配分</p>
           <p className="text-[10px] font-semibold text-slate-600 dark:text-slate-300 mt-0.5 leading-snug">
-            R {fmt(optimalPoint.ret, 1)}% / Risk {fmt(optimalPoint.risk, 1)}% / Fee {fmt(optimalPoint.fee, 2)}%
+            リターン {fmt(optimalPoint.ret, 1)}% / リスク {fmt(optimalPoint.risk, 1)}% / 費用 {fmt(optimalPoint.fee, 2)}%
           </p>
         </div>
       ) : null}

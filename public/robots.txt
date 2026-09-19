@@ -1,6 +1,24 @@
 User-agent: *
 Allow: /
+Allow: /etf-compare
+Allow: /insights
+Allow: /news
+Allow: /market
+Allow: /funds
+Allow: /stocks
+Allow: /tools
+Allow: /legal/methodology
+
 Disallow: /admin
 Disallow: /api/
+Disallow: /mypage
+Disallow: /login
+Disallow: /signup
+Disallow: /signup-complete
+Disallow: /complete-profile
+Disallow: /forgot-password
+Disallow: /reset-password
+Disallow: /community
+Disallow: /lounge
 
-Sitemap: https://moneymart.co.jp/sitemap.xml
+Sitemap: https://www.moneymart.co.jp/sitemap.xml

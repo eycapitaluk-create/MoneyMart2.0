@@ -4,10 +4,17 @@ import { createClient } from '@supabase/supabase-js'
 import portfolioDiagnosisHandler from './api/portfolio-diagnosis.js'
 import aiNewsCronHandler from './api/cron/ai-news.js'
 import contactHandler from './api/contact.js'
-import createCheckoutSessionHandler from './api/billing/create-checkout-session.js'
+import appleVerifySubscriptionHandler from './api/apple/verify-subscription.js'
+import payjpCreateSubscriptionHandler from './api/billing/payjp/create-subscription.js'
+import payjpCancelSubscriptionHandler from './api/billing/payjp/cancel-subscription.js'
+import payjpWebhookHandler from './api/billing/payjp/webhook.js'
+import payjpPublicConfigHandler from './api/billing/payjp/public-config.js'
+import payjpPlanConfigHandler from './api/billing/payjp/plan-config.js'
+import campaignCp2026SnsSepHandler from './api/campaign/cp2026-sns-sep.js'
 import chatbotHandler from './api/chatbot.js'
 import loungeDigestHandler from './api/cron/lounge-digest.js'
 import fxHandler from './api/fx.js'
+import fearGreedHandler from './api/fear-greed.js'
 import newsTranslateJaHandler from './api/news-translate-ja.js'
 import storagePublicImageHandler from './api/proxy/storage-public-image.js'
 
@@ -50,6 +57,24 @@ function makeExpressStyleResponse(nodeRes) {
     },
     json(body) {
       sendJson(nodeRes, this._code ?? 200, body)
+    },
+  }
+}
+
+/** Inject Microsoft Clarity in index.html so setup verification + first paint both see the tag. */
+function clarityIndexHtmlPlugin(runtimeEnv) {
+  const projectId = String(runtimeEnv.VITE_CLARITY_PROJECT_ID || '').trim()
+  const excludedPrefixes = ['/mypage', '/admin', '/reset-password', '/forgot-password']
+  const guard = excludedPrefixes
+    .map((p) => `p==='${p}'||p.indexOf('${p}/')===0`)
+    .join('||')
+
+  return {
+    name: 'clarity-index-html',
+    transformIndexHtml(html) {
+      if (!projectId) return html
+      const snippet = `<script type="text/javascript">(function(){var p=(location.pathname||'/').toLowerCase();if(${guard})return;(function(c,l,a,r,i,t,y){c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;t.setAttribute("data-mm-clarity","1");y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);})(window,document,"clarity","script","${projectId}");})();</script>`
+      return html.replace('</head>', `    ${snippet}\n  </head>`)
     },
   }
 }
@@ -106,6 +131,9 @@ function localChatApiPlugin(runtimeEnv) {
 
       server.middlewares.use('/api/fx', async (req, res, next) => {
         if (req.method !== 'GET') return next()
+        ;['SUPABASE_URL', 'VITE_SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_SECRET_KEY', 'FX_READ_USDJPY_FROM_DB'].forEach((k) => {
+          if (!process.env[k] && runtimeEnv[k]) process.env[k] = runtimeEnv[k]
+        })
         if (!process.env.FX_TWELVEDATA_API_KEY && runtimeEnv.FX_TWELVEDATA_API_KEY) {
           process.env.FX_TWELVEDATA_API_KEY = runtimeEnv.FX_TWELVEDATA_API_KEY
         }
@@ -116,8 +144,24 @@ function localChatApiPlugin(runtimeEnv) {
         return fxHandler(mockReq, makeExpressStyleResponse(res))
       })
 
+      server.middlewares.use('/api/fear-greed', async (req, res, next) => {
+        if (req.method !== 'GET' && req.method !== 'OPTIONS') return next()
+        ;['SUPABASE_URL', 'VITE_SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_SECRET_KEY', 'VITE_SUPABASE_ANON_KEY'].forEach((k) => {
+          if (!process.env[k] && runtimeEnv[k]) process.env[k] = runtimeEnv[k]
+        })
+        const mockReq = { method: req.method || 'GET', query: queryFromNodeReq(req) }
+        return fearGreedHandler(mockReq, makeExpressStyleResponse(res))
+      })
+
       server.middlewares.use('/api/portfolio-diagnosis', async (req, res, next) => {
         if (req.method !== 'POST') return next()
+        const copy = (k) => {
+          if (!process.env[k] && runtimeEnv[k]) process.env[k] = runtimeEnv[k]
+        }
+        copy('SUPABASE_URL')
+        copy('VITE_SUPABASE_URL')
+        copy('SUPABASE_SERVICE_ROLE_KEY')
+        copy('SUPABASE_SECRET_KEY')
         if (!process.env.ANTHROPIC_API_KEY && runtimeEnv.ANTHROPIC_API_KEY) {
           process.env.ANTHROPIC_API_KEY = runtimeEnv.ANTHROPIC_API_KEY
         }
@@ -186,20 +230,84 @@ function localChatApiPlugin(runtimeEnv) {
         return storagePublicImageHandler(req, res)
       })
 
-      server.middlewares.use('/api/billing/create-checkout-session', async (req, res, next) => {
+      server.middlewares.use('/api/apple/verify-subscription', async (req, res, next) => {
         if (req.method !== 'POST' && req.method !== 'OPTIONS') return next()
         const copy = (k) => {
           if (!process.env[k] && runtimeEnv[k]) process.env[k] = runtimeEnv[k]
         }
-        copy('STRIPE_SECRET_KEY')
-        copy('STRIPE_PRICE_ID_PREMIUM_MONTHLY')
         copy('SUPABASE_URL')
         copy('VITE_SUPABASE_URL')
         copy('SUPABASE_ANON_KEY')
         copy('VITE_SUPABASE_ANON_KEY')
-        copy('PUBLIC_SITE_URL')
-        copy('VITE_PUBLIC_SITE_ORIGIN')
-        return createCheckoutSessionHandler(req, res)
+        copy('SUPABASE_SERVICE_ROLE_KEY')
+        copy('SUPABASE_SECRET_KEY')
+        copy('APPLE_ISSUER_ID')
+        copy('APPLE_KEY_ID')
+        copy('APPLE_PRIVATE_KEY')
+        copy('APPLE_BUNDLE_ID')
+        copy('APPLE_APP_STORE_SERVER_ENV')
+        copy('APPLE_IAP_PRODUCT_IDS')
+        copy('APPLE_APP_STORE_AUDIENCE')
+        return appleVerifySubscriptionHandler(req, res)
+      })
+
+      const copyPayjpEnv = (k) => {
+        if (!process.env[k] && runtimeEnv[k]) process.env[k] = runtimeEnv[k]
+      }
+      const copyPayjpBillingEnv = () => {
+        ;[
+          'SUPABASE_URL',
+          'VITE_SUPABASE_URL',
+          'SUPABASE_ANON_KEY',
+          'VITE_SUPABASE_ANON_KEY',
+          'SUPABASE_SERVICE_ROLE_KEY',
+          'SUPABASE_SECRET_KEY',
+          'PAYJP_SECRET_KEY',
+          'PAYJP_PUBLIC_KEY',
+          'VITE_PAYJP_PUBLIC_KEY',
+          'PAYJP_PLAN_ID_MONTHLY',
+          'PAYJP_PLAN_ID_ANNUAL',
+          'PAYJP_WEBHOOK_TOKEN',
+        ].forEach(copyPayjpEnv)
+      }
+
+      server.middlewares.use('/api/billing/payjp/public-config', async (req, res, next) => {
+        if (req.method !== 'GET' && req.method !== 'HEAD') return next()
+        copyPayjpBillingEnv()
+        return payjpPublicConfigHandler(req, res)
+      })
+
+      server.middlewares.use('/api/billing/payjp/plan-config', async (req, res, next) => {
+        if (req.method !== 'GET' && req.method !== 'HEAD') return next()
+        copyPayjpBillingEnv()
+        return payjpPlanConfigHandler(req, res)
+      })
+
+      server.middlewares.use('/api/billing/payjp/create-subscription', async (req, res, next) => {
+        if (req.method !== 'POST' && req.method !== 'OPTIONS') return next()
+        copyPayjpBillingEnv()
+        return payjpCreateSubscriptionHandler(req, res)
+      })
+
+      server.middlewares.use('/api/billing/payjp/cancel-subscription', async (req, res, next) => {
+        if (req.method !== 'POST' && req.method !== 'OPTIONS') return next()
+        copyPayjpBillingEnv()
+        return payjpCancelSubscriptionHandler(req, res)
+      })
+
+      server.middlewares.use('/api/campaign/cp2026-sns-sep', async (req, res, next) => {
+        if (req.method !== 'GET' && req.method !== 'POST' && req.method !== 'OPTIONS') return next()
+        copyPayjpBillingEnv()
+        if (!process.env.CAMPAIGN_CP2026_SNS_PREVIEW && runtimeEnv.CAMPAIGN_CP2026_SNS_PREVIEW) {
+          process.env.CAMPAIGN_CP2026_SNS_PREVIEW = runtimeEnv.CAMPAIGN_CP2026_SNS_PREVIEW
+        }
+        return campaignCp2026SnsSepHandler(req, res)
+      })
+
+      server.middlewares.use('/api/billing/payjp/webhook', async (req, res, next) => {
+        if (req.method !== 'POST') return next()
+        copyPayjpBillingEnv()
+        return payjpWebhookHandler(req, res)
       })
 
       server.middlewares.use('/api/account/delete', async (req, res, next) => {
@@ -237,6 +345,7 @@ function localChatApiPlugin(runtimeEnv) {
             'user_cashflow_optimizer_profiles',
             'cashflow_optimizer_simulations',
             'user_watchlists',
+            'user_premium_entitlements',
             'lounge_posts',
             'lounge_post_likes',
             'lounge_post_bookmarks',
@@ -278,10 +387,22 @@ function localChatApiPlugin(runtimeEnv) {
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   return {
-    plugins: [react(), localChatApiPlugin(env)],
+    plugins: [react(), clarityIndexHtmlPlugin(env), localChatApiPlugin(env)],
     server: {
       port: 5178,
       strictPort: false,
+    },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (!id.includes('node_modules')) return undefined
+            if (id.includes('plotly.js')) return 'plotly'
+            if (id.includes('recharts')) return 'recharts'
+            if (id.includes('@supabase')) return 'supabase'
+          },
+        },
+      },
     },
   }
 })

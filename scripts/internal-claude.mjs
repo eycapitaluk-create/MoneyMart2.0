@@ -10,12 +10,12 @@
  *   cat notes.txt | node scripts/internal-claude.mjs --stdin
  *
  * Env: ANTHROPIC_API_KEY (.env.local 권장)
- * Optional: INTERNAL_CLAUDE_MODEL (기본 claude-3-5-haiku-20241022)
+ * Optional: INTERNAL_CLAUDE_MODEL (기본 claude-haiku-4-5-20251001)
  */
 import fs from 'node:fs/promises'
 import Anthropic from '@anthropic-ai/sdk'
 
-const DEFAULT_MODEL = 'claude-3-5-haiku-20241022'
+const DEFAULT_MODEL = 'claude-haiku-4-5-20251001'
 
 const loadEnv = async () => {
   for (const f of ['.env.local', '.env']) {

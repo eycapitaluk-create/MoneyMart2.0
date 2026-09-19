@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS user_dividend_watchlist (
   sector        TEXT        DEFAULT '',
   color         TEXT        DEFAULT '#6b7280',
   price         NUMERIC     DEFAULT 0,
-  qty           INTEGER     NOT NULL DEFAULT 10,
+  qty           NUMERIC(18, 6) NOT NULL DEFAULT 10,
   is_nisa       BOOLEAN     NOT NULL DEFAULT false,
   -- 配当データ (JSON array: [{month, amount}, ...])
   dividends     JSONB       NOT NULL DEFAULT '[]'::jsonb,

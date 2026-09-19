@@ -1,37 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { supabase } from '../../lib/supabase'
-
-// ── 닛케이225 대표 심볼 (JP 종목 풀)
-const JP_SYMBOLS = [
-  '7203.T','8306.T','6501.T','6758.T','8316.T','6857.T','8411.T','8035.T','8058.T','9983.T',
-  '9984.T','7011.T','8031.T','4519.T','8001.T','6861.T','9432.T','8766.T','6503.T','6301.T',
-  '7267.T','4502.T','6954.T','7751.T','8053.T','4063.T','6902.T','9433.T','4568.T','8725.T',
-  '6098.T','8015.T','6273.T','6146.T','6367.T','8802.T','6506.T','6981.T','7201.T','9020.T',
-  '2802.T','5108.T','4543.T','4901.T','7733.T','3382.T','9201.T','8591.T','8604.T','6702.T',
-]
-// 모멘텀 기준 ETF
-const JP_INDEX_SYMBOL = '1329.T'
-const JP_BOND_SYMBOL  = '2621.T'
-
-// S&P500/NASDAQ100 대표 심볼 (US 종목 풀)
-const US_SYMBOLS = [
-  'NVDA','AAPL','MSFT','AMZN','GOOGL','META','TSLA','AVGO','COST','NFLX',
-  'ADBE','AMD','PEP','CSCO','INTU','AMGN','QCOM','TXN','HON','AMAT',
-  'BKNG','ADP','SBUX','GILD','ADI','MU','REGN','VRTX','VRT','PANW','KLAC',
-  'LRCX','NXPI','ORLY','FTNT','ADSK','WDAY','AEP','MCHP','CPRT','ROST',
-  'BRK.B','LLY','JPM','V','UNH','MA','XOM','WMT','PG','JNJ',
-]
-const US_INDEX_SYMBOL = 'IVV'
-const US_BOND_SYMBOL  = 'TLT'
-
-// ── 등급 정의
-function getGrade(score) {
-  if (score <= 20) return { label: '極度の恐怖', en: 'Extreme Fear',  color: '#dc2626', bg: '#fef2f2', border: '#fecaca', emoji: '😱', desc: '市場が非常に不安定です。歴史的には良い買い場となることも。' }
-  if (score <= 40) return { label: '恐怖',       en: 'Fear',          color: '#f97316', bg: '#fff7ed', border: '#fed7aa', emoji: '😨', desc: '投資家が不安を感じています。慎重なアプローチが必要です。' }
-  if (score <= 60) return { label: '中立',        en: 'Neutral',       color: '#eab308', bg: '#fefce8', border: '#fde68a', emoji: '😐', desc: '市場が均衡状態です。様子を見ながらチャンスを探りましょう。' }
-  if (score <= 80) return { label: '強欲',        en: 'Greed',         color: '#22c55e', bg: '#f0fdf4', border: '#bbf7d0', emoji: '😏', desc: '投資家が楽観的です。過熱していないか確認しましょう。' }
-  return               { label: '極度の強欲',    en: 'Extreme Greed', color: '#16a34a', bg: '#dcfce7', border: '#86efac', emoji: '🤑', desc: '市場が過熱している可能性があります。慎重な判断が必要です。' }
-}
+import { getGrade } from '../../lib/fearGreedCalc'
 
 // ── Canvas ゲージ
 function Gauge({ score, grade }) {
@@ -184,210 +152,6 @@ function HistoryChart({ history }) {
   )
 }
 
-// ── 실제 Supabase 데이터로 Fear & Greed 계산
-async function calcFearGreedFromDB(market) {
-  const symbols  = market === 'JP' ? JP_SYMBOLS  : US_SYMBOLS
-  const idxSym   = market === 'JP' ? JP_INDEX_SYMBOL : US_INDEX_SYMBOL
-  const bondSym  = market === 'JP' ? JP_BOND_SYMBOL  : US_BOND_SYMBOL
-  const allSyms  = [...new Set([...symbols, idxSym, bondSym])]
-
-  // 직전 252 거래일 가격 데이터 가져오기
-  const { data: rows, error } = await supabase
-    .from('stock_daily_prices')
-    .select('symbol,trade_date,close,open,volume')
-    .in('symbol', allSyms)
-    .order('trade_date', { ascending: false })
-    .limit(allSyms.length * 260)
-
-  if (error || !rows || rows.length === 0) throw new Error('DB fetch failed')
-
-  // 심볼별 날짜순 정렬
-  const bySymbol = {}
-  for (const row of rows) {
-    const sym = row.symbol
-    if (!bySymbol[sym]) bySymbol[sym] = []
-    bySymbol[sym].push(row)
-  }
-  for (const sym of Object.keys(bySymbol)) {
-    bySymbol[sym].sort((a, b) => a.trade_date.localeCompare(b.trade_date))
-  }
-
-  // ── 지표 1: 주가 모멘텀 (인덱스 ETF 현재가 vs 125일 MA)
-  let momentumScore = 50
-  const idxData = bySymbol[idxSym] || []
-  if (idxData.length >= 20) {
-    const recent = idxData.slice(-125)
-    const ma125 = recent.reduce((s, r) => s + Number(r.close), 0) / recent.length
-    const latest = Number(idxData[idxData.length - 1].close)
-    const pct = ((latest - ma125) / ma125) * 100
-    // +10% 이상이면 80, -10% 이하면 20 사이로 매핑
-    momentumScore = Math.max(10, Math.min(90, 50 + pct * 3))
-  }
-
-  // ── 지표 2: 주가 강도 (52주 신고가/신저가 비율)
-  let strengthScore = 50
-  let newHighCount = 0, newLowCount = 0
-  for (const sym of symbols) {
-    const data = bySymbol[sym]
-    if (!data || data.length < 10) continue
-    const recent252 = data.slice(-252)
-    if (recent252.length < 10) continue
-    const prices = recent252.map(r => Number(r.close))
-    const high52  = Math.max(...prices)
-    const low52   = Math.min(...prices)
-    const latestP = prices[prices.length - 1]
-    if (latestP >= high52 * 0.995) newHighCount++
-    else if (latestP <= low52 * 1.005) newLowCount++
-  }
-  const totalChecked = symbols.filter(s => bySymbol[s] && bySymbol[s].length >= 10).length
-  if (totalChecked > 0) {
-    const ratio = (newHighCount - newLowCount) / totalChecked // -1 ~ +1
-    strengthScore = Math.max(10, Math.min(90, 50 + ratio * 60))
-  }
-
-  // ── 지표 3: 시장 폭 (전일 대비 상승 종목 비율)
-  let breadthScore = 50
-  let upCount = 0, totalBreadth = 0
-  for (const sym of symbols) {
-    const data = bySymbol[sym]
-    if (!data || data.length < 2) continue
-    const last  = Number(data[data.length - 1].close)
-    const prev  = Number(data[data.length - 2].close)
-    if (last > 0 && prev > 0) {
-      totalBreadth++
-      if (last > prev) upCount++
-    }
-  }
-  if (totalBreadth > 0) {
-    const upRatio = upCount / totalBreadth  // 0~1
-    breadthScore = Math.max(10, Math.min(90, upRatio * 100))
-  }
-
-  // ── 지표 4: 변동성 (20일 수익률 표준편차, 낮을수록 강욕)
-  let volatilityScore = 50
-  const idxData20 = idxData.slice(-21)
-  if (idxData20.length >= 5) {
-    const returns = []
-    for (let i = 1; i < idxData20.length; i++) {
-      const prev = Number(idxData20[i - 1].close)
-      const cur  = Number(idxData20[i].close)
-      if (prev > 0) returns.push((cur - prev) / prev)
-    }
-    if (returns.length > 0) {
-      const mean = returns.reduce((s, v) => s + v, 0) / returns.length
-      const variance = returns.reduce((s, v) => s + (v - mean) ** 2, 0) / returns.length
-      const stdDev = Math.sqrt(variance) * 100  // %
-      // stdDev: 0.5%=매우 안정(강욕80), 2%=불안(공포20) 사이 매핑
-      volatilityScore = Math.max(10, Math.min(90, 80 - stdDev * 25))
-    }
-  }
-
-  // ── 지표 5: 안전자산 수요 (채권 ETF 상대 강도, 채권 강세=공포)
-  let safeHavenScore = 50
-  const bondData = bySymbol[bondSym] || []
-  const equityData = idxData
-  if (bondData.length >= 20 && equityData.length >= 20) {
-    const bondRecent   = bondData.slice(-20)
-    const equityRecent = equityData.slice(-20)
-    const bondReturn   = (Number(bondRecent[bondRecent.length - 1].close) - Number(bondRecent[0].close)) / Number(bondRecent[0].close)
-    const equityReturn = (Number(equityRecent[equityRecent.length - 1].close) - Number(equityRecent[0].close)) / Number(equityRecent[0].close)
-    const spread = equityReturn - bondReturn  // 양수=주식 우세(강욕), 음수=채권 우세(공포)
-    safeHavenScore = Math.max(10, Math.min(90, 50 + spread * 200))
-  }
-
-  // ── 지표 6: 모멘텀 가속도 (5일 vs 20일 MA 비율)
-  let momentumAccelScore = 50
-  if (idxData.length >= 20) {
-    const ma5  = idxData.slice(-5).reduce((s, r) => s + Number(r.close), 0) / 5
-    const ma20 = idxData.slice(-20).reduce((s, r) => s + Number(r.close), 0) / 20
-    const ratio = ((ma5 - ma20) / ma20) * 100
-    momentumAccelScore = Math.max(10, Math.min(90, 50 + ratio * 8))
-  }
-
-  // ── 가중 합산
-  const indicators = [
-    {
-      id: 'momentum',
-      name: '株価モメンタム',
-      icon: '📈',
-      desc: market === 'JP' ? '日経225指数と125日移動平均の位置関係' : 'S&P500指数と125日移動平均の位置関係',
-      score: Math.round(momentumScore),
-      weight: 0.25,
-      realData: idxData.length > 0,
-    },
-    {
-      id: 'strength',
-      name: '株価強度',
-      icon: '💪',
-      desc: market === 'JP' ? '52週高値・安値圏にいる銘柄の比率' : '52週高値・安値圏にいる銘柄の比率（米国代表株）',
-      score: Math.round(strengthScore),
-      weight: 0.20,
-      realData: totalChecked > 0,
-    },
-    {
-      id: 'breadth',
-      name: '市場の幅',
-      icon: '🌊',
-      desc: market === 'JP' ? '前日比で上昇した銘柄の割合' : '前日比で上昇した銘柄の割合（米国代表株）',
-      score: Math.round(breadthScore),
-      weight: 0.20,
-      realData: totalBreadth > 0,
-    },
-    {
-      id: 'volatility',
-      name: '市場ボラティリティ',
-      icon: '⚡',
-      desc: market === 'JP' ? '直近20営業日リターンの標準偏差（代替ボラ）' : '直近20営業日リターンの標準偏差（代替ボラ・S&P500）',
-      score: Math.round(volatilityScore),
-      weight: 0.15,
-      realData: idxData.length >= 20,
-    },
-    {
-      id: 'safe_haven',
-      name: '安全資産需要',
-      icon: '🏦',
-      desc: market === 'JP' ? '国債ETFと株式指数の相対リターン' : '米国債ETF（TLT）とS&P500の相対リターン',
-      score: Math.round(safeHavenScore),
-      weight: 0.10,
-      realData: bondData.length >= 20,
-    },
-    {
-      id: 'momentum_accel',
-      name: 'モメンタム加速度',
-      icon: '🚀',
-      desc: market === 'JP' ? '5日移動平均と20日移動平均の乖離率' : '5日移動平均と20日移動平均の乖離率（S&P500）',
-      score: Math.round(momentumAccelScore),
-      weight: 0.10,
-      realData: idxData.length >= 20,
-    },
-  ]
-
-  const totalScore = Math.round(indicators.reduce((s, ind) => s + ind.score * ind.weight, 0))
-
-  // ── 30일 히스토리 (인덱스 ETF 기반 간이 계산)
-  const history = []
-  const historyDays = idxData.slice(-30)
-  for (let i = 0; i < historyDays.length; i++) {
-    const slice = idxData.slice(0, idxData.indexOf(historyDays[i]) + 1)
-    if (slice.length < 5) { history.push({ day: i + 1, score: 50 }); continue }
-    const ma20slice = slice.slice(-20)
-    const ma = ma20slice.reduce((s, r) => s + Number(r.close), 0) / ma20slice.length
-    const close = Number(historyDays[i].close)
-    const pct = ((close - ma) / ma) * 100
-    const s = Math.max(10, Math.min(90, Math.round(50 + pct * 3)))
-    history.push({ day: i + 1, score: s })
-  }
-  // 30일 미만이면 남은 자리 채우기
-  while (history.length < 30) history.unshift({ day: 0, score: 50 })
-
-  // 전일 / 1주전
-  const yesterday = history[history.length - 2]?.score ?? totalScore
-  const weekAgo   = history[history.length - 8]?.score ?? totalScore
-
-  const latestTradeDate = idxData.length > 0 ? idxData[idxData.length - 1].trade_date : null
-  return { score: totalScore, yesterday, weekAgo, indicators, history, latestTradeDate }
-}
-
 // ── MAIN コンポーネント
 export default function FearGreedIndex() {
   const [market, setMarket] = useState('JP')
@@ -400,8 +164,43 @@ export default function FearGreedIndex() {
     setLoading(true)
     setError(null)
     try {
-      const result = await calcFearGreedFromDB(mkt)
-      setData(result)
+      // アプリと同じ /api/fear-greed だけを使う（クライアント再計算は 62/59 など旧結果に戻りうる）
+      const qs = `market=${encodeURIComponent(mkt)}`
+      const candidates = [
+        `/api/fear-greed?${qs}`,
+        `https://www.moneymart.co.jp/api/fear-greed?${qs}`,
+      ]
+      let json = null
+      let lastErr = null
+      for (const url of candidates) {
+        try {
+          const res = await fetch(url, { cache: 'no-store' })
+          if (!res.ok) {
+            lastErr = new Error(`HTTP ${res.status}`)
+            continue
+          }
+          const body = await res.json()
+          if (body?.ok && Number.isFinite(Number(body.score))) {
+            json = body
+            break
+          }
+          lastErr = new Error(body?.error || 'invalid payload')
+        } catch (e) {
+          lastErr = e
+        }
+      }
+      if (!json) throw lastErr || new Error('Fear & Greed API unavailable')
+
+      setData({
+        score: Number(json.score),
+        yesterday: Number(json.yesterday ?? json.score),
+        weekAgo: Number(json.weekAgo ?? json.score),
+        indicators: Array.isArray(json.indicators) ? json.indicators : [],
+        history: Array.isArray(json.history) ? json.history : [],
+        latestTradeDate: json.latestTradeDate || null,
+        dashboard: json.dashboard || null,
+        stance: json.stance || null,
+      })
       setLastFetch(new Date())
     } catch (e) {
       setError(e.message)
@@ -422,9 +221,12 @@ export default function FearGreedIndex() {
       {/* ── ヘッダー */}
       <div className="bg-slate-900 dark:bg-black px-5 py-4 flex items-center justify-between">
         <div>
-          <div className="text-[10px] font-black text-orange-400 tracking-[0.12em] mb-1">恐怖・強欲指数</div>
+          <div className="text-[10px] font-black text-orange-400 tracking-[0.12em] mb-1">Fear & Greed Index</div>
           <h2 className="text-base font-black text-white">投資家心理指数</h2>
-          <p className="text-[11px] text-slate-400 mt-0.5">中間データ事業者のデータから算出{data?.latestTradeDate ? ` · データ基準: ${data.latestTradeDate}` : ""}</p>
+          <p className="text-[11px] text-slate-400 mt-0.5">
+            EOD株価 + 日次 market_dashboard（VIX/MOVE/金/FX）から算出
+            {data?.latestTradeDate ? ` · 基準日: ${data.latestTradeDate}` : ''}
+          </p>
         </div>
         <div className="flex items-center gap-3">
           {/* 市場タブ */}
@@ -510,16 +312,55 @@ export default function FearGreedIndex() {
               <div className="mb-2 text-3xl">{grade.emoji}</div>
               <div className="mb-1 text-lg font-black" style={{ color: grade.color }}>{grade.label}</div>
               <div className="font-mono text-5xl font-black leading-none" style={{ color: grade.color }}>{data.score}</div>
-              <div className="mt-1 text-xs text-slate-500">/ 100点満点</div>
+              <div className="mt-1 text-xs text-slate-500">/ 100</div>
+              {data.stance ? (
+                <div className="mt-4 w-full rounded-xl border border-slate-200/80 bg-white/70 px-3 py-2.5 text-left dark:border-slate-600 dark:bg-slate-900/40">
+                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-wide">推奨スタンス</p>
+                  <p className="mt-1 text-sm font-black text-slate-800 dark:text-slate-100">
+                    {data.stance.icon} {data.stance.label}
+                  </p>
+                  <p className="mt-1 text-[11px] leading-relaxed text-slate-600 dark:text-slate-300">{data.stance.hint}</p>
+                </div>
+              ) : null}
             </div>
           </div>
+
+          {data.dashboard ? (
+            <div className="mb-5 flex flex-wrap gap-2">
+              {[
+                data.dashboard.indexClose != null && {
+                  k: data.dashboard.indexLabel,
+                  v: `${Number(data.dashboard.indexClose).toLocaleString('ja-JP')}${data.dashboard.indexPctDay != null ? ` (${data.dashboard.indexPctDay > 0 ? '+' : ''}${data.dashboard.indexPctDay}%)` : ''}`,
+                },
+                data.dashboard.vix != null && { k: 'VIX', v: Number(data.dashboard.vix).toFixed(2) },
+                data.dashboard.move != null && { k: 'MOVE', v: Number(data.dashboard.move).toFixed(1) },
+                data.dashboard.riskOnOff != null && { k: 'Risk-On', v: Number(data.dashboard.riskOnOff).toFixed(1) },
+                data.dashboard.goldPctDay != null && { k: 'Gold', v: `${data.dashboard.goldPctDay > 0 ? '+' : ''}${data.dashboard.goldPctDay}%` },
+                data.dashboard.usdJpy != null && { k: 'USD/JPY', v: Number(data.dashboard.usdJpy).toFixed(2) },
+              ].filter(Boolean).map((chip) => (
+                <div
+                  key={chip.k}
+                  className="rounded-xl border border-orange-100 bg-orange-50/80 px-3 py-1.5 dark:border-orange-900/40 dark:bg-orange-950/30"
+                >
+                  <span className="text-[9px] font-black text-orange-600 dark:text-orange-400">{chip.k}</span>
+                  <span className="ml-1.5 font-mono text-xs font-black text-slate-800 dark:text-slate-100">{chip.v}</span>
+                </div>
+              ))}
+              <span className="self-center text-[9px] font-bold text-slate-400">dashboard xlsx</span>
+            </div>
+          ) : null}
 
           {/* 前日 / 1週間 / 30日平均（全幅） */}
           <div className="mb-5 grid grid-cols-3 gap-2">
             {[
-              { label: '前日比',       val: diff,  base: data.yesterday },
-              { label: '1週間前',      val: wDiff, base: data.weekAgo },
-              { label: '30日平均',     val: data.score - Math.round(data.history.reduce((s, d) => s + d.score, 0) / Math.max(data.history.length, 1)), base: null },
+              { label: '前日比', val: diff, base: data.yesterday },
+              { label: '1週間前', val: wDiff, base: data.weekAgo },
+              (() => {
+                const avg30 = Math.round(
+                  data.history.reduce((s, d) => s + d.score, 0) / Math.max(data.history.length, 1),
+                )
+                return { label: 'vs30日平均', val: data.score - avg30, base: avg30 }
+              })(),
             ].map((item, i) => (
               <div key={i} className="rounded-xl border border-slate-100 bg-slate-50 p-3 text-center dark:border-slate-700 dark:bg-slate-900/50">
                 <div className="mb-1 text-[10px] font-bold text-slate-400">{item.label}</div>
@@ -541,7 +382,9 @@ export default function FearGreedIndex() {
             <div className="flex items-center justify-between mb-3">
               <div>
                 <p className="text-xs font-black text-slate-700 dark:text-slate-200">30日推移</p>
-                <p className="text-[10px] text-slate-400 mt-0.5">{market === 'JP' ? '日経225指数ベース' : 'S&P500指数ベース'}</p>
+                <p className="text-[10px] text-slate-400 mt-0.5">
+                  {market === 'JP' ? '日経連動ETF・個別・VIX等' : 'S&P連動ETF・個別・VIX等'}の日次再計算
+                </p>
               </div>
               <div className="flex gap-3">
                 {[
@@ -566,7 +409,9 @@ export default function FearGreedIndex() {
 
           {/* 6指標 */}
           <div className="mb-5">
-            <p className="text-xs font-black text-slate-700 dark:text-slate-200 mb-3">📊 構成指標（{data.indicators.length}個）</p>
+            <p className="text-xs font-black text-slate-700 dark:text-slate-200 mb-3">
+              📊 構成指標（{data.indicators.length}項目 · EOD + dashboard）
+            </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {data.indicators.map((ind) => {
                 const g = getGrade(ind.score)
@@ -593,7 +438,7 @@ export default function FearGreedIndex() {
                             border: `1px solid ${ind.realData ? '#bbf7d0' : '#e5e7eb'}`,
                           }}
                         >
-                          {ind.realData ? '✓ 実データ' : 'シミュレーション'}
+                          {ind.realData ? (ind.source === 'dashboard' ? '✓ dashboard' : ind.source?.includes('dashboard') ? '✓ 混合' : '✓ EOD') : 'データ不足'}
                         </div>
                       </div>
                     </div>
@@ -614,18 +459,18 @@ export default function FearGreedIndex() {
             </div>
           </div>
 
-          {/* 投資戦略ガイド */}
+          {/* 市場心理ガイド */}
           <div className="rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
             <div className="px-4 py-3 bg-slate-50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-700">
-              <p className="text-xs font-black text-slate-700 dark:text-slate-200">💡 指数別 投資戦略ガイド</p>
+              <p className="text-xs font-black text-slate-700 dark:text-slate-200">💡 指数別 市場心理の見方</p>
             </div>
             <div className="divide-y divide-slate-100 dark:divide-slate-700">
               {[
-                { range: '0〜20',  label: '極度の恐怖', color: '#dc2626', bg: '#fef2f2', strategy: 'バフェット格言：「他人が恐怖を感じているときに貪欲になれ」。歴史的な買い場の可能性。' },
-                { range: '21〜40', label: '恐怖',       color: '#f97316', bg: '#fff7ed', strategy: '市場が売られ過ぎの可能性。優良銘柄の分割購入を検討。' },
-                { range: '41〜60', label: '中立',       color: '#eab308', bg: '#fefce8', strategy: '様子を見ながら機会を待ちましょう。ポートフォリオのリバランス時期です。' },
-                { range: '61〜80', label: '強欲',       color: '#22c55e', bg: '#f0fdf4', strategy: '上昇モメンタムがありますが過熱シグナルを監視。利益確定を検討。' },
-                { range: '81〜100',label: '極度の強欲', color: '#16a34a', bg: '#dcfce7', strategy: '市場が過熱状態。新規購入より既存ポジション管理に注力しましょう。' },
+                { range: '0〜20',  label: '極度の恐怖', color: '#dc2626', bg: '#fef2f2', strategy: '市場心理が極端に慎重な局面です。価格変動リスクや分散状況を確認する材料になります。' },
+                { range: '21〜40', label: '恐怖',       color: '#f97316', bg: '#fff7ed', strategy: '不安心理が強い局面です。市場全体の下落要因と保有比率の偏りを確認する目安になります。' },
+                { range: '41〜60', label: '中立',       color: '#eab308', bg: '#fefce8', strategy: '市場心理は中立圏です。複数指標を見ながら、現在の配分が目的に沿っているか確認する局面です。' },
+                { range: '61〜80', label: '強欲',       color: '#22c55e', bg: '#f0fdf4', strategy: '楽観心理が強まりやすい局面です。過熱感や保有比率の偏りを確認する材料になります。' },
+                { range: '81〜100',label: '極度の強欲', color: '#16a34a', bg: '#dcfce7', strategy: '市場心理が大きく楽観方向に傾いています。リスク許容度とポジション管理を再確認する目安です。' },
               ].map((item) => {
                 const isActive = data &&
                   ((item.range === '0〜20'   && data.score <= 20) ||
@@ -661,7 +506,7 @@ export default function FearGreedIndex() {
 
           {/* 免責 */}
           <p className="text-[10px] text-slate-400 mt-4 leading-relaxed">
-            ⚠️ 本指数は参考用です。実際の投資判断には多様な要素を総合的に検討してください。
+          ⚠️ 本指数は EOD株価と日次 market_dashboard（VIX・MOVE・Risk-On/Off・商品・為替）を組み合わせた参考指標です。CNN Fear &amp; Greed 等の外部指数そのものではありません。売買タイミングの指示や運用成果の保証はありません。
           </p>
         </div>
       )}

@@ -1,4 +1,4 @@
-import { buildHeadBlock, webApplicationLd } from './lib/seoHead.js'
+import { breadcrumbListJsonLd, buildHeadBlock, getSiteOrigin, webApplicationLd } from './lib/seoHead.js'
 
 function sendHtml(res, status, html) {
   res.statusCode = status
@@ -6,15 +6,22 @@ function sendHtml(res, status, html) {
   res.end(html)
 }
 
-const TITLE = '配当カレンダー（日本株・米国株）| MoneyMart'
-const DESCRIPTION = '日本株・米国株の配当予定をカレンダー形式で確認できる無料ツール。新NISAや長期投資の再投資計画、ETF・個別株の配当見通し比較に活用できます。'
+const TITLE = '配当カレンダー（日本株・米国株）無料｜入金予定の整理 | MoneyMart'
+const DESCRIPTION = '日本株・米国株の配当月・入金見込みをカレンダーで整理する無料ツール。新NISAや長期保有のキャッシュフロー確認に。将来の配当を保証するものではありません。'
 
 export default async function handler(_req, res) {
+  const origin = getSiteOrigin()
   const head = buildHeadBlock({
     title: TITLE,
     description: DESCRIPTION,
     canonicalPath: '/dividend-calendar',
-    jsonLd: [webApplicationLd({ name: 'MoneyMart 配当カレンダー', url: '/dividend-calendar' })],
+    jsonLd: [
+      webApplicationLd({ name: 'MoneyMart 配当カレンダー', url: '/dividend-calendar' }),
+      breadcrumbListJsonLd(origin, [
+        { name: 'ホーム', path: '/' },
+        { name: '配当カレンダー', path: '/dividend-calendar' },
+      ]),
+    ],
   })
 
   const html = `<!doctype html>
@@ -23,22 +30,20 @@ export default async function handler(_req, res) {
   </head>
   <body style="margin:0;background:#f8fafc;font-family:'Noto Sans JP',system-ui,-apple-system,sans-serif;color:#0f172a;">
     <main style="max-width:720px;margin:0 auto;padding:28px 16px 42px 16px;">
-      <header style="margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid #e2e8f0;">
-        <p style="margin:0;font-size:11px;letter-spacing:.14em;font-weight:900;color:#f97316;">MONEYMART TOOLS</p>
-        <h1 style="margin:8px 0 0 0;font-size:34px;line-height:1.15;font-weight:900;">配当カレンダー</h1>
-        <p style="margin:10px 0 0 0;font-size:14px;line-height:1.8;color:#475569;">
-          配当月・銘柄・入金見込みを整理するツールです。ログイン後はマイページでウォッチリストと連携して利用できます。
-        </p>
-      </header>
-      <section style="border:1px solid #e2e8f0;border-radius:16px;background:#fff;padding:18px;">
-        <p style="margin:0;font-size:14px;line-height:1.8;color:#334155;">
-          ログインするとマイページの配当タブでカレンダーを開けます。未ログインの場合はログイン画面からお進みください。
-        </p>
-        <p style="margin:14px 0 0 0;">
-          <a href="/login" style="display:inline-block;padding:10px 16px;border-radius:12px;background:#ea580c;color:#fff;font-weight:800;text-decoration:none;font-size:14px;">ログインして開く</a>
-        </p>
-      </section>
-      <footer style="margin-top:22px;font-size:11px;color:#64748b;">本ページはログイン後の機能案内を含みます。</footer>
+      <h1 style="margin:0;font-size:34px;line-height:1.15;font-weight:900;">配当カレンダー</h1>
+      <p style="margin:10px 0 0 0;font-size:14px;line-height:1.8;color:#475569;">
+        配当月と銘柄を並べて、NISA成長投資枠の入金見込みや再投資のタイミングを整理できます。表示は公開情報に基づく目安です。
+      </p>
+      <ul style="margin:14px 0 0;padding-left:1.2em;line-height:1.85;font-size:14px;color:#334155;">
+        <li>日本株・米国株の配当月をカレンダー形式で確認</li>
+        <li>ETFの分配と個別株の配当を同じ流れで見る</li>
+        <li>ログイン後はマイページのウォッチリストと連携</li>
+      </ul>
+      <p style="margin:16px 0 0;font-weight:800;">
+        <a href="/etf-compare" style="color:#c2410c;margin-right:12px;">ETFを比較する</a>
+        <a href="/tools/nisa-etf-checklist" style="color:#c2410c;">NISAの確認項目</a>
+      </p>
+      <p style="margin-top:18px;font-size:12px;color:#64748b;">情報提供であり、将来の配当や運用成果を保証しません。<a href="/legal/methodology" style="color:#c2410c;">編集・データ方針</a></p>
     </main>
   </body>
 </html>`

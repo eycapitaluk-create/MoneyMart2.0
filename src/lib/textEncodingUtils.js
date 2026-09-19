@@ -43,3 +43,22 @@ export const normalizeNisaCategoryField = (raw) => {
   if (!s || s === '-') return '-'
   return recoverMojibakeUtf8FromLatin1(s) || s
 }
+
+/**
+ * ファンド名の整形（HTML 復号なし）— DB 取り込み・ローカル JSON と UI で共通。
+ * 全角英数→半角、単独アルファベット間スペース除去（例: 「T O P I X」→「TOPIX」）を収束まで繰り返す。
+ */
+export const normalizeFundDisplayNamePlain = (raw) => {
+  let s = String(raw ?? '').trim()
+  if (!s) return ''
+  s = s.replace(/[\uFF01-\uFF5E]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+  s = s.normalize('NFKC')
+  s = s.replace(/[\u00A0\u2000-\u200B\u202F\u205F\u3000]/g, ' ')
+  s = s.replace(/\s+/g, ' ').trim()
+  let prev = ''
+  while (prev !== s) {
+    prev = s
+    s = s.replace(/\b([A-Za-z0-9])\s+(?=[A-Za-z0-9]\b)/g, '$1')
+  }
+  return s
+}

@@ -25,7 +25,7 @@ const COMMENT_POOL = [
   '損切り線だけ更新',
 ]
 
-const TAG_POOL = ['日経平均', 'NISA', 'メンタル', 'ウォッチリスト', '積立', '半導体', '為替', 'ルール']
+const TAG_POOL = ['NVDA', '6857', '半導体', '9984', '285A', 'N225', 'ジャクソンホール', '決算', '様子見', 'ルール']
 
 export function jstHourKey(isoOrDate = new Date()) {
   const t = new Date(isoOrDate).getTime() + 9 * 3600000
@@ -171,7 +171,7 @@ async function hourHasPost(admin, hourKey) {
 async function buildPostDraft(admin, now, slotSeed) {
   const { hour, isWeekend } = jstParts(now)
   const n225 = await fetchIndexPair(admin, '^N225')
-  const tickers = ['TSLA', 'NVDA', 'GOOGL', '1306.T']
+  const tickers = ['NVDA', '6857.T', '285A.T', '9984.T', '1306.T', 'N225']
   const stockSym = pick(tickers, slotSeed + hour)
   const stock = await fetchStockPair(admin, stockSym)
 

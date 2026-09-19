@@ -7,14 +7,14 @@
  *   node scripts/gh-ai-triage.mjs cron [dir]   # dir 안에 *.code / *.body (curl 결과)
  *
  * Env: ANTHROPIC_API_KEY (없으면 원문만 요약 섹션에 붙임)
- * Optional: INTERNAL_CLAUDE_MODEL (기본 claude-3-5-haiku-20241022)
+ * Optional: INTERNAL_CLAUDE_MODEL (기본 claude-haiku-4-5-20251001)
  */
 import fs from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import Anthropic from '@anthropic-ai/sdk'
 
-const DEFAULT_MODEL = 'claude-3-5-haiku-20241022'
+const DEFAULT_MODEL = 'claude-haiku-4-5-20251001'
 const MAX_CHUNK = 24000
 
 const appendSummary = async (markdown) => {

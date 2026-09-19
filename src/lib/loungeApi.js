@@ -21,6 +21,15 @@ const pickCommunityDisplayName = ({ nickname, displayName, email } = {}) => {
   return COMMUNITY_MEMBER_FALLBACK
 }
 
+/** Prefer denormalized lounge author_name (forum nicknames on seed posts). */
+const resolveCommunityAuthorName = (authorId, storedName, profileMap) => {
+  const stored = String(storedName || '').trim()
+  const profile = String(profileMap?.get(authorId) || '').trim()
+  if (stored) return stored
+  if (profile) return profile
+  return COMMUNITY_MEMBER_FALLBACK
+}
+
 const applyFeedSort = (query, tab) => (
   tab === 'new' || tab === 'mine'
     ? query.order('created_at', { ascending: false })
@@ -218,28 +227,7 @@ export async function fetchTrendingTags(limit = 8) {
     if (normalized.length > 0) return normalized
   }
 
-  // Community schema fallback: aggregate from community_posts.asset_tag
-  if (await hasCommunitySchema()) {
-    const { data: cpRows, error: cpErr } = await supabase
-      .from('community_posts')
-      .select('asset_tag')
-      .limit(500)
-    if (!cpErr && Array.isArray(cpRows)) {
-      const tagStats = new Map()
-      for (const row of cpRows) {
-        const tag = String(row.asset_tag || '').trim() || 'TOPIC'
-        if (!isPublicCommunityTag(tag)) continue
-        tagStats.set(tag, (tagStats.get(tag) || 0) + 1)
-      }
-      const result = [...tagStats.entries()]
-        .map(([tag, count]) => ({ tag, count }))
-        .sort((a, b) => b.count - a.count)
-        .slice(0, limit)
-      if (result.length > 0) return result
-    }
-  }
-
-  // Preferred path: DB-side aggregation view
+  // Primary path: lounge tag aggregation view (seed + user posts)
   const { data: viewRows, error: viewErr } = await supabase
     .from('v_lounge_trending_tags')
     .select('tag,post_count,last_posted_at')
@@ -252,6 +240,27 @@ export async function fetchTrendingTags(limit = 8) {
       .map((row) => ({ tag: row.tag, count: Number(row.post_count || 0) }))
       .slice(0, limit)
     if (filtered.length > 0) return filtered
+  }
+
+  // Legacy community_posts schema (only when lounge view is empty)
+  if (await hasCommunitySchema()) {
+    const { data: cpRows, error: cpErr } = await supabase
+      .from('community_posts')
+      .select('asset_tag')
+      .limit(500)
+    if (!cpErr && Array.isArray(cpRows) && cpRows.length >= 20) {
+      const tagStats = new Map()
+      for (const row of cpRows) {
+        const tag = String(row.asset_tag || '').trim() || 'TOPIC'
+        if (!isPublicCommunityTag(tag) || tag === 'TOPIC') continue
+        tagStats.set(tag, (tagStats.get(tag) || 0) + 1)
+      }
+      const result = [...tagStats.entries()]
+        .map(([tag, count]) => ({ tag, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, limit)
+      if (result.length > 0) return result
+    }
   }
 
   // Fallback path: client-side aggregation for backward compatibility
@@ -353,7 +362,7 @@ export async function fetchFeed({ tab = 'popular', search = '', userId = null, l
     const followSet = new Set((followRes.data || []).map((r) => r.following_id))
     return communityPosts.map((post) => {
       const authorId = post.user_id || null
-      const authorName = profileMap.get(authorId) || COMMUNITY_MEMBER_FALLBACK
+      const authorName = resolveCommunityAuthorName(authorId, post.author_name, profileMap)
       const tag = String(post.asset_tag || '').trim()
       const item = {
         id: post.id,
@@ -503,7 +512,7 @@ export async function fetchFeed({ tab = 'popular', search = '', userId = null, l
     )
     return {
       ...normalized,
-      author_name: profileMap.get(post.author_id) || COMMUNITY_MEMBER_FALLBACK,
+      author_name: resolveCommunityAuthorName(post.author_id, post.author_name, profileMap),
     }
   })
 }
@@ -530,7 +539,7 @@ export async function fetchComments(postId, { preferLounge = false } = {}) {
           id: row.id,
           post_id: row.post_id,
           author_id: row.user_id,
-          author_name: nameMap.get(row.user_id) || COMMUNITY_MEMBER_FALLBACK,
+          author_name: resolveCommunityAuthorName(row.user_id, p.author_name, nameMap),
           content: stripCommunitySeedMarker(row.content || p.content || ''),
           created_at: row.created_at,
           parent_comment_id: p.parent_id || null,
@@ -559,7 +568,7 @@ export async function fetchComments(postId, { preferLounge = false } = {}) {
   const nameMap = await fetchProfileNameMap(authorIds)
   return (data || []).map((row) => ({
     ...row,
-    author_name: nameMap.get(row.author_id) || COMMUNITY_MEMBER_FALLBACK,
+    author_name: resolveCommunityAuthorName(row.author_id, row.author_name, nameMap),
     reply_to_name: row.reply_to_user_id
       ? (nameMap.get(row.reply_to_user_id) || COMMUNITY_MEMBER_FALLBACK)
       : (row.reply_to_name || null),
@@ -1007,7 +1016,7 @@ export async function fetchSuggestedUsers({ userId = null, limit = 3 } = {}) {
     if (!authorId || authorId === userId) continue
     const entry = aggregated.get(authorId) || {
       id: authorId,
-      name: profileMap.get(authorId) || COMMUNITY_MEMBER_FALLBACK,
+      name: resolveCommunityAuthorName(authorId, row.author_name, profileMap),
       handle: '',
       postCount: 0,
       score: 0,

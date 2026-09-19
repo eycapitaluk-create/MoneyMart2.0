@@ -57,7 +57,9 @@ values
   ('VNQI', 'US', '不動産ETF', 'Global ex-US REIT ETF', 530),
   ('VOO', 'US', '指数ETF', 'S&P 500 ETF', 540),
   ('VT', 'US', 'グローバル株式ETF', 'Total World Stock ETF', 550),
+  ('VWO', 'US', '海外株式ETF', 'FTSE Emerging Markets ETF', 555),
   ('VTI', 'US', '指数ETF', 'US Total Market ETF', 560),
+  ('VEA', 'US', '海外株式ETF', 'FTSE Developed Markets ETF', 562),
   ('VXUS', 'US', '海外株式ETF', 'Total International Stock ETF', 570),
   ('XBI', 'US', 'セクターETF', 'Biotech ETF', 580),
   ('XLB', 'US', 'セクターETF', 'Materials Select Sector ETF', 590),
@@ -71,7 +73,8 @@ values
   ('XLV', 'US', 'セクターETF', 'Health Care Select Sector ETF', 670),
   ('XLY', 'US', 'セクターETF', 'Consumer Discretionary Select Sector ETF', 680),
   ('XOP', 'US', 'セクターETF', 'Oil & Gas Exploration ETF', 690),
-  ('VRT', 'US', '資本財・産業', 'Electrical Components & Equipment', 700)
+  ('CHRW', 'US', '産業・物流', 'Integrated Freight & Logistics', 695),
+  ('VRT', 'US', 'Industrials', 'Electrical Components & Equipment', 700)
 on conflict (symbol) do update
 set region = excluded.region,
     sector = excluded.sector,

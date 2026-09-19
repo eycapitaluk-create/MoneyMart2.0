@@ -4,8 +4,7 @@ import Card from '../components/ui/Card'
 import Button from '../components/ui/Button'
 import { useAuth } from '../hooks/useAuth'
 import { supabase } from '../lib/supabase'
-
-const PASSWORD_RULE = /^(?=.*[A-Za-z])(?=.*\d).{8,}$/
+import { isPasswordLongEnough, MIN_PASSWORD_LENGTH, PASSWORD_MIN_LENGTH_MESSAGE } from '../constants/authPassword'
 
 export default function ResetPassword() {
   const navigate = useNavigate()
@@ -51,8 +50,8 @@ export default function ResetPassword() {
       setMessage('パスワードが一致しません。')
       return
     }
-    if (!PASSWORD_RULE.test(password)) {
-      setMessage('パスワードは8文字以上で、英字と数字を含めてください。')
+    if (!isPasswordLongEnough(password)) {
+      setMessage(PASSWORD_MIN_LENGTH_MESSAGE)
       return
     }
     try {
@@ -101,7 +100,7 @@ export default function ResetPassword() {
       <Card className="p-8 w-full max-w-md">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">新しいパスワードを設定</h1>
         <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
-          8文字以上で、英字と数字を含めてください。
+          {MIN_PASSWORD_LENGTH}文字以上で入力してください。
         </p>
         <form className="space-y-4" onSubmit={handleSubmit}>
           <div>
@@ -111,9 +110,9 @@ export default function ResetPassword() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800"
-              placeholder="8文字以上・英字+数字"
+              placeholder={`${MIN_PASSWORD_LENGTH}文字以上`}
               required
-              minLength={8}
+              minLength={MIN_PASSWORD_LENGTH}
             />
           </div>
           <div>
@@ -125,7 +124,7 @@ export default function ResetPassword() {
               className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800"
               placeholder="再入力"
               required
-              minLength={8}
+              minLength={MIN_PASSWORD_LENGTH}
             />
           </div>
           {message && <p className="text-sm text-red-500">{message}</p>}

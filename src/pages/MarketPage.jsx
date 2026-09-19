@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import {
   Calendar,
   ArrowRight,
@@ -8,15 +8,22 @@ import {
 } from 'lucide-react'
 
 import { supabase } from '../lib/supabase'
+import {
+  fetchPublishedMacroEventsCalendar,
+  mapMacroEventsCalendarRows,
+  parseLocalDateFromYmd,
+} from '../lib/macroEventsCalendar'
 import { fetchFundUniverseSnapshot } from '../lib/fundUniverse'
-import { normalizeFundDisplayName } from '../lib/fundDisplayUtils'
+import { resolveFundDisplayName } from '../lib/fundDisplayUtils'
 import { LEGAL_NOTICE_TEMPLATES } from '../constants/legalNoticeTemplates'
-import AdBanner from '../components/AdBanner'
+import LazyMarketFearBelowA8Ad from '../components/LazyMarketFearBelowA8Ad'
 import AdSidebar from '../components/AdSidebar'
 import { ETF_LIST_FROM_XLSX, ETF_SYMBOLS_FROM_XLSX } from '../data/etfListFromXlsx'
-import { fetchNewsManualData, getFallbackNewsData, formatManualNewsUpdatedAtJa, isValidManualNewsTimestamp } from '../lib/newsManualClient'
+import { fetchNewsManualData, getFallbackNewsData, formatManualNewsUpdatedAtJa, isValidManualNewsTimestamp, manualNewsRowRecencyMs } from '../lib/newsManualClient'
+import { buildMarketMajorRegionSlides, toMajorNewsCard } from '../lib/marketMajorNewsBoard'
 import FearGreedIndex from '../components/market/FearGreedIndex'
 import MarketMajorNewsTicker from '../components/market/MarketMajorNewsTicker'
+import MembersBlurGate from '../components/auth/MembersBlurGate'
 import { heatmapChangeBgClass, signedReturnTextClassStrong } from '../lib/marketDirectionColors'
 
 const REGION_TICKER_LIST = [
@@ -67,13 +74,15 @@ const applyFundUniverseEligibility = (processed, fundUniverseRows) => {
   return processed.filter((p) => fundListEligibleSymbols.has(String(p.id || '').toUpperCase()))
 }
 
-const ETF_META_MAP = new Map(ETF_LIST_FROM_XLSX.map((item) => [item.symbol, item]))
+const ETF_META_MAP = new Map(
+  ETF_LIST_FROM_XLSX.map((item) => [String(item.symbol || '').trim().toUpperCase(), item]),
+)
 const isJapaneseNewsItem = (item) => String(item?.language || '').toLowerCase() === 'ja'
 const FALLBACK_WEEKLY_ECONOMIC_EVENTS = [
   { id: 'fallback-us-cpi', dateLabel: '3/10 (火)', country: 'US', event: '米国 消費者物価指数（CPI）', importance: 5 },
   { id: 'fallback-fomc', dateLabel: '3/17-18 (火-水)', country: 'US', event: 'FOMC 金利発表・経済見通し・ドットチャート', importance: 5 },
 ]
-/** 2026年4〜8月の主要マクロ・決算・テックイベント要約（参考。公式日程で要確認） */
+/** 2026年の主要マクロ・決算・テックイベント要約（参考。公式日程で要確認） */
 const CURATED_ECONOMIC_EVENTS = [
   // 4月 — 決算ピークと主要中央銀行
   {
@@ -333,55 +342,39 @@ const CURATED_ECONOMIC_EVENTS = [
     importance: 4,
   },
 ]
-/** DB未設定時：市場主要ニュース電光パネル（管理画面未設定時の既定スライド） */
+/** DB未設定時：市場主要ニュース電光パネル（グローバル／米国／日本の3枚） */
 const CURATED_MARKET_MAJOR_BOARD_SLIDES = [
   {
-    id: 'weekly-focus-w4-a',
-    headline: 'Weekly Focus · 2026年4月第4週（米株・決算）',
-    lines: [
-      '🚗 Tesla（TSLA）— 2026年度1Q本決算：4/21（火）17:30頃（ET）予定［Tesla IR］。納車台数の鈍化を受け実質営業利益率の維持度が焦点。低価格モデル（モデル2）の進捗とFSD収益化ロードマップに注目。',
-      '📱 Meta（META）— 2026年度1Q決算：4/22（水）予定［Meta IR］。AI活用による広告配信の効率化が収益に寄与したか。Llama 4への投資規模とメタバース部門の損失管理が材料。',
-    ],
-  },
-  {
-    id: 'weekly-focus-w4-b',
-    headline: 'Weekly Focus · 2026年4月第4週（日本株・米テック・日銀）',
-    lines: [
-      '⚙️ 日本電産（6594）— 2026年3月期通期本決算：4/23（木）15:00予定［Nidec IR］。生成AIサーバー向け水冷ユニットの需要が、EV向けモーター部門の苦戦をどこまで補うかが日本株センチメントの先行指標に。',
-      '🔍 Alphabet（GOOGL）— 2026年度1Q決算：4/23（木）予定［Alphabet IR］。検索へのAI統合下での広告単価とGCP成長。AI軍拡競争の中でのコスト構造最適化が株価の方向感を左右しそうです。',
-      '🏛 日本銀行（BoJ）— 金融政策決定会合および展望レポート：4/23（木）〜24（金）［日銀公式］。新年度の賃上げ浸透を踏まえた追加利上げタイミングの示唆、円安進行に対する植田総裁の牽制発言が為替に波及する可能性。',
-    ],
-  },
-  {
-    id: 'weekly-prior-tsm',
-    headline: '今週の主要結果サマリー（先週）',
+    id: 'region-global',
+    headline: 'グローバル',
     lines: [
       '💎 TSMC（TSM）— 4/16（木）発表済み。AI半導体需要の「爆発的な継続」を裏付ける好決算。設備投資（CAPEX）計画も堅調で、日本の半導体製造装置メーカーへの安心感を後押し［TSMC IR］。',
     ],
   },
+  {
+    id: 'region-us',
+    headline: '米国',
+    lines: [
+      '🚗 Tesla（TSLA）— 2026年度1Q本決算：4/21（火）17:30頃（ET）予定［Tesla IR］。納車台数の鈍化を受け実質営業利益率の維持度が焦点。低価格モデル（モデル2）の進捗とFSD収益化ロードマップに注目。',
+      '📱 Meta（META）— 2026年度1Q決算：4/22（水）予定［Meta IR］。AI活用による広告配信の効率化が収益に寄与したか。Llama 4への投資規模とメタバース部門の損失管理が材料。',
+      '🔍 Alphabet（GOOGL）— 2026年度1Q決算：4/23（木）予定［Alphabet IR］。検索へのAI統合下での広告単価とGCP成長。AI軍拡競争の中でのコスト構造最適化が株価の方向感を左右しそうです。',
+    ],
+  },
+  {
+    id: 'region-jp',
+    headline: '日本',
+    lines: [
+      '⚙️ 日本電産（6594）— 2026年3月期通期本決算：4/23（木）15:00予定［Nidec IR］。生成AIサーバー向け水冷ユニットの需要が、EV向けモーター部門の苦戦をどこまで補うかが日本株センチメントの先行指標に。',
+      '🏛 日本銀行（BoJ）— 金融政策決定会合および展望レポート：4/23（木）〜24（金）［日銀公式］。新年度の賃上げ浸透を踏まえた追加利上げタイミングの示唆、円安進行に対する植田総裁の牽制発言が為替に波及する可能性。',
+    ],
+  },
 ]
 
-const toMajorNewsCard = (row, idx, fallbackPrefix) => ({
-  id: String(row?.id || `${fallbackPrefix}-${idx}`),
-  title: String(row?.title || '').trim(),
-  detail: String(row?.description || row?.detail || '').trim(),
-})
-
-const formatMajorNewsTickerSegment = (card) => {
-  const title = String(card?.title || '').trim()
-  const detail = String(card?.detail || '')
-    .replace(/\s*\n+\s*/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-  if (!title && !detail) return ''
-  if (!detail) return title
-  return `${title} — ${detail}`
-}
 const JP_THEME_TILES = [
   { symbol: '1478.T', name: '日本高配当株式' },
   { symbol: '2854.T', name: 'トップ20テック株式' },
 ]
-// 원자재: MarketStack /commodities (Professional+) 우선, 없으면 ETF 프록시
+// 原材料: MarketStack /commodities（Professional+）を優先、なければ ETF プロキシ
 const COMMODITY_NAMES = ['gold', 'silver', 'copper', 'crude_oil']
 const COMMODITY_NAME_JA = { gold: '金', silver: '銀', copper: '銅', crude_oil: '原油' }
 const COMMODITY_ETF_FALLBACK = [
@@ -394,7 +387,7 @@ const MARKET_THEME_DEFINITIONS = [
   {
     id: 'ai',
     label: 'AI',
-    keywords: ['ai', '人工知能', '生成ai', 'nvidia', 'エヌビディア', 'microsoft', 'マイクロソフト', 'openai'],
+    keywords: ['ai', '人工知能', '生成AI', 'nvidia', 'エヌビディア', 'microsoft', 'マイクロソフト', 'openai'],
     fundKeywords: ['NASDAQ', 'FANG', 'AI', '米国株式', 'S&P500'],
     sectorHints: ['情報技術', '通信サービス'],
     tileHints: ['トップ20テック株式'],
@@ -408,13 +401,18 @@ const MARKET_THEME_DEFINITIONS = [
   {
     id: 'semiconductor',
     label: '半導体',
-    keywords: ['半導体', 'semiconductor', 'chip', 'tsmc', 'asml', '東京エレクトロン', 'アドバンテスト'],
+    keywords: ['半導体', 'semiconductor', 'chip', 'tsmc', 'asml', '東京エレクトロン', 'アドバンテスト', 'キオクシア', 'kioxia'],
     fundKeywords: ['半導体', 'NASDAQ', 'FANG', 'テック'],
     sectorHints: ['情報技術'],
     tileHints: ['トップ20テック株式'],
     stockCandidates: [
       { symbol: '8035.T', patterns: ['東京エレクトロン', 'tokyo electron'] },
       { symbol: '6857.T', patterns: ['アドバンテスト', 'advantest'] },
+      { symbol: '285A.T', patterns: ['キオクシア', 'kioxia'] },
+      { symbol: '6976.T', patterns: ['太陽誘電', 'taiyo yuden'] },
+      { symbol: '4062.T', patterns: ['イビデン', 'ibiden'] },
+      { symbol: '6963.T', patterns: ['ローム', 'rohm'] },
+      { symbol: '5706.T', patterns: ['三井金属', 'mitsui kinzoku', 'mitsui mining'] },
       { symbol: 'ASML', patterns: ['asml'] },
       { symbol: 'NVDA', patterns: ['nvidia', 'エヌビディア'] },
     ],
@@ -458,15 +456,27 @@ const COUNTRY_EVENT_META = {
   UK: { label: '英国', flag: '🇬🇧', dotClass: 'bg-cyan-500' },
   KR: { label: '韓国', flag: '🇰🇷', dotClass: 'bg-rose-500' },
   GLOBAL: { label: 'グローバル', flag: '🌏', dotClass: 'bg-slate-500' },
+  CN: { label: '中国', flag: '🇨🇳', dotClass: 'bg-red-600' },
+  IN: { label: 'インド', flag: '🇮🇳', dotClass: 'bg-orange-500' },
+  EM: { label: '新興国', flag: '🌍', dotClass: 'bg-emerald-600' },
 }
 const WEEKDAY_JA = ['日', '月', '火', '水', '木', '金', '土']
-const DAILY_REFRESH_MS = 24 * 60 * 60 * 1000
+/** DB・手動ニュースの反映を遅らせないよう定期再取得（タブ復帰時も即時リフェッチ） */
+const MARKET_DATA_POLL_MS = 60 * 1000
+const MANUAL_NEWS_POLL_MS = 60 * 1000
 
-/** id から日付をパースし、今日以降のイベントのみ返す */
+/** Supabase `macro_events_calendar` または従来どおり id 接頭辞から、終了日≧今日のイベントのみ返す */
 const filterUpcomingEconomicEvents = (events) => {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   return events.filter((item) => {
+    const endYmd = item.eventDateEnd || item.event_date_end
+    const startYmd = item.eventDateStart || item.event_date_start
+    const rangeEnd = String(endYmd || startYmd || '').slice(0, 10)
+    if (rangeEnd) {
+      const endDt = parseLocalDateFromYmd(rangeEnd)
+      if (endDt) return endDt >= today
+    }
     const match = String(item.id || '').match(/^(\d{4})-(\d{2})-(\d{2})/)
     if (match) {
       const [, y, m, d] = match
@@ -585,6 +595,7 @@ const getMarketLabelFromExposure = (exposure = '', symbol = '') => {
 
 export default function MarketPage({ session = null }) {
   const navigate = useNavigate()
+  const location = useLocation()
   const [topFunds, setTopFunds] = useState([])
   const [inflowFunds, setInflowFunds] = useState([])
   const [liveFundSignals, setLiveFundSignals] = useState([])
@@ -594,7 +605,9 @@ export default function MarketPage({ session = null }) {
   const [isLoading, setIsLoading] = useState(true)
   const [marketDataStatus, setMarketDataStatus] = useState('')
   const [newsState, setNewsState] = useState(() => getFallbackNewsData())
-  const [weeklyEconomicEvents] = useState(CURATED_ECONOMIC_EVENTS)
+  const [weeklyEconomicEvents, setWeeklyEconomicEvents] = useState(CURATED_ECONOMIC_EVENTS)
+  /** macro_events_calendar の読込状態（既定リストとの見分け・デバッグ用） */
+  const [macroCalendarNote, setMacroCalendarNote] = useState(null)
   const upcomingEconomicEvents = useMemo(() => filterUpcomingEconomicEvents(weeklyEconomicEvents), [weeklyEconomicEvents])
   const [jpThemeTiles, setJpThemeTiles] = useState([])
   const [commodityTiles, setCommodityTiles] = useState([])
@@ -603,9 +616,45 @@ export default function MarketPage({ session = null }) {
 
   const isLoggedIn = Boolean(session?.user)
 
+  useEffect(() => {
+    const prev = document.title
+    document.title = 'マーケット | MoneyMart'
+    return () => { document.title = prev }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const rows = await fetchPublishedMacroEventsCalendar()
+        if (cancelled) return
+        const mapped = mapMacroEventsCalendarRows(rows)
+        if (rows.length > 0) {
+          setWeeklyEconomicEvents(mapped)
+          setMacroCalendarNote('データベースから反映しています')
+          return
+        }
+        setMacroCalendarNote(null)
+      } catch (e) {
+        if (!cancelled) {
+          const msg = String(e?.message || e || '')
+          setMacroCalendarNote(
+            import.meta.env.DEV
+              ? `データベース読込エラー（既定リスト）: ${msg}`
+              : 'データベースに接続できませんでした（既定リストを表示）。SupabaseのRLS・テーブル公開を確認してください。',
+          )
+          if (import.meta.env.DEV) console.warn('[macro_events_calendar]', e)
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   const etfTop5Sections = useMemo(() => [
-    { id: 'return', title: '週間騰落 Top5', list: topFunds, metric: (f) => `${Number(f.dayChange ?? f.return1y ?? 0) >= 0 ? '+' : ''}${(f.dayChange ?? f.return1y ?? 0).toFixed(1)}%`, metricClass: (f) => signedReturnTextClassStrong(Number(f.dayChange ?? f.return1y ?? 0)) },
-    { id: 'volume', title: '出来高 Top5', list: inflowFunds, metric: (f) => `${Math.round(Number(f.inflow || 0)).toLocaleString()}万`, metricClass: () => 'text-slate-500 dark:text-slate-400' },
+    { id: 'return', title: '週間騰落率 Top 5', list: topFunds, metric: (f) => `${Number(f.dayChange ?? f.return1y ?? 0) >= 0 ? '+' : ''}${(f.dayChange ?? f.return1y ?? 0).toFixed(1)}%`, metricClass: (f) => signedReturnTextClassStrong(Number(f.dayChange ?? f.return1y ?? 0)) },
+    { id: 'volume', title: '出来高 Top5', list: inflowFunds, metric: (f) => `${Math.round(Number(f.inflow || 0)).toLocaleString('ja-JP')}万`, metricClass: () => 'text-slate-500 dark:text-slate-400' },
   ], [topFunds, inflowFunds])
 
   useEffect(() => {
@@ -633,22 +682,10 @@ export default function MarketPage({ session = null }) {
     const weeklyRaw = (newsState.marketWeeklySummary || []).filter(isJapaneseNewsItem)
     const majorCardsFromDb = majorRaw.map((row, idx) => toMajorNewsCard(row, idx, 'major'))
     const weeklyCardsFromDb = weeklyRaw.map((row, idx) => toMajorNewsCard(row, idx, 'summary'))
-    const dbSlides = []
-    if (majorCardsFromDb.length > 0) {
-      dbSlides.push({
-        id: 'db-major',
-        headline: 'メジャー企業・イベント',
-        lines: majorCardsFromDb.map(formatMajorNewsTickerSegment).filter(Boolean),
-      })
+    if (majorCardsFromDb.length === 0 && weeklyCardsFromDb.length === 0) {
+      return CURATED_MARKET_MAJOR_BOARD_SLIDES
     }
-    if (weeklyCardsFromDb.length > 0) {
-      dbSlides.push({
-        id: 'db-weekly',
-        headline: '今週の主要結果サマリー',
-        lines: weeklyCardsFromDb.map(formatMajorNewsTickerSegment).filter(Boolean),
-      })
-    }
-    return dbSlides.length > 0 ? dbSlides : CURATED_MARKET_MAJOR_BOARD_SLIDES
+    return buildMarketMajorRegionSlides(majorCardsFromDb, weeklyCardsFromDb)
   }, [newsState.marketMajorEvents, newsState.marketWeeklySummary])
 
   useEffect(() => {
@@ -662,21 +699,31 @@ export default function MarketPage({ session = null }) {
       }
     }
     loadNews()
-    return () => { cancelled = true }
+    const intervalId = window.setInterval(loadNews, MANUAL_NEWS_POLL_MS)
+    const onVisibility = () => {
+      if (document.visibilityState !== 'visible' || cancelled) return
+      loadNews()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
   }, [])
   // Keep a curated macro calendar list for mock/demo consistency.
   useEffect(() => {
     let rankingFetchCancelled = false
     let fetchSeq = 0
-    const fetchData = async () => {
+    const fetchData = async ({ silent = false } = {}) => {
       const seq = ++fetchSeq
       let processedBase = null
       try {
-        setIsLoading(true)
+        if (!silent) setIsLoading(true)
         setMarketDataStatus('')
         let processed = []
 
-        // Build heatmap from live ETF prices (v_stock_latest). 병렬 fetch로 로딩 개선.
+        // v_stock_latest の ETF 終値からヒートマップを構築（並列 fetch で読み込み短縮）
         const historyFromDate = toIsoDateDaysAgo(10)
         const customHeatmapSymbols = [
           ...new Set([
@@ -720,6 +767,9 @@ export default function MarketPage({ session = null }) {
             if (!symbol) continue
             if (!bySymbol.has(symbol)) bySymbol.set(symbol, [])
             bySymbol.get(symbol).push(row)
+          }
+          for (const arr of bySymbol.values()) {
+            arr.sort((a, b) => String(b?.trade_date || '').localeCompare(String(a?.trade_date || '')))
           }
           const prevMap = new Map()
           for (const latest of latestRows || []) {
@@ -771,7 +821,7 @@ export default function MarketPage({ session = null }) {
               return { symbol: tile.symbol, name: tile.name, change }
             })
             .filter(Boolean)
-        // 원자재: commodity_daily_prices (MarketStack /commodities) 우선, 없으면 ETF
+        // 原材料: commodity_daily_prices（MarketStack /commodities）を優先、なければ ETF
         let commodityTilesData = []
         const commodityRows = commodityRes.data || []
         const commodityErr = commodityRes.error
@@ -848,7 +898,7 @@ export default function MarketPage({ session = null }) {
         }
 
         // Heatmap/region blocks are ready at this point; keep ETF ranking hydration in background.
-        if (seq === fetchSeq) setIsLoading(false)
+        if (!silent && seq === fetchSeq) setIsLoading(false)
 
         // 2) Heavy ETF ranking fetch in background.
         const [etfLatestResults, etfRecentResults] = await Promise.all([
@@ -880,7 +930,7 @@ export default function MarketPage({ session = null }) {
             if (!symbol || !Number.isFinite(close) || !Number.isFinite(prevClose) || prevClose <= 0) return null
             const change = ((close - prevClose) / prevClose) * 100
             const meta = ETF_META_MAP.get(symbol)
-            const name = meta?.jpName || symbol
+            const name = resolveFundDisplayName(symbol, {}, meta, null)
             return {
               symbol,
               name,
@@ -895,7 +945,7 @@ export default function MarketPage({ session = null }) {
         if (etfRows.length > 0) {
           processedBase = etfRows.map((row) => ({
             id: row.symbol,
-            name: normalizeFundDisplayName(row.name),
+            name: row.name,
             category: row.category,
             shortCat: row.category,
             // QUICK/funds fallback removed: use live ETF move as ranking signal.
@@ -942,31 +992,67 @@ export default function MarketPage({ session = null }) {
         setCommodityTiles([])
         setMarketDataStatus('ランキングデータの取得に失敗しました。')
       } finally {
-        setIsLoading(false)
+        if (!silent) setIsLoading(false)
       }
     }
-    fetchData()
-    const intervalId = window.setInterval(fetchData, DAILY_REFRESH_MS)
+    fetchData({ silent: false })
+    const intervalId = window.setInterval(() => {
+      if (rankingFetchCancelled) return
+      fetchData({ silent: true })
+    }, MARKET_DATA_POLL_MS)
+    const onVisibility = () => {
+      if (document.visibilityState !== 'visible' || rankingFetchCancelled) return
+      fetchData({ silent: true })
+    }
+    document.addEventListener('visibilitychange', onVisibility)
     return () => {
       rankingFetchCancelled = true
       window.clearInterval(intervalId)
+      document.removeEventListener('visibilitychange', onVisibility)
     }
   }, [])
 
-  const market3LineSummary = useMemo(() => {
+  const marketBriefSummary = useMemo(() => {
     const jp = regionPerformanceRows.find((row) => row.country === 'JP')
     const us = regionPerformanceRows.find((row) => row.country === 'US')
     const avgTop = topFunds.reduce((acc, cur) => acc + Number((cur.dayChange ?? cur.return1y) || 0), 0) / Math.max(topFunds.length, 1)
     const jpRet = Number(jp?.retDayOverDay || 0)
     const usRet = Number(us?.retDayOverDay || 0)
-    const topHeadline = String(newsState?.dailyBrief?.headline || effectiveTickerNews[0]?.title || '').trim()
-    const topHeadlineShort = topHeadline ? `${topHeadline.slice(0, 34)}${topHeadline.length > 34 ? '...' : ''}` : '主要ニュースは未取得'
-    return [
-      `指数: 日本 ${jpRet >= 0 ? '+' : ''}${jpRet.toFixed(1)}% / 米国 ${usRet >= 0 ? '+' : ''}${usRet.toFixed(1)}%`,
-      `ニュース: ${topHeadlineShort}`,
-      `ETF: 上位ファンド平均 ${avgTop >= 0 ? '+' : ''}${avgTop.toFixed(1)}% (前日比)`,
-    ]
-  }, [effectiveTickerNews, newsState?.dailyBrief?.headline, regionPerformanceRows, topFunds])
+
+    const candidates = []
+    const brief = newsState?.dailyBrief
+    const briefHeadline = String(brief?.headline || '').trim()
+    if (briefHeadline) {
+      candidates.push({
+        text: briefHeadline,
+        ms: manualNewsRowRecencyMs(brief?.publishedAt, brief?.updatedAt),
+      })
+    }
+    for (const item of effectiveTickerNews) {
+      const t = String(item?.title || '').trim()
+      if (!t) continue
+      candidates.push({
+        text: t,
+        ms: manualNewsRowRecencyMs(item?.publishedAt, item?.updatedAt),
+      })
+    }
+    candidates.sort((a, b) => (b.ms - a.ms))
+    const topHeadline = candidates[0]?.text ? String(candidates[0].text).trim() : ''
+
+    return {
+      jpRet,
+      usRet,
+      etfAvg: avgTop,
+      news: topHeadline || '主要ニュースは未取得',
+    }
+  }, [effectiveTickerNews, newsState?.dailyBrief, regionPerformanceRows, topFunds])
+
+  const signedPctText = (v) => `${Number(v) >= 0 ? '+' : ''}${Number(v).toFixed(1)}%`
+  const pctToneClass = (v) => {
+    const n = Number(v)
+    if (!Number.isFinite(n) || n === 0) return 'text-slate-600 dark:text-slate-300'
+    return n > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+  }
 
   const autoThemes = useMemo(() => {
     const newsItems = [
@@ -1069,51 +1155,81 @@ export default function MarketPage({ session = null }) {
   const marketDataBasisLabel = isLoading ? '市場データ基準: 更新中' : '市場データ基準: 最新保存値'
 
   return (
-    <div className="max-w-[1400px] mx-auto px-4 py-6 animate-fadeIn pb-24 min-h-screen bg-gray-50 dark:bg-slate-900 font-sans transition-colors duration-300">
+    <div className="max-w-[1400px] mx-auto px-4 py-6 animate-fadeIn pb-8 min-h-0 bg-gray-50 dark:bg-slate-900 font-sans transition-colors duration-300">
+      <MembersBlurGate
+        isLoggedIn={isLoggedIn}
+        returnPath={`${location.pathname}${location.search || ''}`}
+        label="ログイン後にマーケット画面をご覧いただけます"
+        hint="無料登録でヒートマップ・センチメント・主要ニュースをご覧いただけます。"
+        overlayRoundedClass="rounded-2xl"
+      >
+        <div className={!isLoggedIn ? 'max-h-[min(68vh,600px)] overflow-hidden' : undefined}>
       {/* 1. Scrolling News Ticker */}
-      <div className="bg-slate-900 dark:bg-black text-white rounded-2xl shadow-md mb-6 border border-slate-700 overflow-hidden">
-        <div className="py-3 overflow-hidden whitespace-nowrap">
-          {effectiveTickerNews.length > 0 ? (
-            <div className="inline-flex animate-ticker-market items-center gap-10 pl-4 pr-16 min-w-max">
-              {[...effectiveTickerNews, ...effectiveTickerNews, ...effectiveTickerNews].map((item, i) => (
-                <span key={`${item.source}-${i}`} className="flex items-center gap-2 text-xs md:text-sm shrink-0">
-                  <span className="text-orange-400 font-black">{item.source}</span>
-                  <span className="text-slate-200 font-bold">{item.title}</span>
-                  <span className="text-slate-500 font-mono">{item.time}</span>
-                </span>
-              ))}
-            </div>
-          ) : (
-            <div className="px-4 text-xs md:text-sm font-bold text-slate-400">
-              日本語ニュースはまだありません
-            </div>
-          )}
+        <div className="bg-slate-900 dark:bg-black text-white rounded-2xl shadow-md mb-6 border border-slate-700 overflow-hidden">
+          <div className="py-3 overflow-hidden whitespace-nowrap">
+            {effectiveTickerNews.length > 0 ? (
+              <div className="inline-flex animate-ticker-market items-center gap-10 pl-4 pr-16 min-w-max">
+                {[...effectiveTickerNews, ...effectiveTickerNews, ...effectiveTickerNews].map((item, i) => (
+                  <span
+                    key={`ticker-${String(item.publishedAt || item.updatedAt || '')}-${i}-${String(item.title || '').slice(0, 24)}`}
+                    className="flex items-center gap-3 text-xs md:text-sm shrink-0"
+                  >
+                    <span className="text-slate-200 font-bold">{item.title}</span>
+                    <span className="text-slate-500 font-mono">{item.time}</span>
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <div className="px-4 text-xs md:text-sm font-bold text-slate-400">
+                日本語ニュースはまだありません
+              </div>
+            )}
+          </div>
         </div>
-      </div>
       {marketDataStatus ? (
         <div className="mb-4 rounded-xl border border-amber-200 dark:border-amber-900/40 bg-amber-50/80 dark:bg-amber-900/10 px-3 py-2 text-xs font-bold text-amber-700 dark:text-amber-300">
           {marketDataStatus}
         </div>
       ) : null}
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        {/* Left Column */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
         <div className="lg:col-span-8 space-y-4">
           <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
-              <h3 className="text-sm font-black text-slate-900 dark:text-white mb-2">今日のマーケット3行要約</h3>
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-2 text-[11px] font-bold text-slate-600 dark:text-slate-300">
-                <span>{market3LineSummary[0] ?? ''}</span>
-                <span>・</span>
-                <span className="line-clamp-1">{market3LineSummary[1] ?? ''}</span>
-                <span className="ml-auto">{market3LineSummary[2] ?? ''}</span>
+            <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col">
+              <h3 className="text-sm font-black text-slate-900 dark:text-white mb-3">今日のマーケット要約</h3>
+              <div className="space-y-2 text-[12px]">
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="font-bold text-slate-700 dark:text-slate-200 shrink-0">日本</span>
+                  <span className={`font-black tabular-nums shrink-0 ${pctToneClass(marketBriefSummary.jpRet)}`}>
+                    {signedPctText(marketBriefSummary.jpRet)}
+                  </span>
+                </div>
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="font-bold text-slate-700 dark:text-slate-200 shrink-0">米国</span>
+                  <span className={`font-black tabular-nums shrink-0 ${pctToneClass(marketBriefSummary.usRet)}`}>
+                    {signedPctText(marketBriefSummary.usRet)}
+                  </span>
+                </div>
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="font-bold text-slate-700 dark:text-slate-200 shrink-0">ETF平均</span>
+                  <span className={`font-black tabular-nums shrink-0 ${pctToneClass(marketBriefSummary.etfAvg)}`}>
+                    {signedPctText(marketBriefSummary.etfAvg)}
+                  </span>
+                </div>
+              </div>
+              <div className="my-3 border-t border-slate-200 dark:border-slate-600" aria-hidden />
+              <div className="min-w-0 space-y-1">
+                <p className="text-[11px] font-black text-slate-900 dark:text-white">注目ニュース:</p>
+                <p className="text-[11px] font-medium text-slate-600 dark:text-slate-300 leading-snug break-words">
+                  {marketBriefSummary.news}
+                </p>
               </div>
               <button
                 type="button"
                 onClick={() => navigate('/funds')}
-                className="w-full px-3 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-black inline-flex items-center justify-center gap-1"
+                className="mt-3 w-full px-4 py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-black transition shadow-sm"
               >
-                詳しくはファンド比較へ <ArrowRight size={14} />
+                ファンド比較へ →
               </button>
             </div>
 
@@ -1142,10 +1258,10 @@ export default function MarketPage({ session = null }) {
                     key={fund.id}
                     type="button"
                     onClick={() => navigate(`/funds/${fund.id}`)}
-                    className="w-full flex items-center justify-between rounded-lg px-2.5 py-1.5 hover:bg-slate-50 dark:hover:bg-slate-700/50 text-left transition"
+                    className="w-full flex items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 hover:bg-slate-50 dark:hover:bg-slate-700/50 text-left transition"
                   >
-                    <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200 truncate">{fund.name}</span>
-                    <span className={`text-[11px] font-black shrink-0 ${etfTop5Sections[activeEtfTop5Group]?.metricClass?.(fund) ?? 'text-slate-500'}`}>
+                    <span className="min-w-0 flex-1 text-[11px] font-bold text-slate-800 dark:text-slate-200 line-clamp-2 sm:line-clamp-1 sm:truncate">{fund.name}</span>
+                    <span className={`text-[11px] font-black shrink-0 tabular-nums ${etfTop5Sections[activeEtfTop5Group]?.metricClass?.(fund) ?? 'text-slate-500'}`}>
                       {etfTop5Sections[activeEtfTop5Group]?.metric?.(fund) ?? ''}
                     </span>
                   </button>
@@ -1154,7 +1270,7 @@ export default function MarketPage({ session = null }) {
             </div>
 
             <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
-              <h3 className="text-sm font-black text-slate-900 dark:text-white mb-2">最近の関連テーマ</h3>
+              <h3 className="text-sm font-black text-slate-900 dark:text-white mb-2">今週の注目テーマ</h3>
               <div className="flex flex-wrap gap-1.5 mb-2">
                 {autoThemes.map((theme) => (
                   <button
@@ -1179,8 +1295,15 @@ export default function MarketPage({ session = null }) {
           </section>
 
           {/* 2. Heatmap + Region Heatmap */}
-          <div className="relative mt-10">
-            <div className={`${!isLoggedIn ? 'blur-[6px] pointer-events-none select-none' : ''}`}>
+          <div id="heatmap" className="mt-10 scroll-mt-28 space-y-2 rounded-2xl border border-slate-200/90 bg-white/80 px-4 py-3 dark:border-slate-700 dark:bg-slate-900/50">
+            <p className="text-[11px] font-black uppercase tracking-[0.2em] text-blue-700 dark:text-blue-400">Heatmap · sentiment</p>
+            <p className="text-sm font-bold leading-relaxed text-slate-800 dark:text-slate-100">
+              米国<strong className="font-black">セクター</strong>・<strong className="font-black">地域別ETF</strong>を並べた
+              <strong className="font-black">ヒートマップ</strong>（前営業日比の騰落率）と、日本テーマ・商品のモニター、
+              <strong className="font-black">フィアー＆グリード型のセンチメント指標</strong>を同一画面で確認できます。
+            </p>
+          </div>
+          <div className="mt-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
                 <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 transition-colors flex flex-col">
               <div className="flex justify-between items-center mb-6">
@@ -1189,21 +1312,21 @@ export default function MarketPage({ session = null }) {
                     <MapIcon className="text-blue-600 dark:text-blue-400" size={20} /> セクターヒートマップ
                   </h2>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                    前営業日終値比の騰落率（各タイルに表示）。サイズは時価総額プロキシ。
+                    前営業日終値比の騰落率（各タイルに表示）。サイズは時価総額の近似値。
                     {heatmapDataDate && (
-                      <span className="ml-1.5 font-semibold text-slate-600 dark:text-slate-300">データ日: {heatmapDataDate}</span>
+                      <span className="ml-1.5 font-semibold text-slate-600 dark:text-slate-300">基準日: {heatmapDataDate}</span>
                     )}
                   </p>
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 grid-rows-4 gap-2 h-[448px]">
+              <div className="grid grid-cols-3 gap-2">
                 {isLoading ? (
-                  <div className="col-span-3 row-span-4 flex items-center justify-center text-sm font-bold text-slate-400">
+                  <div className="col-span-3 flex min-h-[200px] items-center justify-center text-sm font-bold text-slate-400">
                     ヒートマップを読み込み中...
                   </div>
                 ) : heatmapData.length === 0 ? (
-                  <div className="col-span-3 row-span-4 flex items-center justify-center text-sm font-bold text-slate-400">
+                  <div className="col-span-3 flex min-h-[200px] items-center justify-center text-sm font-bold text-slate-400">
                     ヒートマップ用の実データがまだありません
                   </div>
                 ) : heatmapData.map((item, idx) => {
@@ -1211,15 +1334,17 @@ export default function MarketPage({ session = null }) {
                   return (
                     <div
                       key={idx}
-                      className={`col-span-1 row-span-1 ${bgClass} rounded-xl p-4 flex flex-col items-center justify-center text-white transition hover:scale-[1.02] cursor-default shadow-sm relative overflow-hidden group gap-1`}
+                      className={`col-span-1 ${bgClass} rounded-xl p-3 sm:p-4 flex flex-col items-center justify-between text-white text-center transition hover:scale-[1.02] cursor-default shadow-sm relative overflow-hidden group gap-1.5 min-h-[7.25rem] sm:min-h-[7.5rem]`}
                     >
-                      <span className="font-bold text-[11.5px] md:text-[12.5px] z-10 leading-snug text-center line-clamp-2 break-keep">{item.name}</span>
-                      <span className="text-[9px] font-black z-10 opacity-90 tracking-tight">前営業日終値比</span>
-                      <span className="font-black text-lg md:text-xl z-10 flex items-center">
+                      <div className="absolute inset-0 z-0 bg-white opacity-0 group-hover:opacity-10 transition pointer-events-none" aria-hidden />
+                      <span className="relative z-10 font-bold text-[11.5px] md:text-[12.5px] leading-snug line-clamp-2 break-words [overflow-wrap:anywhere] w-full">
+                        {item.name}
+                      </span>
+                      <span className="relative z-10 shrink-0 text-[9px] font-black opacity-90 tracking-tight leading-none">前営業日終値比</span>
+                      <span className="relative z-10 shrink-0 font-black text-lg md:text-xl inline-flex items-center gap-0.5 leading-none">
                         {item.change > 0 ? <ArrowUpRight size={16} /> : <ArrowDownRight size={16} />}
                         {Math.abs(Number(item.change || 0)).toFixed(1)}%
                       </span>
-                      <div className="absolute inset-0 bg-white opacity-0 group-hover:opacity-10 transition" />
                     </div>
                   )
                 })}
@@ -1230,84 +1355,59 @@ export default function MarketPage({ session = null }) {
               <div className="flex justify-between items-center mb-6">
                 <div>
                   <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                    <MapIcon className="text-blue-600 dark:text-blue-400" size={20} /> 国家別ヒートマップ
+                    <MapIcon className="text-blue-600 dark:text-blue-400" size={20} /> 地域別ヒートマップ
                   </h2>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                     前営業日終値比の騰落率（ETF実データ・各タイルに表示）。
                     {heatmapDataDate && (
-                      <span className="ml-1.5 font-semibold text-slate-600 dark:text-slate-300">データ日: {heatmapDataDate}</span>
+                      <span className="ml-1.5 font-semibold text-slate-600 dark:text-slate-300">基準日: {heatmapDataDate}</span>
                     )}
                   </p>
                 </div>
               </div>
-              <div className="grid grid-cols-3 grid-rows-4 gap-2 h-[448px]">
+              <div className="grid grid-cols-3 gap-2">
                 {isLoading ? (
-                  <div className="col-span-3 row-span-4 flex items-center justify-center text-sm font-bold text-slate-400">
-                    国家別データを読み込み中...
+                  <div className="col-span-3 flex min-h-[200px] items-center justify-center text-sm font-bold text-slate-400">
+                    地域別データを読み込み中...
                   </div>
                 ) : regionPerformanceRows.length === 0 ? (
-                  <div className="col-span-3 row-span-4 flex items-center justify-center text-sm font-bold text-slate-400">
-                    国家別の実データがまだありません
+                  <div className="col-span-3 flex min-h-[200px] items-center justify-center text-sm font-bold text-slate-400">
+                    地域別の実データがまだありません
                   </div>
                 ) : regionPerformanceRows.map((row) => {
                   const bgClass = heatmapChangeBgClass(Number(row.retDayOverDay || 0))
                   return (
                     <div
                       key={row.id || `${row.country}-${row.name}`}
-                      className={`col-span-1 row-span-1 ${bgClass} rounded-xl p-3 text-white shadow-sm relative overflow-hidden group cursor-default transition hover:scale-[1.02] flex flex-col justify-center gap-1`}
+                      className={`col-span-1 ${bgClass} rounded-xl p-3 text-white shadow-sm relative overflow-hidden group cursor-default transition hover:scale-[1.02] flex flex-col items-center justify-between gap-1.5 text-center min-h-[7.25rem] sm:min-h-[7.5rem]`}
                     >
-                      <p className="text-[11.5px] md:text-[12.5px] font-bold opacity-90 leading-snug text-center line-clamp-2 break-keep">
+                      <div className="absolute inset-0 z-0 bg-white opacity-0 group-hover:opacity-10 transition pointer-events-none" aria-hidden />
+                      <p className="relative z-10 w-full text-[11.5px] md:text-[12.5px] font-bold opacity-90 leading-snug line-clamp-2 break-words [overflow-wrap:anywhere]">
                         {row.name}
                       </p>
-                      <p className="text-[9px] font-black opacity-90 text-center tracking-tight">前営業日終値比</p>
-                      <p className="text-xl font-black mt-2 inline-flex items-center gap-1">
+                      <p className="relative z-10 shrink-0 text-[9px] font-black opacity-90 tracking-tight leading-none">前営業日終値比</p>
+                      <p className="relative z-10 shrink-0 text-xl font-black inline-flex items-center gap-1 leading-none">
                         {row.retDayOverDay >= 0 ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
                         {row.retDayOverDay >= 0 ? '+' : ''}{row.retDayOverDay.toFixed(1)}%
                       </p>
-                      <div className="absolute inset-0 bg-white opacity-0 group-hover:opacity-10 transition" />
                     </div>
                   )
                 })}
               </div>
-                </div>
+            </div>
               </div>
             </div>
-            {!isLoggedIn && (
-              <div className="absolute inset-0 z-20 rounded-3xl border border-amber-200 dark:border-amber-900/40 bg-white/78 dark:bg-slate-900/78 backdrop-blur-[2px] flex items-center justify-center p-4">
-                <div className="max-w-md w-full rounded-2xl border border-amber-200 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-900/10 px-4 py-4 text-center">
-                  <p className="text-sm font-black text-amber-700 dark:text-amber-300">ヒートマップの詳細表示はログイン/会員登録後に利用できます。</p>
-                  <div className="mt-3 flex items-center justify-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => navigate('/login', { state: { from: '/market' } })}
-                      className="px-3 py-1.5 rounded-lg bg-orange-500 hover:bg-orange-400 text-white text-xs font-black"
-                    >
-                      ログイン
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => navigate('/signup')}
-                      className="px-3 py-1.5 rounded-lg border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 text-xs font-black hover:bg-amber-100 dark:hover:bg-amber-900/20"
-                    >
-                      会員登録
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
           <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
-            ※ 表示データは参考情報であり、投資勧誘を目的とするものではありません。データ提供: 中間データ事業者（市場データAPI）
+            ※ 表示データは参考情報であり、投資勧誘を目的とするものではありません。データ提供: 外部データプロバイダー（市場データAPI）
           </p>
 
-          <div className="relative space-y-4">
-            <div className={`${!isLoggedIn ? 'blur-[6px] pointer-events-none select-none' : ''}`}>
+          <div className="space-y-4">
               <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 transition-colors">
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="text-sm font-black text-slate-900 dark:text-white">日本テーマ</h3>
-                  <span className="text-[10px] font-bold text-slate-400">{heatmapDataDate ? `(${heatmapDataDate})` : ''}</span>
+                  <span className="text-[10px] font-bold text-slate-600 dark:text-slate-300 tabular-nums shrink-0">{heatmapDataDate ? `基準日: ${heatmapDataDate}` : ''}</span>
                 </div>
-                <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-2">各タイル: 前営業日終値比（騰落率）</p>
+                <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-2">各タイル: 前営業日終値比</p>
                 <div className="flex flex-wrap gap-2">
                   {jpThemeTiles.length === 0 ? (
                     <div className="rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-4 text-center text-[11px] font-bold text-slate-400">
@@ -1321,7 +1421,6 @@ export default function MarketPage({ session = null }) {
                           className={`${heatmapChangeBgClass(Number(item.change || 0))} rounded-xl px-4 py-3 text-white shadow-sm relative overflow-hidden group cursor-default transition hover:scale-[1.02] flex flex-col gap-0.5 min-w-[140px]`}
                         >
                           <p className="text-sm font-bold opacity-95">{item.name}</p>
-                          <p className="text-[9px] font-black opacity-90">前営業日終値比</p>
                           <p className="text-base font-black inline-flex items-center gap-0.5">
                             {Number(item.change || 0) >= 0 ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
                             {Number(item.change || 0) >= 0 ? '+' : ''}{Number(item.change || 0).toFixed(1)}%
@@ -1336,16 +1435,16 @@ export default function MarketPage({ session = null }) {
 
               <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 transition-colors">
                 <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-sm font-black text-slate-900 dark:text-white">商品（金・銀・銅・原油）</h3>
-                  <span className="text-[10px] font-bold text-slate-400">{heatmapDataDate ? `(${heatmapDataDate})` : ''}</span>
+                  <h3 className="text-sm font-black text-slate-900 dark:text-white">原材料（金・銀・銅・原油）</h3>
+                  <span className="text-[10px] font-bold text-slate-600 dark:text-slate-300 tabular-nums shrink-0">{heatmapDataDate ? `基準日: ${heatmapDataDate}` : ''}</span>
                 </div>
-                <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-2">
-                  各タイル: 日次変動率（指数はソース定義、ETFフォールバック時は前営業日終値比）
+                <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-2 leading-relaxed">
+                  各タイル: 日次変動率（指数はデータ提供元の定義、ETF参照データ使用時は前営業日終値比）
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {commodityTiles.length === 0 ? (
                     <div className="rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-4 text-center text-[11px] font-bold text-slate-400">
-                      商品データを読み込み中...
+                      原材料データを読み込み中...
                     </div>
                   ) : (
                     commodityTiles.map((item) => (
@@ -1354,7 +1453,6 @@ export default function MarketPage({ session = null }) {
                         className={`${heatmapChangeBgClass(Number(item.change || 0))} rounded-xl px-4 py-3 text-white shadow-sm relative overflow-hidden group cursor-default transition hover:scale-[1.02] flex flex-col gap-0.5 min-w-[100px]`}
                       >
                         <p className="text-sm font-bold opacity-95">{item.name}</p>
-                        <p className="text-[9px] font-black opacity-90 leading-tight">日次変動（定義はデータ源）</p>
                         <p className="text-base font-black inline-flex items-center gap-0.5">
                           {Number(item.change || 0) >= 0 ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
                           {Number(item.change || 0) >= 0 ? '+' : ''}{Number(item.change || 0).toFixed(1)}%
@@ -1365,155 +1463,98 @@ export default function MarketPage({ session = null }) {
                   )}
                 </div>
               </div>
-            </div>
-            {!isLoggedIn && (
-              <div className="absolute inset-0 z-20 rounded-2xl border border-amber-200 dark:border-amber-900/40 bg-white/78 dark:bg-slate-900/78 backdrop-blur-[2px] flex items-center justify-center p-4">
-                <div className="max-w-md w-full rounded-2xl border border-amber-200 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-900/10 px-4 py-4 text-center">
-                  <p className="text-sm font-black text-amber-700 dark:text-amber-300">日本テーマ・商品の数値表示はログイン/会員登録後に利用できます（ヒートマップと同様）。</p>
-                  <div className="mt-3 flex items-center justify-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => navigate('/login', { state: { from: '/market' } })}
-                      className="px-3 py-1.5 rounded-lg bg-orange-500 hover:bg-orange-400 text-white text-xs font-black"
-                    >
-                      ログイン
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => navigate('/signup')}
-                      className="px-3 py-1.5 rounded-lg border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 text-xs font-black hover:bg-amber-100 dark:hover:bg-amber-900/20"
-                    >
-                      会員登録
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-1 gap-4">
-            <div className="bg-white dark:bg-slate-800 p-5 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 transition-colors">
-              <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100 dark:border-slate-700">
-                <h3 className="font-bold text-slate-800 dark:text-white text-sm">ニュース・ピックアップ</h3>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {effectivePickupNews.length === 0 ? (
-                  <div className="sm:col-span-2 rounded-xl border border-dashed border-slate-200 dark:border-slate-700 px-4 py-8 text-center text-sm font-bold text-slate-400">
-                    ピックアップニュースはまだありません
-                  </div>
-                ) : effectivePickupNews.map((item, i) => (
-                  <button
-                    key={`${item.source}-${i}`}
-                    type="button"
-                    onClick={() => {
-                      if (item.url && isJapaneseNewsItem(item)) {
-                        window.open(item.url, '_blank', 'noopener,noreferrer')
-                      }
-                    }}
-                    disabled={!(item.url && isJapaneseNewsItem(item))}
-                    className="text-left rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden hover:border-orange-300 dark:hover:border-orange-500/50 transition"
-                  >
-                    <div className="h-20 p-3 text-white relative overflow-hidden">
-                      {item.imageUrl ? (
-                        <>
-                          <img src={item.imageUrl} alt={item.title} className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
-                          <div className="absolute inset-0 bg-slate-900/55" />
-                        </>
-                      ) : (
-                        <div className="absolute inset-0 bg-gradient-to-br from-slate-700 to-slate-800" />
-                      )}
-                      <div className="relative z-10">
-                        <p className="text-[10px] font-black opacity-90">{item.topic}</p>
-                        <p className="text-xs font-bold mt-1 line-clamp-2">{item.title}</p>
-                      </div>
-                    </div>
-                    <div className="p-2.5">
-                      <div className="flex items-center justify-between text-[10px] text-slate-400">
-                        <span className="font-bold">{item.source}</span>
-                        <span>{item.time}</span>
-                      </div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-              {manualNewsUpdatedLabelJa ? (
-                <p className="mt-3 text-[10px] text-slate-400">
-                  ニュースデータ更新: {manualNewsUpdatedLabelJa}
-                </p>
-              ) : null}
+          <div className="bg-white dark:bg-slate-800 p-5 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 transition-colors">
+            <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100 dark:border-slate-700">
+              <h3 className="font-bold text-slate-800 dark:text-white text-sm">ニュース・ピックアップ</h3>
             </div>
-            <div className="bg-white dark:bg-slate-800 p-5 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 transition-colors overflow-hidden">
-              <div className="relative -mx-5 -mt-5 px-5 py-4 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 border-b-2 border-[#FF7900]/75">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-white/10 text-white">
-                      <Newspaper size={14} />
-                    </span>
-                    <div>
-                      <h3 className="font-black text-white text-sm">市場主要ニュース</h3>
-                      <p className="text-[10px] text-slate-300 mt-0.5">大きな電光パネル・数秒ごとに切替（速報／米国／日本 など）</p>
-                    </div>
-                  </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {effectivePickupNews.length === 0 ? (
+                <div className="sm:col-span-2 rounded-xl border border-dashed border-slate-200 dark:border-slate-700 px-4 py-8 text-center text-sm font-bold text-slate-400">
+                  ピックアップニュースはまだありません
                 </div>
-              </div>
-              <div className="pt-4">
-                <MarketMajorNewsTicker slides={marketMajorBoardSlides} />
-                <p className="mt-3 text-[10px] text-slate-400 leading-relaxed">
-                  管理画面「市場主要ニュース」で
-                  <span className="font-bold text-slate-500 dark:text-slate-400"> メジャー企業・イベント </span>
-                  と
-                  <span className="font-bold text-slate-500 dark:text-slate-400"> 今週の主要結果サマリー </span>
-                  に入れた内容は、それぞれ1パネルずつ全画面で切り替わります（未設定時は 速報→米国→日本 の既定3パネル）。
-                </p>
-              </div>
+              ) : effectivePickupNews.map((item, i) => (
+                <button
+                  key={`${item.source}-${i}`}
+                  type="button"
+                  onClick={() => {
+                    if (item.url && isJapaneseNewsItem(item)) {
+                      window.open(item.url, '_blank', 'noopener,noreferrer')
+                    }
+                  }}
+                  disabled={!(item.url && isJapaneseNewsItem(item))}
+                  className="text-left rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden hover:border-orange-300 dark:hover:border-orange-500/50 transition"
+                >
+                  <div className="h-20 p-3 text-white relative overflow-hidden">
+                    {item.imageUrl ? (
+                      <>
+                        <img src={item.imageUrl} alt={item.title} className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
+                        <div className="absolute inset-0 bg-slate-900/55" />
+                      </>
+                    ) : (
+                      <div className="absolute inset-0 bg-gradient-to-br from-slate-700 to-slate-800" />
+                    )}
+                    <div className="relative z-10">
+                      <p className="text-[10px] font-black opacity-90">{item.topic}</p>
+                      <p className="text-xs font-bold mt-1 line-clamp-2">{item.title}</p>
+                    </div>
+                  </div>
+                  <div className="p-2.5">
+                    <div className="flex items-center justify-between text-[10px] text-slate-400">
+                      <span className="font-bold">{item.source}</span>
+                      <span>{item.time}</span>
+                    </div>
+                  </div>
+                </button>
+              ))}
             </div>
-            <AdBanner variant="horizontal" />
+            {manualNewsUpdatedLabelJa ? (
+              <p className="mt-3 text-[10px] text-slate-400">
+                ニュースデータ更新: {manualNewsUpdatedLabelJa}
+              </p>
+            ) : null}
           </div>
 
+          <div className="bg-white dark:bg-slate-800 p-4 md:p-5 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 transition-colors overflow-hidden">
+            <div className="relative -mx-4 -mt-4 px-4 py-2.5 md:-mx-5 md:-mt-5 md:px-5 md:py-3 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 border-b border-[#FF7900]/60">
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-white/10 text-white">
+                  <Newspaper size={12} />
+                </span>
+                <div>
+                  <h3 className="font-black text-white text-xs md:text-sm">市場主要ニュース</h3>
+                  <p className="text-[9px] md:text-[10px] text-slate-300 mt-0.5 leading-snug">数秒ごとに切り替わります（グローバル／米国／日本）</p>
+                </div>
+              </div>
+            </div>
+            <div className="pt-3 md:pt-4">
+              <MarketMajorNewsTicker slides={marketMajorBoardSlides} />
+            </div>
+          </div>
         </div>
 
-        {/* Right Column */}
         <div className="lg:col-span-4 space-y-4">
-          <div className="relative">
-            <div className={`${!isLoggedIn ? 'blur-[6px] pointer-events-none select-none' : ''}`}>
-              <FearGreedIndex />
-            </div>
-            {!isLoggedIn && (
-              <div className="absolute inset-0 z-20 rounded-2xl border border-amber-200 dark:border-amber-900/40 bg-white/78 dark:bg-slate-900/78 backdrop-blur-[2px] flex items-center justify-center p-3">
-                <div className="text-center">
-                  <p className="text-xs font-black text-amber-700 dark:text-amber-300">Fear & Greedはログイン後に表示されます</p>
-                  <button
-                    type="button"
-                    onClick={() => navigate('/login', { state: { from: '/market' } })}
-                    className="mt-2 px-3 py-1.5 rounded-lg bg-orange-500 hover:bg-orange-400 text-white text-[11px] font-black"
-                  >
-                    ログイン
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-          <AdBanner variant="compact" />
+          <FearGreedIndex />
+          <LazyMarketFearBelowA8Ad />
 
-          <div className="relative">
-            <div className={`${!isLoggedIn ? 'blur-[6px] pointer-events-none select-none' : ''}`}>
-              <div className="w-full bg-white dark:bg-slate-800 px-4 py-3.5 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 text-left">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-center gap-2.5">
-                <Calendar size={16} className="text-orange-500 shrink-0" />
-                <div className="text-left">
-                  <p className="text-xs font-black text-slate-800 dark:text-white">2026年 主要カレンダー（4〜8月）</p>
-                  <p className="text-[10px] text-slate-400 mt-0.5">
-                    {upcomingEconomicEvents.length}件 · 日程は変更の場合あり · 下にスクロール
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-1 text-[10px] font-bold text-orange-500 shrink-0">
-                一覧
+          {macroCalendarNote ? (
+            <p className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 px-1 leading-snug">
+              {macroCalendarNote}
+            </p>
+          ) : null}
+          <div className="w-full bg-white dark:bg-slate-800 px-4 py-3.5 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 text-left">
+            <div className="flex items-center gap-2.5">
+              <Calendar size={16} className="text-orange-500 shrink-0" />
+              <div>
+                <p className="text-xs font-black text-slate-800 dark:text-white">2026年 主要カレンダー</p>
+                <p className="text-[10px] text-slate-400 mt-0.5">
+                  {upcomingEconomicEvents.length}件 · スクロールで続き
+                </p>
               </div>
             </div>
             <div className="mt-3 border-t border-slate-100 dark:border-slate-700 pt-3">
-              <div className="grid grid-cols-1 gap-2 max-h-[280px] overflow-y-auto pr-1">
+              <div className="h-[280px] overflow-y-auto overscroll-contain pr-1 space-y-2">
                 {upcomingEconomicEvents.map((item) => {
                   const meta = COUNTRY_EVENT_META[item.country] || { flag: '🌐', label: item.country || 'Global', dotClass: 'bg-slate-400' }
                   return (
@@ -1541,7 +1582,7 @@ export default function MarketPage({ session = null }) {
                         <span className="text-[10px] text-orange-500 font-black">{'★'.repeat(item.importance)}</span>
                       </div>
                       {item.impact ? (
-                        <p className="mt-1.5 text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed bg-white dark:bg-slate-800/70 rounded-lg px-2 py-1.5">
+                        <p className="mt-1.5 text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed bg-white dark:bg-slate-800/70 rounded-lg px-2 py-1.5 line-clamp-2">
                           {item.impact}
                         </p>
                       ) : null}
@@ -1550,42 +1591,16 @@ export default function MarketPage({ session = null }) {
                 })}
               </div>
             </div>
-              </div>
-            </div>
-            {!isLoggedIn && (
-              <div className="absolute inset-0 z-20 rounded-2xl border border-amber-200 dark:border-amber-900/40 bg-white/78 dark:bg-slate-900/78 backdrop-blur-[2px] flex items-center justify-center p-3">
-                <div className="text-center">
-                  <p className="text-xs font-black text-amber-700 dark:text-amber-300">今週の経済指標はログイン後に確認できます</p>
-                  <div className="mt-2 flex items-center justify-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => navigate('/login', { state: { from: '/market' } })}
-                      className="px-3 py-1.5 rounded-lg bg-orange-500 hover:bg-orange-400 text-white text-[11px] font-black"
-                    >
-                      ログイン
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => navigate('/signup')}
-                      className="px-3 py-1.5 rounded-lg border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 text-[11px] font-black hover:bg-amber-100 dark:hover:bg-amber-900/20"
-                    >
-                      会員登録
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
-
         </div>
+
       </div>
+        </div>
+      </MembersBlurGate>
 
       <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-5 leading-relaxed">
         {LEGAL_NOTICE_TEMPLATES.investment}
       </p>
-      <div className="mt-4 lg:hidden">
-        <AdBanner variant="horizontal" />
-      </div>
     </div>
   )
 }

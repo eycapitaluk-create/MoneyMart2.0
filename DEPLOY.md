@@ -53,9 +53,12 @@ git push -u origin main
    - `SUPABASE_URL` = Supabase 프로젝트 URL (server-side)
    - `SUPABASE_SECRET_KEY` = Supabase service role key (server-side)
    - `CRON_SECRET` = cron 보호 토큰 (랜덤 문자열)
-   - `MARKETSTACK_ACCESS_KEY` = 中間データ事業者（市場データAPI）のキー (server-side、変数名は従来どおり)
+   - (선택) `FX_READ_USDJPY_FROM_DB=true` — `SUPABASE_SETUP_FX_DAILY_USDJPY.sql` 실행 후 `/api/fx`가 저장된 종가 레이트 우선
+   - `MARKETSTACK_ACCESS_KEY` = 情報提供元（市場データAPI）のキー (server-side、変数名は従来どおり)
    - `MARKETSTACK_SYMBOLS` = (선택) 수집 심볼 목록, 예: `AAPL,MSFT,NVDA`
-6. **Deploy** 클릭
+   - (선택) `VITE_CLARITY_PROJECT_ID` = [Microsoft Clarity](https://clarity.microsoft.com/) 프로젝트 ID — 클릭/스크롤 히트맵 (`/mypage`, `/admin` 제외)
+6. Supabase SQL Editor에서 `SUPABASE_SETUP_FX_DAILY_USDJPY.sql` 실행 (USD/JPY 일별 캐시; Vercel cron `/api/cron/fx-usdjpy-daily`가 `Bearer CRON_SECRET`로 upsert, `vercel.json`에 포함)
+7. **Deploy** 클릭
 
 ### 방법 B: Vercel CLI
 

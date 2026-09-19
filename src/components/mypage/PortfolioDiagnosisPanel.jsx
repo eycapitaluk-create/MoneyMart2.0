@@ -1,10 +1,18 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, ArrowRight, Loader2, ShieldCheck, Sparkles, Target } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 
 const DIAG_DAILY_LIMIT = 20
 const DIAG_COOLDOWN_SECONDS = 20
 const DIAG_USAGE_STORAGE_KEY = 'mm_portfolio_diag_usage_v1'
+const DIAG_RESULT_STORAGE_PREFIX = 'mm_portfolio_diag_result_v2'
+
+const diagResultStorageKey = (uid, scope) => `${DIAG_RESULT_STORAGE_PREFIX}:${String(uid || 'guest')}:${String(scope || '')}`
+
+const holdingsSignature = (rows = []) => (Array.isArray(rows) ? rows : [])
+  .map((h) => `${String(h?.ticker || h?.symbol || '').trim()}:${Math.round(Number(h?.weight || 0) * 10) / 10}`)
+  .sort()
+  .join('|')
 
 const todayKey = () => {
   const d = new Date()
@@ -99,6 +107,9 @@ export default function PortfolioDiagnosisPanel({
     [holdings, totalValue]
   )
 
+  const holdingsSig = useMemo(() => holdingsSignature(holdingsWithWeight), [holdingsWithWeight])
+  const restoredSigRef = useRef('')
+
   const sectorData = useMemo(() => {
     const map = {}
     holdingsWithWeight.forEach((row) => {
@@ -156,8 +167,14 @@ export default function PortfolioDiagnosisPanel({
           holdings: holdingsWithWeight,
         }),
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data?.error || '分析に失敗しました')
+      const rawText = await res.text()
+      let data = {}
+      try {
+        data = rawText ? JSON.parse(rawText) : {}
+      } catch {
+        throw new Error(rawText?.slice(0, 180) || `分析に失敗しました（HTTP ${res.status}）`)
+      }
+      if (!res.ok) throw new Error(data?.error || `分析に失敗しました（HTTP ${res.status}）`)
       setResult(data?.result || null)
       setSavedAt(new Date().toISOString())
       setStatus('分析が完了しました（参考情報）')
@@ -176,6 +193,21 @@ export default function PortfolioDiagnosisPanel({
         return next
       })
       setCooldownUntilTs(Date.now() + (DIAG_COOLDOWN_SECONDS * 1000))
+      try {
+        if (typeof window !== 'undefined' && data?.result) {
+          window.sessionStorage.setItem(
+            diagResultStorageKey(userId, scopeLabel),
+            JSON.stringify({
+              holdingsSig,
+              result: data.result,
+              savedAt: new Date().toISOString(),
+            }),
+          )
+          restoredSigRef.current = holdingsSig
+        }
+      } catch {
+        // ignore
+      }
     } catch (err) {
       setError(err?.message || '分析に失敗しました')
     } finally {
@@ -187,6 +219,14 @@ export default function PortfolioDiagnosisPanel({
     setResult(null)
     setSavedAt('')
     setStatus('表示中の結果をクリアしました')
+    try {
+      if (typeof window !== 'undefined') {
+        window.sessionStorage.removeItem(diagResultStorageKey(userId, scopeLabel))
+      }
+    } catch {
+      // ignore
+    }
+    restoredSigRef.current = ''
   }
 
   useEffect(() => {
@@ -200,6 +240,38 @@ export default function PortfolioDiagnosisPanel({
       setUsageCount(0)
     }
   }, [userId])
+
+  /** 同じタブ内で別ページへ行って戻ったときなど、パネルが再マウントされても結果を戻す（保有構成が同じ場合のみ） */
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (!holdingsWithWeight.length) {
+      setResult(null)
+      setSavedAt('')
+      restoredSigRef.current = ''
+      return
+    }
+    if (!holdingsSig) return
+    const key = diagResultStorageKey(userId, scopeLabel)
+    try {
+      const raw = window.sessionStorage.getItem(key)
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        if (parsed?.holdingsSig === holdingsSig && parsed?.result) {
+          setResult(parsed.result)
+          setSavedAt(parsed.savedAt || '')
+          restoredSigRef.current = holdingsSig
+          return
+        }
+      }
+    } catch {
+      // ignore
+    }
+    if (restoredSigRef.current && restoredSigRef.current !== holdingsSig) {
+      setResult(null)
+      setSavedAt('')
+    }
+    restoredSigRef.current = holdingsSig
+  }, [userId, scopeLabel, holdingsSig, holdingsWithWeight.length])
 
   const hasHoldings = holdingsWithWeight.length > 0
 
@@ -216,7 +288,9 @@ export default function PortfolioDiagnosisPanel({
               {scopeLabel}の保有資産をもとにAIが分散・リスク・改善案を分析します
             </p>
             <p className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">
-              {userId ? '結果はマイページに保存されます' : '未ログイン時はこの端末にのみ保存されます'}
+              {userId
+                ? '直近の分析結果はこのブラウザのセッションに保持されます（保有が変わると無効化）。'
+                : '未ログイン時はこの端末にのみ保存されます'}
             </p>
           </div>
           <div className="flex-1 min-w-0 lg:px-2">
@@ -236,102 +310,28 @@ export default function PortfolioDiagnosisPanel({
         </div>
       </div>
 
-      <div className="p-5 space-y-4">
-        {!hasHoldings && (
-          <div className="rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 p-8 text-center">
-            <p className="text-sm font-bold text-slate-400">保有データがまだありません</p>
-            <p className="text-xs text-slate-300 dark:text-slate-500 mt-1">このタブに資産を登録すると AI 分析が使えます</p>
+      {/* 分析ボタン直下：結果・エラー・ステータス（スクロールしなくてもすぐ見える） */}
+      <div className="px-5 pt-4 pb-5 space-y-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-900/30">
+        {loading ? (
+          <div className="flex items-center gap-2 rounded-xl border border-violet-200 dark:border-violet-900/50 bg-violet-50/80 dark:bg-violet-950/20 px-4 py-3 text-sm font-bold text-violet-700 dark:text-violet-300">
+            <Loader2 size={16} className="animate-spin shrink-0" />
+            分析中です…
           </div>
-        )}
+        ) : null}
 
-        {hasHoldings && (
-          <>
-            <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-              <div className="xl:col-span-2 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/40 p-4">
-                <div className="flex items-center justify-between gap-4 mb-3">
-                  <p className="text-xs font-black text-slate-500 dark:text-slate-400">分析対象</p>
-                  <p className="text-sm font-mono font-black text-slate-900 dark:text-white">¥{Math.round(totalValue).toLocaleString()}</p>
-                </div>
-                <div className="space-y-2">
-                  {holdingsWithWeight
-                    .slice()
-                    .sort((a, b) => b.weight - a.weight)
-                    .slice(0, 5)
-                    .map((row, idx) => (
-                      <div key={`diag-row-${idx}-${row.ticker || 'x'}-${row.name || ''}`} className="flex items-center gap-3">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="min-w-0">
-                              <span className="text-sm font-bold text-slate-800 dark:text-slate-200 truncate block">{row.name}</span>
-                              {row.ticker ? (
-                                <span className="text-[11px] text-slate-400 dark:text-slate-500 block">{row.ticker}</span>
-                              ) : null}
-                            </div>
-                            <span className="text-xs font-mono font-black text-violet-600 dark:text-violet-300">{row.weight.toFixed(1)}%</span>
-                          </div>
-                          <div className="h-2 mt-1 rounded-full bg-white dark:bg-slate-900 overflow-hidden">
-                            <div className="h-full rounded-full bg-gradient-to-r from-violet-500 to-indigo-500" style={{ width: `${row.weight}%` }} />
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4">
-                <p className="text-xs font-black text-slate-500 dark:text-slate-400 mb-3">現在の分散メモ</p>
-                <div className="space-y-3 text-sm">
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-500">保有銘柄数</span>
-                    <span className="font-black text-slate-900 dark:text-white">{holdingsWithWeight.length}件</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-500">セクター数</span>
-                    <span className="font-black text-slate-900 dark:text-white">{sectorData.length}件</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-500">資産カテゴリ数</span>
-                    <span className="font-black text-slate-900 dark:text-white">{categoryData.length}件</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <DistributionBars title="資産カテゴリ構成" rows={categoryData} />
-              <DistributionBars title="セクター構成" rows={sectorData} />
-            </div>
-          </>
-        )}
-
-        {error && (
+        {error ? (
           <div className="rounded-2xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/20 p-4 text-sm font-bold text-red-600 dark:text-red-300">
             {error}
           </div>
-        )}
+        ) : null}
 
-        {status && !error && (
+        {status && !error ? (
           <div className="rounded-2xl border border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/20 p-4 text-sm font-bold text-emerald-700 dark:text-emerald-300">
             {status}
           </div>
-        )}
+        ) : null}
 
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/30 px-3 py-2">
-          <p className="text-[11px] text-slate-500 dark:text-slate-400">
-            本日 {usageCount}/{DIAG_DAILY_LIMIT} 回・再実行間隔 {DIAG_COOLDOWN_SECONDS} 秒。結果はこの画面の表示用です。
-          </p>
-          {result ? (
-            <button
-              type="button"
-              onClick={clearResult}
-              className="text-[11px] font-bold text-slate-600 dark:text-slate-300 underline"
-            >
-              結果をクリア
-            </button>
-          ) : null}
-        </div>
-
-        {result && (
+        {result ? (
           <div className="space-y-4">
             <div className="rounded-3xl bg-gradient-to-br from-slate-900 to-slate-800 p-5 text-white">
               <div className="flex flex-col md:flex-row items-start md:items-center gap-5">
@@ -399,7 +399,7 @@ export default function PortfolioDiagnosisPanel({
               </div>
             </div>
 
-            {Array.isArray(result.risks) && result.risks.length > 0 && (
+            {Array.isArray(result.risks) && result.risks.length > 0 ? (
               <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4">
                 <p className="text-xs font-black text-slate-500 dark:text-slate-400 mb-3">リスク分析</p>
                 <div className="space-y-2.5">
@@ -416,10 +416,116 @@ export default function PortfolioDiagnosisPanel({
                   ))}
                 </div>
               </div>
-            )}
+            ) : null}
 
+            {Array.isArray(result.actions) && result.actions.length > 0 ? (
+              <div className="rounded-2xl border border-indigo-200 dark:border-indigo-900/50 bg-indigo-50/70 dark:bg-indigo-950/20 p-4">
+                <p className="text-xs font-black text-indigo-600 dark:text-indigo-300 mb-1 flex items-center gap-2">
+                  <ArrowRight size={14} />
+                  想定される選択肢
+                </p>
+                <p className="text-[10px] text-indigo-500/90 dark:text-indigo-400/80 mb-3 leading-relaxed">
+                  以下は一般的な観点の例であり、売買の指示や確約ではありません。実際の判断はご自身の責任で行ってください。
+                </p>
+                <div className="space-y-2.5">
+                  {result.actions.map((row, idx) => (
+                    <div key={idx} className="flex gap-3 text-sm text-slate-800 dark:text-slate-200 leading-6">
+                      <span className="shrink-0 font-black text-indigo-600 dark:text-indigo-400">{row.priority}</span>
+                      <span>{row.action}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={clearResult}
+                className="text-[11px] font-bold text-slate-600 dark:text-slate-300 underline"
+              >
+                結果をクリア
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      <div className="p-5 space-y-4">
+        {!hasHoldings && (
+          <div className="rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 p-8 text-center">
+            <p className="text-sm font-bold text-slate-400">保有データがまだありません</p>
+            <p className="text-xs text-slate-300 dark:text-slate-500 mt-1">このタブに資産を登録すると AI 分析が使えます</p>
           </div>
         )}
+
+        {hasHoldings && (
+          <>
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+              <div className="xl:col-span-2 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/40 p-4">
+                <div className="flex items-center justify-between gap-4 mb-3">
+                  <p className="text-xs font-black text-slate-500 dark:text-slate-400">分析対象</p>
+                  <p className="text-sm font-mono font-black text-slate-900 dark:text-white">¥{Math.round(totalValue).toLocaleString('ja-JP')}</p>
+                </div>
+                <div className="space-y-2">
+                  {holdingsWithWeight
+                    .slice()
+                    .sort((a, b) => b.weight - a.weight)
+                    .slice(0, 5)
+                    .map((row, idx) => (
+                      <div key={`diag-row-${idx}-${row.ticker || 'x'}-${row.name || ''}`} className="flex items-center gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <span className="text-sm font-bold text-slate-800 dark:text-slate-200 truncate block">{row.name}</span>
+                              {row.ticker ? (
+                                <span className="text-[11px] text-slate-400 dark:text-slate-500 block">{row.ticker}</span>
+                              ) : null}
+                            </div>
+                            <span className="shrink-0 text-lg sm:text-xl font-mono font-black tabular-nums tracking-tight text-violet-700 dark:text-violet-200">
+                              {row.weight.toFixed(1)}%
+                            </span>
+                          </div>
+                          <div className="h-2 mt-1 rounded-full bg-white dark:bg-slate-900 overflow-hidden">
+                            <div className="h-full rounded-full bg-gradient-to-r from-violet-500 to-indigo-500" style={{ width: `${row.weight}%` }} />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4">
+                <p className="text-xs font-black text-slate-500 dark:text-slate-400 mb-3">現在の分散メモ</p>
+                <div className="space-y-3 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500">保有銘柄数</span>
+                    <span className="font-black text-slate-900 dark:text-white">{holdingsWithWeight.length}件</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500">セクター数</span>
+                    <span className="font-black text-slate-900 dark:text-white">{sectorData.length}件</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500">資産カテゴリ数</span>
+                    <span className="font-black text-slate-900 dark:text-white">{categoryData.length}件</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <DistributionBars title="資産カテゴリ構成" rows={categoryData} />
+              <DistributionBars title="セクター構成" rows={sectorData} />
+            </div>
+          </>
+        )}
+
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/30 px-3 py-2">
+          <p className="text-[11px] text-slate-500 dark:text-slate-400">
+            本日 {usageCount}/{DIAG_DAILY_LIMIT} 回・再実行間隔 {DIAG_COOLDOWN_SECONDS} 秒。結果はこの画面の表示用です。
+          </p>
+        </div>
       </div>
     </div>
   )

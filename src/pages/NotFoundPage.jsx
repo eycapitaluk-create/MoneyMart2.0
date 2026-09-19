@@ -1,8 +1,14 @@
 import { Link } from 'react-router-dom'
+import { Helmet } from 'react-helmet-async'
 
 export default function NotFoundPage() {
   return (
     <div className="min-h-[60vh] flex items-center justify-center px-4">
+      <Helmet>
+        <title>ページが見つかりません | MoneyMart</title>
+        <meta name="robots" content="noindex,nofollow" />
+        <meta name="description" content="指定のURLは見つかりませんでした。" />
+      </Helmet>
       <div className="text-center">
         <p className="text-5xl font-black text-slate-900 dark:text-white">404</p>
         <p className="mt-3 text-sm font-bold text-slate-500 dark:text-slate-400">

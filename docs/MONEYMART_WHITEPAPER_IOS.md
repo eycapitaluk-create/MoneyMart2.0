@@ -29,7 +29,7 @@
 ### 1.2 技術スタック（既存）
 - **フロント**: React 19 + Vite + Tailwind CSS
 - **バックエンド**: Supabase（Auth, PostgreSQL, Realtime, Storage）
-- **外部API**: 中間データ事業者（株価・ETF）、The News API / NewsData.io（ニュース）、Anthropic（AI要約）
+- **外部API**: 情報提供元（株価・ETF）、The News API / NewsData.io（ニュース）、Anthropic（AI要約）
 - **デプロイ**: Vercel
 
 ### 1.3 iOS版で必要な技術
@@ -213,7 +213,7 @@
 - `SUPABASE_SERVICE_ROLE_KEY`: サーバー・cron用（iOSでは不要）
 
 ### 6.2 オプション（ウェブのみ）
-- 中間データ事業者: 株価取得（cronでSupabaseに保存済み）
+- 情報提供元: 株価取得（cronでSupabaseに保存済み）
 - The News API / NewsData.io: ニュース（cronでSupabaseに保存済み）
 - Anthropic: AI要約（cronでSupabaseに保存済み）
 

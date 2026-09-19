@@ -1,19 +1,26 @@
 /**
- * Stripe Checkout（月額プレミアム）開始。認証セッションのアクセストークンを付与する。
+ * PAY.JP ウェブ Premium サブスク開始
  */
-export async function startPremiumCheckout(accessToken) {
+export async function createPayjpPremiumSubscription({
+  accessToken,
+  billingCycle,
+  payjpToken,
+}) {
   const token = String(accessToken || '').trim()
-  if (!token) {
-    throw new Error('ログインが必要です')
-  }
-  const res = await fetch('/api/billing/create-checkout-session', {
+  if (!token) throw new Error('ログインが必要です')
+
+  const res = await fetch('/api/billing/payjp/create-subscription', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({}),
+    body: JSON.stringify({
+      billing_cycle: billingCycle,
+      payjp_token: payjpToken,
+    }),
   })
+
   const rawText = await res.text()
   let data = {}
   try {
@@ -21,14 +28,33 @@ export async function startPremiumCheckout(accessToken) {
   } catch {
     data = {}
   }
+
   if (!res.ok) {
-    const hint = data?.error
-      || (res.status === 404
-        ? 'API が見つかりません。開発環境では vite.config の /api/billing ミドルウェアと .env の Stripe/Supabase 設定を確認してください。'
-        : null)
-    throw new Error(hint || rawText?.slice(0, 200) || `決済セッションの開始に失敗しました (${res.status})`)
+    throw new Error(
+      data?.error
+      || rawText?.slice(0, 200)
+      || `決済の開始に失敗しました (${res.status})`,
+    )
   }
-  const url = data?.url
-  if (!url) throw new Error('決済URLを取得できませんでした')
-  window.location.href = url
+  return data
+}
+
+export async function cancelPayjpPremiumSubscription(accessToken) {
+  const token = String(accessToken || '').trim()
+  if (!token) throw new Error('ログインが必要です')
+
+  const res = await fetch('/api/billing/payjp/cancel-subscription', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({}),
+  })
+
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    throw new Error(data?.error || `解約に失敗しました (${res.status})`)
+  }
+  return data
 }

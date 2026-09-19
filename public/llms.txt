@@ -1,0 +1,16 @@
+# https://www.moneymart.co.jp
+# MoneyMart — 日本の個人投資家向け。ポートフォリオの見える化、投信とETFの重なり、新NISA、配当管理。
+
+User-agent: *
+Allow: /
+
+Sitemap: https://www.moneymart.co.jp/sitemap.xml
+
+# 公開コンテンツ
+# / … ポートフォリオ・NISA・ETF重複
+# /insights … 編集インサイト
+# /etf-compare … 国内上場ETFの比較
+# /tools/nisa-etf-checklist … NISA・ETFの確認項目
+# /news … ニュース要約
+# /market … マーケット指標
+# /legal/methodology … 編集・データ方針

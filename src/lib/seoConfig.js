@@ -2,10 +2,30 @@
  * Client-side SEO defaults. Production canonical host should match sitemap / SSR (see PUBLIC_SITE_URL on Vercel).
  */
 import { ETF_UNIVERSE_COUNT } from '../data/etfUniverseLite'
+import { softwareApplicationJsonLd } from './seoJsonLd'
+
+export {
+  articleJsonLd,
+  breadcrumbListJsonLd,
+  organizationJsonLd,
+  softwareApplicationJsonLd,
+  webSiteJsonLd,
+  EDITORIAL_AUTHOR_NAME,
+} from './seoJsonLd'
 
 export const SITE_ORIGIN = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_PUBLIC_SITE_ORIGIN)
   ? String(import.meta.env.VITE_PUBLIC_SITE_ORIGIN).replace(/\/$/, '')
   : (typeof window !== 'undefined' ? window.location.origin : 'https://www.moneymart.co.jp')
+
+/** Favicon / apple-touch-icon (public/icon.png). */
+export const SITE_LOGO_PATH = '/icon.png'
+/** Social link previews — smaller than icon.png so X/Kakao fetch reliably. */
+export const SITE_OG_IMAGE_PATH = '/og-card.png'
+export const SITE_OG_IMAGE_SIZE = { width: 512, height: 512 }
+
+export function getSiteOgImageUrl(origin = SITE_ORIGIN) {
+  return `${String(origin || SITE_ORIGIN).replace(/\/$/, '')}${SITE_OG_IMAGE_PATH}`
+}
 
 function abs(path) {
   const p = path.startsWith('/') ? path : `/${path}`
@@ -22,89 +42,115 @@ export function getSeoForRoute(pathname, search = '') {
   const entries = [
     {
       match: (p) => p === '/' || p === '',
-      title: 'MoneyMart | 新NISA ETF比較・配当カレンダー 無料 | 個人投資家向け',
+      title: 'MoneyMart｜ポートフォリオの見える化・新NISA・投信とETFの重複確認',
       description:
-        '新NISA・つみたて・成長投資枠向けの無料ツール。国内ETF比較（上場投信）、配当カレンダー、信託報酬の確認、株価・マーケット指標・家計トラッカー・投資インサイトまで。',
+        '保有ポートフォリオの偏りと投資信託・ETFの重なり、集中リスクを整理。新NISAの枠と配当予定を無料で確認できます。将来の運用成果を保証するものではなく、投資助言ではありません。',
       path: '/',
       isTool: false,
     },
     {
       match: (p) => p === '/etf-compare',
-      title: `新NISA ETF比較 無料 | 国内上場ETF ${ETF_UNIVERSE_COUNT}銘柄 | MoneyMart`,
+      title: `国内上場ETF比較（${ETF_UNIVERSE_COUNT}本）｜信託報酬・NISA | MoneyMart`,
       description:
-        `国内上場ETF（上場投信）${ETF_UNIVERSE_COUNT}銘柄を無料で比較。信託報酬・NISA区分・チャート・パフォーマンス。全銘柄の一覧・詳細な並べ替えはブラウザでJavaScript有効時（アプリ内UI）。配当カレンダー等の他ツールと併用可。`,
+        `国内上場ETF ${ETF_UNIVERSE_COUNT}本を信託報酬・NISA区分・値動きで横並び比較。投信との重複や集中度を確認する前の銘柄選びにも使えます。情報提供のみで、売買の推奨ではありません。`,
       path: '/etf-compare',
       isTool: true,
       toolName: 'MoneyMart ETF比較',
     },
     {
       match: (p) => p === '/funds/compare',
-      title: `新NISA ETF比較 無料 | 国内上場ETF ${ETF_UNIVERSE_COUNT}銘柄 | MoneyMart`,
+      title: `国内上場ETF比較（${ETF_UNIVERSE_COUNT}本）｜信託報酬・NISA | MoneyMart`,
       description:
-        `国内上場ETF（上場投信）${ETF_UNIVERSE_COUNT}銘柄を無料で比較。信託報酬・NISA区分・チャート・パフォーマンス。全銘柄の一覧・詳細な並べ替えはブラウザでJavaScript有効時（アプリ内UI）。配当カレンダー等の他ツールと併用可。`,
+        `国内上場ETF ${ETF_UNIVERSE_COUNT}本を信託報酬・NISA区分・値動きで横並び比較。投信との重複や集中度を確認する前の銘柄選びにも使えます。情報提供のみで、売買の推奨ではありません。`,
       path: '/etf-compare',
       isTool: true,
       toolName: 'MoneyMart ETF比較',
     },
     {
       match: (p) => p === '/dividend-calendar',
-      title: 'Dividend Calendar | 260+ JP & US Stocks | MoneyMart',
+      title: '配当カレンダー（日本株・米国株）無料｜入金予定の整理 | MoneyMart',
       description:
-        '日本株・米国株260銘柄超の配当予定をカレンダーで確認する「無料」「ツール」。NISA・長期保有のキャッシュフロー管理に。ETFと個別株の「比較」検討にも。',
+        '日本株・米国株の配当月・入金見込みをカレンダーで整理する無料ツール。新NISAや長期保有のキャッシュフロー確認、ETFと個別株の配当見通しの比較に使えます。将来の配当を保証するものではありません。',
       path: '/dividend-calendar',
       isTool: true,
       toolName: 'MoneyMart 配当カレンダー',
     },
     {
       match: (p) => p === '/market' || p === '/market-indicator',
-      title: 'Japan Fear & Greed Index | Market Sentiment | MoneyMart',
+      title: 'マーケット指標｜セクター・地域・センチメント | MoneyMart',
       description:
-        '日本市場のセンチメントや関連ニュースを整理する「無料」のマーケット「ツール」。ETF・株式のタイミング検討や、NISA枠の配分を考える材料に。',
-      path: '/market-indicator',
+        '米国セクター・地域ETFの騰落、日本テーマ、ニュースと市場センチメントを一つのボードで確認。ポートフォリオの偏りを点検する補助情報です。数値タイルの一部は会員ログイン後に表示されます。',
+      path: '/market',
       isTool: true,
       toolName: 'MoneyMart マーケット指標',
     },
     {
       match: (p) => p === '/budget-tracker',
-      title: 'AI Receipt Scanner & Budget Tracker | MoneyMart',
+      title: '家計トラッカー｜支出とNISA積立のバランスを整理 | MoneyMart',
       description:
-        'レシート読み取りとAI分類で家計を可視化する「無料」「ツール」。日常の支出管理と、NISA・ETFなど投資とのバランス確認に。他サービスとの「比較」材料にも。',
+        'レシート読み取りと分類で家計を可視化する無料ツール。日常の支出と、新NISA・ETFなど投資とのバランス確認に使えます。特定の金融商品の購入を推奨するものではありません。',
       path: '/budget-tracker',
       isTool: true,
       toolName: 'MoneyMart 家計トラッカー',
     },
     {
       match: (p) => p === '/insights',
-      title: 'Investment Insights | Data-Driven Analysis | MoneyMart',
+      title: 'MoneyMart Insights｜市場・家計・新NISAの編集分析',
       description:
-        'データドリブンな投資インサイト。「無料」で中立的な視点を提供。ETF「比較」ツールやマーケット指標と併用し、NISA・分散投資の検討に。',
+        '家計・ポートフォリオ・マーケットをデータで読み解く MoneyMart 編集インサイト。公開日とリードを掲載し、全文は無料会員向けです。投資助言ではありません。',
       path: '/insights',
-      isTool: true,
-      toolName: 'MoneyMart 投資インサイト',
+      isTool: false,
+    },
+    {
+      match: (p) => p.startsWith('/insights/category/'),
+      title: 'インサイト（テーマ別）｜MoneyMart 編集分析',
+      description:
+        '新NISA・家計・住宅ローン・マーケットなどテーマ別に整理した MoneyMart 分析インサイト。公開日・リードを確認できます。',
+      path: '',
+      useFullPath: true,
+      isTool: false,
+    },
+    {
+      match: (p) => p.startsWith('/insights/'),
+      title: 'インサイト記事｜MoneyMart 編集部',
+      description:
+        'MoneyMart 編集部の投資・家計分析。公開情報と一次資料の参照を前提とした検証記事です。投資助言ではありません。',
+      path: '',
+      useFullPath: true,
+      isTool: false,
     },
     {
       match: (p) => p === '/news',
-      title: 'AI News | MoneyMart',
+      title: 'AIニュース｜投資・経済ヘッドラインの要点整理 | MoneyMart',
       description:
-        '投資・経済に関わるニュースをAIで要約・整理する「無料」コンテンツ。ETFや個別株、NISAの話題を横断的に追う「ツール」として活用できます。',
+        '投資・経済ニュースを日本語で要約して読める無料ページ。ETF・個別株・新NISA関連の話題を横断チェックできます。情報提供であり、投資助言ではありません。',
       path: '/news',
       isTool: true,
       toolName: 'MoneyMart AIニュース',
     },
     {
       match: (p) => p === '/tools',
-      title: 'Tools Hub | MoneyMart',
+      title: '無料投資ツール一覧｜ETF比較・配当・NISAチェック | MoneyMart',
       description:
-        '配当カレンダー・家計トラッカー・ETF「比較」など、個人投資家向け「無料」「ツール」の入口。NISAや長期投資とあわせて一覧から選べます。',
+        'ETF比較、配当カレンダー、家計トラッカー、NISA・ETFチェックリストなど、ポートフォリオ整理に使える無料ツールの入口です。',
       path: '/tools',
       isTool: true,
-      toolName: 'MoneyMart ツールハブ',
+      toolName: 'MoneyMart ツール',
+    },
+    {
+      match: (p) => p === '/tools/nisa-etf-checklist',
+      title: 'NISA・ETFを選ぶ前の初心者チェックリスト | MoneyMart',
+      description:
+        '人気ランキングを見る前に、投資期間・積立額・信託報酬・為替・分配金などの比較軸を整理する無料チェックリスト。NISA・ETF初心者向け。',
+      path: '/tools/nisa-etf-checklist',
+      isTool: true,
+      toolName: 'NISA・ETF初心者チェックリスト',
     },
     {
       match: (p) => p === '/funds',
-      title: 'Funds & ETFs | MoneyMart',
+      title: '投資信託・ETF｜信託報酬とNISA区分の確認 | MoneyMart',
       description:
-        '投資信託・ETFの探索とウォッチリスト。信託報酬や分配の傾向を把握し、NISA枠での「比較」検討に使える「無料」「ツール」です。',
+        '投資信託とETFの探索・ウォッチリスト。信託報酬や分配の傾向を把握し、新NISA枠での比較検討に使える無料ツールです。重複保有の確認にも使えます。',
       path: '/funds',
       isTool: false,
     },
@@ -113,12 +159,13 @@ export function getSeoForRoute(pathname, search = '') {
       title: 'ファンド詳細 | MoneyMart',
       description:
         '国内ETF・投資信託の価格推移、指標、概要を確認できる詳細ページです。NISAでの比較検討にも活用できます。',
-      path: '/funds',
+      path: '',
+      useFullPath: true,
       isTool: false,
     },
     {
       match: (p) => p === '/stocks',
-      title: 'Stocks | MoneyMart',
+      title: '株式・銘柄一覧 | MoneyMart',
       description:
         '株価・チャート・ウォッチリストをまとめて確認。ETFと個別株の「比較」や、NISA成長枠の銘柄研究に使える「無料」の株式「ツール」です。',
       path: '/stocks',
@@ -149,11 +196,35 @@ export function getSeoForRoute(pathname, search = '') {
       isTool: false,
     },
     {
-      match: (p) => p === '/about',
-      title: 'About | MoneyMart',
+      match: (p) => p === '/campaign/sns-2026',
+      title: 'SNSキャンペーン | MoneyMart',
       description:
-        'MoneyMartのミッションとチームについて。個人投資家向けの「無料」「ツール」で、ETF「比較」から家計管理までを中立に支援します。',
+        '2026年10月開催。条件達成でプレミアム1ヶ月、抽選でAmazonギフト券。X・Note投稿とアンケートで応募できます。',
+      path: '/campaign/sns-2026',
+      isTool: false,
+    },
+    {
+      match: (p) => p === '/careers',
+      title: '採用情報 | MoneyMart',
+      description:
+        'MoneyMartの採用情報。ウェルスマネジメント向けB2B営業・事業開発のビジネスデベロップメントディレクターを通年で募集しています。',
+      path: '/careers',
+      isTool: false,
+    },
+    {
+      match: (p) => p === '/about',
+      title: '運営会社 | MoneyMart',
+      description:
+        'マネーラボ株式会社（MoneyLab Inc.）が運営するMoneyMartの会社概要・ミッション・チーム。お問い合わせは support@moneymart.co.jp です。',
       path: '/about',
+      isTool: false,
+    },
+    {
+      match: (p) => p === '/legal/commerce',
+      title: '特定商取引法に基づく表記 | MoneyMart',
+      description:
+        'MoneyMart Premium の販売業者、料金、支払方法、解約・返金、お問い合わせ先など、特定商取引法に基づく表記です。',
+      path: '/legal/commerce',
       isTool: false,
     },
     {
@@ -180,19 +251,76 @@ export function getSeoForRoute(pathname, search = '') {
       path: '/legal/disclaimer',
       isTool: false,
     },
+    {
+      match: (p) => p === '/legal/methodology',
+      title: '編集・データ方針｜一次情報と訂正窓口 | MoneyMart',
+      description:
+        'MoneyMartのインサイト編集方針、市場データの取り扱い、一次情報の確認、訂正・お問い合わせ窓口（support@moneymart.co.jp）のご案内です。',
+      path: '/legal/methodology',
+      isTool: false,
+    },
+    {
+      match: (p) => p === '/legal/security',
+      title: 'セキュリティ宣言 | MoneyMart',
+      description:
+        'MoneyMartの通信暗号化とアクセス管理など、安全管理措置に関する宣言です。',
+      path: '/legal/security',
+      isTool: false,
+    },
+    {
+      match: (p) => p === '/legal/solicitation',
+      title: '勧誘方針 | MoneyMart',
+      description:
+        'MoneyMartの広告・紹介に関する方針です。投資助言や特定商品の取得勧誘は行いません。',
+      path: '/legal/solicitation',
+      isTool: false,
+    },
+    {
+      match: (p) => p === '/legal/antisocial',
+      title: '反社会的勢力への対応 | MoneyMart',
+      description:
+        'マネーラボ株式会社の反社会的勢力に対する方針です。',
+      path: '/legal/antisocial',
+      isTool: false,
+    },
+    {
+      match: (p) => p === '/premium',
+      title: 'プレミアム会員 | MoneyMart',
+      description:
+        'MoneyMart Premium の機能案内。料金・支払・解約は特定商取引法に基づく表記および申込画面の表示に従います。',
+      path: '/premium',
+      isTool: false,
+    },
+    {
+      match: (p) => p === '/community',
+      title: 'コミュニティ | MoneyMart',
+      description: 'MoneyMartの会員コミュニティ。',
+      path: '/community',
+      isTool: false,
+      noindex: true,
+    },
+    {
+      match: (p) => p === '/signup-complete',
+      title: 'メール確認完了 | MoneyMart',
+      description:
+        '新規登録時のメール確認が完了したことを表示するページです。',
+      path: '/signup-complete',
+      isTool: false,
+      noindex: true,
+    },
   ]
 
   const normalized = path.replace(/\/$/, '') || '/'
   const row = entries.find((e) => e.match(normalized)) || {
     match: () => true,
-    title: 'MoneyMart | 日本の個人投資家向け無料ツール',
+    title: 'MoneyMart｜日本の個人投資家向け無料ツール',
     description:
-      '日本向け「無料」投資・家計「ツール」。ETF「比較」、NISA、ニュースとインサイトをまとめて利用できます。',
+      'ポートフォリオの見える化、ETF比較、NISA、配当管理をまとめて使える日本向け無料ツールです。',
     path: normalized,
     isTool: false,
   }
 
-  const basePath = row.path || normalized
+  const basePath = row.useFullPath ? normalized : (row.path || normalized)
   // Avoid duplicate content: keep only explicitly allowed query params.
   let canonicalQuery = ''
   if (basePath === '/insights') {
@@ -209,21 +337,10 @@ export function getSeoForRoute(pathname, search = '') {
     path: basePath,
     isTool: row.isTool,
     toolName: row.toolName,
+    noindex: Boolean(row.noindex),
   }
 }
 
 export function webApplicationJsonLd(name, pageUrl) {
-  return {
-    '@context': 'https://schema.org',
-    '@type': 'WebApplication',
-    name,
-    url: pageUrl,
-    applicationCategory: 'FinanceApplication',
-    operatingSystem: 'Any',
-    offers: {
-      '@type': 'Offer',
-      price: '0',
-      priceCurrency: 'JPY',
-    },
-  }
+  return softwareApplicationJsonLd({ name, url: pageUrl, base: SITE_ORIGIN })
 }

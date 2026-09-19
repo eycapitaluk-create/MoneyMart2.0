@@ -1,0 +1,6 @@
+-- CRM: session badge "登録直後" only when visit is within 48h of account creation
+-- Re-run the full traffic dashboard function (includes internal-user exclusions):
+--   SUPABASE_PATCH_CRM_TRAFFIC_EXCLUDE_INTERNAL_USERS.sql
+--
+-- Change: signed_up_in_window now requires session first_at near auth.users.created_at
+-- (Frontend Admin also applies the same 48h rule as a fallback.)

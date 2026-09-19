@@ -1,5 +1,5 @@
 /**
- * 顧客チャット: /api/chatbot（Claude Haiku）へ POST
+ * 顧客チャット: /api/chatbot（Claude Haiku 4.5）へ POST
  * @param {string} message
  * @param {{ sender: 'user' | 'bot', text: string }[]} messages 直近の会話（クライアント保持）
  * @returns {Promise<{ reply: string, usage?: { input_tokens: number, output_tokens: number } }>}

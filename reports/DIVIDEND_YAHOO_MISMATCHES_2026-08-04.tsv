@@ -1,0 +1,7 @@
+symbol	market	status	amountOk	monthsOk	exOk	masterAmt	yahooAmt	masterMonths	masterEx	yahooEx
+7205.T	JP	yahoo_fail								
+9719.T	JP	yahoo_fail								
+GFS	US	months_mismatch	true	false	true	0.12	0.12	3/6/9/12	2026-06-24	2026-06-24
+NDSN	US	months_mismatch	true	false	true	0.82	0.82	1/4/7/10	2026-06-18	2026-06-18
+PGR	US	months_mismatch	true	false	true	0.1	0.1	1/4/7/10	2026-07-02	2026-07-02
+SKHY	US	yahoo_no_div								

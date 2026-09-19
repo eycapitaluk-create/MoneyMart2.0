@@ -1,10 +1,10 @@
 /**
- * FAQ お問い合わせフォーム → justin.nam@moneymart.co.jp にメール送信
+ * FAQ お問い合わせフォーム → support@moneymart.co.jp にメール送信
  * POST /api/contact
  * Body: { email, message }
  * 必要: RESEND_API_KEY, RESEND_FROM (認証済みドメイン)
  */
-const RECIPIENT = 'justin.nam@moneymart.co.jp'
+const RECIPIENT = 'support@moneymart.co.jp'
 
 function escapeHtml(s) {
   return String(s)

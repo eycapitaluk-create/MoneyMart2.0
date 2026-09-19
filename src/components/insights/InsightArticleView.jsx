@@ -2,6 +2,7 @@ import { Fragment, useEffect, useRef } from 'react'
 import { isEmptyInsightBodyHtml, looksLikeInsightHtml, sanitizeInsightBodyHtml } from '../../lib/insightHtml'
 import { normalizeInsightDocumentForRender } from '../../lib/insightDocumentNormalize'
 import { normalizeInsightKeywordList } from '../../lib/insightKeywords'
+import { getInsightCategoryThemeFromDocument } from '../../lib/insightCategoryTheme'
 import InsightToolPill from './InsightToolPill'
 
 const accentTitle = (accent) => {
@@ -107,9 +108,14 @@ const INSIGHT_ARTICLE_WIDTH = 'w-full min-w-0 max-w-3xl lg:max-w-4xl xl:max-w-5x
 const INSIGHT_ARTICLE_PAD = 'px-5 sm:px-6 lg:px-8'
 const INSIGHT_PROSE_TEXT = 'text-[15px] sm:text-[16px] lg:text-[17px] leading-[1.8] lg:leading-[1.75] text-stone-700 dark:text-slate-300'
 
-export default function InsightArticleView({ document: docRaw }) {
+export default function InsightArticleView({
+  document: docRaw,
+  pageTitle = '',
+  lockedPreview = false,
+}) {
   const rootRef = useFadeInVisible()
   const doc = normalizeInsightDocumentForRender(docRaw || {})
+  const theme = getInsightCategoryThemeFromDocument(doc)
   const hero = doc?.hero || {}
   const adminMeta = doc?.admin && typeof doc.admin === 'object' ? doc.admin : {}
   /** 一覧サムネは admin.coverImageUrl を使う。本文ヘッダは従来 hero のみだったため、管理の URL を合流 */
@@ -122,12 +128,21 @@ export default function InsightArticleView({ document: docRaw }) {
     ? adminMeta.relatedTools.map((t) => String(t || '').trim()).filter(Boolean)
     : []
 
+  const titleLines = (() => {
+    const fromHero = normalizeInsightDocumentForRender({ hero: { titleLines: hero.titleLines } }).hero?.titleLines || []
+    if (fromHero.length > 0) return fromHero
+    const fallback = String(pageTitle || '').trim()
+    return fallback ? [[{ text: fallback }]] : []
+  })()
+
   const firstProseIdx = sections.findIndex((b) => b?.type === 'prose')
+  const showBody = !lockedPreview
 
   return (
     <div
       ref={rootRef}
-      className="insight-editorial text-stone-900 dark:text-slate-200 bg-[#f6f4ef] dark:bg-slate-950 antialiased selection:bg-amber-200/80 selection:text-stone-900 dark:selection:bg-amber-900/40 dark:selection:text-amber-100"
+      data-insight-theme={theme.key}
+      className={`insight-editorial antialiased selection:bg-amber-200/80 selection:text-stone-900 dark:selection:bg-amber-900/40 dark:selection:text-amber-100 ${theme.rootClass}`}
     >
       <style>{`
         .insight-editorial { font-family: 'Noto Sans JP', system-ui, -apple-system, sans-serif; }
@@ -139,60 +154,47 @@ export default function InsightArticleView({ document: docRaw }) {
         .insight-marquee-track { animation: insight-marquee 28s linear infinite; }
       `}</style>
 
-      <header className={`relative flex flex-col justify-start ${INSIGHT_ARTICLE_PAD} lg:px-12 xl:px-16 pb-7 sm:pb-9 pt-7 sm:pt-9 border-b border-stone-200/80 dark:border-slate-800/90`}>
+      <header className={`relative flex flex-col justify-start ${INSIGHT_ARTICLE_PAD} lg:px-12 xl:px-16 pb-7 sm:pb-9 pt-7 sm:pt-9 border-b ${theme.headerBorder}`}>
         {/* 背景だけクリップ。見出し・リードは overflow で切らない（長い見出しが右で欠けないように） */}
         <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
           <div
             className="absolute inset-0 opacity-[0.35] dark:hidden"
             style={{
-              backgroundImage: `linear-gradient(rgba(120,113,108,0.06) 1px, transparent 1px),
-              linear-gradient(90deg, rgba(120,113,108,0.06) 1px, transparent 1px)`,
+              backgroundImage: `linear-gradient(${theme.headerLightGrid} 1px, transparent 1px),
+              linear-gradient(90deg, ${theme.headerLightGrid} 1px, transparent 1px)`,
               backgroundSize: '48px 48px',
             }}
           />
           <div
             className="absolute inset-0 dark:hidden"
-            style={{
-              background: `
-              radial-gradient(ellipse 70% 55% at 75% 12%, rgba(225,29,72,0.09) 0%, transparent 55%),
-              radial-gradient(ellipse 55% 45% at 12% 88%, rgba(180,83,9,0.08) 0%, transparent 50%),
-              radial-gradient(ellipse 50% 35% at 50% 50%, rgba(251,191,36,0.04) 0%, transparent 60%),
-              linear-gradient(180deg, #f0ece4 0%, #f6f4ef 100%)
-            `,
-            }}
+            style={{ background: theme.headerLightGradient }}
           />
           <div
             className="absolute inset-0 hidden dark:block"
-            style={{
-              background: `
-              radial-gradient(ellipse 70% 55% at 75% 15%, rgba(248,113,113,0.12) 0%, transparent 55%),
-              radial-gradient(ellipse 55% 45% at 15% 85%, rgba(251,191,36,0.08) 0%, transparent 50%),
-              linear-gradient(180deg, #0f172a 0%, #020617 100%)
-            `,
-            }}
+            style={{ background: theme.headerDarkGradient }}
           />
           <div
-            className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-amber-500/50 to-transparent dark:via-amber-500/30"
+            className={`absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent ${theme.headerAccentLine} to-transparent`}
           />
-          {hero.bgFigure ? (
+          {(hero.bgFigure || theme.defaultBgFigure) ? (
             <div
               className="font-mono absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-[clamp(4rem,18vw,16rem)] font-medium text-stone-900/[0.04] dark:text-slate-100/[0.06] whitespace-nowrap select-none z-0"
             >
-              {hero.bgFigure}
+              {hero.bgFigure || theme.defaultBgFigure}
             </div>
           ) : null}
         </div>
 
         <div className={`relative z-[1] ${INSIGHT_ARTICLE_WIDTH}`}>
           {hero.badge ? (
-            <div className="inline-flex max-w-full items-center gap-2 px-4 py-1.5 rounded-full border border-rose-300/80 dark:border-rose-500/40 bg-[#faf8f4]/90 dark:bg-slate-900/80 backdrop-blur-sm text-[11px] font-semibold tracking-[0.12em] text-rose-700 dark:text-rose-300 mb-5 shadow-sm break-words [overflow-wrap:anywhere]">
-              <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
+            <div className={`inline-flex max-w-full items-center gap-2 px-4 py-1.5 rounded-full border backdrop-blur-sm text-[11px] font-semibold tracking-[0.12em] mb-5 shadow-sm break-words [overflow-wrap:anywhere] ${theme.badgeClass}`}>
+              <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${theme.badgeDotClass}`} />
               {hero.badge}
             </div>
           ) : null}
 
           <h1 className="insight-heading text-[clamp(1.75rem,5vw,3.25rem)] font-extrabold leading-[1.25] tracking-tight text-stone-900 dark:text-white mb-6 break-words [overflow-wrap:anywhere]">
-            {(hero.titleLines || []).map((line, li) => (
+            {titleLines.map((line, li) => (
               <span key={`tl-${li}`} className="block">
                 {(line || []).map((seg, si) => (
                   <span key={`seg-${li}-${si}`} className={accentTitle(seg?.accent)}>
@@ -203,16 +205,16 @@ export default function InsightArticleView({ document: docRaw }) {
             ))}
           </h1>
 
-          {hero.sub ? (
-            <div className="relative w-full min-w-0 max-w-2xl lg:max-w-3xl mb-8 lg:mb-9 pl-4 sm:pl-5 border-l-[3px] border-amber-500/90 dark:border-amber-500/70">
+          {!lockedPreview && hero.sub ? (
+            <div className={`relative w-full min-w-0 max-w-2xl lg:max-w-3xl mb-8 lg:mb-9 pl-4 sm:pl-5 border-l-[3px] ${theme.subBorderClass}`}>
               <p className="text-base sm:text-lg lg:text-[1.125rem] text-stone-700 dark:text-slate-300 leading-[1.75] lg:leading-[1.7] font-normal break-words [overflow-wrap:break-word]">
                 {hero.sub}
               </p>
             </div>
           ) : null}
 
-          {Array.isArray(hero.meta) && hero.meta.length > 0 ? (
-            <div className="inline-flex max-w-full flex-wrap rounded-2xl border border-stone-200/90 dark:border-slate-600/80 bg-[#faf8f4]/90 dark:bg-slate-900/75 backdrop-blur-md px-4 py-3 shadow-sm">
+          {!lockedPreview && Array.isArray(hero.meta) && hero.meta.length > 0 ? (
+            <div className={`inline-flex max-w-full flex-wrap rounded-2xl border backdrop-blur-md px-4 py-3 shadow-sm ${theme.metaBoxClass}`}>
               <p className="text-[11px] sm:text-xs text-stone-600 dark:text-slate-400 font-mono font-medium tracking-wide leading-relaxed">
                 {hero.meta.filter(Boolean).join(' · ')}
               </p>
@@ -222,7 +224,7 @@ export default function InsightArticleView({ document: docRaw }) {
       </header>
 
       {coverImageUrl ? (
-        <div className="relative bg-[#faf8f4] dark:bg-slate-950 border-b border-stone-200/60 dark:border-slate-800/80">
+        <div className={`relative border-b ${theme.coverWrapClass}`}>
           <div
             data-insight-reveal
             className={`${INSIGHT_ARTICLE_WIDTH} ${INSIGHT_ARTICLE_PAD} pb-5 sm:pb-7 w-full overflow-hidden rounded-2xl border border-stone-200/90 dark:border-slate-600/80 bg-stone-200/80 dark:bg-slate-800 shadow-[0_22px_55px_-28px_rgba(28,25,23,0.28)] dark:shadow-[0_24px_60px_-28px_rgba(0,0,0,0.5)]`}
@@ -238,8 +240,8 @@ export default function InsightArticleView({ document: docRaw }) {
         </div>
       ) : null}
 
-      {tickerLoop.length > 0 ? (
-        <div className="border-y border-stone-200 dark:border-slate-800 bg-[#eeebe4]/90 dark:bg-slate-900/95 overflow-hidden py-3.5">
+      {showBody && tickerLoop.length > 0 ? (
+        <div className={`border-y overflow-hidden py-3.5 ${theme.tickerBarClass}`}>
           <div className="flex gap-14 insight-marquee-track w-max">
             {tickerLoop.map((item, i) => (
               <div key={`tk-${i}`} className="flex items-center gap-3 whitespace-nowrap font-mono text-[13px]">
@@ -254,7 +256,8 @@ export default function InsightArticleView({ document: docRaw }) {
         </div>
       ) : null}
 
-      <div className="relative bg-gradient-to-b from-[#faf8f4] via-[#f6f4ef] to-[#f0ece6] dark:from-slate-950 dark:via-slate-950 dark:to-slate-900">
+      {showBody ? (
+      <div className={`relative bg-gradient-to-b ${theme.bodyGradientClass}`}>
         <div className={`${INSIGHT_ARTICLE_WIDTH} ${INSIGHT_ARTICLE_PAD} pt-4 sm:pt-5 lg:pt-6 pb-6 sm:pb-8 space-y-8 sm:space-y-10 lg:space-y-12`}>
         {sections.map((block, idx) => {
           if (!block || !block.type) return null
@@ -267,19 +270,19 @@ export default function InsightArticleView({ document: docRaw }) {
                 <section key={`b-${idx}`} data-insight-reveal className="space-y-4 sm:space-y-5">
                   <div className="flex items-center gap-3">
                     {block.kicker ? (
-                      <span className="font-mono text-base font-semibold tracking-[0.2em] uppercase text-amber-900 dark:text-amber-300 whitespace-nowrap">
+                      <span className={`font-mono text-base font-semibold tracking-[0.2em] uppercase whitespace-nowrap ${theme.kickerClass}`}>
                         {block.kicker}
                       </span>
                     ) : null}
-                    <div className="h-px flex-1 bg-gradient-to-r from-amber-400/60 to-transparent dark:from-amber-600/40" />
+                    <div className={`h-px flex-1 bg-gradient-to-r ${theme.kickerLineClass} to-transparent`} />
                   </div>
                   <p className="text-xs font-black tracking-[0.2em] text-stone-500 dark:text-slate-400 uppercase">
                     分析の本文
                   </p>
                   {paras.length >= 2 ? (
                     <div className="space-y-6">
-                      <div className="rounded-2xl border border-emerald-200/90 dark:border-emerald-900/50 bg-[#eef6f2] dark:bg-slate-900/80 p-5 sm:p-6 lg:p-7 shadow-[0_16px_40px_-28px_rgba(6,78,59,0.2)] dark:shadow-[0_20px_50px_-28px_rgba(0,0,0,0.5)]">
-                        <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-emerald-800 dark:text-emerald-300 mb-3">
+                      <div className={`rounded-2xl border p-5 sm:p-6 lg:p-7 ${theme.thesisCardClass}`}>
+                        <p className={`font-mono text-[10px] tracking-[0.2em] uppercase mb-3 ${theme.thesisLabelClass}`}>
                           投資テーゼ
                         </p>
                         <ProseParagraph
@@ -287,8 +290,8 @@ export default function InsightArticleView({ document: docRaw }) {
                           className="text-[16px] sm:text-[17px] lg:text-[18px] leading-[1.85] lg:leading-[1.8] text-stone-800 dark:text-slate-100 font-medium"
                         />
                       </div>
-                      <div className="rounded-2xl border border-sky-200/90 dark:border-sky-900/50 bg-[#eef3f8] dark:bg-slate-900/80 p-5 sm:p-6 lg:p-7 shadow-[0_16px_40px_-28px_rgba(12,74,110,0.15)] dark:shadow-[0_20px_50px_-28px_rgba(0,0,0,0.5)]">
-                        <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-sky-800 dark:text-sky-300 mb-3">
+                      <div className={`rounded-2xl border p-5 sm:p-6 lg:p-7 ${theme.evidenceCardClass}`}>
+                        <p className={`font-mono text-[10px] tracking-[0.2em] uppercase mb-3 ${theme.evidenceLabelClass}`}>
                           根拠
                         </p>
                         <div className="space-y-4">
@@ -303,7 +306,7 @@ export default function InsightArticleView({ document: docRaw }) {
                       </div>
                     </div>
                   ) : (
-                    <div className="rounded-2xl border border-stone-200/90 dark:border-slate-700 bg-[#faf8f4] dark:bg-slate-900/90 p-5 sm:p-6 lg:p-7 shadow-[0_20px_50px_-30px_rgba(28,25,23,0.12)] dark:shadow-[0_24px_60px_-28px_rgba(0,0,0,0.45)]">
+                    <div className={`rounded-2xl border p-5 sm:p-6 lg:p-7 shadow-[0_20px_50px_-30px_rgba(28,25,23,0.12)] dark:shadow-[0_24px_60px_-28px_rgba(0,0,0,0.45)] ${theme.proseCardClass}`}>
                       {paras.map((p, pi) => (
                         <ProseParagraph
                           key={`p-${pi}`}
@@ -318,9 +321,9 @@ export default function InsightArticleView({ document: docRaw }) {
             }
 
             return (
-              <section key={`b-${idx}`} data-insight-reveal className="rounded-2xl border border-stone-200/80 dark:border-slate-700/90 bg-[#faf8f4] dark:bg-slate-900/85 p-5 sm:p-6 lg:p-7 shadow-[0_18px_48px_-32px_rgba(28,25,23,0.18)] dark:shadow-[0_22px_55px_-28px_rgba(0,0,0,0.5)] space-y-4">
+              <section key={`b-${idx}`} data-insight-reveal className={`rounded-2xl border p-5 sm:p-6 lg:p-7 shadow-[0_18px_48px_-32px_rgba(28,25,23,0.18)] dark:shadow-[0_22px_55px_-28px_rgba(0,0,0,0.5)] space-y-4 ${theme.proseCardClass}`}>
                 {block.kicker ? (
-                  <p className="font-mono text-base font-semibold tracking-[0.2em] uppercase text-amber-800/90 dark:text-amber-400/90">
+                  <p className={`font-mono text-base font-semibold tracking-[0.2em] uppercase ${theme.kickerClass}`}>
                     {block.kicker}
                   </p>
                 ) : null}
@@ -328,7 +331,7 @@ export default function InsightArticleView({ document: docRaw }) {
                   {block.title}
                 </h2>
                 {block.lead ? (
-                  <p className="text-stone-600 dark:text-slate-400 text-[15px] sm:text-base leading-[1.8] lg:leading-[1.75] border-l-2 border-amber-400/70 dark:border-amber-600/50 pl-4">
+                  <p className={`text-stone-600 dark:text-slate-400 text-[15px] sm:text-base leading-[1.8] lg:leading-[1.75] border-l-2 pl-4 ${theme.leadBorderClass}`}>
                     {block.lead}
                   </p>
                 ) : null}
@@ -374,13 +377,13 @@ export default function InsightArticleView({ document: docRaw }) {
               ? 'bg-rose-50/80 border-rose-200/80 dark:bg-rose-950/35 dark:border-rose-800/60'
               : isTip
                 ? 'bg-amber-50/80 border-amber-200/70 dark:bg-amber-950/25 dark:border-amber-800/50'
-                : 'bg-[#faf8f4] border-l-[3px] border-amber-500 shadow-sm border-y border-r border-stone-200/80 rounded-r-xl dark:bg-slate-900 dark:border-slate-700 dark:border-l-amber-500'
+                : theme.calloutInsightClass
             return (
               <section key={`b-${idx}`} data-insight-reveal>
                 <div className={`rounded-xl px-6 py-5 ${box}`}>
                   {block.title ? (
                     <h4
-                      className={`font-bold text-sm mb-2 ${isWarn ? 'text-rose-700 dark:text-rose-300' : isTip ? 'text-amber-900 dark:text-amber-200' : 'text-amber-900 dark:text-amber-200'}`}
+                      className={`font-bold text-sm mb-2 ${isWarn ? 'text-rose-700 dark:text-rose-300' : isTip ? 'text-amber-900 dark:text-amber-200' : theme.calloutTitleClass}`}
                     >
                       {block.title}
                     </h4>
@@ -469,7 +472,7 @@ export default function InsightArticleView({ document: docRaw }) {
             className={`${INSIGHT_ARTICLE_WIDTH} ${INSIGHT_ARTICLE_PAD} pt-3 sm:pt-4 pb-5 sm:pb-6 border-b border-stone-200/80 dark:border-slate-800`}
             aria-label="関連コンテンツ"
           >
-            <p className="font-mono text-xs sm:text-sm tracking-[0.18em] uppercase text-amber-800/90 dark:text-amber-400/90 mb-2 font-bold">
+            <p className={`font-mono text-xs sm:text-sm tracking-[0.18em] uppercase mb-2 font-bold ${theme.sectionLabelClass}`}>
               MM 関連コンテンツ
             </p>
             <div className="flex flex-wrap gap-2 sm:gap-2.5">
@@ -484,14 +487,14 @@ export default function InsightArticleView({ document: docRaw }) {
             className={`${INSIGHT_ARTICLE_WIDTH} ${INSIGHT_ARTICLE_PAD} pt-3 sm:pt-4 pb-5 sm:pb-6 border-b border-stone-200/80 dark:border-slate-800`}
             aria-label="キーワード"
           >
-            <p className="font-mono text-xs sm:text-sm tracking-[0.18em] uppercase text-amber-800/90 dark:text-amber-400/90 mb-2 font-bold">
+            <p className={`font-mono text-xs sm:text-sm tracking-[0.18em] uppercase mb-2 font-bold ${theme.sectionLabelClass}`}>
               キーワード
             </p>
             <div className="flex flex-wrap gap-2 sm:gap-2.5">
               {keywordList.map((kw, ki) => (
                 <span
                   key={`${kw}-${ki}`}
-                  className="inline-flex items-center rounded-full border border-stone-300/90 dark:border-slate-500 bg-[#ebe6dc]/90 dark:bg-slate-800/95 px-3.5 py-1.5 sm:px-4 sm:py-2 text-sm sm:text-[15px] font-bold text-stone-800 dark:text-slate-100 leading-snug whitespace-nowrap max-w-full"
+                  className={`inline-flex items-center rounded-full border px-3.5 py-1.5 sm:px-4 sm:py-2 text-sm sm:text-[15px] font-bold leading-snug whitespace-nowrap max-w-full ${theme.keywordChipClass}`}
                 >
                   {kw}
                 </span>
@@ -500,14 +503,15 @@ export default function InsightArticleView({ document: docRaw }) {
           </section>
         ) : null}
       </div>
+      ) : null}
 
-      <footer className="border-t border-stone-200 dark:border-slate-800 bg-[#f0ece6]/50 dark:bg-slate-900/60 py-8 sm:py-9 px-5 text-center">
-        <p className="font-mono text-lg font-semibold text-amber-900/90 dark:text-amber-300/90 tracking-wide mb-1.5">MoneyMart</p>
+      <footer className={`border-t py-8 sm:py-9 px-5 text-center ${theme.footerClass}`}>
+        <p className={`font-mono text-lg font-semibold tracking-wide mb-1.5 ${theme.footerBrandClass}`}>MoneyMart</p>
         <p className="text-xs text-stone-500 dark:text-slate-500 tracking-[0.12em] font-medium mb-5">
           金融情報をもっとシンプルに、もっと見やすく
         </p>
         <p className="text-[11px] text-stone-500 dark:text-slate-400 leading-[1.85] max-w-xl mx-auto border-t border-stone-200/80 dark:border-slate-700 pt-5">
-          ※本ページは情報提供を目的としたものであり、特定の金融商品の購入・売却を推奨するものではありません。投資判断はご自身の責任において行ってください。本コンテンツの著作権はMoneyMart（運営：マネーラボ合同会社／MoneyLab G.K.）に帰属します。無断での転載・複製・配布・改変を禁じます。一部記事の作成にAIを活用している場合があります。すべての記事は編集チームが内容を確認しています。
+          ※本ページは情報提供を目的としたものであり、特定の金融商品の購入・売却を推奨するものではありません。投資判断はご自身の責任において行ってください。本コンテンツの著作権はMoneyMart（運営：マネーラボ株式会社／MoneyLab Inc.）に帰属します。無断での転載・複製・配布・改変を禁じます。一部記事の作成にAIを活用している場合があります。すべての記事は編集チームが内容を確認しています。
         </p>
       </footer>
     </div>

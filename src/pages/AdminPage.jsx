@@ -378,6 +378,12 @@ const buildProductDashboardRollups = (analytics) => {
 const formatCrmLoadError = (err) => {
   const message = String(err?.message || err || '')
   if (
+    message.includes('admin_crm_dashboard')
+    && (message.includes('does not exist') || message.includes('schema cache') || message.includes('Could not find'))
+  ) {
+    return 'CRM 분석 RPC가 없습니다. `SUPABASE_CRM_ANALYTICS_V2.sql`을 적용한 뒤 다시 불러오세요.'
+  }
+  if (
     message.includes('admin_crm_users')
     && (message.includes('does not exist') || message.includes('schema cache') || message.includes('Could not find'))
   ) {
@@ -388,6 +394,34 @@ const formatCrmLoadError = (err) => {
     return 'Signup attribution columns are missing on `user_profiles`. Run `SUPABASE_CRM_SIGNUP_ATTRIBUTION.sql` in Supabase.'
   }
   return message || 'Failed to load CRM data.'
+}
+
+const CRM_LIFECYCLE = {
+  active: { label: 'アクティブ', tone: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300' },
+  warm: { label: '要フォロー', tone: 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300' },
+  dormant: { label: '休眠', tone: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300' },
+  new_unactivated: { label: '新規・未活性', tone: 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300' },
+  never_activated: { label: '未活性', tone: 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300' },
+}
+
+const CRM_CHANNELS = {
+  campaign: { label: 'キャンペーン', tone: 'bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300' },
+  organic_search: { label: '自然検索', tone: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300' },
+  organic_social: { label: 'SNS', tone: 'bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300' },
+  referral: { label: '参照サイト', tone: 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300' },
+  direct: { label: '直接流入', tone: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300' },
+  unattributed: { label: '過去追跡なし', tone: 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300' },
+  auth_return_unknown: { label: '認証経由・不明', tone: 'bg-orange-50 text-orange-700 dark:bg-orange-950/40 dark:text-orange-300' },
+  internal_test: { label: '内部テスト', tone: 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400' },
+}
+
+const formatCrmDate = (value, withTime = false) => {
+  if (!value) return '—'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '—'
+  return date.toLocaleString('ja-JP', withTime
+    ? { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }
+    : { year: 'numeric', month: '2-digit', day: '2-digit' })
 }
 
 const ADMIN_TAB_VALID = new Set(['dashboard', 'operations', 'analytics', 'crm'])
@@ -881,6 +915,16 @@ export default function AdminPage() {
   const [crmError, setCrmError] = useState('')
   const [crmRows, setCrmRows] = useState([])
   const [crmFilter, setCrmFilter] = useState('')
+  const [crmRangeDays, setCrmRangeDays] = useState(30)
+  const [crmLifecycleFilter, setCrmLifecycleFilter] = useState('all')
+  const [crmPlanFilter, setCrmPlanFilter] = useState('all')
+  const [crmData, setCrmData] = useState({
+    metrics: {},
+    daily_signups: [],
+    sources: [],
+    lifecycle: {},
+    generated_at: null,
+  })
   const [formData, setFormData] = useState({
     category: 'cards',
     name: '',
@@ -2208,13 +2252,23 @@ export default function AdminPage() {
     }
   }
 
-  const loadCrm = async () => {
+  const loadCrm = async (rangeDays = crmRangeDays) => {
     setCrmLoading(true)
     setCrmError('')
     try {
-      const { data, error } = await supabase.rpc('admin_crm_users', { p_limit: 300 })
+      const { data, error } = await supabase.rpc('admin_crm_dashboard', {
+        p_days: Math.max(7, Math.min(365, Number(rangeDays || 30))),
+        p_limit: 500,
+      })
       if (error) throw error
-      setCrmRows(Array.isArray(data) ? data : [])
+      setCrmRows(Array.isArray(data?.users) ? data.users : [])
+      setCrmData({
+        metrics: data?.metrics || {},
+        daily_signups: Array.isArray(data?.daily_signups) ? data.daily_signups : [],
+        sources: Array.isArray(data?.sources) ? data.sources : [],
+        lifecycle: data?.lifecycle || {},
+        generated_at: data?.generated_at || null,
+      })
     } catch (err) {
       setCrmError(formatCrmLoadError(err))
       setCrmRows([])
@@ -2244,10 +2298,13 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (activeTab !== 'crm') return
-    loadCrm()
-  }, [activeTab])
+    loadCrm(crmRangeDays)
+  }, [activeTab, crmRangeDays])
 
   const crmFiltered = crmRows.filter((r) => {
+    if (crmLifecycleFilter !== 'all' && r.lifecycle_stage !== crmLifecycleFilter) return false
+    if (crmPlanFilter === 'premium' && !r.is_premium_active) return false
+    if (crmPlanFilter === 'free' && r.is_premium_active) return false
     const q = crmFilter.trim().toLowerCase()
     if (!q) return true
     const hay = [
@@ -3129,91 +3186,204 @@ export default function AdminPage() {
         )}
 
         {activeTab === 'crm' && (
-          <>
-            <Card className="p-6">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
-                <div className="flex items-center gap-2">
-                  <Users className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+          <div className="space-y-4">
+            <Card className="p-5">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex items-start gap-3">
+                  <div className="rounded-xl bg-indigo-50 p-2.5 dark:bg-indigo-950/40">
+                    <Users className="h-6 w-6 text-indigo-600 dark:text-indigo-300" />
+                  </div>
                   <div>
-                    <h2 className="text-xl font-bold text-gray-900 dark:text-white">User CRM</h2>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-                      Latest 300 registered users with first-touch acquisition (referrer, UTM, landing). Rows created before email verification are backfilled on the user&apos;s first login after they verify.
+                    <h2 className="text-xl font-black text-gray-900 dark:text-white">ユーザーCRM分析</h2>
+                    <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                      集客から利用開始・再訪・プレミアム転換までを同じユーザー単位で確認します。
+                    </p>
+                    <p className="mt-1 text-[11px] text-gray-400">
+                      最終集計: {formatCrmDate(crmData.generated_at, true)}
                     </p>
                   </div>
                 </div>
-                <Button type="button" variant="ghost" onClick={() => loadCrm()}>
-                  Reload
-                </Button>
+                <div className="flex flex-wrap items-center gap-2">
+                  {[7, 30, 90].map((days) => (
+                    <button key={days} type="button" onClick={() => setCrmRangeDays(days)}
+                      className={`rounded-lg border px-3 py-1.5 text-xs font-bold ${crmRangeDays === days
+                        ? 'border-indigo-600 bg-indigo-600 text-white'
+                        : 'border-gray-200 bg-white text-gray-600 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300'}`}>
+                      {days}日
+                    </button>
+                  ))}
+                  <Button type="button" variant="ghost" onClick={() => loadCrm(crmRangeDays)}>再集計</Button>
+                </div>
               </div>
-              <div className="mb-4">
-                <label className="block text-xs font-bold text-gray-500 mb-1" htmlFor="crm-filter">
-                  Search (email, name, referrer, UTM, landing)
-                </label>
-                <input
-                  id="crm-filter"
-                  type="search"
-                  value={crmFilter}
-                  onChange={(e) => setCrmFilter(e.target.value)}
-                  className="w-full max-w-md rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-white"
-                  placeholder="google / t.co / utm / ..."
-                />
+            </Card>
+
+            {crmError ? <Card className="p-4 text-sm text-red-600 dark:text-red-400">{crmError}</Card> : null}
+
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
+              {[
+                ['総登録者', crmData.metrics.total_users, 'users'],
+                ['7日新規', crmData.metrics.signups_7d, 'new'],
+                ['30日新規', crmData.metrics.signups_30d, 'new'],
+                ['7日アクティブ', crmData.metrics.active_7d, 'active'],
+                ['30日アクティブ', crmData.metrics.active_30d, 'active'],
+                ['資産登録済み', crmData.metrics.portfolio_activated, 'activation'],
+                ['プレミアム', crmData.metrics.premium_users, 'premium'],
+                ['Push登録', crmData.metrics.push_enabled, 'push'],
+              ].map(([label, value, key]) => (
+                <Card key={`${key}-${label}`} className="p-3">
+                  <p className="text-[10px] font-bold text-gray-500 dark:text-gray-400">{label}</p>
+                  <p className="mt-1 text-2xl font-black text-gray-900 dark:text-white">
+                    {Number(value || 0).toLocaleString()}
+                  </p>
+                </Card>
+              ))}
+            </div>
+
+            {!crmLoading && Number(crmData.metrics.total_users || 0) > 0 ? (
+              <div className="grid gap-4 xl:grid-cols-[1.2fr_1fr]">
+                <Card className="p-5">
+                  <div className="mb-4 flex items-center justify-between">
+                    <div>
+                      <h3 className="font-black text-gray-900 dark:text-white">新規登録トレンド</h3>
+                      <p className="text-xs text-gray-500">日本時間・日次</p>
+                    </div>
+                  </div>
+                  <div className="h-56">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={crmData.daily_signups} margin={{ top: 6, right: 8, left: -22, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                        <XAxis dataKey="day" tick={{ fontSize: 10 }} tickFormatter={(v) => String(v).slice(5)} />
+                        <YAxis allowDecimals={false} tick={{ fontSize: 10 }} />
+                        <Tooltip labelFormatter={(v) => formatCrmDate(v)} />
+                        <Bar dataKey="signups" name="新規登録" fill="#4f46e5" radius={[5, 5, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </Card>
+
+                <Card className="p-5">
+                  <h3 className="font-black text-gray-900 dark:text-white">ユーザー状態</h3>
+                  <p className="mb-4 text-xs text-gray-500">最終行動を基準に自動分類</p>
+                  <div className="space-y-2">
+                    {Object.entries(CRM_LIFECYCLE).map(([key, meta]) => {
+                      const count = Number(crmData.lifecycle?.[key] || 0)
+                      const total = Math.max(1, Number(crmData.metrics.total_users || 0))
+                      return (
+                        <button key={key} type="button" onClick={() => setCrmLifecycleFilter(key)}
+                          className="w-full rounded-lg border border-gray-100 p-2 text-left hover:border-indigo-200 dark:border-gray-800 dark:hover:border-indigo-800">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className={`rounded-full px-2 py-1 font-bold ${meta.tone}`}>{meta.label}</span>
+                            <strong className="text-gray-900 dark:text-white">{count}名 · {Math.round(count / total * 100)}%</strong>
+                          </div>
+                          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+                            <div className="h-full rounded-full bg-indigo-500" style={{ width: `${Math.min(100, count / total * 100)}%` }} />
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </Card>
               </div>
-              {crmLoading ? (
-                <p className="text-sm text-gray-500">Loading…</p>
-              ) : crmError ? (
-                <p className="text-sm text-red-600 dark:text-red-400">{crmError}</p>
-              ) : (
-                <div className="overflow-x-auto overflow-y-auto max-h-[min(70vh,560px)] rounded-lg border border-gray-200 dark:border-gray-700">
-                  <table className="min-w-[920px] w-full text-left text-xs">
-                    <thead className="bg-gray-50 dark:bg-gray-900/80 border-b border-gray-200 dark:border-gray-700">
+            ) : null}
+
+            <Card className="p-5">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="font-black text-gray-900 dark:text-white">獲得チャネルの質</h3>
+                  <p className="text-xs text-gray-500">登録数だけでなく、利用開始率とプレミアム転換率で比較</p>
+                </div>
+              </div>
+              <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
+                <table className="min-w-[720px] w-full text-left text-xs">
+                  <thead className="bg-gray-50 dark:bg-gray-900/80">
+                    <tr>
+                      <th className="px-3 py-2">チャネル</th><th className="px-3 py-2 text-right">登録</th>
+                      <th className="px-3 py-2 text-right">利用開始</th><th className="px-3 py-2 text-right">30日Active</th>
+                      <th className="px-3 py-2 text-right">Premium</th><th className="px-3 py-2 text-right">Premium率</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {crmData.sources.map((row) => {
+                      const channel = CRM_CHANNELS[row.channel] || CRM_CHANNELS.unattributed
+                      return (
+                      <tr key={`${row.channel}-${row.source}`} className="border-t border-gray-100 dark:border-gray-800">
+                        <td className="px-3 py-2">
+                          <span className={`mr-2 inline-flex rounded-full px-2 py-1 font-bold ${channel.tone}`}>{channel.label}</span>
+                          <span className="font-medium text-gray-700 dark:text-gray-300">{row.source}</span>
+                        </td>
+                        <td className="px-3 py-2 text-right">{Number(row.signups || 0)}</td>
+                        <td className="px-3 py-2 text-right">{Number(row.activated || 0)} <span className="text-gray-400">({Number(row.activation_rate || 0)}%)</span></td>
+                        <td className="px-3 py-2 text-right">{Number(row.active_30d || 0)}</td>
+                        <td className="px-3 py-2 text-right">{Number(row.premium || 0)}</td>
+                        <td className="px-3 py-2 text-right font-black text-indigo-600 dark:text-indigo-300">{Number(row.premium_rate || 0)}%</td>
+                      </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+
+            <Card className="p-5">
+              <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                <div>
+                  <h3 className="font-black text-gray-900 dark:text-white">ユーザー一覧・フォロー候補</h3>
+                  <p className="text-xs text-gray-500">登録経路、利用状況、資産登録、プランを横断して確認</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <input id="crm-filter" type="search" value={crmFilter} onChange={(e) => setCrmFilter(e.target.value)}
+                    className="min-w-[240px] rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                    placeholder="メール・名前・チャネル・LPを検索" />
+                  <select value={crmLifecycleFilter} onChange={(e) => setCrmLifecycleFilter(e.target.value)}
+                    className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white">
+                    <option value="all">全ステータス</option>
+                    {Object.entries(CRM_LIFECYCLE).map(([key, meta]) => <option key={key} value={key}>{meta.label}</option>)}
+                  </select>
+                  <select value={crmPlanFilter} onChange={(e) => setCrmPlanFilter(e.target.value)}
+                    className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white">
+                    <option value="all">全プラン</option><option value="free">無料</option><option value="premium">Premium</option>
+                  </select>
+                </div>
+              </div>
+              {crmLoading ? <p className="py-8 text-center text-sm text-gray-500">CRMを集計中…</p> : (
+                <div className="max-h-[620px] overflow-auto rounded-lg border border-gray-200 dark:border-gray-700">
+                  <table className="min-w-[1180px] w-full text-left text-xs">
+                    <thead className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900">
                       <tr>
-                        <th className="px-3 py-2 font-bold text-gray-600 dark:text-gray-400">Signed up</th>
-                        <th className="px-3 py-2 font-bold text-gray-600 dark:text-gray-400">Email</th>
-                        <th className="px-3 py-2 font-bold text-gray-600 dark:text-gray-400">Display name</th>
-                        <th className="px-3 py-2 font-bold text-gray-600 dark:text-gray-400">Referrer</th>
-                        <th className="px-3 py-2 font-bold text-gray-600 dark:text-gray-400">UTM</th>
-                        <th className="px-3 py-2 font-bold text-gray-600 dark:text-gray-400">Landing</th>
+                        <th className="px-3 py-2">状態</th><th className="px-3 py-2">ユーザー</th>
+                        <th className="px-3 py-2">登録日</th><th className="px-3 py-2">獲得</th>
+                        <th className="px-3 py-2">最終利用</th><th className="px-3 py-2 text-right">Session</th>
+                        <th className="px-3 py-2">利用開始</th><th className="px-3 py-2">プラン</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {crmFiltered.map((r) => (
-                        <tr
-                          key={r.user_id}
-                          className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50/80 dark:hover:bg-gray-900/50"
-                        >
-                          <td className="px-3 py-2 whitespace-nowrap text-gray-600 dark:text-gray-400">
-                            {r.user_created_at
-                              ? new Date(r.user_created_at).toLocaleString('en-US')
-                              : '-'}
-                          </td>
-                          <td className="px-3 py-2 font-mono text-[11px] text-gray-900 dark:text-gray-100 max-w-[200px] truncate" title={r.email || ''}>
-                            {r.email || '-'}
-                          </td>
-                          <td className="px-3 py-2 text-gray-800 dark:text-gray-200 max-w-[140px] truncate" title={r.nickname || r.full_name || ''}>
-                            {r.nickname || r.full_name || '-'}
-                          </td>
-                          <td className="px-3 py-2 text-gray-700 dark:text-gray-300 max-w-[160px] truncate" title={r.signup_referrer_domain || ''}>
-                            {r.signup_referrer_domain || '—'}
-                          </td>
-                          <td className="px-3 py-2 text-gray-600 dark:text-gray-400 max-w-[220px]">
-                            <span className="block truncate" title={[r.signup_utm_source, r.signup_utm_medium, r.signup_utm_campaign].filter(Boolean).join(' / ')}>
-                              {[r.signup_utm_source, r.signup_utm_medium].filter(Boolean).join(' · ') || '—'}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2 font-mono text-[10px] text-gray-600 dark:text-gray-400 max-w-[200px] truncate" title={`${r.signup_landing_path || ''}${r.signup_landing_query || ''}`}>
-                            {r.signup_landing_path || '—'}
-                          </td>
-                        </tr>
-                      ))}
+                      {crmFiltered.map((r) => {
+                        const stage = CRM_LIFECYCLE[r.lifecycle_stage] || CRM_LIFECYCLE.never_activated
+                        const channel = CRM_CHANNELS[r.acquisition_channel] || CRM_CHANNELS.unattributed
+                        return (
+                          <tr key={r.user_id} className="border-t border-gray-100 hover:bg-gray-50/70 dark:border-gray-800 dark:hover:bg-gray-900/50">
+                            <td className="px-3 py-2"><span className={`rounded-full px-2 py-1 font-bold ${stage.tone}`}>{stage.label}</span></td>
+                            <td className="px-3 py-2"><p className="font-bold text-gray-900 dark:text-white">{r.nickname || r.full_name || '名称未登録'}</p><p className="max-w-[220px] truncate font-mono text-[10px] text-gray-500">{r.email || '—'}</p></td>
+                            <td className="px-3 py-2 whitespace-nowrap text-gray-600 dark:text-gray-400">{formatCrmDate(r.user_created_at)}</td>
+                            <td className="px-3 py-2">
+                              <span className={`inline-flex rounded-full px-2 py-1 text-[10px] font-bold ${channel.tone}`}>{channel.label}</span>
+                              <p className="mt-1 max-w-[170px] truncate text-[10px] text-gray-500">{r.acquisition_source}</p>
+                              <p className="max-w-[170px] truncate text-[10px] text-gray-400">{r.signup_landing_path || 'LP不明'}</p>
+                            </td>
+                            <td className="px-3 py-2 whitespace-nowrap">{formatCrmDate(r.last_active_at, true)}</td>
+                            <td className="px-3 py-2 text-right font-mono">{Number(r.sessions_in_range || 0)}</td>
+                            <td className="px-3 py-2"><span className="font-bold">資産 {Number(r.owned_stock_count || 0) + Number(r.owned_fund_count || 0)}</span><span className="ml-2 text-gray-400">Push {Number(r.push_device_count || 0)}</span></td>
+                            <td className="px-3 py-2"><span className={`rounded-full px-2 py-1 font-bold ${r.is_premium_active ? 'bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300' : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300'}`}>{r.is_premium_active ? 'Premium' : 'Free'}</span></td>
+                          </tr>
+                        )
+                      })}
                     </tbody>
                   </table>
-                  {crmFiltered.length === 0 ? (
-                    <p className="p-4 text-sm text-gray-500">No matching users.</p>
-                  ) : null}
+                  {crmFiltered.length === 0 ? <p className="p-6 text-center text-sm text-gray-500">条件に一致するユーザーはいません。</p> : null}
                 </div>
               )}
             </Card>
-          </>
+          </div>
         )}
 
         {activeTab === 'operations' && (

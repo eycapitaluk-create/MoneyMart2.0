@@ -38,6 +38,7 @@ import { MM_SIMULATION_PAST_PERFORMANCE_JA } from '../lib/moneymartSimulationDis
 import { fetchMyReferralCode } from '../lib/referralApi'
 import { ReferralShareMenu } from '../components/ReferralShareMenu'
 import HomeOptimizer3DShowcase from '../components/funds/HomeOptimizer3DShowcase'
+import HomeHeroBrandFilm from '../components/home/HomeHeroBrandFilm'
 import { REFERRAL_INVITE_UI_ENABLED } from '../lib/referralUiFlags'
 import { signedReturnTextClassStrong } from '../lib/marketDirectionColors'
 /** FundPage の MAX_SYMBOLS_FOR_HISTORY と揃える。小さいと低流動性銘柄が 1Y 未算出のままになり Top5 から欠落する */
@@ -714,7 +715,7 @@ export default function HomePage({
             <h1 className="font-black tracking-tight mb-3 md:mb-4 max-w-xl lg:max-w-2xl min-w-0">
               {/* bg-clip-text は WebKit で字形の上が欠けることがあるため、グラデに近いソリッド色で分割 */}
               <div className="w-full min-w-0">
-                <span className="inline-block max-w-full whitespace-nowrap text-[clamp(1.02rem,calc(2.2vw_+_0.78rem),2.9rem)] sm:text-[2.2rem] md:text-[2.55rem] lg:text-[2.9rem] leading-normal sm:leading-snug py-0.5">
+                <span className="inline-block max-w-full text-[clamp(1.02rem,calc(2.2vw_+_0.78rem),2.9rem)] sm:text-[2.15rem] md:text-[2.35rem] lg:text-[2.45rem] xl:text-[2.7rem] leading-normal sm:leading-snug py-0.5">
                   <span className="text-orange-600 dark:text-orange-400">金融の選択を、</span>
                   <span className="text-orange-500 dark:text-orange-300">もっと</span>
                   <span className="text-red-600 dark:text-red-400">スマートに。</span>
@@ -817,173 +818,13 @@ export default function HomePage({
             </div>
           ) : null}
 
-          <div className="[grid-area:hero-phone] relative flex justify-center lg:justify-center lg:pl-0 lg:pr-2 xl:pl-1 xl:pr-4">
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <div className="w-64 h-60 md:w-72 md:h-64 bg-orange-200/45 dark:bg-orange-900/35 blur-3xl rounded-full" style={{ animation: 'mmPhoneGlowPulse 3.8s ease-in-out infinite' }} />
-              <div className="absolute w-80 h-80 md:w-[22rem] md:h-[22rem] rounded-full bg-orange-300/30 dark:bg-orange-800/25 blur-[78px]" style={{ animation: 'mmPhoneGlowPulse 4.6s ease-in-out infinite 120ms' }} />
-              <div className="absolute w-[320px] h-[320px] md:w-[370px] md:h-[370px] rounded-full border border-white/45 dark:border-orange-400/20 shadow-[0_0_95px_rgba(255,255,255,0.45),0_0_120px_rgba(251,146,60,0.28)] dark:shadow-[0_0_80px_rgba(251,146,60,0.15),0_0_100px_rgba(15,23,42,0.5)]" style={{ animation: 'mmPhoneGlowPulse 5.2s ease-in-out infinite 240ms' }} />
-            </div>
-            {/* コンパクト「アプリ」シェル：中身はスクロールで全機能へジャンプ可能 */}
-            <div
-              className="relative z-[1] w-[min(100%,312px)] sm:w-[min(100%,334px)] h-[min(500px,76vh)] max-h-[min(500px,76vh)] flex flex-col rounded-[1.65rem] overflow-hidden shadow-[0_26px_60px_rgba(0,0,0,0.35),0_0_60px_rgba(251,146,60,0.36)] dark:shadow-[0_26px_60px_rgba(0,0,0,0.65),0_0_48px_rgba(251,146,60,0.22)] border border-white/35 dark:border-slate-600/40 ring-2 ring-orange-200/45 dark:ring-orange-900/50 bg-[#0f0a08] lg:-translate-x-1 xl:-translate-x-2"
-              style={{ animation: 'mmPhoneFloat 5.2s ease-in-out infinite' }}
-            >
-              <div className="shrink-0 h-3 flex items-end justify-center pb-0.5 bg-[#0f0a08]">
-                <div className="w-11 h-[3px] rounded-full bg-slate-600" />
-              </div>
-              <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-y-contain [scrollbar-width:thin]">
-                <div className="bg-[#14100d] px-2.5 pt-2 pb-2.5">
-                  <div className="flex items-center justify-between gap-1 mb-2.5">
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <div className="h-7 w-7 rounded-lg bg-orange-500 flex items-center justify-center shrink-0 shadow-md shadow-orange-500/25">
-                        <span className="text-white font-black text-[10px]">M</span>
-                      </div>
-                      <span className="text-white font-black text-sm truncate">MoneyMart</span>
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <span className="text-[8px] font-black px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/35">
-                        新NISA
-                      </span>
-                      <button
-                        type="button"
-                        aria-label={homeAlertCount > 0 ? `通知（未読${homeAlertCount}件）` : '通知'}
-                        className="relative p-1 rounded-full bg-white/5 text-slate-300 hover:bg-white/10"
-                        onClick={() => trackAndNavigate('/mypage', { source: 'home_app_bell' })}
-                      >
-                        <Bell size={14} />
-                        {session?.user && homeAlertCount > 0 ? (
-                          <>
-                            <span
-                              className="absolute -top-0.5 -right-0.5 min-w-[14px] h-3.5 px-0.5 rounded-full bg-red-500 text-[8px] font-black text-white flex items-center justify-center ring-2 ring-[#14100d]"
-                              aria-hidden
-                            >
-                              {homeAlertCount > 9 ? '9+' : homeAlertCount}
-                            </span>
-                          </>
-                        ) : null}
-                      </button>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <div
-                      className="h-10 w-10 rounded-full bg-gradient-to-br from-amber-200 to-orange-300 flex items-center justify-center text-lg shrink-0 border border-white/15"
-                      aria-hidden
-                    >
-                      🐕
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-white font-bold text-[11px] leading-tight">
-                        {greetingJa}、{appHomeDisplayName}
-                      </p>
-                      <p className="text-slate-500 text-[9px] mt-0.5 leading-snug">今日も投資を楽しみましょう！</p>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => trackAndNavigate(session?.user ? '/mypage' : '/funds', { source: 'home_app_portfolio_banner' })}
-                    className="mt-2 w-full text-left text-[9px] font-bold text-slate-300 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg px-2 py-1.5 transition"
-                  >
-                    ファンドを追加してポートフォリオを始めよう
-                  </button>
-                </div>
-
-                <div className="bg-[#e8edf4] dark:bg-slate-900 px-2 pt-2 pb-2">
-                  <div className="bg-white dark:bg-slate-800 rounded-xl shadow border border-slate-200/90 dark:border-slate-700 p-2.5 mb-2">
-                    <div className="flex gap-2">
-                      <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-amber-100 to-orange-100 dark:from-amber-900/40 dark:to-orange-900/30 flex items-center justify-center text-xl shrink-0 border border-orange-200/40">
-                        🐕
-                      </div>
-                      <p className="text-[10px] font-bold text-slate-800 dark:text-slate-100 leading-snug">
-                        ファンドを追加すると、資産の推移や配当の見込みがひと目でわかります。
-                      </p>
-                    </div>
-                    <div className="mt-2 flex flex-col gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => trackAndNavigate('/funds', { source: 'home_app_add_fund' })}
-                        className="w-full py-2 rounded-lg bg-orange-500 hover:bg-orange-600 text-white text-[10px] font-black flex items-center justify-center gap-1 shadow-sm"
-                      >
-                        <Plus size={14} strokeWidth={2.5} /> ファンドを追加
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => trackAndNavigate('/tools', { source: 'home_app_simulation' })}
-                        className="w-full py-2 rounded-lg bg-white dark:bg-slate-900 border border-orange-400 text-orange-600 dark:text-orange-400 text-[10px] font-black flex items-center justify-center gap-1"
-                      >
-                        <LucideLineChart size={14} strokeWidth={2.2} /> シミュレーション
-                      </button>
-                    </div>
-                  </div>
-
-                  <p className="text-[9px] font-black text-slate-500 dark:text-slate-400 mb-1 px-0.5">クイックアクション</p>
-                  <div className="grid grid-cols-4 gap-1 mb-2">
-                    {[
-                      { label: 'ファンド', Icon: BarChart2, bg: 'bg-orange-100 dark:bg-orange-950/60', fg: 'text-orange-600 dark:text-orange-400', to: '/funds', sid: 'home_qa_fund' },
-                      { label: 'ニュース', Icon: Newspaper, bg: 'bg-emerald-100 dark:bg-emerald-950/50', fg: 'text-emerald-600 dark:text-emerald-400', to: '/news', sid: 'home_qa_news' },
-                      { label: 'NISA', Icon: Shield, bg: 'bg-sky-100 dark:bg-sky-950/50', fg: 'text-sky-600 dark:text-sky-400', to: '/tools', sid: 'home_qa_nisa' },
-                      { label: '配当', Icon: CalendarDays, bg: 'bg-rose-100 dark:bg-rose-950/50', fg: 'text-rose-600 dark:text-rose-400', to: '/dividend-calendar', sid: 'home_qa_div' },
-                      { label: 'ヒート', Icon: LayoutGrid, bg: 'bg-lime-100 dark:bg-lime-950/40', fg: 'text-lime-700 dark:text-lime-400', to: '/market', sid: 'home_qa_heat' },
-                      { label: '比較', Icon: RefreshCw, bg: 'bg-amber-100 dark:bg-amber-950/40', fg: 'text-amber-700 dark:text-amber-400', to: '/funds/compare', sid: 'home_qa_compare' },
-                      { label: '税金', Icon: Percent, bg: 'bg-violet-100 dark:bg-violet-950/50', fg: 'text-violet-600 dark:text-violet-400', to: '/tools', sid: 'home_qa_tax' },
-                      { label: 'マイ', Icon: User, bg: 'bg-cyan-100 dark:bg-cyan-950/50', fg: 'text-cyan-600 dark:text-cyan-400', to: '/mypage', sid: 'home_qa_mypage' },
-                    ].map((item) => {
-                      const QaIcon = item.Icon
-                      return (
-                        <button
-                          key={item.sid}
-                          type="button"
-                          onClick={() => trackAndNavigate(item.to, { source: item.sid })}
-                          className={`flex flex-col items-center justify-center gap-0.5 rounded-xl ${item.bg} ${item.fg} py-2 px-0.5 border border-black/[0.04] dark:border-white/5 hover:opacity-90 active:scale-[0.97] transition`}
-                        >
-                          <QaIcon size={16} strokeWidth={2.2} />
-                          <span className="text-[7px] font-black leading-none text-center text-slate-700 dark:text-slate-200">{item.label}</span>
-                        </button>
-                      )
-                    })}
-                  </div>
-
-                  <p className="text-[9px] font-black text-slate-500 dark:text-slate-400 mb-1 px-0.5">マーケット速報</p>
-                  <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-0.5 px-0.5 [scrollbar-width:thin]">
-                    {marketFlash.length === 0
-                      ? HOME_MARKET_FLASH.map((cfg) => (
-                        <div
-                          key={cfg.symbol}
-                          className="min-w-[108px] shrink-0 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-2 shadow-sm"
-                        >
-                          <p className="text-[8px] font-black text-slate-400">{cfg.country}</p>
-                          <p className="text-[9px] font-bold text-slate-800 dark:text-slate-100 leading-tight mt-0.5 line-clamp-2">{cfg.headline}</p>
-                          <p className="text-sm font-black text-slate-300 dark:text-slate-600 mt-0.5">…</p>
-                        </div>
-                      ))
-                      : marketFlash.map((row) => (
-                        <button
-                          key={row.symbol}
-                          type="button"
-                          onClick={() => trackAndNavigate(`/funds/${encodeURIComponent(row.symbol)}`, { source: 'home_market_flash', symbol: row.symbol })}
-                          className="min-w-[112px] shrink-0 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-2 shadow-sm text-left hover:border-orange-400 transition"
-                        >
-                          <p className="text-[8px] font-black text-slate-400 dark:text-slate-500">{row.country}</p>
-                          <p className="text-[9px] font-bold text-slate-800 dark:text-slate-100 leading-tight mt-0.5 line-clamp-2">{row.headline}</p>
-                          <p className="text-[13px] font-black text-slate-900 dark:text-white mt-0.5 tabular-nums">{formatFlashPrice(row.price)}</p>
-                          <p
-                            className={`text-[9px] font-black tabular-nums ${
-                              row.pct == null ? 'text-slate-400' : signedReturnTextClassStrong(row.pct)
-                            }`}
-                          >
-                            {row.pct == null ? '—' : `${row.pct >= 0 ? '+' : ''}${row.pct.toFixed(2)}%`}
-                          </p>
-                        </button>
-                      ))}
-                  </div>
-                  <p className="text-[7px] text-slate-400 dark:text-slate-500 mt-1.5 leading-snug px-0.5">
-                    ETF参考値。指数ではありません。勧誘・保証ではありません。
-                  </p>
-                </div>
-              </div>
-            </div>
+          <div className="[grid-area:hero-phone] min-w-0 w-full px-3 sm:px-4 lg:pl-2 lg:pr-2 lg:pt-12">
+            <HomeHeroBrandFilm />
           </div>
         </div>
       </section>
+
+
 
       {/* 登録前の離脱防止：マイページ相当機能のイメージ（資産カードのみ見本金額あり・実データではない） */}
       <section className="max-w-7xl mx-auto px-4 mt-8 mb-8" aria-labelledby="home-mypage-preview-heading">

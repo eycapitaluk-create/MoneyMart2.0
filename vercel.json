@@ -7,15 +7,11 @@
   "crons": [
     {
       "path": "/api/cron/marketstack-daily",
-<<<<<<< HEAD
       "schedule": "0 6 * * 1-5"
-=======
-      "schedule": "0 21 * * *"
     },
     {
       "path": "/api/cron/ai-news-summarize",
       "schedule": "0 */6 * * *"
->>>>>>> origin/feature/platform-ui-refresh-feb10
     }
   ],
   "routes": [

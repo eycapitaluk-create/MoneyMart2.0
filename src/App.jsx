@@ -90,6 +90,7 @@ const ToolLandingPage = lazy(() => import('./pages/ToolLandingPage'))
 const InsightPage = lazy(() => import('./pages/InsightPage'))
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'))
 const PremiumPage = lazy(() => import('./pages/PremiumPage'))
+const BusinessDemoPage = lazy(() => import('./pages/BusinessDemoPage'))
 
 const RouteSkeleton = ({ title = 'ページを読み込み中...' }) => (
   <div className="min-h-[50vh] max-w-5xl mx-auto px-4 py-8">
@@ -888,6 +889,7 @@ const App = () => {
               </RequireAdmin>
             }
           />
+          <Route path="/business/demo" element={<BusinessDemoPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>

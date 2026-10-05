@@ -277,7 +277,9 @@ export async function backfillSignupAttributionIfEmpty(supabaseClient, userId) {
     attr.signup_referrer_domain
       || attr.signup_utm_source
       || attr.signup_utm_medium
-      || attr.signup_utm_campaign,
+      || attr.signup_utm_campaign
+      || attr.signup_landing_path
+      || attr.signup_attribution_captured_at,
   )
   if (!has) return
   try {

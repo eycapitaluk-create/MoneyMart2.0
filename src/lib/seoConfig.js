@@ -1,3 +1,4 @@
+import { CAREERS_SEO_TITLE, CAREERS_SEO_DESCRIPTION } from '../data/careers.js'
 /**
  * Client-side SEO defaults. Production canonical host should match sitemap / SSR (see PUBLIC_SITE_URL on Vercel).
  */
@@ -52,7 +53,7 @@ export function getSeoForRoute(pathname, search = '') {
       match: (p) => p === '/etf-compare',
       title: `国内上場ETF比較（${ETF_UNIVERSE_COUNT}本）｜信託報酬・NISA | MoneyMart`,
       description:
-        `国内上場ETF ${ETF_UNIVERSE_COUNT}本を信託報酬・NISA区分・値動きで横並び比較。投信との重複や集中度を確認する前の銘柄選びにも使えます。情報提供のみで、売買の推奨ではありません。`,
+        `国内上場ETF ${ETF_UNIVERSE_COUNT}本を信託報酬・NISA区分・値動きで横並び比較。投信との重複や集中度を確認する前の銘柄選びにも使えます。情報提供のみで、売買の勧誘ではありません。`,
       path: '/etf-compare',
       isTool: true,
       toolName: 'MoneyMart ETF比較',
@@ -61,7 +62,7 @@ export function getSeoForRoute(pathname, search = '') {
       match: (p) => p === '/funds/compare',
       title: `国内上場ETF比較（${ETF_UNIVERSE_COUNT}本）｜信託報酬・NISA | MoneyMart`,
       description:
-        `国内上場ETF ${ETF_UNIVERSE_COUNT}本を信託報酬・NISA区分・値動きで横並び比較。投信との重複や集中度を確認する前の銘柄選びにも使えます。情報提供のみで、売買の推奨ではありません。`,
+        `国内上場ETF ${ETF_UNIVERSE_COUNT}本を信託報酬・NISA区分・値動きで横並び比較。投信との重複や集中度を確認する前の銘柄選びにも使えます。情報提供のみで、売買の勧誘ではありません。`,
       path: '/etf-compare',
       isTool: true,
       toolName: 'MoneyMart ETF比較',
@@ -88,7 +89,7 @@ export function getSeoForRoute(pathname, search = '') {
       match: (p) => p === '/budget-tracker',
       title: '家計トラッカー｜支出とNISA積立のバランスを整理 | MoneyMart',
       description:
-        'レシート読み取りと分類で家計を可視化する無料ツール。日常の支出と、新NISA・ETFなど投資とのバランス確認に使えます。特定の金融商品の購入を推奨するものではありません。',
+        'レシート読み取りと分類で家計を可視化する無料ツール。日常の支出と、新NISA・ETFなど投資とのバランス確認に使えます。特定の金融商品の売買を勧誘するものではありません。',
       path: '/budget-tracker',
       isTool: true,
       toolName: 'MoneyMart 家計トラッカー',
@@ -199,15 +200,15 @@ export function getSeoForRoute(pathname, search = '') {
       match: (p) => p === '/campaign/sns-2026',
       title: 'SNSキャンペーン | MoneyMart',
       description:
-        '2026年10月開催。条件達成でプレミアム1ヶ月、抽選でAmazonギフト券。X・Note投稿とアンケートで応募できます。',
+        '応募条件を満たした方の中から抽選で、Amazonギフトカード1,000円分を50名様、MoneyMart Premium 1か月利用クーポンを1,000名様に。',
       path: '/campaign/sns-2026',
       isTool: false,
     },
     {
       match: (p) => p === '/careers',
-      title: '採用情報 | MoneyMart',
+      title: CAREERS_SEO_TITLE,
       description:
-        'MoneyMartの採用情報。ウェルスマネジメント向けB2B営業・事業開発のビジネスデベロップメントディレクターを通年で募集しています。',
+        CAREERS_SEO_DESCRIPTION,
       path: '/careers',
       isTool: false,
     },

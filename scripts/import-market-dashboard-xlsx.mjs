@@ -4,6 +4,8 @@
  *   market_dashboard_recent  （Business アプリが読む統合テーブル — 常に更新）
  *
  *   node scripts/import-market-dashboard-xlsx.mjs /path/to/market_dashboard_2026-08-25.xlsx
+ *   node scripts/import-market-dashboard-xlsx.mjs /path/to/market_dashboard_2026-08-25.xlsx --dry-run
+ *   日本市場休場日: --jp-market-closed（Nikkei/TOPIX の価格行を作らず recent は休場表示）
  */
 import fs from 'node:fs/promises'
 import path from 'node:path'
@@ -215,6 +217,28 @@ const run = async () => {
   if (!xlsxPath) throw new Error('Usage: node scripts/import-market-dashboard-xlsx.mjs /path/market_dashboard_YYYY-MM-DD.xlsx')
 
   const parsed = parseDashboardRows(xlsxPath)
+  const dryRun = process.argv.slice(3).includes('--dry-run')
+  const jpMarketClosed = process.argv.slice(3).includes('--jp-market-closed')
+  if (jpMarketClosed) {
+    const closedSymbols = new Set(['^N225', '1306.T'])
+    const closedLabels = new Set(['日経225', 'TOPIX'])
+    parsed.indexPriceRows = parsed.indexPriceRows.filter((row) => !closedSymbols.has(row.symbol))
+    parsed.symbolRows = parsed.symbolRows.filter((row) => !closedSymbols.has(row.symbol))
+    parsed.recentRows = parsed.recentRows.map((row) => (
+      closedLabels.has(row.item) ? { ...row, status: 'market_closed' } : row
+    ))
+  }
+  if (dryRun) {
+    console.log(
+      `[dry-run] ${parsed.fileBase} (${parsed.tradeDate}): `
+      + `indices=${parsed.indexPriceRows.length}, `
+      + `commodities=${parsed.commodityRows.length}, `
+      + `fx=${parsed.fxUsdJpy != null ? 'USD/JPY' : 'skip'}, `
+      + `recent=${parsed.recentRows.length}, `
+      + `jp_market_closed=${jpMarketClosed ? 'yes' : 'no'}. No database rows were changed.`,
+    )
+    return
+  }
   const supabase = createClient(supabaseUrl, supabaseKey)
 
   if (parsed.symbolRows.length > 0) {

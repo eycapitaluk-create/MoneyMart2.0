@@ -1,10 +1,17 @@
 import {
+  CAMPAIGN_APPLY_ACCEPTED_MESSAGE,
+  CAMPAIGN_APPLY_REJECTED_MESSAGE,
   CAMPAIGN_CP2026_SNS_SEP_END_MS,
   CAMPAIGN_CP2026_SNS_SEP_ID,
   CAMPAIGN_CP2026_SNS_SEP_START_MS,
   CAMPAIGN_CP2026_SNS_SEP_SURVEY_QUESTIONS,
   isCampaignCp2026StaffTester,
 } from '../../src/constants/campaignCp2026SnsSep.js'
+
+export {
+  CAMPAIGN_APPLY_ACCEPTED_MESSAGE,
+  CAMPAIGN_APPLY_REJECTED_MESSAGE,
+}
 import { surveyQuestionVisible } from '../../src/lib/campaignSurveyUtils.js'
 
 export { CAMPAIGN_CP2026_SNS_SEP_ID }
@@ -123,36 +130,43 @@ export function normalizeSurveyAnswers(raw = {}) {
   return out
 }
 
-export function parseSnsSubmission({ sns_url: snsUrlRaw, sns_platform: platformRaw }) {
+const TWITTER_POST_HOSTS = new Set(['x.com', 'twitter.com'])
+const NOTE_POST_HOSTS = new Set(['note.com'])
+
+function campaignSnsError(message) {
+  const err = new Error(message)
+  err.status = 400
+  return err
+}
+
+/** X/Twitter status id, or a Note article path. Domain home and profile URLs are not posts. */
+export function parseSnsSubmission({ sns_url: snsUrlRaw }) {
   const urlText = String(snsUrlRaw || '').trim()
-  if (!urlText) {
-    const err = new Error('投稿URLを入力してください')
-    err.status = 400
-    throw err
-  }
+  if (!urlText) throw campaignSnsError('投稿URLを入力してください')
   let parsed
   try {
     parsed = new URL(urlText.startsWith('http') ? urlText : `https://${urlText}`)
   } catch {
-    const err = new Error('投稿URLの形式が正しくありません')
-    err.status = 400
-    throw err
+    throw campaignSnsError('投稿URLの形式が正しくありません')
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw campaignSnsError('投稿URLの形式が正しくありません')
   }
   const host = parsed.hostname.toLowerCase().replace(/^www\./, '')
-  let platform = String(platformRaw || '').trim().toLowerCase()
-  if (host === 'note.com' || host.endsWith('.note.com')) {
+  const path = parsed.pathname || '/'
+  let platform = ''
+  if (NOTE_POST_HOSTS.has(host)) {
+    if (!/\/n\/n[a-z0-9]{6,}(?:\/|$)/i.test(path)) {
+      throw campaignSnsError('Noteの記事URLを入力してください（note.comのホームやプロフィールは対象外です）')
+    }
     platform = 'note'
-  } else if (host === 'x.com' || host === 'twitter.com' || host.endsWith('.x.com')) {
+  } else if (TWITTER_POST_HOSTS.has(host)) {
+    if (!/\/status\/\d{10,}(?:\/|$)/.test(path)) {
+      throw campaignSnsError('Xの投稿URLを入力してください（x.comのホームやプロフィールは対象外です）')
+    }
     platform = 'twitter'
   } else {
-    const err = new Error('X または Note の公開投稿URLを入力してください')
-    err.status = 400
-    throw err
-  }
-  if (platform !== 'twitter' && platform !== 'note') {
-    const err = new Error('プラットフォームを選択してください')
-    err.status = 400
-    throw err
+    throw campaignSnsError('X または Note の公開投稿URLを入力してください')
   }
   return {
     sns_url: parsed.toString().slice(0, 1000),
@@ -160,14 +174,62 @@ export function parseSnsSubmission({ sns_url: snsUrlRaw, sns_platform: platformR
   }
 }
 
-export async function loadOrCreateCampaignEntry(admin, userId) {
-  const { data: existing, error: selErr } = await admin
+export function applicationInstantMs(entry) {
+  const parsed = Date.parse(entry?.applied_at || '')
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+/** July (and any pre-window) rows stay stored. They are not this October application. */
+export function isPriorCampaignApplication(entry, startMs = CAMPAIGN_CP2026_SNS_SEP_START_MS) {
+  const appliedMs = applicationInstantMs(entry)
+  return appliedMs != null && appliedMs < startMs
+}
+
+export function isCurrentWindowApplication(
+  entry,
+  startMs = CAMPAIGN_CP2026_SNS_SEP_START_MS,
+  endMs = CAMPAIGN_CP2026_SNS_SEP_END_MS,
+) {
+  const appliedMs = applicationInstantMs(entry)
+  if (appliedMs == null || appliedMs < startMs || appliedMs > endMs) return false
+  const status = String(entry?.status || '')
+  return status === 'eligible' || status === 'rewarded'
+}
+
+export function decideCampaignApply(entry) {
+  const status = String(entry?.status || '')
+  if (status === 'rejected') {
+    return { action: 'reject', httpStatus: 409, code: 'apply_rejected', message: CAMPAIGN_APPLY_REJECTED_MESSAGE }
+  }
+  if (isCurrentWindowApplication(entry)) {
+    return {
+      action: 'noop',
+      httpStatus: 200,
+      message: status === 'rewarded' ? 'すでに特典付与済みです' : CAMPAIGN_APPLY_ACCEPTED_MESSAGE,
+    }
+  }
+  return { action: 'promote', httpStatus: 200, message: CAMPAIGN_APPLY_ACCEPTED_MESSAGE }
+}
+
+export function isCampaignEntryUniqueViolation(error) {
+  const code = String(error?.code || '')
+  const msg = String(error?.message || '')
+  return code === '23505' || /duplicate key|unique constraint/i.test(msg)
+}
+
+async function selectCampaignEntry(admin, userId) {
+  const { data, error } = await admin
     .from('campaign_entries')
     .select('*')
     .eq('user_id', userId)
     .eq('campaign_id', CAMPAIGN_CP2026_SNS_SEP_ID)
     .maybeSingle()
-  if (selErr) throw selErr
+  if (error) throw error
+  return data || null
+}
+
+export async function loadOrCreateCampaignEntry(admin, userId) {
+  const existing = await selectCampaignEntry(admin, userId)
   if (existing) return existing
 
   const { data: profile } = await admin
@@ -189,14 +251,19 @@ export async function loadOrCreateCampaignEntry(admin, userId) {
     .insert(row)
     .select('*')
     .single()
-  if (insErr) throw insErr
-  return inserted
+  if (!insErr) return inserted
+  if (isCampaignEntryUniqueViolation(insErr)) {
+    const raced = await selectCampaignEntry(admin, userId)
+    if (raced) return raced
+  }
+  throw insErr
 }
 
 export function buildCampaignStatusPayload({ entry, hasAsset, windowMeta }) {
   const surveyDone = Boolean(entry?.survey_completed_at)
   const snsDone = Boolean(entry?.sns_submitted_at)
-  const applied = Boolean(entry?.applied_at) || entry?.status === 'eligible' || entry?.status === 'rewarded'
+  const applied = isCurrentWindowApplication(entry)
+  const awarded = applied && entry?.status === 'rewarded'
   return {
     ok: true,
     window: windowMeta,
@@ -206,6 +273,7 @@ export function buildCampaignStatusPayload({ entry, hasAsset, windowMeta }) {
       surveyDone,
       snsDone,
       applied,
+      awarded,
     },
     entry: entry
       ? {

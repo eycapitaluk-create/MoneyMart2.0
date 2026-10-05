@@ -32,7 +32,7 @@ export default function CampaignCp2026NavLink({
     <Link
       to={CAMPAIGN_CP2026_SNS_SEP_PATH}
       onClick={() => {
-        trackAnalyticsEvent('campaign_nav_click', { campaign_id: 'cp2026_sns_sep', variant })
+        trackAnalyticsEvent('campaign_nav_click', { campaign_id: 'cp2026_sns_oct', variant })
         onClick?.()
       }}
       className={`${base}${activeClass} ${className}`.trim()}

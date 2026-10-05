@@ -34,7 +34,7 @@ export default function CampaignCp2026HomePopup({ userEmail = '', authReady = tr
 
     const timer = window.setTimeout(() => {
       setOpen(true)
-      trackAnalyticsEvent('campaign_home_popup_show', { campaign_id: 'cp2026_sns_sep' })
+      trackAnalyticsEvent('campaign_home_popup_show', { campaign_id: 'cp2026_sns_oct' })
     }, 500)
 
     return () => window.clearTimeout(timer)
@@ -43,19 +43,19 @@ export default function CampaignCp2026HomePopup({ userEmail = '', authReady = tr
   const closeForSession = () => {
     dismissCampaignCp2026HomePopupForSession()
     setOpen(false)
-    trackAnalyticsEvent('campaign_home_popup_dismiss', { campaign_id: 'cp2026_sns_sep', mode: 'session' })
+    trackAnalyticsEvent('campaign_home_popup_dismiss', { campaign_id: 'cp2026_sns_oct', mode: 'session' })
   }
 
   const closeForToday = () => {
     dismissCampaignCp2026HomePopupForToday()
     setOpen(false)
-    trackAnalyticsEvent('campaign_home_popup_dismiss', { campaign_id: 'cp2026_sns_sep', mode: 'today' })
+    trackAnalyticsEvent('campaign_home_popup_dismiss', { campaign_id: 'cp2026_sns_oct', mode: 'today' })
   }
 
   const handleCtaClick = () => {
     dismissCampaignCp2026HomePopupForSession()
     setOpen(false)
-    trackAnalyticsEvent('campaign_home_popup_click', { campaign_id: 'cp2026_sns_sep' })
+    trackAnalyticsEvent('campaign_home_popup_click', { campaign_id: 'cp2026_sns_oct' })
   }
 
   if (!open) return null

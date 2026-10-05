@@ -21,7 +21,7 @@ export default function CampaignCp2026PrizeLawNotice() {
         {CAMPAIGN_CP2026_SNS_SEP_PRIZE_LAW_ROWS.map((row) => (
           <div key={row.label} className="grid gap-1 sm:grid-cols-[minmax(7rem,9rem)_1fr] sm:gap-3">
             <dt className="font-bold text-slate-800 dark:text-slate-200 shrink-0">{row.label}</dt>
-            <dd>
+            <dd className="min-w-0 break-words">
               {row.href ? (
                 <a
                   href={row.href}

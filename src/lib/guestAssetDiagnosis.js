@@ -54,7 +54,7 @@ export function buildGuestDiagnosisResult(answers) {
     focus = '段階的な資産配分'
   } else if (growthAsset && growthRisk && longHorizon) {
     headline = '成長志向と期間がよく揃っています'
-    summary = '投資中心・長期志向の組み合わせです。ボラティリティ許容と保有銘柄の分散を、マイページで継続確認するのがおすすめです。'
+    summary = '投資中心・長期志向の組み合わせです。ボラティリティ許容と保有銘柄の分散を、マイページで継続して確認できます。'
     focus = 'セクター・地域分散'
   } else if (growthAsset && conservativeRisk) {
     headline = 'リスク許容と資産構成にギャップがありそうです'

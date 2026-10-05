@@ -1,14 +1,12 @@
 import pack from '../data/dividendCalendarDetail.generated.json'
 import { DIVIDEND_STOCK_UNIVERSE } from '../data/dividendStockUniverse'
 import { isRetiredStockSymbol } from './retiredStockSymbols'
+import { isUsListedEtfSymbol } from '../data/usListedEtfUniverse'
 
 const records = Array.isArray(pack?.records) ? pack.records : []
-const isDividendEligibleCategory = (category) => {
-  const c = normalizeSearchText(category)
-  if (!c) return true
-  // 配当カレンダー銘柄追加では ETF/ETN を除外（個別株のみ表示）
-  if (c.includes('etf') || c.includes('etn')) return false
-  return true
+const isUsableDividendRecord = (r) => {
+  const sym = String(r?.symbol || '').trim()
+  return Boolean(sym) && !isRetiredStockSymbol(sym) && !isUsListedEtfSymbol(sym, r?.name)
 }
 
 function normalizeSearchText(s) {
@@ -21,9 +19,8 @@ function normalizeSearchText(s) {
 /** @type {Map<string, object>} */
 const bySymbol = new Map()
 for (const r of records) {
-    if (!isDividendEligibleCategory(r?.category)) continue
+  if (!isUsableDividendRecord(r)) continue
   const sym = String(r?.symbol || '').trim().toUpperCase()
-  if (!sym || isRetiredStockSymbol(sym)) continue
   bySymbol.set(sym, r)
   if (sym.endsWith('.T')) {
     const code = sym.slice(0, -2)
@@ -34,14 +31,19 @@ for (const r of records) {
 export function normalizeDividendDetailSymbol(input = '') {
   const t = String(input || '').trim().toUpperCase()
   if (!t) return ''
-  if (/^\d{4}$/.test(t)) return `${t}.T`
+  if (t === 'BK') return 'BNY'
+  if (/^(?:\d{4}|\d{3}[A-Z])$/.test(t)) return `${t}.T`
   return t
+}
+
+export function listDividendCalendarEligibleRecords() {
+  return records.filter((r) => isUsableDividendRecord(r))
 }
 
 export function getDividendCalendarDetailRecord(inputSymbol) {
   const k = normalizeDividendDetailSymbol(inputSymbol)
   if (!k) return null
-  if (isRetiredStockSymbol(k)) return null
+  if (isRetiredStockSymbol(k) || isUsListedEtfSymbol(k)) return null
   return bySymbol.get(k) || null
 }
 
@@ -53,7 +55,7 @@ export function getDividendCalendarDetailRecord(inputSymbol) {
 export function searchDividendCalendarRecords(query, limit = 12) {
   const raw = String(query || '').trim()
   if (!raw) return []
-  if (isRetiredStockSymbol(raw)) return []
+  if (isRetiredStockSymbol(raw) || isUsListedEtfSymbol(raw)) return []
   const nq = normalizeSearchText(raw)
   const parts = nq.split(/\s+/).filter(Boolean)
   if (parts.length < 1) return []
@@ -76,8 +78,7 @@ export function searchDividendCalendarRecords(query, limit = 12) {
   }
 
   for (const r of records) {
-    if (!isDividendEligibleCategory(r?.category)) continue
-    if (isRetiredStockSymbol(r?.symbol)) continue
+    if (!isUsableDividendRecord(r)) continue
     const sym = normalizeSearchText(r.symbol)
     const name = normalizeSearchText(r.name)
     const cat = normalizeSearchText(r.category)
@@ -109,7 +110,6 @@ export function searchDividendCalendarRecords(query, limit = 12) {
     const key = normalizeDividendDetailSymbol(symRaw)
     const rec = bySymbol.get(key)
     if (!rec) continue
-    if (!isDividendEligibleCategory(rec?.category)) continue
     const symN = normalizeSearchText(symRaw)
     const symNoDot = symN.replace(/\./g, '')
     const nameJp = normalizeSearchText(u.name || '')

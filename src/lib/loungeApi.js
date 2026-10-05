@@ -57,7 +57,7 @@ const fetchProfileNameMap = async (userIds = []) => {
   const ids = [...new Set((userIds || []).filter(Boolean))]
   if (ids.length === 0) return new Map()
   const { data, error } = await supabase
-    .from('user_profiles')
+    .from('user_public_profiles')
     .select('user_id,nickname')
     .in('user_id', ids)
   if (error) return new Map()
@@ -159,7 +159,7 @@ const normalizePost = (post, tags = [], likeMap = new Set(), bookmarkMap = new S
 const getUserProfileName = async (userId, fallbackEmail = '') => {
   if (!userId) return 'Guest'
   const { data } = await supabase
-    .from('user_profiles')
+    .from('user_public_profiles')
     .select('nickname')
     .eq('user_id', userId)
     .maybeSingle()
@@ -954,7 +954,7 @@ export async function fetchSuggestedUsers({ userId = null, limit = 3 } = {}) {
         .order('created_at', { ascending: false })
         .limit(maxRows),
       followPromise,
-      supabase.from('user_profiles').select('user_id,nickname').limit(1000),
+      supabase.from('user_public_profiles').select('user_id,nickname').limit(1000),
     ])
     if (postsRes.error) throw postsRes.error
     if (followRes.error) throw followRes.error
@@ -1000,7 +1000,7 @@ export async function fetchSuggestedUsers({ userId = null, limit = 3 } = {}) {
       .order('created_at', { ascending: false })
       .limit(maxRows),
     followPromise,
-    supabase.from('user_profiles').select('user_id,nickname').limit(1000),
+    supabase.from('user_public_profiles').select('user_id,nickname').limit(1000),
   ])
   if (postsRes.error) throw postsRes.error
   if (followRes.error) throw followRes.error

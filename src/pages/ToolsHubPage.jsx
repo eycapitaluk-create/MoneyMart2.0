@@ -16,8 +16,10 @@ import {
   dividendGrossTotalJpyFromPerShare,
   formatDividendCash,
 } from "../lib/dividendCalendar";
-import { getDividendCalendarDetailRecord } from "../lib/dividendCalendarDetailLookup";
+import { getDividendCalendarDetailRecord, listDividendCalendarEligibleRecords } from "../lib/dividendCalendarDetailLookup";
 import { DIVIDEND_STOCK_UNIVERSE } from "../data/dividendStockUniverse";
+import { isRetiredStockSymbol } from "../lib/retiredStockSymbols";
+import { isUsListedEtfSymbol } from "../data/usListedEtfUniverse";
 import { MM_SIMULATION_PAST_PERFORMANCE_JA } from "../lib/moneymartSimulationDisclaimer";
 
 // ═══════════════════════════════════════════════════════════════
@@ -794,15 +796,17 @@ const TOOLS_DIVIDEND_DEMO_USD_JPY = 150;
 const TOOLS_DIVIDEND_DEFAULT_DEMO_IDS = ["MDT", "MCD", "AON", "MA", "8306"];
 
 // 銘柄一覧: 詳細マスター（generated json）を優先し、未登録銘柄のみ Universe を参照する。
-const DIV_STOCK_PICKER = DIVIDEND_STOCK_UNIVERSE.map((r, i) => {
+const toPickerDividends = (rows) => (Array.isArray(rows) ? rows : [])
+  .map((d) => ({
+    month: Number(d?.month),
+    amount: Number(d?.amount),
+  }))
+  .filter((d) => Number.isInteger(d.month) && d.month >= 1 && d.month <= 12 && Number.isFinite(d.amount) && d.amount > 0);
+
+const DIV_STOCK_PICKER = DIVIDEND_STOCK_UNIVERSE.filter((r) => !isRetiredStockSymbol(r.symbol) && !isUsListedEtfSymbol(r.symbol, r.name) && r.symbol !== "BK").map((r, i) => {
   const id = toDivStockId(r.symbol);
   const detail = getDividendCalendarDetailRecord(r.symbol);
-  const detailDividends = (Array.isArray(detail?.dividends) ? detail.dividends : [])
-    .map((d) => ({
-      month: Number(d?.month),
-      amount: Number(d?.amount),
-    }))
-    .filter((d) => Number.isInteger(d.month) && d.month >= 1 && d.month <= 12 && Number.isFinite(d.amount) && d.amount > 0);
+  const detailDividends = toPickerDividends(detail?.dividends);
 
   const months = Array.isArray(r.dividendMonths) ? r.dividendMonths : [];
   const perShare = Number(r.dividendAmountPerShare);
@@ -826,8 +830,34 @@ const DIV_STOCK_PICKER = DIVIDEND_STOCK_UNIVERSE.map((r, i) => {
   };
 });
 
+const DIV_STOCK_PICKER_IDS = new Set(DIV_STOCK_PICKER.map((s) => s.id));
+const DIV_ETF_PICKER = listDividendCalendarEligibleRecords()
+  .filter((r) => {
+    const cat = String(r?.category || "").toLowerCase();
+    return cat.includes("etf") || cat.includes("etn");
+  })
+  .map((r, i) => {
+    const id = toDivStockId(r.symbol);
+    const dividends = toPickerDividends(r.dividends);
+    const detailPrice = Number(r.price);
+    const isUs = String(r.category || "").includes("米国");
+    return {
+      id,
+      name: r.name,
+      flag: isUs ? "🇺🇸" : "🇯🇵",
+      sector: r.category || "ETF",
+      color: DEMO_COLORS[(DIV_STOCK_PICKER.length + i) % DEMO_COLORS.length],
+      dividends,
+      price: Number.isFinite(detailPrice) && detailPrice > 0 ? detailPrice : (isUs ? 50 : 2000),
+    };
+  })
+  .filter((s) => s.id && s.dividends.length > 0 && !DIV_STOCK_PICKER_IDS.has(s.id));
+
+DIV_STOCK_PICKER.push(...DIV_ETF_PICKER);
+
 const DIV_PICKER_BY_ID = new Map(DIV_STOCK_PICKER.map((s) => [s.id, s]));
-const TOOLS_DIVIDEND_DEFAULT_IDS_RESOLVED = TOOLS_DIVIDEND_DEFAULT_DEMO_IDS.filter((id) => DIV_PICKER_BY_ID.has(id));
+const TOOLS_DIVIDEND_DEFAULT_DEMO_IDS_WITH_ETF = [...TOOLS_DIVIDEND_DEFAULT_DEMO_IDS, "1306"];
+const TOOLS_DIVIDEND_DEFAULT_IDS_RESOLVED = TOOLS_DIVIDEND_DEFAULT_DEMO_IDS_WITH_ETF.filter((id) => DIV_PICKER_BY_ID.has(id));
 
 const MONTHS_JP = ["1月","2月","3月","4月","5月","6月","7月","8月","9月","10月","11月","12月"];
 
@@ -893,10 +923,10 @@ function DividendCalendar({ session = null, isDark = false }) {
   };
 
   const filteredStocks = useMemo(() => {
-    const q = stockQuery.trim().toLowerCase();
+    const q = stockQuery.normalize("NFKC").trim().toLowerCase().replace(/\s+/g, "");
     if (!q) return DIV_STOCK_PICKER;
     return DIV_STOCK_PICKER.filter((stock) =>
-      `${stock.id} ${stock.name} ${stock.sector}`.toLowerCase().includes(q)
+      `${stock.id} ${stock.name} ${stock.sector}`.normalize("NFKC").toLowerCase().replace(/\s+/g, "").includes(q)
     );
   }, [stockQuery]);
 
@@ -1356,7 +1386,7 @@ const TOOL_GUIDES = {
       "税金額と手取り金額が即座に表示",
     ],
     example: "100万円の利益 → 課税口座で税金20.3万円、NISAなら0円",
-    tip: "同じ利益でも口座の種類で手取りが大きく変わります。まずNISA口座を使い切ることを優先しましょう。",
+    tip: "同じ利益でも口座の種類で手取りが大きく変わります。NISA口座の枠を先に確認します。",
   },
   currency: {
     title: "外貨積立計算機とは？",
@@ -1637,7 +1667,7 @@ export default function ToolsHubPage({ session = null }) {
               <div className="mm-tool-landing-tip" style={{ background:"#fff7ed", border:"1.5px solid #fed7aa", borderRadius:22, padding:"18px 22px", marginBottom:32, display:"flex", alignItems:isMobile ? "flex-start" : "center", flexDirection:isMobile ? "column" : "row", gap:16 }}>
                 <span style={{ fontSize:22 }}>💡</span>
                 <div>
-                  <div className="mm-tool-landing-tip-title" style={{ fontSize:14, fontWeight:900, color:"#9a3412", marginBottom:5 }}>おすすめの使い方</div>
+                  <div className="mm-tool-landing-tip-title" style={{ fontSize:14, fontWeight:900, color:"#9a3412", marginBottom:5 }}>使い方</div>
                   <div className="mm-tool-landing-tip-body" style={{ display:"flex", alignItems:"center", gap:8, fontSize:13, color:"#c2410c", flexWrap:"wrap" }}>
                     {["⚖️ 積立 vs 一括", "→", "🏦 NISAシミュレーター", "→", "🧾 税金計算機"].map((t,i)=>(
                       <span key={i} style={{ fontWeight:t==="→"?400:700 }}>{t}</span>

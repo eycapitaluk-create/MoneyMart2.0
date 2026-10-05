@@ -6,7 +6,7 @@ import {
 } from 'lucide-react'
 import StockPriceChart from '../components/stocks/StockPriceChart'
 import { supabase } from '../lib/supabase'
-import { loadStockWatchlistSymbolsFromDb, replaceStockWatchlistInDb } from '../lib/myPageApi'
+import { addDbWatchlistItem, loadStockWatchlistSymbolsFromDb, mergeStockWatchlistSymbolsInDb, removeDbWatchlistItem } from '../lib/myPageApi'
 import { bumpStockWatchlistSyncVersion } from '../lib/watchlistSyncEvents'
 import { trackAnalyticsEvent } from '../lib/analytics'
 import { REGION_BY_SYMBOL } from '../data/mockStocks'
@@ -27,6 +27,7 @@ import {
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import MembersBlurGate from '../components/auth/MembersBlurGate'
 import { ETF_SYMBOLS_FROM_XLSX, MARKETSTACK_BLOCKLIST_EXPORT } from '../data/etfListFromXlsx'
+import { isUsListedEtfSymbol, US_LISTED_ETF_SYMBOLS } from '../data/usListedEtfUniverse'
 import { STOCK_LIST_400 } from '../data/stockList400'
 import { getStockMarketPageExtraSymbolList } from '../data/stockMarketPageExtras'
 import { isRetiredStockSymbol } from '../lib/retiredStockSymbols'
@@ -37,7 +38,7 @@ import {
 } from '../data/stockNameFallback'
 import { getStockPageNameJa } from '../data/stockPageDisplayNameJa.js'
 import { lookupDividendStockBySymbol } from '../data/dividendStockUniverse'
-import { dedupeStockDailyPricesByTradeDate, fetchStockDailyHistoryBySymbolMap, tradingSessionReturnPct } from '../lib/stockDailyHistory'
+import { dedupeStockDailyPricesByTradeDate, fetchStockDailyHistoryBySymbolMap, returnPctFromIndex, tradingSessionReturnPct } from '../lib/stockDailyHistory'
 import { scheduleIdleTask } from '../lib/scheduleIdle'
 import {
   STOCK_SECTOR_OVERRIDE_BY_SYMBOL,
@@ -53,7 +54,7 @@ import {
 const STOCK_WATCHLIST_STORAGE_KEY_PREFIX = 'mm_stock_watchlist_v1'
 const getStockWatchlistStorageKey = (userId) =>
   (userId ? `${STOCK_WATCHLIST_STORAGE_KEY_PREFIX}_${userId}` : `${STOCK_WATCHLIST_STORAGE_KEY_PREFIX}_guest`)
-const ETF_SYMBOL_SET = new Set(ETF_SYMBOLS_FROM_XLSX)
+const ETF_SYMBOL_SET = new Set([...ETF_SYMBOLS_FROM_XLSX, ...US_LISTED_ETF_SYMBOLS])
 /** STOCK_LIST_400 に無いが stockMarketPageExtras で明示した銘柄を続けて並べる基準 priority */
 const MARKET_PAGE_EXTRA_PRIORITY_BASE = 50_000
 const MAX_REASONABLE_LIVE_PRICE = 10_000_000
@@ -891,7 +892,7 @@ export default function StockPage({ user = null }) {
         // StockPage は株式のみ表示。ETF/ファンドは除外し、US・JPのみを母集団にする。
         const staticTargetSymbols = [...new Set(
           STOCK_LIST_400
-            .filter((item) => (item?.region === 'US' || item?.region === 'JP') && !ETF_SYMBOL_SET.has(item?.symbol) && !MARKETSTACK_BLOCKLIST_EXPORT.has(item?.symbol) && !isRetiredStockSymbol(item?.symbol))
+            .filter((item) => (item?.region === 'US' || item?.region === 'JP') && !ETF_SYMBOL_SET.has(item?.symbol) && !isUsListedEtfSymbol(item?.symbol, item?.name) && !MARKETSTACK_BLOCKLIST_EXPORT.has(item?.symbol) && !isRetiredStockSymbol(item?.symbol))
             .map((item) => item.symbol),
         )]
         if (staticTargetSymbols.length === 0) {
@@ -904,7 +905,7 @@ export default function StockPage({ user = null }) {
         }
 
         const baseList = STOCK_LIST_400
-          .filter((item) => item?.symbol && (item.region === 'US' || item.region === 'JP') && !ETF_SYMBOL_SET.has(item.symbol) && !MARKETSTACK_BLOCKLIST_EXPORT.has(item.symbol) && !isRetiredStockSymbol(item.symbol))
+          .filter((item) => item?.symbol && (item.region === 'US' || item.region === 'JP') && !ETF_SYMBOL_SET.has(item.symbol) && !isUsListedEtfSymbol(item.symbol, item.name) && !MARKETSTACK_BLOCKLIST_EXPORT.has(item.symbol) && !isRetiredStockSymbol(item.symbol))
           .map((item, idx) => ({
             id: item.symbol,
             code: item.symbol,
@@ -1135,7 +1136,7 @@ export default function StockPage({ user = null }) {
                 if (!hasEnoughHistory || !Number.isFinite(firstClose) || !Number.isFinite(latestClose) || firstClose <= 0) {
                   return [symbol, null]
                 }
-                return [symbol, ((latestClose - firstClose) / firstClose) * 100]
+                return [symbol, returnPctFromIndex(rows, 0, latestClose)]
               })
             )
             const oneDayMap = Object.fromEntries(
@@ -1145,13 +1146,15 @@ export default function StockPage({ user = null }) {
                   .sort((a, b) => String(a.trade_date || '').localeCompare(String(b.trade_date || '')))
                 const latestClose = Number(latestBySymbol.get(symbol))
                 const prevClose = rows.length >= 2 ? Number(rows[rows.length - 2]?.close) : null
-                if (!Number.isFinite(prevClose) || !Number.isFinite(latestClose) || prevClose <= 0) {
+                const rate = rows.length >= 2 ? returnPctFromIndex(rows, rows.length - 2, latestClose) : null
+                if (!Number.isFinite(prevClose) || !Number.isFinite(latestClose) || prevClose <= 0 || rate == null) {
                   return [symbol, null]
                 }
+                const adjustedPrev = latestClose / (1 + rate / 100)
                 return [symbol, {
-                  previousClose: prevClose,
-                  change: latestClose - prevClose,
-                  rate: ((latestClose - prevClose) / prevClose) * 100,
+                  previousClose: adjustedPrev,
+                  change: latestClose - adjustedPrev,
+                  rate,
                 }]
               })
             )
@@ -1205,7 +1208,7 @@ export default function StockPage({ user = null }) {
         setMarketError(friendly)
         // DB 실패 시 STOCK_LIST_400 기반 목록만 표시（가격 없음）
         const fallbackList = STOCK_LIST_400
-          .filter((item) => item?.symbol && (item.region === 'US' || item.region === 'JP') && !ETF_SYMBOL_SET.has(item.symbol) && !isRetiredStockSymbol(item.symbol))
+          .filter((item) => item?.symbol && (item.region === 'US' || item.region === 'JP') && !ETF_SYMBOL_SET.has(item.symbol) && !isUsListedEtfSymbol(item.symbol, item.name) && !isRetiredStockSymbol(item.symbol))
           .map((item, idx) => ({
             id: item.symbol,
             code: item.symbol,
@@ -2084,22 +2087,20 @@ export default function StockPage({ user = null }) {
     const prevRow = chartSeries.length > 1 ? chartSeries[chartSeries.length - 2] : null
     const latestClose = Number(latestRow?.close)
     const prevClose = Number(prevRow?.close)
-    const dayChange = Number.isFinite(prevClose) && prevClose > 0 && Number.isFinite(latestClose)
-      ? latestClose - prevClose
+    const dayRate = tradingSessionReturnPct(chartSeries, TRADING_SESSION_OFFSETS.DAY)
+    const adjustedPrev = dayRate != null && Number.isFinite(latestClose)
+      ? latestClose / (1 + dayRate / 100)
+      : prevClose
+    const dayChange = Number.isFinite(adjustedPrev) && Number.isFinite(latestClose)
+      ? latestClose - adjustedPrev
       : 0
-    const dayRate = Number.isFinite(prevClose) && prevClose > 0 && Number.isFinite(latestClose)
-      ? ((latestClose - prevClose) / prevClose) * 100
-      : 0
-    const base1m = findRowTradingSessionsBeforeLatest(chartSeries, TRADING_SESSION_OFFSETS.ONE_MONTH)
-    const base3m = findRowTradingSessionsBeforeLatest(chartSeries, TRADING_SESSION_OFFSETS.THREE_MONTH)
-    const base6m = findRowTradingSessionsBeforeLatest(chartSeries, TRADING_SESSION_OFFSETS.SIX_MONTH)
-    const base1y = findRowTradingSessionsBeforeLatest(chartSeries, TRADING_SESSION_OFFSETS.ONE_YEAR)
-    const return1m = base1m ? calcReturnPct(base1m.close, latestClose) : null
-    const return3m = base3m ? calcReturnPct(base3m.close, latestClose) : null
-    const return6m = base6m ? calcReturnPct(base6m.close, latestClose) : null
-    const return1y = base1y ? calcReturnPct(base1y.close, latestClose) : null
+    const return1m = tradingSessionReturnPct(chartSeries, TRADING_SESSION_OFFSETS.ONE_MONTH)
+    const return3m = tradingSessionReturnPct(chartSeries, TRADING_SESSION_OFFSETS.THREE_MONTH)
+    const return6m = tradingSessionReturnPct(chartSeries, TRADING_SESSION_OFFSETS.SIX_MONTH)
+    const return1y = tradingSessionReturnPct(chartSeries, TRADING_SESSION_OFFSETS.ONE_YEAR)
     const ytdBaseRow = findYtdBaseRowFromSeries(chartSeries)
-    const returnYtd = ytdBaseRow ? calcReturnPct(ytdBaseRow.close, latestClose) : null
+    const ytdIndex = ytdBaseRow ? chartSeries.lastIndexOf(ytdBaseRow) : -1
+    const returnYtd = ytdIndex >= 0 ? returnPctFromIndex(chartSeries, ytdIndex, latestClose) : null
     const recentVolumes = chartSeries
       .slice(-20)
       .map((row) => Number(row.volume))
@@ -2120,7 +2121,7 @@ export default function StockPage({ user = null }) {
       latestClose: Number.isFinite(latestClose) ? latestClose : null,
       prevClose: Number.isFinite(prevClose) ? prevClose : null,
       dayChange,
-      dayRate,
+      dayRate: dayRate ?? 0,
       return1m,
       return3m,
       return6m,
@@ -2143,11 +2144,17 @@ export default function StockPage({ user = null }) {
     const buildMetric = (baseRow, label) => {
       const baseClose = Number(baseRow?.close)
       if (!Number.isFinite(baseClose) || baseClose <= 0) return null
+      const baseIdx = chartSeries.lastIndexOf(baseRow)
+      const rate = baseIdx >= 0
+        ? returnPctFromIndex(chartSeries, baseIdx, latestClose)
+        : calcReturnPct(baseClose, latestClose)
+      if (rate == null) return null
+      const adjustedBase = latestClose / (1 + rate / 100)
       return {
         label,
-        baseClose,
-        change: latestClose - baseClose,
-        rate: ((latestClose - baseClose) / baseClose) * 100,
+        baseClose: adjustedBase,
+        change: latestClose - adjustedBase,
+        rate,
         baseTradeDate: baseRow?.tradeDate || null,
         latestClose,
       }
@@ -2231,9 +2238,15 @@ export default function StockPage({ user = null }) {
       const next = wasOn ? prev.filter((x) => x !== id) : [...prev, id]
       const uid = user?.id ?? null
       if (uid) {
-        replaceStockWatchlistInDb({ userId: uid, symbols: next })
-          .then(() => bumpStockWatchlistSyncVersion())
-          .catch(() => {})
+        const op = wasOn
+          ? removeDbWatchlistItem({ userId: uid, itemType: 'stock', itemId: id })
+          : addDbWatchlistItem({
+            userId: uid,
+            itemType: 'stock',
+            itemId: id,
+            itemName: label,
+          })
+        op.then(() => bumpStockWatchlistSyncVersion()).catch(() => {})
       } else {
         try {
           window.localStorage.setItem(getStockWatchlistStorageKey(null), JSON.stringify(next))
@@ -2325,7 +2338,7 @@ export default function StockPage({ user = null }) {
           const legacy = loadStoredStockWatchlist(uid)
           if (legacy.length > 0) {
             try {
-              await replaceStockWatchlistInDb({ userId: uid, symbols: legacy })
+              await mergeStockWatchlistSymbolsInDb({ userId: uid, symbols: legacy })
               if (!cancelled) {
                 setWatchlist(legacy)
                 try {

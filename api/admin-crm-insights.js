@@ -99,7 +99,7 @@ Below are **pre-aggregated dashboard metrics only** — no raw emails or names.
 STRICT RULES
 - Do NOT invent metrics not present. Say "insufficient data" when unsure.
 - No personalised investment advice, return guarantees, or regulated solicitation language.
-- Distinguish observations, hypotheses, and recommended actions.
+- Distinguish observations, hypotheses, and points to check.
 - Prioritize material growth constraints: acquisition efficiency, funnel loss, activation, premium intent, attribution quality, and sample-size risk.
 - Compare stages and channels only when denominators are available. Call out small samples explicitly.
 

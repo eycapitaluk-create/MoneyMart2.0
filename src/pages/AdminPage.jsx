@@ -858,7 +858,7 @@ const INSIGHT_COVER_IMAGE_BUCKET = 'news-images'
 
 const buildDefaultInsightSimpleForm = () => ({
   headline: '',
-  /** 公開URL `/insights/{slug}` — 英小文字・数字・ハイフンのみ推奨 */
+  /** 公開URL `/insights/{slug}` — 英小文字・数字・ハイフンのみ */
   urlSlug: '',
   category: 'インサイト',
   target: '',
@@ -1150,7 +1150,7 @@ const buildInsightDocumentFromForm = (form) => {
     },
     footer: {
       disclaimer:
-        '※本ページは情報提供を目的としたものであり、特定の金融商品の購入・売却を推奨するものではありません。投資判断はご自身の責任において行ってください。',
+        '※本ページは情報提供を目的としたものであり、特定の金融商品の売買を勧誘するものではありません。投資判断はご自身の責任において行ってください。',
     },
   }
 }

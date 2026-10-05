@@ -295,7 +295,7 @@ export default function PortfolioDiagnosisPanel({
           </div>
           <div className="flex-1 min-w-0 lg:px-2">
             <p className="text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">
-              本機能は情報整理・参考分析のみを目的としており、特定銘柄の売買推奨や投資助言（インベストメント・アドバイス）ではありません。実際の投資判断はご自身の責任で行い、必要に応じて税理士・ファイナンシャルプランナー等の専門家へご相談ください。
+              本機能は情報整理・参考分析のみを目的としており、特定銘柄の特定の金融商品の売買を勧誘するものではありません。実際の投資判断はご自身の責任で行い、必要に応じて税理士・ファイナンシャルプランナー等の専門家へご相談ください。
             </p>
           </div>
           <button

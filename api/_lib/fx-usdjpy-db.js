@@ -34,3 +34,18 @@ export async function selectUsdJpyOne(admin, dateIso) {
   const v = Number(data.usd_jpy)
   return Number.isFinite(v) && v > 0 ? v : null
 }
+
+/** as_of_date <= date の直近営業日。 */
+export async function selectUsdJpyOnOrBefore(admin, dateIso) {
+  const { data, error } = await admin
+    .from('fx_daily_usdjpy')
+    .select('as_of_date,usd_jpy')
+    .lte('as_of_date', dateIso)
+    .order('as_of_date', { ascending: false })
+    .limit(1)
+  const row = Array.isArray(data) ? data[0] : null
+  if (error || !row) return null
+  const rate = Number(row.usd_jpy)
+  if (!(Number.isFinite(rate) && rate > 0)) return null
+  return { asOf: String(row.as_of_date || '').slice(0, 10), rate }
+}

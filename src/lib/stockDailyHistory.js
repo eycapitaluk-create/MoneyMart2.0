@@ -73,23 +73,54 @@ export const detectLikelyStockSplitRatio = (prevClose, close, tolerance = 0.1) =
   return null
 }
 
+/** 1段の整数比分割を、終点の株数に合わせる倍率にする。分割がなければ 1。 */
+const splitScaleBetweenCloses = (earlierClose, laterClose) => {
+  const ratio = detectLikelyStockSplitRatio(earlierClose, laterClose)
+  if (ratio > 0) return ratio
+  if (ratio < 0) return 1 / -ratio
+  return 1
+}
+
+/**
+ * fromIndex の終値を toIndex と同じ株数スケールへ換算する。
+ * 途中の整数比分割だけを跨ぐ。通常の日次変動はそのまま残す。
+ */
+export const closeScaledAcrossSplits = (rowsAscending = [], fromIndex = 0, toIndex = 0) => {
+  const start = Number(rowsAscending[fromIndex]?.close)
+  if (!Number.isFinite(start) || start <= 0) return null
+  const end = Math.min(Math.max(toIndex, fromIndex), rowsAscending.length - 1)
+  let scale = 1
+  for (let i = fromIndex; i < end; i += 1) {
+    scale *= splitScaleBetweenCloses(rowsAscending[i]?.close, rowsAscending[i + 1]?.close)
+  }
+  return start / scale
+}
+
+/** 昇順系列の fromIndex 終値から latestClose（省略時は最終行）までの騰落率（%）。 */
+export const returnPctFromIndex = (rowsAscending = [], fromIndex = 0, latestClose = null) => {
+  if (!Array.isArray(rowsAscending) || fromIndex < 0 || fromIndex >= rowsAscending.length) return null
+  const last = Number(rowsAscending[rowsAscending.length - 1]?.close)
+  const latest = Number.isFinite(Number(latestClose)) && Number(latestClose) > 0
+    ? Number(latestClose)
+    : last
+  const adjustedBase = closeScaledAcrossSplits(rowsAscending, fromIndex, rowsAscending.length - 1)
+  if (!Number.isFinite(adjustedBase) || adjustedBase <= 0 || !Number.isFinite(latest)) return null
+  const base = latest !== last ? adjustedBase / splitScaleBetweenCloses(last, latest) : adjustedBase
+  if (!Number.isFinite(base) || base <= 0) return null
+  return ((latest - base) / base) * 100
+}
+
 /**
  * trade_date 昇順の deduped 日足から N 営業日前終値比の騰落率（%）を返す。
  * latestClose は省略時に最終行の close を使う（v_stock_latest と履歴の不整合を避ける）。
+ * 区間内の株式分割（整数比）は騰落率から除く。
  */
 export const tradingSessionReturnPct = (rows = [], sessionOffset = 5, latestClose = null) => {
   const sorted = [...rows]
     .filter((row) => Number.isFinite(Number(row?.close)) && Number(row.close) > 0)
     .sort((a, b) => String(a.trade_date || a.tradeDate || '').localeCompare(String(b.trade_date || b.tradeDate || '')))
   if (sorted.length < sessionOffset + 1) return null
-  const last = sorted[sorted.length - 1]
-  const base = sorted[sorted.length - 1 - sessionOffset]
-  const latest = Number.isFinite(Number(latestClose)) && Number(latestClose) > 0
-    ? Number(latestClose)
-    : Number(last?.close)
-  const baseClose = Number(base?.close)
-  if (!Number.isFinite(latest) || !Number.isFinite(baseClose) || baseClose <= 0) return null
-  return ((latest - baseClose) / baseClose) * 100
+  return returnPctFromIndex(sorted, sorted.length - 1 - sessionOffset, latestClose)
 }
 
 const filterCandidatesByAnchors = (candidates, anchors, maxRatio = 15) => {

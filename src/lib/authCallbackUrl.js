@@ -2,15 +2,21 @@ import { SITE_ORIGIN } from './seoConfig'
 
 export const AUTH_CALLBACK_PATH = '/signup-complete'
 
-/** OAuth / メール確認の redirectTo — 実行中の origin を優先（www 有無のビルド時焼き込みミスを避ける） */
-export function getAuthCallbackUrl() {
+function callbackOrigin() {
   if (typeof window !== 'undefined') {
     const origin = String(window.location.origin || '').trim()
-    if (origin.startsWith('http')) {
-      return `${origin.replace(/\/$/, '')}${AUTH_CALLBACK_PATH}`
-    }
+    if (origin.startsWith('http')) return origin.replace(/\/$/, '')
   }
-  return `${String(SITE_ORIGIN || 'https://www.moneymart.co.jp').replace(/\/$/, '')}${AUTH_CALLBACK_PATH}`
+  return String(SITE_ORIGIN || 'https://www.moneymart.co.jp').replace(/\/$/, '')
+}
+
+/**
+ * Exact callback only. The production allowlist is
+ * https://www.moneymart.co.jp/signup-complete with no query and no wildcard.
+ * A `?next` query is not sent. The return path travels in user metadata instead.
+ */
+export function getAuthCallbackUrl() {
+  return `${callbackOrigin()}${AUTH_CALLBACK_PATH}`
 }
 
 export function parseAuthCallbackError() {

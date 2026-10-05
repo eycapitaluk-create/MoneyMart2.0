@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CheckCircle2, Circle, Loader2 } from 'lucide-react'
 import {
+  CAMPAIGN_APPLY_PENDING_DRAW_MESSAGE,
+  CAMPAIGN_APPLY_REJECTED_MESSAGE,
   CAMPAIGN_CP2026_SNS_SEP_HASHTAG,
+  CAMPAIGN_CP2026_SNS_SEP_ID,
   CAMPAIGN_CP2026_SNS_SEP_SURVEY_INTRO,
   CAMPAIGN_CP2026_SNS_SEP_SURVEY_QUESTIONS,
 } from '../../constants/campaignCp2026SnsSep.js'
@@ -106,13 +109,17 @@ export default function CampaignCp2026SnsSepPanel({
   }, [refresh])
 
   const steps = status?.steps || {}
+  const entryStatus = String(status?.entry?.status || '')
+  const rejected = entryStatus === 'rejected'
+  const awarded = Boolean(steps.awarded)
   const applied = Boolean(steps.applied)
   const canApply = Boolean(
     steps.signedUp
     && steps.hasAsset
     && steps.surveyDone
     && steps.snsDone
-    && !applied,
+    && !applied
+    && !rejected,
   )
 
   const surveyOpen = useMemo(
@@ -147,7 +154,7 @@ export default function CampaignCp2026SnsSepPanel({
     try {
       const data = await submitCampaignCp2026SnsSepSurvey(survey)
       setStatus(data)
-      trackAnalyticsEvent('campaign_survey_submit', { campaign_id: 'cp2026_sns_sep' })
+      trackAnalyticsEvent('campaign_survey_submit', { campaign_id: CAMPAIGN_CP2026_SNS_SEP_ID })
       onUiMessageRef.current?.('アンケートを送信しました', 'success')
     } catch (err) {
       onUiMessageRef.current?.(err.message || '送信に失敗しました', 'error')
@@ -162,7 +169,7 @@ export default function CampaignCp2026SnsSepPanel({
     try {
       const data = await submitCampaignCp2026SnsSepSns({ sns_url: snsUrl, sns_platform: snsPlatform })
       setStatus(data)
-      trackAnalyticsEvent('campaign_sns_submit', { campaign_id: 'cp2026_sns_sep', platform: snsPlatform })
+      trackAnalyticsEvent('campaign_sns_submit', { campaign_id: CAMPAIGN_CP2026_SNS_SEP_ID, platform: snsPlatform })
       onUiMessageRef.current?.('投稿URLを保存しました', 'success')
     } catch (err) {
       onUiMessageRef.current?.(err.message || '保存に失敗しました', 'error')
@@ -176,7 +183,7 @@ export default function CampaignCp2026SnsSepPanel({
     try {
       const data = await applyCampaignCp2026SnsSep()
       setStatus(data)
-      trackAnalyticsEvent('campaign_apply', { campaign_id: 'cp2026_sns_sep' })
+      trackAnalyticsEvent('campaign_apply', { campaign_id: CAMPAIGN_CP2026_SNS_SEP_ID })
       onUiMessageRef.current?.(data.message || '応募を受け付けました', 'success')
     } catch (err) {
       onUiMessageRef.current?.(err.message || '応募に失敗しました', 'error')
@@ -235,8 +242,8 @@ export default function CampaignCp2026SnsSepPanel({
           <StepRow done={steps.surveyDone} label="アンケート（1〜2分）" />
           <StepRow
             done={steps.snsDone}
-            label={`X または Note に ${CAMPAIGN_CP2026_SNS_SEP_HASHTAG} 付きで投稿`}
-            hint="MoneyMart画面のスクリーンショット付き・公開投稿"
+            label={`X または Note に ${CAMPAIGN_CP2026_SNS_SEP_HASHTAG} 付きで公開投稿`}
+            hint="スクリーンショット付き。投稿URLを下の欄で提出"
           />
           <StepRow done={applied} label="応募完了" />
         </ol>
@@ -358,9 +365,9 @@ export default function CampaignCp2026SnsSepPanel({
         {steps.hasAsset && !steps.snsDone ? (
           <form onSubmit={handleSnsSubmit} className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/40 p-4 mb-4 space-y-3">
             <p className="text-sm font-black text-slate-800 dark:text-slate-100">SNS投稿URL</p>
-            <p className="text-xs text-slate-500 leading-relaxed">
+            <p className="text-xs text-slate-500 leading-relaxed break-words">
               {CAMPAIGN_CP2026_SNS_SEP_HASHTAG} とアプリ画面のスクリーンショットを付けた
-              <strong className="font-bold">公開投稿</strong>のURLを貼り付けてください。
+              <strong className="font-bold">公開投稿</strong>のURLを貼り付けてください。スクリーンショットでは氏名・口座残高・口座番号が写らないようにしてください。
             </p>
             <div className="flex gap-2">
               {[
@@ -399,9 +406,17 @@ export default function CampaignCp2026SnsSepPanel({
           </form>
         ) : null}
 
-        {applied ? (
+        {rejected ? (
+          <p className="text-sm font-black text-slate-700 dark:text-slate-200 text-center py-2">
+            {CAMPAIGN_APPLY_REJECTED_MESSAGE}
+          </p>
+        ) : awarded ? (
           <p className="text-sm font-black text-emerald-600 dark:text-emerald-400 text-center py-2">
-            応募済みです。審査・特典付与までお待ちください。
+            当選の特典付与済みです。書類受付とは別の最終結果です。
+          </p>
+        ) : applied ? (
+          <p className="text-sm font-black text-emerald-600 dark:text-emerald-400 text-center py-2">
+            {CAMPAIGN_APPLY_PENDING_DRAW_MESSAGE}
           </p>
         ) : (
           <button

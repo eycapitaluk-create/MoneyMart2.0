@@ -1,25 +1,37 @@
 import { useMemo } from 'react'
 import {
   CartesianGrid,
-  Cell,
   Line,
   LineChart,
-  Pie,
-  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from 'recharts'
-import { CalendarDays, Coins, Crown, Percent, Users } from 'lucide-react'
-import { isActivatedSignup } from '../../../lib/crmInternalUsers'
+import { CalendarDays, Crown, Percent, Users } from 'lucide-react'
+import CampaignLaunchCohortCard from './CampaignLaunchCohortCard'
+import CampaignEntriesAdminCard from './CampaignEntriesAdminCard'
+import { isCrmInternalUser } from '../../../lib/crmInternalUsers'
+import {
+  activityStatus,
+  buildActiveUsersKpi,
+  buildCohortDimensions,
+  buildRangeRates,
+  buildUserTrend,
+  channelDisplayName,
+  CRM_COHORT_CAP,
+  firstHoldingMeasurement,
+  formatSharePct,
+  paymentStatus,
+  totalUsersCaption,
+} from './executiveMetrics'
 
 const BLUE = '#3b82f6'
 const ORANGE = '#f59e0b'
-const GREEN = '#22c55e'
-const PIE = ['#2563eb', '#38bdf8', '#f59e0b', '#94a3b8', '#cbd5e1']
+const SLATE = '#64748b'
+const PAYMENT_DOT = ['#22c55e', '#94a3b8']
+const ACTIVITY_DOT = ['#2563eb', '#38bdf8', '#f59e0b']
 const CH_DOT = ['#0f172a', '#38bdf8', '#94a3b8', '#22c55e', '#cbd5e1']
-const FUNNEL_BG = ['#0b1f3a', '#16324f', '#1d4ed8', '#fb923c', '#f59e0b']
 
 const fmtInt = (n) => {
   if (n == null || !Number.isFinite(Number(n))) return '—'
@@ -50,26 +62,26 @@ function relativeTime(iso) {
   return `${Math.round(hours / 24)}d ago`
 }
 
-function statusOf(row) {
-  if (row?.is_premium) return { label: 'Premium', cls: 'bg-emerald-50 text-emerald-700' }
-  if (isActivatedSignup(row)) return { label: 'Activated', cls: 'bg-sky-50 text-sky-700' }
-  if (Number(row?.sessions_30d) > 0 || Number(row?.page_views_30d) > 0) {
-    return { label: 'Visited', cls: 'bg-slate-100 text-slate-600' }
-  }
-  return { label: 'Dormant', cls: 'bg-slate-50 text-slate-400' }
-}
-
-/** daily_trend.day is 'MM-DD'; rebuild the full ISO date from the selected window. */
-function buildIsoByMmdd(rangeDays) {
-  const map = new Map()
-  const days = Math.max(1, Number(rangeDays || 30)) + 1
-  const cursor = new Date()
-  for (let i = 0; i < days; i += 1) {
-    const iso = cursor.toISOString().slice(0, 10)
-    map.set(iso.slice(5), iso)
-    cursor.setDate(cursor.getDate() - 1)
-  }
-  return map
+function TrendTooltip({ active, payload }) {
+  if (!active || !payload?.length) return null
+  const row = payload[0]?.payload || {}
+  const lines = [
+    ['Loaded cohort', row.loadedCohort, 'Cumulative signups in the fetched list (max 300)'],
+    ['Logged-in users', row.activeUsers, 'Distinct user_id with a page view that day'],
+    ['Unique sessions', row.sessions, 'Distinct session_id with a page view that day'],
+  ]
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] text-slate-700 shadow-sm">
+      <p className="mb-1 font-medium text-slate-900">{row.day}</p>
+      {lines.map(([label, value, hint]) => (
+        <p key={label} className="mt-1">
+          <span className="font-medium">{label}: </span>
+          <span className="tabular-nums">{value == null ? '—' : fmtInt(value)}</span>
+          <span className="mt-0.5 block text-[10px] text-slate-400">{hint}</span>
+        </p>
+      ))}
+    </div>
+  )
 }
 
 function featureLabel(id, raw) {
@@ -149,12 +161,10 @@ function SectionTitle({ children, extra }) {
 export default function AdminExecutiveDashboard({
   rangeDays,
   onRangeDays,
-  dashboard,
   crmRows,
   crmLoading,
   crmError,
   crmSalesSummary,
-  crmGrowthKpis,
   crmAdvancedAnalysis,
   crmTrafficChannelSummary,
   crmSignupChannelSummary,
@@ -165,124 +175,72 @@ export default function AdminExecutiveDashboard({
   analyticsError,
   productDashboard,
 }) {
-  const rows = Array.isArray(crmRows) ? crmRows : []
+  const rows = useMemo(
+    () => (Array.isArray(crmRows) ? crmRows : []).filter((row) => !isCrmInternalUser(row)),
+    [crmRows],
+  )
   const n = rows.length
-  const premium = rows.filter((r) => r.is_premium).length
-  const activeFree = rows.filter((r) => !r.is_premium && isActivatedSignup(r)).length
-  const dormant = rows.filter((r) => !r.is_premium && !isActivatedSignup(r)).length
-  const signups = Number(crmSalesSummary?.signups || 0)
+  const dimensions = useMemo(() => buildCohortDimensions(rows), [rows])
+  const premium = dimensions.payment.find((item) => item.name === 'Premium')?.value || 0
   const activated = Number(crmSalesSummary?.activated || 0)
   const sessions = Number(crmTrafficSummary?.uniqueSessions || analytics?.uniqueSessionsPageView || 0)
-  const premiumIntent = Number(crmGrowthKpis?.premiumIntent || 0)
-  const premiumInRange = (crmCustomerSignups || []).filter((r) => r.is_premium).length
-  const other = Math.max(0, n - premium - activeFree - dormant)
-  const prevSessions = Number(analytics?.summaryPrev?.uniqueSessionsPageView || 0)
-  const pop = crmAdvancedAnalysis?.pop
+  const signupRows = Array.isArray(crmCustomerSignups) ? crmCustomerSignups : []
+  const rangeRates = useMemo(
+    () => buildRangeRates({ sessions, signupRows, cohortAtCap: n >= CRM_COHORT_CAP }),
+    [sessions, signupRows, n],
+  )
+  const firstHolding = firstHoldingMeasurement()
   const dauDaily = Array.isArray(analytics?.activity?.dauDaily) ? analytics.activity.dauDaily : []
-  const lastDau = dauDaily.length ? dauDaily[dauDaily.length - 1] : null
-  const lastTrend = Array.isArray(analytics?.dailyTrend) && analytics.dailyTrend.length
-    ? analytics.dailyTrend[analytics.dailyTrend.length - 1]
-    : null
-  const loggedInDau = Number(dashboard?.dauToday || 0)
-  const rpcActiveUsers = Number(lastDau?.activeUsers || 0)
-  const latestDaySessions = Number(lastTrend?.uniqueSessions || lastDau?.activeSessions || 0)
   const periodSessions = Number(analytics?.uniqueSessionsPageView || sessions || 0)
-  const activeKpi = rpcActiveUsers > 0
-    ? { value: rpcActiveUsers, note: 'Logged-in users with a page view (latest day)' }
-    : latestDaySessions > 0
-      ? { value: latestDaySessions, note: 'Unique sessions (latest day)' }
-      : periodSessions > 0
-        ? { value: periodSessions, note: 'Unique sessions in selected range' }
-        : loggedInDau > 0
-          ? { value: loggedInDau, note: 'Logged-in DAU from mypage activity table' }
-          : { value: null, note: 'No activity feed yet' }
+  const activeKpi = analyticsLoading
+    ? { value: null, delta: null, caption: 'Loading logged-in user counts' }
+    : buildActiveUsersKpi(dauDaily)
 
   const kpis = [
     {
       label: 'Total users',
       value: fmtInt(n),
       icon: Users,
-      delta: popDelta(pop?.signups?.current, pop?.signups?.previous),
+      delta: null,
+      hideDelta: true,
+      caption: totalUsersCaption(n),
     },
     {
       label: 'Premium members',
       value: fmtInt(premium),
       icon: Crown,
       delta: null,
-      caption: 'Current status, whole cohort',
+      hideDelta: true,
+      caption: 'Payment status in the loaded cohort. Not an activity count.',
     },
     {
       label: 'Activated (range)',
       value: fmtInt(activated),
       icon: Percent,
       delta: popDelta(crmAdvancedAnalysis?.current?.activated, crmAdvancedAnalysis?.previous?.activated),
-      caption: 'Signed up, then searched / viewed within 7d',
+      caption: 'Signed up in range, then searched / viewed within 7d',
     },
     {
       label: 'Active users',
       value: activeKpi.value == null ? '—' : fmtInt(activeKpi.value),
       icon: Users,
-      delta: popDelta(sessions, prevSessions),
-      caption: activeKpi.note,
+      delta: activeKpi.delta,
+      hideDelta: true,
+      caption: activeKpi.caption,
       loading: analyticsLoading,
-    },
-    {
-      label: 'Monthly revenue (MRR)',
-      value: '—',
-      icon: Coins,
-      delta: null,
     },
   ]
 
-  const trend = useMemo(() => {
-    const days = Array.isArray(analytics?.dailyTrend) ? analytics.dailyTrend : []
-    const isoByMmdd = buildIsoByMmdd(rangeDays)
-    const created = rows
-      .map((r) => String(r.user_created_at || '').slice(0, 10))
-      .filter(Boolean)
-    const premiumDays = rows
-      .filter((r) => r.is_premium)
-      .map((r) => String(r.user_created_at || '').slice(0, 10))
-      .filter(Boolean)
-    return days.map((d) => {
-      const mmdd = String(d.day || '').slice(-5)
-      const iso = isoByMmdd.get(mmdd) || ''
-      return {
-        day: mmdd.replace('-', '/'),
-        users: iso ? created.filter((x) => x <= iso).length : null,
-        active: Number(d.uniqueSessions || 0),
-        premium: iso ? premiumDays.filter((x) => x <= iso).length : null,
-      }
-    })
-  }, [analytics, rows, rangeDays])
-
-  const funnel = useMemo(() => {
-    const steps = [
-      { label: 'Sessions', value: sessions },
-      { label: 'Sign-ups', value: signups },
-      { label: 'First use', value: activated },
-      { label: 'Premium intent', value: premiumIntent },
-      { label: 'Premium (in range)', value: premiumInRange },
-    ]
-    const top = steps[0].value || 0
-    return steps.map((s, i) => ({
-      ...s,
-      color: FUNNEL_BG[i],
-      width: Math.max(42, 100 - i * 13),
-      pct: top > 0 ? (s.value / top) * 100 : null,
-    }))
-  }, [sessions, signups, activated, premiumIntent, premiumInRange])
-
-  const segments = useMemo(() => {
-    const items = [
-      { name: 'Active (free)', value: Math.max(0, activeFree) },
-      { name: 'Premium', value: premium },
-      { name: 'Dormant', value: Math.max(0, dormant) },
-    ]
-    if (other > 0) items.push({ name: 'Unclassified', value: other })
-    const total = items.reduce((s, x) => s + x.value, 0)
-    return { items, total }
-  }, [activeFree, premium, dormant, other])
+  const trendModel = useMemo(
+    () => buildUserTrend({
+      dailyTrend: analytics?.dailyTrend,
+      dauDaily,
+      rows,
+      rangeDays,
+    }),
+    [analytics, dauDaily, rows, rangeDays],
+  )
+  const trend = trendModel.points
 
   const channels = useMemo(() => {
     const useTraffic = (crmTrafficChannelSummary || []).length > 0
@@ -388,7 +346,7 @@ export default function AdminExecutiveDashboard({
         <p className="rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-700">{crmError || analyticsError}</p>
       )}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {kpis.map((k) => {
           const Icon = k.icon
           return (
@@ -405,7 +363,7 @@ export default function AdminExecutiveDashboard({
                   <span className={k.delta.up ? 'font-medium text-emerald-500' : 'font-medium text-rose-500'}>
                     {k.delta.up ? '↑' : '↓'} {k.delta.text}
                   </span>
-                ) : (
+                ) : k.hideDelta ? null : (
                   <span className="text-slate-300">—</span>
                 )}
                 <span className="text-slate-400">{k.caption || 'vs prior period'}</span>
@@ -415,19 +373,21 @@ export default function AdminExecutiveDashboard({
         })}
       </div>
       <p className="text-[11px] leading-relaxed text-slate-400">
-        Total / Premium / Trial = loaded CRM cohort (max 300, staff excluded).
-        Active = site analytics (logged-in users or unique sessions), not the old mypage-only DAU table.
-        MRR is not connected. Funnel sessions = CRM traffic RPC; sign-ups / first use / intent = customers created in range.
+        Total users is the loaded CRM cohort (max 300, staff excluded), not the count of new signups.
+        Premium is current payment status in that cohort. Activated compares signups in this range with the previous range of the same length.
+        Active users is the latest day’s distinct logged-in user_id with a page view. If that series is missing, the card stays blank instead of showing sessions.
+        Unique sessions stay on the chart’s right axis. Rates below are separate ratios, not a sequence.
+        MRR is not connected to billing, so it is not shown. Staff work sessions and local dev traffic are excluded from session counts.
       </p>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
         <Card className="xl:col-span-5">
           <SectionTitle
             extra={(
-              <div className="flex gap-3 text-[11px] text-slate-400">
-                <span className="inline-flex items-center gap-1"><i className="h-2 w-2 rounded-full" style={{ background: BLUE }} />Total users</span>
-                <span className="inline-flex items-center gap-1"><i className="h-2 w-2 rounded-full" style={{ background: ORANGE }} />Active</span>
-                <span className="inline-flex items-center gap-1"><i className="h-2 w-2 rounded-full" style={{ background: GREEN }} />Premium</span>
+              <div className="flex flex-wrap justify-end gap-3 text-[11px] text-slate-400">
+                <span className="inline-flex items-center gap-1"><i className="h-2 w-2 rounded-full" style={{ background: BLUE }} />Loaded cohort</span>
+                <span className="inline-flex items-center gap-1"><i className="h-2 w-2 rounded-full" style={{ background: ORANGE }} />Logged-in users</span>
+                <span className="inline-flex items-center gap-1"><i className="h-2 w-2 rounded-full" style={{ background: SLATE }} />Unique sessions</span>
               </div>
             )}
           >
@@ -443,75 +403,96 @@ export default function AdminExecutiveDashboard({
                 <LineChart data={trend} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                   <CartesianGrid vertical={false} stroke="#eef2f7" />
                   <XAxis dataKey="day" tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} width={36} />
-                  <Tooltip />
-                  <Line type="monotone" dataKey="users" stroke={BLUE} strokeWidth={2} dot={false} name="Total users" />
-                  <Line type="monotone" dataKey="active" stroke={ORANGE} strokeWidth={2} dot={false} name="Active" />
-                  <Line type="monotone" dataKey="premium" stroke={GREEN} strokeWidth={2} dot={false} name="Premium" />
+                  <YAxis yAxisId="users" tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} width={32} />
+                  <YAxis yAxisId="sessions" orientation="right" tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} width={32} />
+                  <Tooltip content={<TrendTooltip />} />
+                  <Line yAxisId="users" type="monotone" dataKey="loadedCohort" stroke={BLUE} strokeWidth={2} dot={false} name="Loaded cohort" connectNulls={false} />
+                  <Line yAxisId="users" type="monotone" dataKey="activeUsers" stroke={ORANGE} strokeWidth={2} dot={false} name="Logged-in users" connectNulls={false} />
+                  <Line yAxisId="sessions" type="monotone" dataKey="sessions" stroke={SLATE} strokeWidth={1.5} dot={false} name="Unique sessions" connectNulls={false} />
                 </LineChart>
               </ResponsiveContainer>
             )}
           </div>
+          <p className="mt-2 text-[10px] leading-relaxed text-slate-400">
+            Left axis: people (loaded cohort and logged-in users). Right axis: unique sessions. Premium is current payment status only, so it is not drawn on this chart.
+            {trendModel.hasUserSeries
+              ? ' Logged-in users are distinct user_id values, not sessions.'
+              : ' Logged-in users are not drawn because that series was not returned.'}
+          </p>
         </Card>
 
         <Card className="xl:col-span-3">
-          <SectionTitle>User funnel</SectionTitle>
-          <div className="flex items-stretch gap-2">
-            <div className="flex min-w-0 flex-1 flex-col items-center justify-center gap-1 py-2">
-              {funnel.map((s) => (
-                <div
-                  key={s.label}
-                  className="flex h-8 items-center justify-between px-3 text-[10px] text-white"
-                  style={{
-                    width: `${s.width}%`,
-                    background: s.color,
-                    clipPath: 'polygon(6% 0, 94% 0, 100% 100%, 0 100%)',
-                  }}
-                >
-                  <span className="truncate">{s.label}</span>
-                  <span className="ml-2 tabular-nums">{fmtInt(s.value)}</span>
+          <SectionTitle>Range rates</SectionTitle>
+          <p className="mb-2 text-[10px] leading-relaxed text-slate-400">
+            Not a funnel. Sessions are not the same people as sign-ups, and premium intent is not limited to first use
+            {rangeRates.intent > 0
+              ? ` (${fmtInt(rangeRates.intentAlsoFirstUse)} of ${fmtInt(rangeRates.intent)} intent sign-ups also count as first use).`
+              : '.'}
+            {rangeRates.cohortAtCap
+              ? ` Sign-up counts use the loaded list, which is at the ${CRM_COHORT_CAP}-row cap, so this range can be incomplete.`
+              : ''}
+          </p>
+          <ul className="space-y-2">
+            {rangeRates.cards.map((card) => (
+              <li key={card.label} className="border-t border-slate-100 pt-2 first:border-0 first:pt-0">
+                <div className="flex items-baseline justify-between gap-2 text-[12px] text-slate-800">
+                  <span>{card.label}</span>
+                  <span className="tabular-nums font-medium">
+                    {fmtInt(card.value)}
+                    {card.rate != null ? ` · ${formatSharePct(card.rate)}` : ''}
+                  </span>
                 </div>
-              ))}
-            </div>
-            <div className="flex w-10 flex-col justify-around py-2 text-right text-[10px] text-slate-400">
-              {funnel.map((s) => (
-                <div key={`${s.label}-pct`}>{fmtPct(s.pct)}</div>
-              ))}
-            </div>
-          </div>
+                <p className="text-[10px] text-slate-400">
+                  {card.rate == null ? card.denominator : `Denominator: ${card.denominator}`}
+                </p>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-3 text-[10px] leading-relaxed text-slate-400">
+            First holding within 7 days: —
+            {' '}
+            {firstHolding.caption}
+          </p>
         </Card>
 
         <Card className="xl:col-span-4">
-          <SectionTitle>User segments</SectionTitle>
-          <div className="flex items-center gap-3">
-            <div className="relative h-40 w-40 shrink-0">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={segments.items} dataKey="value" innerRadius={46} outerRadius={68} paddingAngle={1} stroke="none">
-                    {segments.items.map((_, i) => (
-                      <Cell key={i} fill={PIE[i % PIE.length]} />
-                    ))}
-                  </Pie>
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-                <p className="text-[16px] font-semibold tabular-nums text-slate-900">{fmtInt(n)}</p>
-                <p className="text-[10px] text-slate-400">Users</p>
-              </div>
+          <SectionTitle>Cohort status</SectionTitle>
+          <p className="mb-3 text-[10px] leading-relaxed text-slate-400">
+            Payment and activity are separate. A premium member can also be dormant. Both use the loaded cohort ({fmtInt(n)}).
+          </p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <p className="mb-1 text-[12px] font-semibold text-slate-800">Payment</p>
+              <ul className="space-y-1.5 text-[11px] text-slate-600">
+                {dimensions.payment.map((s, i) => (
+                  <li key={s.name} className="flex items-center justify-between gap-2">
+                    <span className="inline-flex items-center gap-1.5">
+                      <i className="h-2 w-2 rounded-full" style={{ background: PAYMENT_DOT[i] }} />
+                      {s.name}
+                    </span>
+                    <span className="tabular-nums text-slate-500">
+                      {fmtInt(s.value)} · {dimensions.total ? formatSharePct((s.value / dimensions.total) * 100) : '—'}
+                    </span>
+                  </li>
+                ))}
+              </ul>
             </div>
-            <ul className="min-w-0 flex-1 space-y-1.5 text-[11px] text-slate-600">
-              {segments.items.map((s, i) => (
-                <li key={s.name} className="flex items-center justify-between gap-2">
-                  <span className="inline-flex items-center gap-1.5 truncate">
-                    <i className="h-2 w-2 rounded-full" style={{ background: PIE[i % PIE.length] }} />
-                    {s.name}
-                  </span>
-                  <span className="tabular-nums text-slate-500">
-                    {fmtInt(s.value)} · {segments.total ? fmtPct((s.value / segments.total) * 100) : '—'}
-                  </span>
-                </li>
-              ))}
-            </ul>
+            <div>
+              <p className="mb-1 text-[12px] font-semibold text-slate-800">Activity</p>
+              <ul className="space-y-1.5 text-[11px] text-slate-600">
+                {dimensions.activity.map((s, i) => (
+                  <li key={s.name} className="flex items-center justify-between gap-2">
+                    <span className="inline-flex items-center gap-1.5">
+                      <i className="h-2 w-2 rounded-full" style={{ background: ACTIVITY_DOT[i] }} />
+                      {s.name}
+                    </span>
+                    <span className="tabular-nums text-slate-500">
+                      {fmtInt(s.value)} · {dimensions.total ? formatSharePct((s.value / dimensions.total) * 100) : '—'}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           </div>
 
           <h3 className="mb-2 mt-4 text-[13px] font-semibold text-slate-800">Acquisition channels</h3>
@@ -525,7 +506,7 @@ export default function AdminExecutiveDashboard({
               <div key={c.id} className="grid grid-cols-[14px_1fr_auto] items-center gap-2 text-[11px] text-slate-600">
                 <i className="h-2 w-2 rounded-full" style={{ background: c.color }} />
                 <div>
-                  <div className="mb-1 truncate">{c.name}</div>
+                  <div className="mb-1 truncate">{channelDisplayName(c.id, c.name)}</div>
                   <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
                     <div className="h-full rounded-full" style={{ width: `${c.share}%`, background: c.color }} />
                   </div>
@@ -537,10 +518,14 @@ export default function AdminExecutiveDashboard({
             ))}
           </div>
           <p className="mt-3 text-[10px] leading-relaxed text-slate-400">
-            <span className="font-medium text-slate-500">Direct / no referrer</span>
+            <span className="font-medium text-slate-500">No referrer or UTM captured</span>
             {' '}
-            = no document.referrer and no UTM on first touch (typed URL, bookmark, in-app browser, or privacy stripping).
-            Not a paid source.
+            means the first touch stored no document.referrer and no UTM. That includes typed URLs, bookmarks, in-app browsers, and privacy stripping. It is not a confirmed direct channel.
+            {Number.isFinite(Number(crmTrafficSummary?.uniqueSessions))
+              ? ` In this range, ${fmtInt(crmTrafficSummary?.directUnknownSessions)} of ${fmtInt(crmTrafficSummary?.uniqueSessions)} sessions are in that uncaptured bucket (${fmtInt(crmTrafficSummary?.attributedSessions)} have a referrer or UTM).`
+              : ''}
+            {' '}
+            Staff logins and /admin paths are excluded. The latest customer-view SQL in this repo does not apply the earlier bot registry, so this remainder is not treated as bot-free direct traffic.
           </p>
         </Card>
       </div>
@@ -563,6 +548,8 @@ export default function AdminExecutiveDashboard({
       </div>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
+        <CampaignLaunchCohortCard rangeDays={rangeDays} />
+        <CampaignEntriesAdminCard />
         <Card className="xl:col-span-4">
           <SectionTitle>Campaign performance</SectionTitle>
           {campaign ? (
@@ -595,6 +582,9 @@ export default function AdminExecutiveDashboard({
                 <p className="mt-2 text-[10px] text-slate-400">
                   {[campaign.utm_source, campaign.utm_medium].filter(Boolean).join(' / ') || 'No utm_source / utm_medium'}
                 </p>
+                <p className="mt-1 text-[10px] leading-relaxed text-slate-400">
+                  Share of sessions compares this UTM row with all sessions in the selected range. It is not the SNS campaign conversion rate.
+                </p>
               </div>
             </div>
           ) : (
@@ -608,7 +598,7 @@ export default function AdminExecutiveDashboard({
             <thead className="text-[11px] text-slate-400">
               <tr>
                 <th className="pb-2 font-medium">User</th>
-                <th className="pb-2 font-medium">Status</th>
+                <th className="pb-2 font-medium">Payment / activity</th>
                 <th className="pb-2 font-medium">Signed up</th>
                 <th className="pb-2 font-medium">Last active</th>
               </tr>
@@ -617,12 +607,14 @@ export default function AdminExecutiveDashboard({
               {recent.length === 0 ? (
                 <tr><td colSpan={4} className="py-8 text-center text-slate-400">No sign-ups in this period</td></tr>
               ) : recent.map((u) => {
-                const st = statusOf(u)
+                const pay = paymentStatus(u)
+                const act = activityStatus(u)
                 return (
                   <tr key={u.user_id} className="border-t border-slate-100">
                     <td className="py-2.5 text-slate-700">{u.email || String(u.user_id || '').slice(0, 8)}</td>
                     <td className="py-2.5">
-                      <span className={`rounded-full px-2 py-0.5 text-[10px] ${st.cls}`}>{st.label}</span>
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] ${pay.cls}`}>{pay.label}</span>
+                      <span className={`ml-1 rounded-full px-2 py-0.5 text-[10px] ${act.cls}`}>{act.label}</span>
                     </td>
                     <td className="py-2.5 tabular-nums text-slate-400">{String(u.user_created_at || '').slice(5, 10).replace('-', '/')}</td>
                     <td className="py-2.5 text-slate-400">{relativeTime(u.last_seen_at || u.last_sign_in_at)}</td>

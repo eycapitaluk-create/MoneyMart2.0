@@ -57,7 +57,7 @@ export default function CampaignHomeBanner({ userEmail = '' }) {
 
         <Link
           to={CAMPAIGN_CP2026_SNS_SEP_PATH}
-          onClick={() => trackAnalyticsEvent('campaign_home_banner_click', { campaign_id: 'cp2026_sns_sep' })}
+          onClick={() => trackAnalyticsEvent('campaign_home_banner_click', { campaign_id: 'cp2026_sns_oct' })}
           className="mm-campaign-cta-flash inline-flex shrink-0 items-center justify-center gap-1.5 self-start rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 px-4 py-2.5 text-xs font-black text-white shadow-lg shadow-orange-500/40 transition hover:from-orange-600 hover:to-amber-600 sm:self-center"
         >
           <Star size={11} fill="currentColor" className="opacity-90" aria-hidden />

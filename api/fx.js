@@ -4,7 +4,7 @@
  * 1) Snapshot table fx_daily_usdjpy（cron で日次 upsert）— FX_READ_USDJPY_FROM_DB=true のとき読む
  * 2) Frankfurter (ECB-based, no key)
  * 3) Twelve Data (if FX_TWELVEDATA_API_KEY is set)
- * 4) Static fallback rate via FX_FALLBACK_USDJPY
+ * 取得できない日は 150 固定を返さない。直前営業日も無いときは rates を空にする。
  */
 
 import {
@@ -15,11 +15,16 @@ import {
   fillMissingDates,
   toIsoDate,
   dayRange,
-  DEFAULT_FALLBACK_USDJPY,
 } from './_lib/fx-usdjpy-providers.js'
-import { getFxSupabaseAdmin, selectUsdJpyOne, selectUsdJpyRange } from './_lib/fx-usdjpy-db.js'
+import { getFxSupabaseAdmin, selectUsdJpyOnOrBefore, selectUsdJpyRange } from './_lib/fx-usdjpy-db.js'
 
-const FX_FALLBACK_USDJPY = Number(process.env.FX_FALLBACK_USDJPY || DEFAULT_FALLBACK_USDJPY)
+function isoDaysBefore(iso, days) {
+  const dt = new Date(`${iso}T00:00:00Z`)
+  if (Number.isNaN(dt.getTime())) return ''
+  dt.setUTCDate(dt.getUTCDate() - Number(days || 0))
+  return dt.toISOString().slice(0, 10)
+}
+
 const FX_TWELVEDATA_API_KEY = process.env.FX_TWELVEDATA_API_KEY || ''
 
 function readUsdJpyDbEnabled() {
@@ -42,31 +47,56 @@ export default async function handler(req, res) {
       if (useDb) {
         const admin = getFxSupabaseAdmin()
         if (admin) {
-          const rowRate = await selectUsdJpyOne(admin, date)
-          if (rowRate != null) {
-            return res.status(200).json({ date, rates: { USD: rowRate }, source: 'database' })
+          const row = await selectUsdJpyOnOrBefore(admin, date)
+          if (row) {
+            return res.status(200).json({
+              date,
+              fxAsOf: row.asOf,
+              rates: { USD: row.rate },
+              source: 'database',
+            })
           }
         }
       }
 
       const fromFrankfurter = await fetchFrankfurterByDate(date)
       if (fromFrankfurter != null) {
-        return res.status(200).json({ date, rates: { USD: fromFrankfurter }, source: 'frankfurter' })
+        return res.status(200).json({ date, fxAsOf: date, rates: { USD: fromFrankfurter }, source: 'frankfurter' })
+      }
+
+      const priorWindow = await fetchFrankfurterRange(isoDaysBefore(date, 10), date)
+      const priorKeys = Object.keys(priorWindow || {}).sort()
+      const priorDay = priorKeys.length > 0 ? priorKeys[priorKeys.length - 1] : ''
+      if (priorDay && priorWindow[priorDay] > 0) {
+        return res.status(200).json({
+          date,
+          fxAsOf: priorDay,
+          rates: { USD: priorWindow[priorDay] },
+          source: 'frankfurter',
+        })
       }
 
       const fromTwelveData = await fetchTwelveDataByDate(date, FX_TWELVEDATA_API_KEY)
       if (fromTwelveData != null) {
-        return res.status(200).json({ date, rates: { USD: fromTwelveData }, source: 'twelvedata' })
+        return res.status(200).json({ date, fxAsOf: date, rates: { USD: fromTwelveData }, source: 'twelvedata' })
       }
 
-      return res.status(200).json({ date, rates: { USD: FX_FALLBACK_USDJPY }, source: 'fallback' })
+      return res.status(200).json({ date, rates: {}, source: 'unavailable' })
     }
 
     if (start && end) {
       let fromDb = {}
+      let seedRate = null
+      const dayBefore = isoDaysBefore(start, 1)
       if (useDb) {
         const admin = getFxSupabaseAdmin()
-        if (admin) fromDb = await selectUsdJpyRange(admin, start, end)
+        if (admin) {
+          fromDb = await selectUsdJpyRange(admin, start, end)
+          if (dayBefore) {
+            const prior = await selectUsdJpyOnOrBefore(admin, dayBefore)
+            if (prior?.rate > 0) seedRate = prior.rate
+          }
+        }
       }
 
       let merged = {}
@@ -98,16 +128,24 @@ export default async function handler(req, res) {
         }
       }
 
-      if (!merged || Object.keys(merged).length === 0) {
-        return res.status(200).json({ ratesByDate: {}, source: 'fallback' })
+      if (seedRate == null && dayBefore) {
+        const priorWindow = (await fetchFrankfurterRange(isoDaysBefore(start, 10), dayBefore)) || {}
+        const priorKeys = Object.keys(priorWindow).sort()
+        const priorDay = priorKeys.length > 0 ? priorKeys[priorKeys.length - 1] : ''
+        if (priorDay && priorWindow[priorDay] > 0) seedRate = priorWindow[priorDay]
       }
 
-      const filled = fillMissingDates(merged, start, end)
-      const withFallback = {}
-      for (const d of dayRange(start, end)) {
-        withFallback[d] = Number(filled[d] || FX_FALLBACK_USDJPY)
+      if (!merged || Object.keys(merged).length === 0) {
+        if (!(seedRate > 0)) return res.status(200).json({ ratesByDate: {}, source: 'unavailable' })
+        merged = {}
       }
-      return res.status(200).json({ ratesByDate: withFallback, source })
+
+      const filled = fillMissingDates(merged, start, end, seedRate)
+      const ratesByDate = {}
+      for (const d of dayRange(start, end)) {
+        if (filled[d] != null) ratesByDate[d] = Number(filled[d])
+      }
+      return res.status(200).json({ ratesByDate, source: Object.keys(ratesByDate).length ? source : 'unavailable' })
     }
 
     return res.status(400).json({ error: 'Provide date or start_date & end_date' })

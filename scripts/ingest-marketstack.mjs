@@ -3,6 +3,7 @@
  * 실행: node scripts/ingest-marketstack.mjs [--region US|JP|UK|EU] [--dry-run]
  */
 import { createClient } from '@supabase/supabase-js'
+import { isWeekendTradeDate } from '../api/_lib/price-series-cleaner.js'
 import { STOCK_LIST_400 } from '../src/data/stockList400.js'
 
 const MARKETSTACK_KEY =
@@ -118,7 +119,7 @@ const upsertToSupabase = async (rows) => {
       const low = safeNum(r.low, MAX_PRICE, 0.000001)
       const close = safeNum(r.close, MAX_PRICE, 0.000001)
       const volume = safeNum(r.volume, MAX_VOLUME, 0)
-      if (!tradeDate || close == null) {
+      if (!tradeDate || close == null || isWeekendTradeDate(tradeDate)) {
         droppedPriceRows += 1
         droppedPriceRowsByQuality[r.symbol] = (droppedPriceRowsByQuality[r.symbol] || 0) + 1
         return null

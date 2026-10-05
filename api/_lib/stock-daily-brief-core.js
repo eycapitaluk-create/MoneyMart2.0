@@ -550,7 +550,7 @@ ${regionLabel}の銘柄 ${symbol}（${companyName || symbol}）について、�
 - summary: 2〜4文。読者が「いま何が起きているか」が分かる実用的な整理にする
 - drivers: 配列（0〜3件）。各要素は { "label": "短い要因名", "detail": "1文の説明" }
 - price_context: 前日比など数値を含む1文（price ブロックの数値と矛盾しない）
-- **売買推奨・買い時/売り時の指示は禁止**
+- **売買の指示、買うタイミング・売るタイミングの指示は出さない**
 - headlines にない具体的イベント（決算数値・M&A・社債発行など）を断定しない
 - **第三者メディア名の引用・出典表示は禁止**（Yahoo Finance、Investing.com、Reuters、Bloomberg、TheStreet、Google News 等を本文・drivers に書かない）
 - 「〜で確認」「〜報道」など他社記事の転載・引用調の表現は禁止。MoneyMart AIによる整理・分析として書く

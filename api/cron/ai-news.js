@@ -523,7 +523,7 @@ Sector: ${article.sector}
 
 Strict rules:
 - Use ONLY facts that appear in Headline or Description above. Do not invent numbers, dates, quotes, or unnamed sources.
-- Do NOT give investment advice, price targets, buy/sell recommendations, or "what investors should do."
+- Do NOT give investment advice, price targets, buy/sell instructions, or "what investors should do."
 - "summary" must be two complete Japanese sentences that state WHO did WHAT and WHY it matters per the text (not generic filler). If the source text is thin, still paraphrase what is explicitly written—never output placeholder text.
 - If the text is too thin to explain safely, write analysis as 2 short paragraphs that paraphrase only what is given and one sentence saying detail is limited—link to the original article for more.
 - "analysis" must be 2–5 short paragraphs (blank line between paragraphs), plain text: context and rewording only from the given lines—not new reporting.

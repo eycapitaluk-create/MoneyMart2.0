@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { SITE_ORIGIN } from '../lib/seoConfig'
 import { getAuthCallbackUrl } from '../lib/authCallbackUrl'
-import { storeAuthRedirectPath } from '../lib/authRedirectStorage'
+import { peekAuthRedirectPath, storeAuthRedirectPath } from '../lib/authRedirectStorage'
+import { authNextMetadata } from '../lib/authReturnPath'
 import { clearPendingReferralCode, getPendingReferralCode } from '../lib/referralStorage'
 import {
   getSignupAttributionForProfile,
@@ -74,6 +75,7 @@ export function useAuth() {
           ...(queryParams ? { queryParams } : {}),
           data: {
             ...signupAttrMeta,
+            ...authNextMetadata(redirectAfterAuth),
             ...(referralCode ? { referral_code: referralCode } : {}),
           },
         },
@@ -119,6 +121,7 @@ export function useAuth() {
             consent_acknowledged: consentAcknowledged,
             marketing_opt_in: Boolean(profile.marketingOptIn),
             ...signupAttrMeta,
+            ...authNextMetadata(typeof window !== 'undefined' ? peekAuthRedirectPath('/') : '/'),
             ...(referralCode ? { referral_code: referralCode } : {}),
           },
         },

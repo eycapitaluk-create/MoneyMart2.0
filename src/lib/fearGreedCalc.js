@@ -48,45 +48,45 @@ const MIN_TREND_DAYS = 20
 
 export function getGrade(score) {
   if (score <= 20) return { label: '極度の恐怖', en: 'Extreme Fear', color: '#dc2626', bg: '#fef2f2', border: '#fecaca', emoji: '😱', desc: '市場心理が大きく不安方向に傾いています。価格変動と分散状況の確認が重要です。' }
-  if (score <= 40) return { label: '恐怖', en: 'Fear', color: '#f97316', bg: '#fff7ed', border: '#fed7aa', emoji: '😨', desc: '投資家心理に慎重さが見られます。市場環境と保有比率を落ち着いて確認しましょう。' }
-  if (score <= 60) return { label: '中立', en: 'Neutral', color: '#eab308', bg: '#fefce8', border: '#fde68a', emoji: '😐', desc: '市場心理は中立圏です。短期の動きだけでなく、複数指標をあわせて確認しましょう。' }
+  if (score <= 40) return { label: '恐怖', en: 'Fear', color: '#f97316', bg: '#fff7ed', border: '#fed7aa', emoji: '😨', desc: '投資家心理に慎重さが見られます。市場環境と保有比率を確認する状態です。' }
+  if (score <= 60) return { label: '中立', en: 'Neutral', color: '#eab308', bg: '#fefce8', border: '#fde68a', emoji: '😐', desc: '市場心理は中立圏です。短期の動きだけでなく、複数指標をあわせて見る状態です。' }
   if (score <= 80) return { label: '強欲', en: 'Greed', color: '#22c55e', bg: '#f0fdf4', border: '#bbf7d0', emoji: '😏', desc: '投資家心理に楽観が見られます。過熱感や保有比率の偏りに注意が必要です。' }
-  return { label: '極度の強欲', en: 'Extreme Greed', color: '#16a34a', bg: '#dcfce7', border: '#86efac', emoji: '🤑', desc: '市場心理が大きく楽観方向に傾いています。リスク許容度と分散状況を確認しましょう。' }
+  return { label: '極度の強欲', en: 'Extreme Greed', color: '#16a34a', bg: '#dcfce7', border: '#86efac', emoji: '🤑', desc: '市場心理が大きく楽観方向に傾いています。リスク許容度と分散状況を確認する状態です。' }
 }
 
-/** 高スコア＝強欲圏でも「過熱時は慎重」というアドバイス用 */
+/** スコア帯の説明。売買の指示は出さない。 */
 export function getFearGreedStance(score) {
   if (score >= 81) {
     return {
-      label: 'リスク管理優先',
-      hint: '極端な楽観圏です。利確・分散・サイズ上限の再確認を。',
+      label: '極端な楽観',
+      hint: '極端な楽観圏です。価格の上がり方と保有の偏りが確認ポイントです。',
       icon: '🛡️',
     }
   }
   if (score >= 61) {
     return {
-      label: 'やや慎重',
-      hint: '強欲圏。モメンタムは良好でも過熱・集中リスクに注意。',
+      label: '楽観',
+      hint: '強欲圏です。値動きは強い一方、保有の集中度が高い状態です。',
       icon: '🛡️',
     }
   }
   if (score >= 41) {
     return {
-      label: 'バランス確認',
-      hint: '中立圏。複数指標の方向が揃っているか確認。',
+      label: '中立',
+      hint: '中立圏です。指標の方向はそろっていません。',
       icon: '⚖️',
     }
   }
   if (score >= 21) {
     return {
-      label: '冷静に機会探索',
-      hint: '恐怖圏。パニック売りに追随せず、ルール内で検討。',
+      label: '慎重',
+      hint: '恐怖圏です。価格の下落幅が大きい状態です。',
       icon: '🔍',
     }
   }
   return {
-    label: '防御的スタンス',
-    hint: '極端な恐怖圏。現金比率・分散を最優先に。',
+    label: '極端な不安',
+    hint: '極端な恐怖圏です。価格変動が大きい状態です。',
     icon: '🧊',
   }
 }

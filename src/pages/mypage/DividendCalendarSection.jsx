@@ -610,7 +610,7 @@ export default function DividendCalendarSection({
               <div className="flex shrink-0 items-start justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-gradient-to-r from-orange-50 to-white dark:from-slate-900 dark:to-slate-900">
                 <div>
                   <p className="text-sm font-black text-slate-900 dark:text-white">{editingStockId ? '配当銘柄を編集' : '配当銘柄を追加'}</p>
-                  <p className="mt-1 text-[11px] text-slate-500">{editingStockId ? '登録済み銘柄の配当月と配当金を更新できます' : '銘柄名・コードを入力すると一覧から選べます。マスター反映後は内容をご確認ください。'}</p>
+                  <p className="mt-1 text-[11px] text-slate-500">{editingStockId ? '登録済み銘柄の配当月と配当金を更新できます' : '株式・ETFの銘柄名・コードを入力すると一覧から選べます。マスター反映後は内容をご確認ください。'}</p>
                 </div>
                 <button type="button" onClick={() => onShowAdd(false)} className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition"><X size={18} /></button>
               </div>
@@ -619,7 +619,7 @@ export default function DividendCalendarSection({
                   <div className="min-w-0">
                     <label className="text-[11px] font-bold text-slate-500 block mb-1">ティッカー / 証券コード *</label>
                     <div className="relative">
-                      <input value={newStockId} onChange={e => onNewStockId(e.target.value)} placeholder="例: 8306, KO, AAPL" disabled={Boolean(editingStockId)} autoComplete="off" className="w-full border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 rounded-lg px-3 py-2 text-sm font-mono font-bold text-slate-800 dark:text-white focus:outline-none focus:border-orange-400 disabled:opacity-60 disabled:cursor-not-allowed" />
+                      <input value={newStockId} onChange={e => onNewStockId(e.target.value)} placeholder="例: 8306, KO, 1306" disabled={Boolean(editingStockId)} autoComplete="off" className="w-full border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 rounded-lg px-3 py-2 text-sm font-mono font-bold text-slate-800 dark:text-white focus:outline-none focus:border-orange-400 disabled:opacity-60 disabled:cursor-not-allowed" />
                       {divStockLookupLoading && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-orange-500 font-bold">検索中...</span>}
                     </div>
                     {editingStockId && (
@@ -639,9 +639,9 @@ export default function DividendCalendarSection({
                 </div>
                 <div>
                   <label className="text-[11px] font-bold text-slate-500 block mb-1">銘柄名 *（英語・日本語可）</label>
-                  <input value={newStockName} onChange={e => onNewStockName(e.target.value)} placeholder="例: Apple、三菱UFJ、トヨタ、コカ・コーラ" autoComplete="off" className="w-full border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 rounded-lg px-3 py-2 text-sm text-slate-800 dark:text-white focus:outline-none focus:border-orange-400" />
+                  <input value={newStockName} onChange={e => onNewStockName(e.target.value)} placeholder="例: Apple、三菱UFJ、NEXT FUNDS TOPIX" autoComplete="off" className="w-full border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 rounded-lg px-3 py-2 text-sm text-slate-800 dark:text-white focus:outline-none focus:border-orange-400" />
                   {!editingStockId ? (
-                    <p className="mt-1 text-[10px] text-slate-400">マスターに載っている銘柄は会社名だけでも検索→下の候補をタップでコード・配当を自動入力します。</p>
+                    <p className="mt-1 text-[10px] text-slate-400">株式・ETFはティッカー、または商品名が一致するとコード・配当月・配当金を自動入力します。候補が複数なら下の一覧から選べます。</p>
                   ) : null}
                 </div>
                 {!editingStockId && Array.isArray(detailSuggestions) && detailSuggestions.length > 0 ? (
@@ -665,6 +665,9 @@ export default function DividendCalendarSection({
                               </span>
                             ) : null}
                             <span className="block text-[11px] text-slate-500 truncate">{r.name}</span>
+                            {r.category ? (
+                              <span className="block text-[10px] text-slate-400">{r.category}</span>
+                            ) : null}
                           </button>
                         </li>
                       ))}

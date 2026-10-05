@@ -148,7 +148,7 @@ export default function StockDailyAiBrief({
       <p className="mt-3 text-[10px] leading-relaxed text-slate-400 dark:text-slate-500">
         {LEGAL_NOTICE_TEMPLATES.newsNotSolicitation}
         {' '}
-        本欄はMoneyMart AIによる参考分析です。第三者メディアの記事転載・引用ではなく、売買の推奨を意図するものでもありません。
+        本欄はMoneyMart AIによる参考分析です。第三者メディアの記事転載・引用ではなく、売買の勧誘を意図するものでもありません。
       </p>
     </div>
   )

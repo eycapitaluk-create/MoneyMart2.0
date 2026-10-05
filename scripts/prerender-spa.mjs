@@ -34,6 +34,7 @@ const ROUTES = [
   '/news',
   '/faq',
   '/about',
+  '/careers',
 ]
 
 function startPreview() {

@@ -50,7 +50,10 @@ import {
   saveUserCashFlowOptimizerProfile,
   saveCashFlowOptimizerSimulation,
   loadStockWatchlistSymbolsFromDb,
-  replaceStockWatchlistInDb,
+  mergeStockWatchlistSymbolsInDb,
+  removeDbWatchlistItem,
+  normalizeListedSymbolId,
+  dividendMonthsFromDividends,
   loadDividendWatchlist,
   upsertDividendWatchlistItem,
   updateDividendWatchlistQty,
@@ -72,6 +75,7 @@ import { LEGAL_NOTICE_TEMPLATES } from '../constants/legalNoticeTemplates'
 import { MM_SIMULATION_PAST_PERFORMANCE_JA, MM_DEBT_SIMULATION_DISCLAIMER_JA } from '../lib/moneymartSimulationDisclaimer'
 import { MOCK_STOCKS } from '../data/mockStocks'
 import { STOCK_LIST_400 } from '../data/stockList400'
+import { isUsListedEtfSymbol } from '../data/usListedEtfUniverse'
 import { getStockNameFallback } from '../data/stockNameFallback'
 import { ETF_LIST_FROM_XLSX } from '../data/etfListFromXlsx'
 import { decodeHtmlEntities, normalizeFundDisplayName, resolveFundDisplayName } from '../lib/fundDisplayUtils'
@@ -134,6 +138,14 @@ const getStockWatchlistStorageKey = (userId) =>
 const MY_PAGE_ETF_META_BY_SYMBOL = new Map(
   (Array.isArray(ETF_LIST_FROM_XLSX) ? ETF_LIST_FROM_XLSX : []).map((r) => [String(r.symbol || '').toUpperCase(), r])
 )
+const isMyPageEtfSymbol = (stockId) => {
+  const raw = String(stockId || '').trim().toUpperCase()
+  if (!raw) return false
+  if (MY_PAGE_ETF_META_BY_SYMBOL.has(raw)) return true
+  if (!raw.endsWith('.T') && MY_PAGE_ETF_META_BY_SYMBOL.has(`${raw}.T`)) return true
+  if (raw.endsWith('.T') && MY_PAGE_ETF_META_BY_SYMBOL.has(raw.slice(0, -2))) return true
+  return false
+}
 
 /** 保有の symbol（例: 7203）と配当ウォッチの stock_id（7203 / 7203.T）を同一銘柄として扱う */
 const ownedSymbolMatchesDividendStockId = (ownedSym, divStockId) => {
@@ -142,12 +154,59 @@ const ownedSymbolMatchesDividendStockId = (ownedSym, divStockId) => {
   if (!o || !d) return false
   if (o === d) return true
   const jpCode = (x) => {
-    const m = String(x || '').match(/^(\d{4})(\.T)?$/i)
-    return m ? m[1] : ''
+    const m = String(x || '').match(/^(\d{4}|\d{3}[A-Z])(\.T)?$/i)
+    return m ? m[1].toUpperCase() : ''
   }
   const oC = jpCode(o)
   const dC = jpCode(d)
   return Boolean(oC && dC && oC === dC)
+}
+
+const dividendDismissStorageKey = (userId) => `mm-dividend-watchlist-dismissed:${userId || 'guest'}`
+
+const readDismissedDividendSymbols = (userId) => {
+  try {
+    const raw = window.localStorage.getItem(dividendDismissStorageKey(userId))
+    const parsed = raw ? JSON.parse(raw) : []
+    return new Set(
+      (Array.isArray(parsed) ? parsed : [])
+        .map((id) => normalizeListedSymbolId(id))
+        .filter(Boolean),
+    )
+  } catch {
+    return new Set()
+  }
+}
+
+const writeDismissedDividendSymbols = (userId, ids) => {
+  try {
+    window.localStorage.setItem(
+      dividendDismissStorageKey(userId),
+      JSON.stringify([...ids]),
+    )
+  } catch {
+    // ignore
+  }
+}
+
+const isDividendWatchlistDismissed = (userId, stockId) => (
+  readDismissedDividendSymbols(userId).has(normalizeListedSymbolId(stockId))
+)
+
+const rememberDismissedDividendSymbol = (userId, stockId) => {
+  const id = normalizeListedSymbolId(stockId)
+  if (!userId || !id) return
+  const next = readDismissedDividendSymbols(userId)
+  next.add(id)
+  writeDismissedDividendSymbols(userId, next)
+}
+
+const forgetDismissedDividendSymbol = (userId, stockId) => {
+  const id = normalizeListedSymbolId(stockId)
+  if (!userId || !id) return
+  const next = readDismissedDividendSymbols(userId)
+  next.delete(id)
+  writeDismissedDividendSymbols(userId, next)
 }
 
 /** stock_symbols がティッカーのみでも、JP上場CSV・ETFマスタ等で表示名を補う（resolveFundDisplayName に委譲） */
@@ -266,6 +325,8 @@ const normalizeRealizedStockTrades = (rows = []) => (
       const costBasisJpy = Number(row?.costBasisJpy ?? row?.cost_basis_jpy ?? 0)
       const proceedsJpy = Number(row?.proceedsJpy ?? row?.proceeds_jpy ?? 0)
       const realizedPnlJpy = Number(row?.realizedPnlJpy ?? row?.realized_pnl_jpy ?? (proceedsJpy - costBasisJpy))
+      const sellFxRate = Number(row?.sellFxRate ?? row?.sell_fx_rate)
+      const sellFxDate = String(row?.sellFxDate || row?.sell_fx_date || '').slice(0, 10)
       return {
         tradeId,
         symbol,
@@ -275,6 +336,8 @@ const normalizeRealizedStockTrades = (rows = []) => (
         costBasisJpy: Number.isFinite(costBasisJpy) ? costBasisJpy : 0,
         proceedsJpy: Number.isFinite(proceedsJpy) ? proceedsJpy : 0,
         realizedPnlJpy: Number.isFinite(realizedPnlJpy) ? realizedPnlJpy : 0,
+        sellFxRate: Number.isFinite(sellFxRate) && sellFxRate > 0 ? sellFxRate : null,
+        sellFxDate: /^\d{4}-\d{2}-\d{2}$/.test(sellFxDate) ? sellFxDate : '',
       }
     })
     .filter(Boolean)
@@ -657,12 +720,17 @@ const normalizeOwnedLots = (rows = []) => (
     .map((row, idx) => {
       const symbol = String(row?.symbol || row?.id || row?.code || '').trim().toUpperCase()
       if (!symbol) return null
+      const currency = String(row?.currency || '').trim().toUpperCase()
+      const buyFxRate = Number(row?.buyFxRate)
       return {
         lotId: String(row?.lotId || `legacy_${symbol}_${idx}`),
         symbol,
         buyDate: String(row?.buyDate || ''),
         buyPrice: row?.buyPrice ?? '',
         qty: row?.qty ?? '',
+        currency: currency === 'USD' || currency === 'JPY' || currency === 'EUR' || currency === 'GBP' ? currency : '',
+        buyFxRate: Number.isFinite(buyFxRate) && buyFxRate > 0 ? buyFxRate : '',
+        buyFxDate: String(row?.buyFxDate || ''),
       }
     })
     .filter(Boolean)
@@ -704,12 +772,173 @@ const FX_RATES_TO_JPY = {
   GBP: 190,
 }
 
+const isJpListedCode = (symbol = '') => {
+  const s = String(symbol || '').trim().toUpperCase()
+  const bare = s.endsWith('.T') ? s.slice(0, -2) : s
+  return /^\d{4}$/.test(bare) || /^\d{3}[A-Z]$/.test(bare)
+}
+
 const inferStockCurrency = (symbol = '') => {
   const s = String(symbol || '').toUpperCase()
-  if (s.endsWith('.T')) return 'JPY'
+  if (s.endsWith('.T') || isJpListedCode(s)) return 'JPY'
   if (s.endsWith('.L') || s.endsWith('.LN')) return 'GBP'
   if (/\.(PA|AS|DE|MI|MC|SW|BR|LS|ST|HE)$/i.test(s)) return 'EUR'
   return 'USD'
+}
+
+const storedLotCurrency = (lot) => {
+  const c = String(lot?.currency || '').trim().toUpperCase()
+  return c === 'USD' || c === 'JPY' || c === 'EUR' || c === 'GBP' ? c : ''
+}
+
+/** 保存済み通貨を優先。未保存の米国ティッカーは取得単価が現在値の 0.2〜5 倍のときだけ USD。 */
+const resolveLotCurrency = (lot, latestPrice) => {
+  const stored = storedLotCurrency(lot)
+  if (stored) return stored
+  const inferred = inferStockCurrency(lot?.symbol || lot?.code || '')
+  if (inferred !== 'USD') return inferred
+  const buy = Number(lot?.buyPrice || 0)
+  const px = Number(latestPrice || lot?.price || 0)
+  if (buy > 0 && px > 0 && buy >= px * 0.2 && buy <= px * 5) return 'USD'
+  return ''
+}
+
+/** 指定日以前の直近営業日レート。150 固定は使わない。 */
+const fxOnOrBefore = (iso, fxByDate) => {
+  const day = String(iso || '').slice(0, 10)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !fxByDate || typeof fxByDate !== 'object') return null
+  let bestDate = ''
+  let best = null
+  for (const [rawKey, raw] of Object.entries(fxByDate)) {
+    const key = String(rawKey).slice(0, 10)
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(key) || key > day) continue
+    const v = Number(raw)
+    if (!(Number.isFinite(v) && v > 0)) continue
+    if (key > bestDate) {
+      bestDate = key
+      best = v
+    }
+  }
+  return best == null ? null : { rate: best, asOf: bestDate }
+}
+
+/** 매도일 이하 가장 최근 영업일 USD/JPY. 실패하면 null. 현재 환율로 대체하지 않는다. */
+const lookupUsdJpyOnOrBefore = async (iso) => {
+  const day = toIsoDate(iso)
+  if (!day) return null
+  try {
+    const r = await fetch(`/api/fx?date=${encodeURIComponent(day)}`)
+    if (!r.ok) return null
+    const j = await r.json()
+    const rate = Number(j?.rates?.USD)
+    const asOf = String(j?.fxAsOf || '').slice(0, 10)
+    if (!(rate > 0) || !/^\d{4}-\d{2}-\d{2}$/.test(asOf)) return null
+    return { rate, asOf }
+  } catch {
+    return null
+  }
+}
+
+/** 매도 저장용. 매도일 조회가 실패할 때만 현재 환율과 그 기준일을 쓴다. */
+const resolveUsdSellFx = async ({ sellDateIso, currentRate, currentAsOf }) => {
+  const found = await lookupUsdJpyOnOrBefore(sellDateIso)
+  if (found) return found
+  const rate = Number(currentRate)
+  const asOf = String(currentAsOf || '').slice(0, 10)
+  if (rate > 0 && /^\d{4}-\d{2}-\d{2}$/.test(asOf)) return { rate, asOf }
+  return null
+}
+
+const formatAppliedUsdJpy = (rate, asOf) => {
+  const n = Number(rate)
+  const day = String(asOf || '').slice(0, 10)
+  if (!(n > 0) || !/^\d{4}-\d{2}-\d{2}$/.test(day)) return ''
+  const yen = n.toLocaleString('ja-JP', { minimumFractionDigits: 2, maximumFractionDigits: 4 })
+  return `適用レート 1ドル=¥${yen} (${day})`
+}
+
+const resolveBuyFx = (lot, fxByDate, latestPrice) => {
+  const stored = Number(lot?.buyFxRate)
+  if (Number.isFinite(stored) && stored > 0) {
+    return { rate: stored, asOf: String(lot?.buyFxDate || '').slice(0, 10), locked: true }
+  }
+  const ccy = resolveLotCurrency(lot, latestPrice)
+  if (ccy === 'JPY') return { rate: 1, asOf: '', locked: false }
+  if (ccy !== 'USD') return { rate: null, asOf: '', locked: false }
+  const buyDate = String(lot?.buyDate || '').slice(0, 10)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(buyDate)) return { rate: null, asOf: '', locked: false }
+  const found = fxOnOrBefore(buyDate, fxByDate)
+  return found ? { ...found, locked: false } : { rate: null, asOf: '', locked: false }
+}
+
+const positiveUsdJpy = (value) => {
+  const n = Number(value)
+  return Number.isFinite(n) && n > 0 ? n : null
+}
+
+const formatSignedYen = (n) => {
+  if (n == null || !Number.isFinite(Number(n))) return '--'
+  const v = Math.round(Number(n))
+  return `${v >= 0 ? '+' : ''}¥${v.toLocaleString('ja-JP')}`
+}
+
+/** 円換算。通貨未確定・為替なしは included:false（150 では埋めない）。 */
+const lotYenParts = (lot, qty, buyPrice, currentPrice, fxByDate, valuationUsdJpy) => {
+  const ccy = resolveLotCurrency(lot, currentPrice)
+  if (!ccy) {
+    return { costJpy: 0, valueJpy: 0, pricePnlJpy: null, fxPnlJpy: null, included: false, costKnown: false, currency: '' }
+  }
+  if (ccy === 'JPY') {
+    const costJpy = qty * buyPrice
+    const listing = inferStockCurrency(lot?.symbol || lot?.code || '')
+    if (listing !== 'USD') {
+      const valueJpy = qty * currentPrice
+      return { costJpy, valueJpy, pricePnlJpy: valueJpy - costJpy, fxPnlJpy: 0, included: true, costKnown: true, currency: 'JPY', hideFxSplit: false }
+    }
+    const now = positiveUsdJpy(valuationUsdJpy)
+    if (now == null) {
+      return { costJpy: 0, valueJpy: 0, pricePnlJpy: null, fxPnlJpy: null, included: false, costKnown: false, currency: 'JPY', hideFxSplit: true }
+    }
+    const valueJpy = qty * currentPrice * now
+    return { costJpy, valueJpy, pricePnlJpy: null, fxPnlJpy: null, included: true, costKnown: true, currency: 'JPY', hideFxSplit: true }
+  }
+  if (ccy !== 'USD') {
+    const costJpy = toJpy(qty * buyPrice, ccy)
+    const valueJpy = toJpy(qty * currentPrice, ccy)
+    return { costJpy, valueJpy, pricePnlJpy: valueJpy - costJpy, fxPnlJpy: 0, included: true, costKnown: true, currency: ccy }
+  }
+  const buyFx = resolveBuyFx(lot, fxByDate, currentPrice)
+  const now = positiveUsdJpy(valuationUsdJpy)
+  const costKnown = buyFx.rate > 0
+  const valueKnown = now != null
+  const costJpy = costKnown ? qty * buyPrice * buyFx.rate : 0
+  const valueJpy = valueKnown ? qty * currentPrice * now : 0
+  if (!costKnown || !valueKnown) {
+    return { costJpy, valueJpy, pricePnlJpy: null, fxPnlJpy: null, included: valueKnown, costKnown, currency: 'USD' }
+  }
+  return {
+    costJpy,
+    valueJpy,
+    pricePnlJpy: (currentPrice - buyPrice) * qty * buyFx.rate,
+    fxPnlJpy: currentPrice * qty * (now - buyFx.rate),
+    included: true,
+    costKnown: true,
+    currency: 'USD',
+  }
+}
+
+/** 円入力の米国株は評価額ベース。それ以外の取引行は従来の価格差率。 */
+const stockLotPnlRate = (lot, stock, qty, buyPrice, fxByDate, valuationUsdJpy) => {
+  const price = Number(stock?.price || 0)
+  const raw = qty > 0 && buyPrice > 0 && price > 0
+    ? ((price - buyPrice) / buyPrice) * 100
+    : null
+  const symbol = lot?.symbol || lot?.code || stock?.symbol || ''
+  const inputCcy = resolveLotCurrency({ ...lot, symbol }, price)
+  if (inputCcy !== 'JPY' || inferStockCurrency(symbol) !== 'USD') return raw
+  const parts = lotYenParts({ ...lot, symbol }, qty, buyPrice, price, fxByDate, valuationUsdJpy)
+  if (!(parts.costKnown && parts.included && parts.costJpy > 0)) return null
+  return ((parts.valueJpy - parts.costJpy) / parts.costJpy) * 100
 }
 
 const inferFundCurrency = (name = '') => {
@@ -1309,12 +1538,9 @@ const closeOnOrBeforeSorted = (sortedRows, asOfIso) => {
   return Number.isFinite(c) && c > 0 ? c : null
 }
 
-const lookupFxUsdJpyOn = (iso, fxMap, fallback) => {
-  if (iso && fxMap && fxMap[iso] != null) {
-    const v = Number(fxMap[iso])
-    if (Number.isFinite(v) && v > 0) return v
-  }
-  return Number.isFinite(fallback) && fallback > 0 ? fallback : FX_RATES_TO_JPY.USD
+const lookupFxUsdJpyOn = (iso, fxMap) => {
+  const found = fxOnOrBefore(iso, fxMap)
+  return found?.rate > 0 ? found.rate : null
 }
 
 const shiftIsoDateByDays = (iso, days) => {
@@ -1363,7 +1589,8 @@ const computePortfolioValueOnDate = ({
     const cur = inferStockCurrency(sym)
     const nativeVal = qty * px
     if (cur === 'USD') {
-      const r = lookupFxUsdJpyOn(asOfIso, fxByDate, valuationUsdJpy)
+      const r = lookupFxUsdJpyOn(asOfIso, fxByDate)
+      if (!(r > 0)) continue
       stockJpy += nativeVal * r
     } else {
       stockJpy += toJpy(nativeVal, cur)
@@ -1385,7 +1612,8 @@ const computePortfolioValueOnDate = ({
     const cur = inferStockCurrency(sym)
     const nativeVal = units * px
     if (cur === 'USD') {
-      const r = lookupFxUsdJpyOn(asOfIso, fxByDate, valuationUsdJpy)
+      const r = lookupFxUsdJpyOn(asOfIso, fxByDate)
+      if (!(r > 0)) continue
       fundJpy += nativeVal * r
     } else {
       fundJpy += toJpy(nativeVal, cur)
@@ -1398,15 +1626,18 @@ const computePortfolioValueOnDate = ({
 const ownedStockLotCostJpy = (lot, sym, fxByDate) => {
   const s = String(sym || lot?.symbol || '').trim().toUpperCase()
   const q = Math.max(0, Number(lot?.qty || 0))
-  const cost = q * Math.max(0, Number(lot?.buyPrice || 0))
+  const buy = Math.max(0, Number(lot?.buyPrice || 0))
   if (!q || !s) return 0
-  const cur = inferStockCurrency(s)
-  if (cur === 'USD') {
-    const buyDateIso = toIsoDate(lot?.buyDate || '')
-    const r = (buyDateIso && fxByDate && fxByDate[buyDateIso] != null) ? Number(fxByDate[buyDateIso]) : FX_RATES_TO_JPY.USD
-    return cost * (Number.isFinite(r) && r > 0 ? r : FX_RATES_TO_JPY.USD)
+  const row = { ...lot, symbol: s }
+  const ccy = resolveLotCurrency(row, lot?.price)
+  if (!ccy) return 0
+  if (ccy === 'USD') {
+    const fx = resolveBuyFx(row, fxByDate, lot?.price)
+    if (!(fx.rate > 0)) return 0
+    return q * buy * fx.rate
   }
-  return toJpy(cost, cur)
+  if (ccy === 'JPY') return q * buy
+  return toJpy(q * buy, ccy)
 }
 
 const ownedFundLotCostJpy = (lot, fxByDate) => {
@@ -1416,8 +1647,9 @@ const ownedFundLotCostJpy = (lot, fxByDate) => {
   const fundCurrency = inferStockCurrency(sym)
   if (fundCurrency === 'USD') {
     const buyDateIso = toIsoDate(lot.buyDate || lot.buy_date || '')
-    const r = (buyDateIso && fxByDate && fxByDate[buyDateIso] != null) ? Number(fxByDate[buyDateIso]) : FX_RATES_TO_JPY.USD
-    return invest * (Number.isFinite(r) && r > 0 ? r : FX_RATES_TO_JPY.USD)
+    const found = fxOnOrBefore(buyDateIso, fxByDate)
+    if (!(found?.rate > 0)) return 0
+    return invest * found.rate
   }
   return toJpy(invest, fundCurrency)
 }
@@ -1432,11 +1664,9 @@ const stockSaleProceedsJpy = (symbol, qty, sellPrice, sellDateIso, fxByDate) => 
   const native = q * px
   if (cur === 'USD') {
     const d = toIsoDate(sellDateIso || '')
-    const r =
-      d && fxByDate && fxByDate[d] != null
-        ? Number(fxByDate[d])
-        : FX_RATES_TO_JPY.USD
-    return native * (Number.isFinite(r) && r > 0 ? r : FX_RATES_TO_JPY.USD)
+    const found = fxOnOrBefore(d, fxByDate)
+    if (!(found?.rate > 0)) return null
+    return native * found.rate
   }
   return toJpy(native, cur)
 }
@@ -3579,7 +3809,8 @@ const WealthSection = ({
   ownedFundItems = [],
   userId = null,
   fxRatesByDate = {},
-  valuationUsdJpy = FX_RATES_TO_JPY.USD,
+  valuationUsdJpy = null,
+  valuationFxDate = '',
   onAddOwnedStock,
   searchStockSuggestions,
   searchFundSuggestions,
@@ -3620,6 +3851,14 @@ const WealthSection = ({
   const [newOwnedBuyDate, setNewOwnedBuyDate] = useState('')
   const [newOwnedBuyPrice, setNewOwnedBuyPrice] = useState('')
   const [newOwnedQty, setNewOwnedQty] = useState('')
+  const [newOwnedCurrency, setNewOwnedCurrency] = useState('USD')
+  const [newOwnedCurrencyTouched, setNewOwnedCurrencyTouched] = useState(false)
+  useEffect(() => {
+    if (newOwnedCurrencyTouched) return
+    const sym = String(newOwnedSymbol || '').trim()
+    if (!sym) return
+    setNewOwnedCurrency(inferStockCurrency(sym))
+  }, [newOwnedSymbol, newOwnedCurrencyTouched])
   const [ownedSymbolOptions, setOwnedSymbolOptions] = useState([])
   const [stockSuggestOpen, setStockSuggestOpen] = useState(false)
   const [stockSuggestIndex, setStockSuggestIndex] = useState(-1)
@@ -3646,6 +3885,7 @@ const WealthSection = ({
   const [stockSellQtyInput, setStockSellQtyInput] = useState('')
   const [stockSellPriceInput, setStockSellPriceInput] = useState('')
   const [stockSellDateInput, setStockSellDateInput] = useState('')
+  const [stockSellFxPreview, setStockSellFxPreview] = useState(null)
   const [stockSellBusy, setStockSellBusy] = useState(false)
   const [fundSellModalOpen, setFundSellModalOpen] = useState(false)
   const [fundSellContext, setFundSellContext] = useState(null)
@@ -3746,8 +3986,34 @@ const WealthSection = ({
     setStockSellQtyInput('')
     setStockSellPriceInput(Number(stock?.price || 0) > 0 ? String(stock.price) : '')
     setStockSellDateInput(new Date().toISOString().slice(0, 10))
+    setStockSellFxPreview(null)
     setStockSellModalOpen(true)
   }
+
+  useEffect(() => {
+    if (!stockSellModalOpen || inferStockCurrency(stockSellContext?.symbol) !== 'USD') {
+      setStockSellFxPreview(null)
+      return undefined
+    }
+    const iso = toIsoDate(stockSellDateInput || '')
+    if (!iso) {
+      setStockSellFxPreview(null)
+      return undefined
+    }
+    let alive = true
+    setStockSellFxPreview({ status: 'loading' })
+    resolveUsdSellFx({
+      sellDateIso: iso,
+      currentRate: valuationUsdJpy,
+      currentAsOf: valuationFxDate,
+    }).then((fx) => {
+      if (!alive) return
+      setStockSellFxPreview(fx ? { status: 'ready', ...fx } : { status: 'missing' })
+    })
+    return () => {
+      alive = false
+    }
+  }, [stockSellModalOpen, stockSellContext?.symbol, stockSellDateInput, valuationUsdJpy, valuationFxDate])
 
   useEffect(() => {
     const uid = userId
@@ -3992,20 +4258,26 @@ const WealthSection = ({
     const stockCurrency = inferStockCurrency(group.symbol)
     const price = Math.max(0, Number(group.price || 0))
     const currentValue = totalQty * price
-    const totalCostJpy = group.lots.reduce((sum, lot) => {
+    let totalCostJpy = 0
+    let currentValueJpy = 0
+    let pricePnlJpy = 0
+    let fxPnlJpy = 0
+    let sawUsd = false
+    let fxSplitReady = true
+    let hideFxSplit = false
+    for (const lot of group.lots) {
       const q = Math.max(0, Number(lot.qty || 0))
-      const cost = q * Math.max(0, Number(lot.buyPrice || 0))
-      if (stockCurrency === 'USD') {
-        const buyDateIso = toIsoDate(lot.buyDate || '')
-        const r = (buyDateIso && fxRatesByDate[buyDateIso] != null) ? Number(fxRatesByDate[buyDateIso]) : FX_RATES_TO_JPY.USD
-        return sum + cost * r
-      }
-      return sum + toJpy(cost, stockCurrency)
-    }, 0)
-    const currentValueJpy = (stockCurrency === 'USD')
-      ? currentValue * Number(valuationUsdJpy || FX_RATES_TO_JPY.USD)
-      : toJpy(currentValue, stockCurrency)
-    const pnlRate = totalCostJpy > 0 ? ((currentValueJpy - totalCostJpy) / totalCostJpy) * 100 : null
+      const buy = Math.max(0, Number(lot.buyPrice || 0))
+      const parts = lotYenParts(lot, q, buy, price, fxRatesByDate, valuationUsdJpy)
+      if (parts.currency === 'USD') sawUsd = true
+      if (parts.hideFxSplit) hideFxSplit = true
+      if (!parts.costKnown) fxSplitReady = false
+      if (parts.included) currentValueJpy += parts.valueJpy
+      if (parts.costKnown) totalCostJpy += parts.costJpy
+      if (parts.pricePnlJpy != null) pricePnlJpy += parts.pricePnlJpy
+      if (parts.fxPnlJpy != null) fxPnlJpy += parts.fxPnlJpy
+    }
+    const pnlRate = fxSplitReady && totalCostJpy > 0 ? ((currentValueJpy - totalCostJpy) / totalCostJpy) * 100 : null
     const profileSector = String(group.lots[0]?.profileSector || '').trim()
     const profileIndustry = String(group.lots[0]?.profileIndustry || '').trim()
     return {
@@ -4019,6 +4291,8 @@ const WealthSection = ({
       currentValue,
       currentValueJpy,
       pnlRate,
+      pricePnlJpy: sawUsd && fxSplitReady && !hideFxSplit ? pricePnlJpy : null,
+      fxPnlJpy: sawUsd && fxSplitReady && !hideFxSplit ? fxPnlJpy : null,
     }
   })
   const avgDownPreview = useMemo(() => {
@@ -4117,13 +4391,14 @@ const WealthSection = ({
       const currentValue = units > 0 && effectiveLatestPrice > 0 ? units * effectiveLatestPrice : 0
       const totalCostJpy = (fundCurrency === 'USD')
         ? (() => {
-          const buyDateIso = toIsoDate(row.buyDate || '')
-          const r = (buyDateIso && fxRatesByDate[buyDateIso] != null) ? Number(fxRatesByDate[buyDateIso]) : FX_RATES_TO_JPY.USD
-          return totalCost * r
+          const found = fxOnOrBefore(toIsoDate(row.buyDate || ''), fxRatesByDate)
+          if (!(found?.rate > 0)) return 0
+          return totalCost * found.rate
         })()
         : toJpy(totalCost, fundCurrency)
+      const liveUsd = positiveUsdJpy(valuationUsdJpy)
       const currentValueJpy = (fundCurrency === 'USD')
-        ? currentValue * Number(valuationUsdJpy || FX_RATES_TO_JPY.USD)
+        ? (liveUsd != null ? currentValue * liveUsd : 0)
         : toJpy(currentValue, fundCurrency)
       return {
         id: row.id,
@@ -5309,6 +5584,15 @@ const WealthSection = ({
                   onCommit={(iso) => setStockSellDateInput(iso)}
                   className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-bold tabular-nums"
                 />
+                {inferStockCurrency(stockSellContext?.symbol) === 'USD' ? (
+                  <p className="mt-1.5 text-[11px] font-bold tabular-nums text-slate-600 dark:text-slate-300">
+                    {stockSellFxPreview?.status === 'ready'
+                      ? formatAppliedUsdJpy(stockSellFxPreview.rate, stockSellFxPreview.asOf)
+                      : stockSellFxPreview?.status === 'missing'
+                        ? '売却日の為替を取得できません'
+                        : '適用レートを確認しています…'}
+                  </p>
+                ) : null}
               </div>
               <div>
                 <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400">売却数量</span>
@@ -7740,12 +8024,15 @@ const WealthSection = ({
                     buyDate: newOwnedBuyDate,
                     buyPrice: newOwnedBuyPrice,
                     qty: newOwnedQty,
+                    currency: newOwnedCurrency,
                   })
                   if (ok) {
                     setNewOwnedSymbol('')
                     setNewOwnedBuyDate('')
                     setNewOwnedBuyPrice('')
                     setNewOwnedQty('')
+                    setNewOwnedCurrency('USD')
+                    setNewOwnedCurrencyTouched(false)
                     setOwnedSymbolOptions([])
                     setStockSuggestOpen(false)
                     setStockSuggestIndex(-1)
@@ -7888,16 +8175,30 @@ const WealthSection = ({
                 />
               </div>
               <div>
-                <span className={ownedMobileFieldLabelClass}>買付価格</span>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={newOwnedBuyPrice}
-                  onChange={(e) => setNewOwnedBuyPrice(sanitizeDecimalInput(e.target.value))}
-                  onKeyDown={onInputKeyDown}
-                  placeholder="買付価格"
-                  className={ownedFieldInputRightClass}
-                />
+                <span className={ownedMobileFieldLabelClass}>1株あたり取得価格 ({newOwnedCurrency})</span>
+                <div className="flex gap-1">
+                  <select
+                    value={newOwnedCurrency}
+                    onChange={(e) => {
+                      setNewOwnedCurrencyTouched(true)
+                      setNewOwnedCurrency(e.target.value === 'JPY' ? 'JPY' : 'USD')
+                    }}
+                    className="shrink-0 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 text-xs font-bold text-slate-700 dark:text-slate-200"
+                    aria-label="取得価格の通貨"
+                  >
+                    <option value="USD">USD</option>
+                    <option value="JPY">JPY</option>
+                  </select>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={newOwnedBuyPrice}
+                    onChange={(e) => setNewOwnedBuyPrice(sanitizeDecimalInput(e.target.value))}
+                    onKeyDown={onInputKeyDown}
+                    placeholder={newOwnedCurrency === 'USD' ? '例: 195.2' : '例: 3500'}
+                    className={ownedFieldInputRightClass}
+                  />
+                </div>
               </div>
               <button
                 type="button"
@@ -7944,6 +8245,11 @@ const WealthSection = ({
                       <dt className="text-slate-500 text-[11px] font-semibold">損益率</dt>
                       <dd className={`text-right font-black tabular-nums whitespace-nowrap ${stock.pnlRate == null ? 'text-slate-400' : stock.pnlRate >= 0 ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'}`}>
                         {stock.pnlRate == null ? '--' : `${stock.pnlRate >= 0 ? '+' : ''}${stock.pnlRate.toFixed(2)}%`}
+                        {stock.pricePnlJpy != null ? (
+                          <span className="mt-1 block text-[10px] font-bold text-slate-500 dark:text-slate-400">
+                            株価 {formatSignedYen(stock.pricePnlJpy)} / 為替 {formatSignedYen(stock.fxPnlJpy)}
+                          </span>
+                        ) : null}
                       </dd>
                       {symReal !== 0 ? (
                         <>
@@ -8006,9 +8312,7 @@ const WealthSection = ({
                     {isExpanded && stock.lots.map((lot) => {
                       const lotQty = Math.max(0, Number(lot.qty || 0))
                       const lotBuyPrice = Math.max(0, Number(lot.buyPrice || 0))
-                      const lotPnlRate = lotQty > 0 && lotBuyPrice > 0 && Number(stock.price || 0) > 0
-                        ? ((Number(stock.price) - lotBuyPrice) / lotBuyPrice) * 100
-                        : null
+                      const lotPnlRate = stockLotPnlRate(lot, stock, lotQty, lotBuyPrice, fxRatesByDate, valuationUsdJpy)
                       return (
                         <div key={`m-stock-lot-${lot.lotId}`} className="rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50/80 dark:bg-slate-800/40 p-3 space-y-2">
                           <p className="text-xs font-black text-slate-600 dark:text-slate-300">取引</p>
@@ -8149,6 +8453,11 @@ const WealthSection = ({
                         </td>
                         <td className={`px-3 py-4 sm:px-5 text-right font-black text-[15px] lg:text-sm whitespace-nowrap tabular-nums ${stock.pnlRate == null ? 'text-slate-400' : stock.pnlRate >= 0 ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'}`}>
                           {stock.pnlRate == null ? '--' : `${stock.pnlRate >= 0 ? '+' : ''}${stock.pnlRate.toFixed(2)}%`}
+                          {stock.pricePnlJpy != null ? (
+                            <span className="mt-1 block text-[10px] lg:text-[9px] font-bold text-slate-500 dark:text-slate-400">
+                              株価 {formatSignedYen(stock.pricePnlJpy)} / 為替 {formatSignedYen(stock.fxPnlJpy)}
+                            </span>
+                          ) : null}
                           {symReal !== 0 ? (
                             <span className={`mt-1 block text-[10px] lg:text-[9px] font-bold tabular-nums ${symReal >= 0 ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'}`}>
                               実現累計 {symReal >= 0 ? '+' : ''}¥{Math.round(symReal).toLocaleString('ja-JP')}
@@ -8205,9 +8514,7 @@ const WealthSection = ({
                       {isExpanded && stock.lots.map((lot) => {
                         const lotQty = Math.max(0, Number(lot.qty || 0))
                         const lotBuyPrice = Math.max(0, Number(lot.buyPrice || 0))
-                        const lotPnlRate = lotQty > 0 && lotBuyPrice > 0 && Number(stock.price || 0) > 0
-                          ? ((Number(stock.price) - lotBuyPrice) / lotBuyPrice) * 100
-                          : null
+                        const lotPnlRate = stockLotPnlRate(lot, stock, lotQty, lotBuyPrice, fxRatesByDate, valuationUsdJpy)
                         return (
                           <tr key={`wealth-stock-lot-${lot.lotId}`} className={ownedPortfolioLotRowClass}>
                             <td className="px-3 py-3 sm:px-5 text-sm lg:text-xs text-slate-500 dark:text-slate-400 align-top min-w-0 max-w-[14rem] xl:max-w-[18rem]">└ 取引</td>
@@ -8408,8 +8715,8 @@ const WealthSection = ({
               <li>
                 <span className="text-slate-900 dark:text-white">買付価格</span>
                 ：そのロットの
-                <strong className="font-black text-slate-900 dark:text-white">1株あたりの取得単価</strong>
-                （購入時の平均単価）。米国株はドル建ての単価です。
+                <strong className="font-black text-slate-900 dark:text-white">1株あたり取得価格</strong>
+                。単位は入力欄の USD / JPY です。米国ティッカーの初期値は USD、日本株・日本上場ETFは JPY です。
               </li>
               <li>
                 <span className="text-slate-900 dark:text-white">買付日</span>
@@ -11156,7 +11463,7 @@ const BudgetSectionV2 = ({
           <div className="space-y-1.5 font-medium">
             <p>{MM_SIMULATION_PAST_PERFORMANCE_JA}</p>
             <p>※ 投資シミュレーションは過去平均に基づく参考値であり、将来利益を保証しません。</p>
-            <p>※ マネマートは客観データを提供するプラットフォームであり、特定商品の推奨・勧誘を行いません。</p>
+            <p>※ マネマートは客観データを提供するプラットフォームであり、特定の金融商品の売買を勧誘するものではありません。</p>
           </div>
         </div>
       </div>
@@ -11764,23 +12071,15 @@ const CoachSection = ({
 
   const formatCurrency = (amount) => `¥${Math.round(Math.max(0, Number(amount || 0))).toLocaleString('ja-JP')}`
   const topOffer = Array.isArray(refinanceOffers) && refinanceOffers.length > 0 ? refinanceOffers[0] : null
-  const totalDebtBalance = Array.isArray(revolvingDebts) && revolvingDebts.length > 0
-    ? revolvingDebts.reduce((s, d) => s + Math.max(0, Number(d.balance_yen || 0)), 0)
-    : 0
-  const calcEstimatedInterest = (amount, annualRate, months) => Math.floor(Math.max(0, Number(amount || 0)) * (Math.max(0, Number(annualRate || 0)) / 100) * (months / 12))
-  const currentTotalInterest = (Array.isArray(revolvingDebts) ? revolvingDebts : [])
-    .reduce((sum, debt) => sum + calcEstimatedInterest(debt.balance_yen, debt.interest_rate, 24), 0)
-  const bestDebtRate = Number(topOffer?.aprMin ?? topOffer?.aprMax ?? 0)
-  const newTotalInterest = calcEstimatedInterest(totalDebtBalance, bestDebtRate, 24)
-  const savedDebtAmount = Math.max(0, currentTotalInterest - newTotalInterest)
-  const debtSavingPerMonth = Math.max(0, Math.round(Number(topOffer?.savings24mYen || 0) / 24))
+  const debtSavingPerMonth = Math.round(Number(topOffer?.savings24mYen || 0) / 24)
   const topOfferApplyUrl = (() => {
     const raw = String(topOffer?.applyUrl || '').trim()
     return /^https?:\/\//i.test(raw) ? raw : ''
   })()
   const topOfferRepresentativeApr = Number(topOffer?.representativeApr ?? topOffer?.aprMin ?? topOffer?.aprMax ?? 0)
   const topOfferTotalFeeYen = Math.max(0, Number(topOffer?.totalFeeYen || 0))
-  const topOfferCostGapYen = Math.abs(Number(topOffer?.savings24mYen || 0))
+  const topOfferSavingsYen = Number(topOffer?.savings24mYen || 0)
+  const topOfferCostGapYen = Math.abs(topOfferSavingsYen)
 
   const handleSaveTaxSettings = async () => {
     const incomeManwon = Math.round(annualIncomeYen / 10000)
@@ -12147,7 +12446,7 @@ const CoachSection = ({
                 {refinanceRunning ? '計算中...' : '今すぐ比較'}
               </button>
               <div className="text-xs text-slate-500 dark:text-slate-400">
-                24ヶ月利息削減見込み: <span className="font-black text-emerald-600 dark:text-emerald-400">{formatCurrency(savedDebtAmount)}</span>
+                金利上限で24ヶ月を仮試算。実際の適用金利・返済額・審査結果により変わります。
               </div>
             </div>
 
@@ -12157,24 +12456,23 @@ const CoachSection = ({
               <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-2xl p-5">
                 <div className="grid md:grid-cols-2 gap-4">
                   <div>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">シミュレーション 1位</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">借入額範囲が合う候補（上限金利での試算順）</p>
                     <p className="font-black text-slate-900 dark:text-white mt-1">{topOffer.bankName} / {topOffer.productName}</p>
-                    <p className="text-2xl font-black text-orange-600 dark:text-orange-400 mt-2">年 {Number(topOffer.aprMin ?? topOffer.aprMax ?? 0).toFixed(2)}%</p>
+                    <p className="text-2xl font-black text-orange-600 dark:text-orange-400 mt-2">年 {Number(topOffer.aprMin ?? 0).toFixed(2)}〜{Number(topOffer.aprMax ?? 0).toFixed(2)}%</p>
                     <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                      代表金利（平均）: 年 {topOfferRepresentativeApr.toFixed(2)}% / 初期費用合計: {formatCurrency(topOfferTotalFeeYen)}
+                      試算に用いた金利（上限）: 年 {topOfferRepresentativeApr.toFixed(2)}% / 登録済み費用: {formatCurrency(topOfferTotalFeeYen)}
                     </p>
                   </div>
                   <div className="md:text-right">
-                    <p className="text-xs text-slate-500 dark:text-slate-400">24ヶ月節約見込み</p>
-                    <p className="text-3xl font-black text-emerald-600 dark:text-emerald-400 mt-1">{formatCurrency(topOfferCostGapYen)}</p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">月あたり約 {formatCurrency(debtSavingPerMonth)}</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">24ヶ月の仮試算：{topOfferSavingsYen >= 0 ? 'コスト減' : 'コスト増'}</p>
+                    <p className={`text-3xl font-black mt-1 ${topOfferSavingsYen >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>{formatCurrency(topOfferCostGapYen)}</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">月換算 約 {formatCurrency(Math.abs(debtSavingPerMonth))} / 審査・契約条件は未確認</p>
                   </div>
                 </div>
                 <div className="mt-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-900/70 p-3">
-                  <p className="text-xs font-black text-slate-700 dark:text-slate-200">この商品が1位の理由</p>
+                  <p className="text-xs font-black text-slate-700 dark:text-slate-200">この候補の表示理由</p>
                   <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed mt-1">
-                    ランキングは表面金利の低い順ではなく、24ヶ月の総コスト（支払額 + 手数料 + 残債）の低い順です。
-                    金利がやや高く見えても、手数料や返済後の残債を含めた合計で有利なら上位になります。
+                    借入希望額が掲載範囲内の商品を、各商品の金利上限で仮試算した24ヶ月総コスト（支払額 + 登録済み費用 + 残債）の順に表示しています。審査による適用金利や実際の返済方式は反映できません。金融機関の公式条件を確認してください。
                   </p>
                 </div>
                 {topOfferApplyUrl ? (
@@ -12200,22 +12498,22 @@ const CoachSection = ({
 
             {Array.isArray(refinanceOffers) && refinanceOffers.length > 0 && (
               <div className="mt-5 bg-amber-950 rounded-2xl p-4 border border-amber-900 space-y-3">
-                <p className="text-[11px] font-black text-amber-200 tracking-wider">市場競争金利 / 条件一致</p>
+                <p className="text-[11px] font-black text-amber-200 tracking-wider">借入額範囲が合う候補 / 上限金利での仮試算</p>
                 {refinanceOffers.slice(0, 3).map((offer, index) => (
                   <div key={offer.offerId || `${offer.bankName}-${index}`} className={`rounded-xl p-4 border ${index === 0 ? 'bg-amber-700/40 border-amber-300/40' : 'bg-amber-900/40 border-amber-800/70'}`}>
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <p className="text-white font-black">{offer.bankName}</p>
-                        <p className="text-amber-300 text-xs mt-1">{index === 0 ? '条件一致（優先表示）' : '条件一致'}</p>
+                        <p className="text-amber-300 text-xs mt-1">{index === 0 ? '試算上の先頭候補' : '借入額範囲のみ確認'}</p>
                         <p className="text-amber-100/80 text-xs mt-1">
                           24ヶ月総コスト: {formatCurrency(Number(offer.refinanceTotalCost24mYen || 0))}
                         </p>
-                        <p className="text-emerald-300 text-xs mt-1 font-bold">
-                          削減見込み: {formatCurrency(Math.abs(Number(offer.savings24mYen || 0)))}
+                        <p className={`${Number(offer.savings24mYen || 0) >= 0 ? 'text-emerald-300' : 'text-rose-300'} text-xs mt-1 font-bold`}>
+                          24ヶ月の仮試算・{Number(offer.savings24mYen || 0) >= 0 ? 'コスト減' : 'コスト増'}: {formatCurrency(Math.abs(Number(offer.savings24mYen || 0)))}
                         </p>
                       </div>
                       <div className="text-right">
-                        <p className="text-amber-200 text-2xl font-black">年 {Number(offer.aprMin ?? offer.aprMax ?? 0).toFixed(2)}%</p>
+                        <p className="text-amber-200 text-2xl font-black">年 {Number(offer.aprMin ?? 0).toFixed(2)}〜{Number(offer.aprMax ?? 0).toFixed(2)}%</p>
                         {String(offer.applyUrl || '').trim().match(/^https?:\/\//i) ? (
                           <a
                             href={String(offer.applyUrl || '').trim()}
@@ -12613,7 +12911,7 @@ export default function MyPage({
   const [ownedStockItems, setOwnedStockItems] = useState([])
   const ownedStockItemsClearTimerRef = useRef(null)
   const [fxRatesByDate, setFxRatesByDate] = useState({})
-  const [valuationUsdJpy, setValuationUsdJpy] = useState(FX_RATES_TO_JPY.USD)
+  const [valuationUsdJpy, setValuationUsdJpy] = useState(null)
   const [valuationFxDate, setValuationFxDate] = useState('')
   const [ownedFunds, setOwnedFunds] = useState([])
   const [ownedFundItems, setOwnedFundItems] = useState([])
@@ -12803,7 +13101,7 @@ export default function MyPage({
               const legacy = readLocalStockWatchlistSymbolIds(user.id)
               if (legacy.length > 0) {
                 try {
-                  await replaceStockWatchlistInDb({ userId: user.id, symbols: legacy })
+                  await mergeStockWatchlistSymbolsInDb({ userId: user.id, symbols: legacy })
                   normalizedIds = legacy
                   clearLocalStockWatchlistKey(user.id)
                 } catch {
@@ -13245,7 +13543,7 @@ export default function MyPage({
     )
 
     const localMatches = STOCK_LIST_400.filter((row) => {
-      if (isRetiredStockSymbol(row?.symbol)) return false
+      if (isRetiredStockSymbol(row?.symbol) || isUsListedEtfSymbol(row?.symbol, row?.name)) return false
       const symbol = String(row?.symbol || '').toLowerCase()
       const name = String(row?.name || '').toLowerCase()
       const fallbackName = String(getStockNameFallback(row?.symbol) || '').toLowerCase()
@@ -13294,7 +13592,7 @@ export default function MyPage({
 
       const upsert = (parts) => {
         const key = String(parts.symbol || '').trim().toUpperCase()
-        if (!key || isRetiredStockSymbol(key)) return
+        if (!key || isRetiredStockSymbol(key) || isUsListedEtfSymbol(key, parts.stockSymbolName || parts.profileEn || parts.profileJp)) return
         if (!merged.has(key)) {
           order.push(key)
           merged.set(key, parts)
@@ -13371,7 +13669,7 @@ export default function MyPage({
     if (localExact?.id) {
       const wid = String(localExact.id || '').trim().toUpperCase()
       const wcode = String(localExact.code || '').trim().toUpperCase()
-      if (!isRetiredStockSymbol(wid) && !isRetiredStockSymbol(wcode)) {
+      if (!isRetiredStockSymbol(wid) && !isRetiredStockSymbol(wcode) && !isUsListedEtfSymbol(wid, localExact.name) && !isUsListedEtfSymbol(wcode, localExact.name)) {
         return {
           symbol: String(localExact.id),
           name: localExact.name || localExact.code || localExact.id,
@@ -13388,7 +13686,7 @@ export default function MyPage({
       if (exactErr) throw exactErr
       if (Array.isArray(exactRows) && exactRows.length > 0) {
         const sym = String(exactRows[0].symbol || '').trim().toUpperCase()
-        if (isRetiredStockSymbol(sym)) return null
+        if (isRetiredStockSymbol(sym) || isUsListedEtfSymbol(sym, exactRows[0].name)) return null
         return {
           symbol: exactRows[0].symbol,
           name: exactRows[0].name || exactRows[0].symbol,
@@ -13428,10 +13726,10 @@ export default function MyPage({
           symbol,
           name: profile?.name_jp || profile?.name_en || row?.name || getStockNameFallback(symbol) || symbol,
         }
-      }).filter((row) => !isRetiredStockSymbol(row.symbol))
+      }).filter((row) => !isRetiredStockSymbol(row.symbol) && !isUsListedEtfSymbol(row.symbol, row.name))
       for (const row of (Array.isArray(profileRows) ? profileRows : [])) {
         const symbol = String(row?.symbol || '').trim().toUpperCase()
-        if (!symbol || isRetiredStockSymbol(symbol) || rows.some((x) => x.symbol === symbol)) continue
+        if (!symbol || isRetiredStockSymbol(symbol) || isUsListedEtfSymbol(symbol, row?.name_en || row?.name_jp) || rows.some((x) => x.symbol === symbol)) continue
         rows.push({
           symbol,
           name: row?.name_jp || row?.name_en || getStockNameFallback(symbol) || symbol,
@@ -13459,7 +13757,7 @@ export default function MyPage({
       return { symbol: top.symbol, name: top.name || top.symbol }
     } catch {
       const localMatch = STOCK_LIST_400.find((row) => {
-        if (isRetiredStockSymbol(row?.symbol)) return false
+        if (isRetiredStockSymbol(row?.symbol) || isUsListedEtfSymbol(row?.symbol, row?.name)) return false
         const symbol = String(row?.symbol || '').toUpperCase()
         const name = String(row?.name || '').toLowerCase()
         const fallbackName = String(getStockNameFallback(symbol) || '').toLowerCase()
@@ -13475,7 +13773,7 @@ export default function MyPage({
     }
   }
 
-  const handleAddOwnedStock = async ({ symbol, buyDate, buyPrice, qty }) => {
+  const handleAddOwnedStock = async ({ symbol, buyDate, buyPrice, qty, currency }) => {
     const input = String(symbol || '').trim()
     if (!input) {
       setDataStatus('銘柄コードまたは会社名を入力してください。')
@@ -13487,6 +13785,10 @@ export default function MyPage({
       return false
     }
     const code = String(resolved.symbol).trim().toUpperCase()
+    const pickedCurrency = String(currency || '').trim().toUpperCase()
+    const lotCurrency = pickedCurrency === 'JPY' || pickedCurrency === 'USD'
+      ? pickedCurrency
+      : inferStockCurrency(code)
     const requestedIso = toIsoDate(buyDate || '')
     let resolvedDate = requestedIso || String(buyDate || '').trim()
     let resolvedBuyPrice = Number(buyPrice || 0)
@@ -13517,6 +13819,9 @@ export default function MyPage({
           buyDate: resolvedDate || '',
           buyPrice: resolvedBuyPrice > 0 ? resolvedBuyPrice : '',
           qty: resolvedQty > 0 ? resolvedQty : '',
+          currency: lotCurrency,
+          buyFxRate: lotCurrency === 'JPY' ? 1 : '',
+          buyFxDate: lotCurrency === 'JPY' ? (resolvedDate || '') : '',
         },
       ]
       if (user?.id) {
@@ -13727,7 +14032,7 @@ export default function MyPage({
       const next = Array.isArray(prev) ? prev.filter((row) => String(row?.id || '').trim() !== id) : []
       const nextIds = next.map((row) => String(row?.id || '').trim()).filter(Boolean)
       if (user?.id) {
-        replaceStockWatchlistInDb({ userId: user.id, symbols: nextIds }).catch(() => {})
+        removeDbWatchlistItem({ userId: user.id, itemType: 'stock', itemId: id }).catch(() => {})
       } else {
         try {
           localStorage.setItem(getStockWatchlistStorageKey(null), JSON.stringify(nextIds))
@@ -13776,6 +14081,9 @@ export default function MyPage({
               buyDate: item.buyDate || '',
               buyPrice: item.buyPrice ?? '',
               qty: item.qty ?? '',
+              currency: item.currency || '',
+              buyFxRate: item.buyFxRate || '',
+              buyFxDate: item.buyFxDate || '',
               price: 0,
               tradeDate: '',
               profileSector: '',
@@ -13867,6 +14175,9 @@ export default function MyPage({
             buyDate: item.buyDate || '',
             buyPrice: item.buyPrice || '',
             qty: item.qty || '',
+            currency: item.currency || '',
+            buyFxRate: item.buyFxRate || '',
+            buyFxDate: item.buyFxDate || '',
             price: Number.isFinite(close) && close > 0 ? close : 0,
             tradeDate: live.trade_date || watch.tradeDate || '',
             profileSector: symbolProfileSectorMap.get(symbol) || '',
@@ -13917,6 +14228,24 @@ export default function MyPage({
   }, [ownedStockItems])
 
   useEffect(() => {
+    if (!fxRatesByDate || Object.keys(fxRatesByDate).length === 0) return
+    setOwnedStocks((prev) => {
+      let changed = false
+      const next = prev.map((lot) => {
+        if (String(lot?.currency || '').toUpperCase() !== 'USD') return lot
+        if (Number(lot?.buyFxRate) > 0) return lot
+        const found = fxOnOrBefore(lot?.buyDate, fxRatesByDate)
+        if (!(found?.rate > 0)) return lot
+        changed = true
+        return { ...lot, buyFxRate: found.rate, buyFxDate: found.asOf }
+      })
+      if (!changed) return prev
+      ownedStockCloudTouchedRef.current = true
+      return next
+    })
+  }, [fxRatesByDate])
+
+  useEffect(() => {
     let alive = true
 
     const loadTodayFx = () => {
@@ -13925,14 +14254,14 @@ export default function MyPage({
         .then((r) => r.json())
         .then((data) => {
           if (!alive) return
-          const usd = Number(data?.rates?.USD || FX_RATES_TO_JPY.USD)
-          setValuationUsdJpy(Number.isFinite(usd) && usd > 0 ? usd : FX_RATES_TO_JPY.USD)
-          setValuationFxDate(String(data?.date || todayIso))
+          const usd = Number(data?.rates?.USD)
+          if (Number.isFinite(usd) && usd > 0) {
+            setValuationUsdJpy(usd)
+            setValuationFxDate(String(data?.fxAsOf || data?.date || todayIso))
+          }
         })
         .catch(() => {
           if (!alive) return
-          setValuationUsdJpy(FX_RATES_TO_JPY.USD)
-          setValuationFxDate(todayIso)
         })
     }
 
@@ -14107,10 +14436,10 @@ export default function MyPage({
     const current = units > 0 && effectiveLatestPrice > 0 ? units * effectiveLatestPrice : 0
     const ccy = inferStockCurrency(row?.symbol || row?.code || '')
     if (ccy === 'USD') {
-      const d = toIsoDate(row?.buyDate || '')
-      const r = (d && fxRatesByDate[d] != null) ? Number(fxRatesByDate[d]) : FX_RATES_TO_JPY.USD
-      acc.invest += invest * r
-      acc.value += current * Number(valuationUsdJpy || FX_RATES_TO_JPY.USD)
+      const found = fxOnOrBefore(toIsoDate(row?.buyDate || ''), fxRatesByDate)
+      const liveUsd = positiveUsdJpy(valuationUsdJpy)
+      if (found?.rate > 0) acc.invest += invest * found.rate
+      if (liveUsd != null) acc.value += current * liveUsd
     } else {
       acc.invest += toJpy(invest, ccy)
       acc.value += toJpy(current, ccy)
@@ -14126,31 +14455,23 @@ export default function MyPage({
   const useOwnedFundBasis = (Array.isArray(ownedFundItems) ? ownedFundItems : []).length > 0
   const headerFundValueJpy = useOwnedFundBasis ? headerFundFromOwned.value : headerFundFromPortfolio.value
   const headerFundInvestJpy = useOwnedFundBasis ? headerFundFromOwned.invest : headerFundFromPortfolio.invest
-  const headerStockValueJpy = (Array.isArray(ownedStockItems) ? ownedStockItems : []).reduce((acc, row) => {
+  const headerStock = (Array.isArray(ownedStockItems) ? ownedStockItems : []).reduce((acc, row) => {
     const qty = Math.max(0, Number(row?.qty || 0))
     const price = Math.max(0, Number(row?.price || 0))
-    const ccy = inferStockCurrency(row?.symbol || row?.code || '')
-    const val = qty * price
-    if (ccy === 'USD') {
-      return acc + val * Number(valuationUsdJpy || FX_RATES_TO_JPY.USD)
-    }
-    return acc + toJpy(val, ccy)
-  }, 0)
-  const headerStockInvestJpy = (Array.isArray(ownedStockItems) ? ownedStockItems : []).reduce((acc, row) => {
-    const qty = Math.max(0, Number(row?.qty || 0))
     const buy = Math.max(0, Number(row?.buyPrice || 0))
-    const ccy = inferStockCurrency(row?.symbol || row?.code || '')
-    const cost = qty * buy
-    if (ccy === 'USD') {
-      const d = toIsoDate(row?.buyDate || '')
-      const r = (d && fxRatesByDate[d] != null) ? Number(fxRatesByDate[d]) : FX_RATES_TO_JPY.USD
-      return acc + cost * r
+    const parts = lotYenParts(row, qty, buy, price, fxRatesByDate, valuationUsdJpy)
+    if (parts.included) acc.value += parts.valueJpy
+    if (parts.costKnown) {
+      acc.invest += parts.costJpy
+      if (parts.included) acc.pnlValue += parts.valueJpy
     }
-    return acc + toJpy(cost, ccy)
-  }, 0)
+    return acc
+  }, { value: 0, invest: 0, pnlValue: 0 })
+  const headerStockValueJpy = headerStock.value
+  const headerStockInvestJpy = headerStock.invest
   const headerTotalValue = headerFundValueJpy + headerStockValueJpy
   const headerTotalInvest = headerFundInvestJpy + headerStockInvestJpy
-  const headerPnL = headerTotalValue - headerTotalInvest
+  const headerPnL = (headerFundValueJpy - headerFundInvestJpy) + (headerStock.pnlValue - headerStockInvestJpy)
   const headerRate = headerTotalInvest > 0 ? (headerPnL / headerTotalInvest) * 100 : 0
   /** v_stock_latest 反映待ちは「--」ではなくスピナーへ（中間値のチラ見え回避） */
   const portfolioQuotesHydratingUi =
@@ -14754,7 +15075,7 @@ export default function MyPage({
         setDataStatus('比較可能な借り換え商品が見つかりません。金額レンジを確認してください。')
       } else {
         const best = ranked[0]
-        setDataStatus(`最適候補: ${best.bankName} / ${best.productName} (24ヶ月節約見込み ¥${Math.abs(Number(best.savings24mYen || 0)).toLocaleString('ja-JP')})`)
+        setDataStatus(`借入額範囲が合う先頭候補: ${best.bankName} / ${best.productName}。上限金利での24ヶ月仮試算は${Number(best.savings24mYen || 0) >= 0 ? 'コスト減' : 'コスト増'} ¥${Math.abs(Number(best.savings24mYen || 0)).toLocaleString('ja-JP')}。適用金利・審査結果は未確認です。`)
       }
     } catch (err) {
       setDataStatus(`借り換え試算に失敗: ${err?.message || 'unknown error'}`)
@@ -14949,12 +15270,24 @@ export default function MyPage({
     ).values()]
   ), [])
 
+  const withDividendMonths = (item, changed, storedMonths) => {
+    const months = dividendMonthsFromDividends(item?.dividends)
+    const stored = [...new Set(
+      (Array.isArray(storedMonths) ? storedMonths : [])
+        .map((m) => Number(m))
+        .filter((m) => Number.isInteger(m) && m >= 1 && m <= 12),
+    )].sort((a, b) => a - b)
+    if (stored.join(',') === months.join(',')) return { item, changed }
+    return { item: { ...item, months }, changed: true }
+  }
+
   const normalizePersistedDividendItem = useCallback((row) => {
     if (!row) return { item: row, changed: false }
-    const stockId = String(row.stock_id || '').trim().toUpperCase()
+    const stockId = normalizeListedSymbolId(row.stock_id)
     if (!stockId) return { item: row, changed: false }
+    const storedId = String(row.stock_id || '').trim().toUpperCase()
     let item = { ...row, stock_id: stockId }
-    let changed = false
+    let changed = storedId !== stockId
     const normFlag = normalizeDividendStockFlag(item.flag, item)
     if (normFlag !== item.flag) {
       item = { ...item, flag: normFlag }
@@ -14969,7 +15302,7 @@ export default function MyPage({
       ? normalizeAutofillDividendRows(masterRec.dividends, masterRec)
       : normalizeAutofillDividendRows(item.dividends, detail)
     if (normalizedDividends.length === 0) {
-      return { item, changed }
+      return withDividendMonths(item, changed, row.months)
     }
     const before = JSON.stringify(toCanonicalDividendRows(item.dividends))
     const after = JSON.stringify(toCanonicalDividendRows(normalizedDividends))
@@ -14977,18 +15310,16 @@ export default function MyPage({
       item = { ...item, dividends: normalizedDividends }
       changed = true
     }
-    return { item, changed }
+    return withDividendMonths(item, changed, row.months)
   }, [normalizeAutofillDividendRows, toCanonicalDividendRows])
 
   syncDividendFromOwnedRef.current = async (stockId, nextOwned, nameHint) => {
     if (!user?.id) return
-    const id = String(stockId || '')
-      .trim()
-      .toUpperCase()
+    const id = normalizeListedSymbolId(stockId)
     if (!id) return
     const rows = Array.isArray(nextOwned) ? nextOwned : []
     const totalQty = rows
-      .filter((s) => String(s?.symbol || '').trim().toUpperCase() === id)
+      .filter((s) => ownedSymbolMatchesDividendStockId(id, s?.symbol))
       .reduce((sum, s) => {
         const q = Number(String(s?.qty ?? '').trim().replace(/,/g, ''))
         if (!Number.isFinite(q) || q < 0) return sum
@@ -15025,6 +15356,7 @@ export default function MyPage({
       }
       return
     }
+    if (isDividendWatchlistDismissed(user.id, id)) return
     try {
       const master = getDividendCalendarDetailRecord(id)
       const preset = lookupDividendStockBySymbol(id) || null
@@ -15193,6 +15525,10 @@ export default function MyPage({
     const sanitized = String(rawValue || '').trim().toUpperCase()
     setNewDivStockId(sanitized)
     divStockIdFetchRef.current = sanitized
+    if (isUsListedEtfSymbol(sanitized)) {
+      setDivStockLookupLoading(false)
+      return
+    }
 
     const master = getDividendCalendarDetailRecord(sanitized)
     if (master) {
@@ -15250,21 +15586,32 @@ export default function MyPage({
     const nextName = String(rawValue || '')
     setNewDivStockName(nextName)
 
-    // Add flow only: when user starts a new name search, clear stale ticker
-    // so suggestions are driven by the typed company name.
     if (editingDivStockId) return
-    if (!newDivStockId) return
-
     const typed = nextName.trim()
     if (!typed) return
 
+    const compact = (s) => String(s || '').normalize('NFKC').trim().toLowerCase().replace(/\s+/g, '')
+    const q = compact(typed)
+    const hits = searchDividendCalendarRecords(typed, 12)
+    const exact = hits.filter((r) => {
+      const sym = compact(r?.symbol)
+      const code = sym.replace(/\.t$/, '')
+      return compact(r?.name) === q || sym === q || code === q
+    })
+    if (exact.length === 1) {
+      setNewDivStockId(String(exact[0].symbol).trim().toUpperCase())
+      applyDividendMasterDetail(exact[0])
+      return
+    }
+
+    if (!newDivStockId) return
     const current = getDividendCalendarDetailRecord(newDivStockId)
       || lookupDividendStockBySymbol(newDivStockId)
-    const currentName = String(current?.name || '').trim().toLowerCase()
-    if (!currentName || currentName !== typed.toLowerCase()) {
+    const currentName = compact(current?.name)
+    if (!currentName || currentName !== q) {
       setNewDivStockId('')
     }
-  }, [editingDivStockId, newDivStockId])
+  }, [applyDividendMasterDetail, editingDivStockId, newDivStockId])
 
   useEffect(() => {
     if (activeTab !== 'dividend' || !user?.id) return
@@ -15334,9 +15681,10 @@ export default function MyPage({
   }
 
   const handleDividendDelete = async (stockId) => {
-    const id = String(stockId || '').trim()
+    const id = normalizeListedSymbolId(stockId)
     if (!id) return
-    setDividendWatchlist((prev) => prev.filter((r) => r.stock_id !== id))
+    if (user?.id) rememberDismissedDividendSymbol(user.id, id)
+    setDividendWatchlist((prev) => prev.filter((r) => !ownedSymbolMatchesDividendStockId(id, r.stock_id)))
     if (!user?.id) return
     try {
       await deleteDividendWatchlistItem(user.id, id)
@@ -15392,7 +15740,9 @@ export default function MyPage({
   const handleDividendAdd = async (submitOpts = {}) => {
     if (!newDivStockId.trim() || !newDivStockName.trim()) return
     const isEditing = Boolean(editingDivStockId)
-    const symInputUpper = newDivStockId.trim().toUpperCase()
+    const symInputUpper = normalizeListedSymbolId(newDivStockId)
+    if (!isEditing && isUsListedEtfSymbol(symInputUpper, newDivStockName)) return
+    if (user?.id) forgetDismissedDividendSymbol(user.id, symInputUpper)
     const hadOwnedForSymbol = ownedStocks.some((s) => s.symbol === symInputUpper)
     const capOwnedBuyDateIso = toIsoDate(String(newDivStockBuyDate || ''))
     const capOwnedBuyPriceNum = (() => {
@@ -15405,10 +15755,10 @@ export default function MyPage({
     })()
     const resolvedQtyInput = submitOpts?.qty != null ? submitOpts.qty : newDivStockQty
     const item = {
-      stock_id:   newDivStockId.trim().toUpperCase(),
+      stock_id:   symInputUpper,
       stock_name: newDivStockName.trim(),
       flag:       normalizeDividendStockFlag(newDivStockFlag, {
-        stock_id: newDivStockId.trim().toUpperCase(),
+        stock_id: symInputUpper,
         sector: newDivStockSector,
       }),
       sector:     newDivStockSector,
@@ -15465,7 +15815,7 @@ export default function MyPage({
       await upsertDividendWatchlistItem(user.id, item)
       const rows = await loadDividendWatchlist(user.id)
       setDividendWatchlist(rows)
-      if (!isEditing && !MY_PAGE_ETF_META_BY_SYMBOL.has(item.stock_id) && !hadOwnedForSymbol) {
+      if (!isEditing && !isMyPageEtfSymbol(item.stock_id) && !hadOwnedForSymbol) {
         userExplicitlyClearedAllStocksRef.current = false
         ownedStockCloudTouchedRef.current = true
         setOwnedStocks((prev) => {
@@ -15488,7 +15838,7 @@ export default function MyPage({
         stock_id: item.stock_id,
         flag: item.flag,
       })
-      const shouldMirrorOwned = !isEditing && !MY_PAGE_ETF_META_BY_SYMBOL.has(item.stock_id) && !hadOwnedForSymbol
+      const shouldMirrorOwned = !isEditing && !isMyPageEtfSymbol(item.stock_id) && !hadOwnedForSymbol
       const hasBothBuyFields = Boolean(capOwnedBuyDateIso) && capOwnedBuyPriceNum > 0
       const ownedMsg = (shouldMirrorOwned && !hasBothBuyFields)
         ? '未入力の買付価格・日付は「株式」タブで入力できます。'
@@ -15521,26 +15871,34 @@ export default function MyPage({
       setDataStatus('売却数量・売却単価を正しく入力してください。')
       return
     }
-    let fxMap = fxRatesByDate
-    if (inferStockCurrency(symU) === 'USD' && iso && (fxMap[iso] == null || !Number.isFinite(Number(fxMap[iso])))) {
-      try {
-        const r = await fetch(`/api/fx?date=${iso}`)
-        const j = await r.json()
-        const u = Number(j?.rates?.USD)
-        if (Number.isFinite(u) && u > 0) {
-          fxMap = { ...fxMap, [iso]: u }
-          setFxRatesByDate((prev) => ({ ...prev, [iso]: u }))
-        }
-      } catch {
-        // fallback rate inside stockSaleProceedsJpy
-      }
-    }
-    const fifo = fifoStockSellFromLots({ symbol: symU, sellQty: sq, ownedLots: ownedStocks, fxByDate: fxMap })
+    const fifo = fifoStockSellFromLots({ symbol: symU, sellQty: sq, ownedLots: ownedStocks, fxByDate: fxRatesByDate })
     if (!fifo.ok) {
       setDataStatus(fifo.reason)
       return
     }
-    const proceedsJpy = stockSaleProceedsJpy(symU, sq, sp, iso, fxMap)
+    let sellFxRate = null
+    let sellFxDate = ''
+    let proceedsJpy
+    if (inferStockCurrency(symU) === 'USD') {
+      const fx = await resolveUsdSellFx({
+        sellDateIso: iso,
+        currentRate: valuationUsdJpy,
+        currentAsOf: valuationFxDate,
+      })
+      if (!fx) {
+        setDataStatus('売却日の為替が取得できないため、実現損益を記録できません。')
+        return
+      }
+      sellFxRate = fx.rate
+      sellFxDate = fx.asOf
+      proceedsJpy = sq * sp * fx.rate
+    } else {
+      proceedsJpy = stockSaleProceedsJpy(symU, sq, sp, iso, fxRatesByDate)
+      if (proceedsJpy == null) {
+        setDataStatus('売却日の為替が取得できないため、実現損益を記録できません。')
+        return
+      }
+    }
     const realizedPnlJpy = proceedsJpy - fifo.costBasisJpy
     const trade = {
       tradeId: `sld_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
@@ -15551,6 +15909,8 @@ export default function MyPage({
       costBasisJpy: fifo.costBasisJpy,
       proceedsJpy,
       realizedPnlJpy,
+      sellFxRate,
+      sellFxDate,
     }
     ownedStockCloudTouchedRef.current = true
     ownedRealizedCloudTouchedRef.current = true
@@ -15571,7 +15931,7 @@ export default function MyPage({
     setDataStatus(
       `${symU} の売却を記録しました（実現損益 ${realizedPnlJpy >= 0 ? '+' : ''}¥${Math.round(realizedPnlJpy).toLocaleString('ja-JP')}）。`,
     )
-  }, [ownedStocks, realizedStockTrades, fxRatesByDate, user?.id, ownedAssetDbAvailable])
+  }, [ownedStocks, realizedStockTrades, fxRatesByDate, valuationUsdJpy, valuationFxDate, user?.id, ownedAssetDbAvailable])
 
   const handleRecordFundSale = useCallback(async ({ symbol, sellDate, sellUnits, sellPrice }) => {
     const symU = String(symbol || '').trim().toUpperCase()
@@ -15606,6 +15966,10 @@ export default function MyPage({
       return
     }
     const proceedsJpy = stockSaleProceedsJpy(symU, su, sp, iso, fxMap)
+    if (proceedsJpy == null) {
+      setDataStatus('売却日の為替が取得できないため、実現損益を記録できません。')
+      return
+    }
     const realizedPnlJpy = proceedsJpy - fifo.costBasisJpy
     const trade = {
       tradeId: `fld_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
@@ -15695,6 +16059,15 @@ export default function MyPage({
     [fxRatesByDate],
   )
 
+  const resolveSellFx = useCallback(
+    (iso) => resolveUsdSellFx({
+      sellDateIso: iso,
+      currentRate: valuationUsdJpy,
+      currentAsOf: valuationFxDate,
+    }),
+    [valuationUsdJpy, valuationFxDate],
+  )
+
   const renderContent = () => {
     switch (activeTab) {
       case 'wealth':
@@ -15708,6 +16081,7 @@ export default function MyPage({
             userId={user?.id || null}
             fxRatesByDate={fxRatesByDate}
             valuationUsdJpy={valuationUsdJpy}
+            valuationFxDate={valuationFxDate}
             onAddOwnedStock={handleAddOwnedStock}
             searchStockSuggestions={searchStockSuggestions}
             searchFundSuggestions={searchFundSuggestions}
@@ -15755,6 +16129,7 @@ export default function MyPage({
             userId={user?.id || null}
             fxRatesByDate={fxRatesByDate}
             valuationUsdJpy={valuationUsdJpy}
+            valuationFxDate={valuationFxDate}
             onAddOwnedStock={handleAddOwnedStock}
             searchStockSuggestions={searchStockSuggestions}
             searchFundSuggestions={searchFundSuggestions}
@@ -15802,6 +16177,7 @@ export default function MyPage({
             userId={user?.id || null}
             fxRatesByDate={fxRatesByDate}
             valuationUsdJpy={valuationUsdJpy}
+            valuationFxDate={valuationFxDate}
             onAddOwnedStock={handleAddOwnedStock}
             searchStockSuggestions={searchStockSuggestions}
             searchFundSuggestions={searchFundSuggestions}
@@ -16010,6 +16386,7 @@ export default function MyPage({
               onUpdateFundTrade={handleUpdateFundRealizedTrade}
               onDeleteFundTrade={handleDeleteFundRealizedTrade}
               computeSaleProceedsJpy={computeSaleProceedsJpyForHistoryEdit}
+              resolveSellFx={resolveSellFx}
             />
           </Suspense>
         )
@@ -16024,6 +16401,7 @@ export default function MyPage({
             userId={user?.id || null}
             fxRatesByDate={fxRatesByDate}
             valuationUsdJpy={valuationUsdJpy}
+            valuationFxDate={valuationFxDate}
             onAddOwnedStock={handleAddOwnedStock}
             searchStockSuggestions={searchStockSuggestions}
             searchFundSuggestions={searchFundSuggestions}

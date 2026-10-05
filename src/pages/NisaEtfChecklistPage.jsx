@@ -43,7 +43,7 @@ const QUESTIONS = [
     id: 'fee',
     icon: CircleDollarSign,
     title: '信託報酬を見た？',
-    detail: '長期投資では年0.1%の差でも積み上がります。ランキングより先にコストを確認しましょう。',
+    detail: '長期投資では年0.1%の差でも積み上がります。ランキングより先にコストを確認します。',
     tag: 'コスト',
   },
   {
@@ -170,7 +170,7 @@ export default function NisaEtfChecklistPage() {
                 </span>
               </h1>
               <p className="mt-6 max-w-2xl text-base font-semibold leading-8 text-slate-600 dark:text-slate-300 sm:text-lg">
-                人気ランキングを見る前に、まず自分の目的と比較軸を整理しましょう。
+                人気ランキングを見る前に、まず自分の目的と比較軸を整理します。
                 7項目をチェックするだけで、次に見るべきポイントがわかります。
               </p>
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
@@ -369,7 +369,7 @@ export default function NisaEtfChecklistPage() {
             ))}
           </div>
           <p className="mt-8 text-xs font-semibold leading-6 text-slate-500 dark:text-slate-400">
-            本ページは一般的な情報提供を目的としたもので、特定の金融商品の売買を推奨するものではありません。
+            本ページは情報提供を目的としたものであり、特定の金融商品の売買を勧誘するものではありません。
             最終的な投資判断はご自身の責任で行ってください。
           </p>
         </section>

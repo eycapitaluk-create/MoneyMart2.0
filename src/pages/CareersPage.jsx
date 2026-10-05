@@ -1,86 +1,28 @@
+import { CAREERS_B2B_JD, CAREERS_SEO_TITLE, CAREERS_SEO_DESCRIPTION } from '../data/careers.js'
 import { Helmet } from 'react-helmet-async'
 import { Link } from 'react-router-dom'
 import { Mail, Users } from 'lucide-react'
 import { COMPANY_SUPPORT_EMAIL } from '../constants/companyLegal'
 
 const CAREERS_MAILTO = `mailto:${COMPANY_SUPPORT_EMAIL}?subject=${encodeURIComponent('採用応募（通年採用）')}`
-const CAREERS_B2B_MAILTO = `mailto:${COMPANY_SUPPORT_EMAIL}?subject=${encodeURIComponent('採用応募（ビジネスデベロップメントディレクター）')}`
+const CAREERS_B2B_MAILTO = `mailto:${COMPANY_SUPPORT_EMAIL}?subject=${encodeURIComponent('採用応募（法人営業・事業開発）')}`
 
-const CAREERS_B2B_JD = {
-  title: 'ビジネスデベロップメントディレクター（ウェルスマネジメント）',
-  location: '勤務地： 日本国内（柔軟な勤務形態／リモート可。顧客訪問あり）',
-  sections: [
-    {
-      heading: 'MoneyMartについて',
-      paragraphs: [
-        'MoneyMartは、ウェルスマネジメント会社、銀行、証券会社、IFA（独立系ファイナンシャルアドバイザー）向けの投資インテリジェンスプラットフォームを開発しています。',
-        '当社のプラットフォームは、顧客ポートフォリオのモニタリング、リスクや投資機会の把握、投資レビューの準備、市場・金融商品に関する情報や分析へのアクセス、一貫性のある顧客レポートの効率的な作成を支援します。',
-      ],
-    },
-    {
-      heading: '募集ポジション',
-      paragraphs: [
-        'MoneyMartのB2Bプラットフォームにおける法人営業および事業開発をリードする、経験豊富なウェルスマネジメント業界のプロフェッショナルを募集します。',
-        '本ポジションは、一般的なソフトウェア営業職ではありません。ウェルスマネジメント業界での実務経験を有し、アドバイザー、リレーションシップマネージャー、投資・運用チーム、金融機関における業務プロセスを深く理解していることが求められます。',
-        'これまでの経験を活かして経営層や部門責任者との関係を構築し、各社のビジネスニーズを把握したうえで、MoneyMartがアドバイザーの業務効率、投資管理、顧客エンゲージメントおよびガバナンスをどのように改善できるかを提案していただきます。',
-      ],
-    },
-    {
-      heading: '主な業務内容',
-      items: [
-        'ウェルスマネジメント会社、銀行、証券会社およびIFAを対象としたB2B営業戦略の策定・実行',
-        'ターゲットとなる金融機関の選定および質の高い営業パイプラインの構築',
-        'ウェルスマネジメント、運用、アドバイザリー、デジタルトランスフォーメーション、コンプライアンス部門の責任者との関係構築',
-        '顧客との商談、製品デモンストレーションおよび提案プレゼンテーションの実施',
-        '各金融機関の投資プロセス、アドバイザーの業務フロー、ガバナンス要件およびオペレーション上の課題の把握',
-        'MoneyMartの機能や強みを、見込み顧客ごとの具体的な事業成果やビジネス価値として提示',
-        '初回アプローチ、ニーズ分析、パイロット導入、提案、条件交渉、契約締結までの営業プロセス全体の管理',
-        '創業者およびプロダクトチームと連携したパイロット導入と導入計画の策定',
-        '市場や顧客からのフィードバックの収集およびプロダクト開発の優先順位付けへの貢献',
-        '戦略的パートナーシップおよび業界ネットワークの構築',
-        '導入後の既存顧客との関係拡大および追加提案',
-      ],
-    },
-    {
-      heading: '必須経験・スキル',
-      items: [
-        'ウェルスマネジメント、プライベートバンキング、金融アドバイザリー、証券、資産運用、または関連分野における10年以上の実務経験',
-        'ウェルスマネジメント事業における実務経験',
-        'アドバイザーの業務フロー、ポートフォリオレビュー、金融商品、適合性管理、コンプライアンスおよび顧客レポーティングに関する深い理解',
-        '事業開発、法人営業、機関投資家営業、リレーションシップマネジメント、または新規顧客・案件獲得における実績',
-        '経営層と現場のウェルスマネジメント担当者の双方と、専門性と信頼性をもってコミュニケーションできる能力',
-        '長期かつ複雑な法人営業プロセスを管理した経験',
-        '日本のウェルスマネジメントまたは金融サービス業界における既存のネットワークや関係性',
-      ],
-    },
-    {
-      heading: '歓迎する経験・スキル',
-      items: [
-        '投資関連テクノロジー、ウェルスマネジメントプラットフォーム、金融データ、またはその他のB2B金融サービスの営業経験',
-        'ウェルスマネージャー、プライベートバンカー、投資アドバイザー、投資スペシャリスト、またはウェルスマネジメントの商品・サービス企画責任者としての経験',
-        '地方銀行、証券会社またはIFAとの業務経験',
-        '法人顧客における調達プロセス、パイロット導入およびテクノロジー導入に関する知識',
-        'ビジネスレベルの英語力があれば尚可。ただし必須ではありません',
-      ],
-    },
-    {
-      heading: '応募方法',
-      paragraphs: [
-        '履歴書または職務経歴書に加え、これまでのウェルスマネジメント業界での経験、関連する業界ネットワーク、およびB2B顧客や新規案件の獲得実績を簡潔にまとめた自己紹介文をご提出ください。',
-      ],
-    },
-  ],
-}
+
 
 export default function CareersPage() {
   return (
     <div className="min-h-screen bg-white dark:bg-slate-950 font-sans text-slate-800 dark:text-slate-200 pb-20">
       <Helmet>
-        <title>採用情報 | MoneyMart</title>
+        <title>{CAREERS_SEO_TITLE}</title>
         <meta
           name="description"
-          content="MoneyMartの採用情報。ウェルスマネジメント向けB2B営業・事業開発のビジネスデベロップメントディレクターを通年で募集しています。"
+          content={CAREERS_SEO_DESCRIPTION}
         />
+      <link rel="canonical" href="https://www.moneymart.co.jp/careers" />
+        <meta property="og:title" content={CAREERS_SEO_TITLE} />
+        <meta property="og:description" content={CAREERS_SEO_DESCRIPTION} />
+        <meta name="twitter:title" content={CAREERS_SEO_TITLE} />
+        <meta name="twitter:description" content={CAREERS_SEO_DESCRIPTION} />
       </Helmet>
 
       <section className="relative overflow-hidden bg-slate-900 text-white">
@@ -89,7 +31,7 @@ export default function CareersPage() {
           <div className="flex flex-wrap items-center gap-2 mb-4">
             <Users className="text-orange-400" size={20} />
             <span className="inline-flex items-center py-1 px-3 rounded-full text-[11px] font-black bg-orange-500 text-white">
-              通年採用・随時募集中
+              募集期間：2026年9月27日〜10月27日
             </span>
           </div>
           <h1 className="text-3xl md:text-4xl font-black leading-tight mb-3">採用情報</h1>

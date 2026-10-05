@@ -17,6 +17,8 @@
  *
  *   カンマ区切りティッカーのみ（例: ヒートマップ用 ETF）: --only-symbols=AAXJ,IJH,IYE
  *
+ *   検証のみ（DB更新なし）: --dry-run
+ *
  * Env: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (또는 SUPABASE_SECRET_KEY)
  */
 import fs from 'node:fs/promises'
@@ -95,6 +97,7 @@ const run = async () => {
   }
 
   const source = String(flags.source || 'manual_close').trim() || 'manual_close'
+  const dryRun = flags['dry-run'] === 'true' || flags['dry-run'] === '1' || flags.dry_run === 'true'
   const fileBase = path.basename(xlsxPath)
 
   const wb = XLSX.readFile(xlsxPath, { cellDates: true })
@@ -164,6 +167,7 @@ const run = async () => {
 
   /** @type {{ source: string, symbol: string, trade_date: string, open: number, high: number, low: number, close: number, volume: number|null, fetched_at: string, raw: object }[]} */
   const priceRows = []
+  let invalidOhlcRows = 0
 
   if (!multiSymbol) {
     if (dateIdx < 0 || closeIdx < 0) {
@@ -207,6 +211,23 @@ const run = async () => {
       const highs = highIdx >= 0 && toNum(row[highIdx]) != null ? Number(row[highIdx]) : close
       const lows = lowIdx >= 0 && toNum(row[lowIdx]) != null ? Number(row[lowIdx]) : close
       const vn = volumeIdx >= 0 ? volNormalize(row[volumeIdx]) : null
+      const hasFullOhlc = openIdx >= 0 && highIdx >= 0 && lowIdx >= 0
+      if (
+        hasFullOhlc
+        && (
+          opens <= 0
+          || highs <= 0
+          || lows <= 0
+          || highs < lows
+          || opens < lows
+          || opens > highs
+          || close < lows
+          || close > highs
+        )
+      ) {
+        invalidOhlcRows += 1
+        continue
+      }
 
       priceRows.push({
         source,
@@ -274,6 +295,15 @@ const run = async () => {
   }
 
   const dedup = [...new Map(filteredRows.map((r) => [`${r.source}|${r.symbol}|${r.trade_date}`, r])).values()]
+  const duplicateRows = filteredRows.length - dedup.length
+  console.log(
+    `Parsed ${dedup.length} valid rows (${new Set(dedup.map((r) => r.symbol)).size} symbols); `
+    + `invalid_ohlc=${invalidOhlcRows}, duplicate_rows=${duplicateRows}, source=${source}`,
+  )
+  if (dryRun) {
+    console.log('[dry-run] Validation complete. No database rows were changed.')
+    return
+  }
   const supabase = createClient(supabaseUrl, supabaseKey)
 
   const pricesOnly =

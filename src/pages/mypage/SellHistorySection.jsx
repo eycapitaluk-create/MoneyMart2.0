@@ -56,6 +56,14 @@ function formatSellPrice(symbol, rawPrice, currency) {
   return String(v)
 }
 
+function formatAppliedUsdJpy(rate, asOf) {
+  const n = Number(rate)
+  const day = String(asOf || '').slice(0, 10)
+  if (!(n > 0) || !/^\d{4}-\d{2}-\d{2}$/.test(day)) return ''
+  const yen = n.toLocaleString('ja-JP', { minimumFractionDigits: 2, maximumFractionDigits: 4 })
+  return `適用レート 1ドル=¥${yen} (${day})`
+}
+
 function yenSigned(n) {
   const v = Math.round(Number(n) || 0)
   if (v === 0) return '¥0'
@@ -91,6 +99,8 @@ export default function SellHistorySection({
   onDeleteFundTrade,
   /** (symbol, qty, sellPrice, sellDateIso) => proceedsJpy — MyPage の stockSaleProceedsJpy と同じ */
   computeSaleProceedsJpy,
+  /** (sellDateIso) => Promise<{ rate, asOf } | null>。USD 売却の保存レート。 */
+  resolveSellFx,
 }) {
   const [kindFilter, setKindFilter] = useState('all')
   const [yearFilter, setYearFilter] = useState('all')
@@ -99,6 +109,8 @@ export default function SellHistorySection({
   const [editDraft, setEditDraft] = useState(null)
   /** @type {[{ kind: 'stock'|'fund', tradeId: string, label: string }]|null} */
   const [pendingDelete, setPendingDelete] = useState(null)
+  /** 저장된 환율이 없는 기존 USD 매도. 표시만 하고 다시 저장하지 않는다. */
+  const [lookedUpFx, setLookedUpFx] = useState({})
 
   const fundFirstNameBySymbol = useMemo(() => {
     const m = new Map()
@@ -110,6 +122,52 @@ export default function SellHistorySection({
     }
     return m
   }, [ownedFunds])
+
+  useEffect(() => {
+    const dates = []
+    for (const row of Array.isArray(stockTrades) ? stockTrades : []) {
+      if (inferListedCurrency(row?.symbol) !== 'USD') continue
+      const storedRate = Number(row?.sellFxRate)
+      const storedDate = String(row?.sellFxDate || '').slice(0, 10)
+      if (storedRate > 0 && /^\d{4}-\d{2}-\d{2}$/.test(storedDate)) continue
+      const d = parseSellDateKey(row?.sellDate)
+      if (d) dates.push(d)
+    }
+    const unique = [...new Set(dates)]
+    if (unique.length === 0) return undefined
+    let alive = true
+    ;(async () => {
+      const next = {}
+      await Promise.all(unique.map(async (d) => {
+        try {
+          const r = await fetch(`/api/fx?date=${encodeURIComponent(d)}`)
+          if (!r.ok) return
+          const j = await r.json()
+          const rate = Number(j?.rates?.USD)
+          const asOf = String(j?.fxAsOf || '').slice(0, 10)
+          if (rate > 0 && /^\d{4}-\d{2}-\d{2}$/.test(asOf)) next[d] = { rate, asOf }
+        } catch {
+          /* 표시 전용 */
+        }
+      }))
+      if (alive) setLookedUpFx((prev) => ({ ...prev, ...next }))
+    })()
+    return () => {
+      alive = false
+    }
+  }, [stockTrades])
+
+  const fxLineForRow = (row) => {
+    if (row?.kind !== 'stock' || inferListedCurrency(row?.symbol) !== 'USD') return ''
+    const storedRate = Number(row?.sellFxRate)
+    const storedDate = String(row?.sellFxDate || '').slice(0, 10)
+    if (storedRate > 0 && /^\d{4}-\d{2}-\d{2}$/.test(storedDate)) {
+      return formatAppliedUsdJpy(storedRate, storedDate)
+    }
+    const d = parseSellDateKey(row?.sellDate)
+    const found = d ? lookedUpFx[d] : null
+    return found ? formatAppliedUsdJpy(found.rate, found.asOf) : ''
+  }
 
   const timeline = useMemo(
     () => buildSellHistoryTimeline({ stockTrades, fundTrades }),
@@ -183,6 +241,7 @@ export default function SellHistorySection({
   /** 売却単価・数量・売却日が変わったら売却金額(円)を再計算（新規売却記録と同じ為替ロジック） */
   useEffect(() => {
     if (!editDraft || typeof computeSaleProceedsJpy !== 'function') return
+    if (editDraft.kind === 'stock' && inferListedCurrency(editDraft.symbol) === 'USD') return
     const iso = coerceSellDateIso(editDraft.sellDate)
     const qty = parseNum(editDraft.qtyStr)
     const price = parseNum(editDraft.sellPriceStr)
@@ -204,6 +263,29 @@ export default function SellHistorySection({
     editDraft?.sellPriceStr,
     editDraft?.tradeId,
   ])
+
+  useEffect(() => {
+    if (!editDraft || editDraft.kind !== 'stock' || inferListedCurrency(editDraft.symbol) !== 'USD') return undefined
+    if (typeof resolveSellFx !== 'function') return undefined
+    const iso = coerceSellDateIso(editDraft.sellDate)
+    if (!iso) return undefined
+    let alive = true
+    resolveSellFx(iso).then((fx) => {
+      if (!alive) return
+      setEditDraft((d) => {
+        if (!d || coerceSellDateIso(d.sellDate) !== iso) return d
+        if (!fx) return { ...d, sellFxRate: null, sellFxDate: '' }
+        const qty = parseNum(d.qtyStr)
+        const price = parseNum(d.sellPriceStr)
+        const next = { ...d, sellFxRate: fx.rate, sellFxDate: fx.asOf }
+        if (qty > 0 && price >= 0) next.proceedsStr = String(Math.round(qty * price * fx.rate * 100) / 100)
+        return next
+      })
+    })
+    return () => {
+      alive = false
+    }
+  }, [editDraft?.kind, editDraft?.symbol, editDraft?.sellDate, editDraft?.qtyStr, editDraft?.sellPriceStr, resolveSellFx])
 
   const editPreviewPnlJpy = useMemo(() => {
     if (!editDraft) return null
@@ -247,6 +329,16 @@ export default function SellHistorySection({
       costBasisJpy,
       proceedsJpy,
       realizedPnlJpy: proceedsJpy - costBasisJpy,
+    }
+    if (editDraft.kind === 'stock' && inferListedCurrency(editDraft.symbol) === 'USD') {
+      const rate = Number(editDraft.sellFxRate)
+      const fxDate = String(editDraft.sellFxDate || '').slice(0, 10)
+      if (rate > 0 && /^\d{4}-\d{2}-\d{2}$/.test(fxDate)) {
+        patch.sellFxRate = rate
+        patch.sellFxDate = fxDate
+        patch.proceedsJpy = qty * sellPrice * rate
+        patch.realizedPnlJpy = patch.proceedsJpy - costBasisJpy
+      }
     }
     if (editDraft.kind === 'stock') {
       onUpdateStockTrade?.(editDraft.tradeId, patch)
@@ -413,6 +505,7 @@ export default function SellHistorySection({
                   const pnl = Number(row.realizedPnlJpy ?? row.realized_pnl_jpy ?? 0)
                   const proceeds = Number(row.proceedsJpy ?? row.proceeds_jpy ?? 0)
                   const qty = Number(row.qty ?? 0)
+                  const fxLine = fxLineForRow(row)
                   const sortMs = sellDateSortMs(row.sellDate)
                   return (
                     <li
@@ -553,6 +646,11 @@ export default function SellHistorySection({
                           )}
                         </div>
                       </div>
+                      {fxLine ? (
+                        <p className="mt-1.5 text-[11px] font-semibold tabular-nums text-slate-500 dark:text-slate-400">
+                          {fxLine}
+                        </p>
+                      ) : null}
                     </li>
                   )
                 })}
@@ -669,6 +767,11 @@ export default function SellHistorySection({
                 />
               </label>
             </div>
+            {editDraft.kind === 'stock' && inferListedCurrency(editDraft.symbol) === 'USD' ? (
+              <p className="text-[11px] font-bold tabular-nums text-slate-600 dark:text-slate-300">
+                {formatAppliedUsdJpy(editDraft.sellFxRate, editDraft.sellFxDate) || '適用レートを確認しています…'}
+              </p>
+            ) : null}
             <p className="text-[10px] font-semibold text-slate-400 dark:text-slate-500">
               {typeof computeSaleProceedsJpy === 'function'
                 ? '売却単価・数量・売却日を変更すると、為替を踏まえて売却金額(円)を自動で更新します（必要なら売却金額だけ手で直せます）。'

@@ -128,6 +128,8 @@ export default function Layout({
       || p === '/complete-profile'
       || p.startsWith('/mypage')
       || p.startsWith('/admin')
+      || p === '/business/demo'
+      || p.startsWith('/business/demo/')
       || p === '/community'
       || p === '/lounge'
   }, [location.pathname, seo.noindex])
@@ -143,9 +145,11 @@ export default function Layout({
     ]
   }, [location.pathname, seo.description])
   const isAdminApp = (location.pathname || '').startsWith('/admin')
+  const isAdvisorDemo = (location.pathname || '') === '/business/demo' || (location.pathname || '').startsWith('/business/demo/')
+  const isChromeLess = isAdminApp || isAdvisorDemo
 
   return (
-    <div className={`min-h-screen flex flex-col font-sans ${isAdminApp ? 'bg-[#f7f8fa]' : 'bg-white dark:bg-gray-950'}`}>
+    <div className={`min-h-screen flex flex-col font-sans ${isChromeLess ? (isAdvisorDemo ? 'bg-[#faf8f2]' : 'bg-[#f7f8fa]') : 'bg-white dark:bg-gray-950'}`}>
       <Helmet htmlAttributes={{ lang: 'ja' }}>
         <title>{seo.title}</title>
         <meta name="description" content={seo.description} />
@@ -175,17 +179,17 @@ export default function Layout({
           <script key={`ld-home-${i}`} type="application/ld+json">{JSON.stringify(obj)}</script>
         ))}
       </Helmet>
-      {isAdminApp ? null : (
+      {isChromeLess ? null : (
         <Navbar darkMode={darkMode} onToggleDarkMode={toggleDarkMode} session={session} authReady={authReady} userProfile={userProfile} alertSummary={alertSummary} />
       )}
-      {!isAdminApp && !hideEmailBanner && authReady && session ? <EmailVerificationBanner session={session} /> : null}
+      {!isChromeLess && !hideEmailBanner && authReady && session ? <EmailVerificationBanner session={session} /> : null}
       <main className="flex-1">
         <ErrorBoundary key={`${location.pathname}${location.search || ''}`}>
           <Outlet />
         </ErrorBoundary>
       </main>
-      {isAdminApp ? null : <Footer />}
-      {isAdminApp ? null : (
+      {isChromeLess ? null : <Footer />}
+      {isChromeLess ? null : (
         <Suspense fallback={null}>
           <CustomerChatbot />
         </Suspense>

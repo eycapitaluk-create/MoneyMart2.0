@@ -243,7 +243,7 @@ function InsightArticle({ insight, onBack }) {
 
         <div className="px-6 md:px-10 py-5 bg-slate-100/80 dark:bg-slate-800/60 border-t border-slate-200 dark:border-slate-700">
           <p className="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400 max-w-3xl">
-            本コンテンツは情報提供のみを目的としており、特定の金融商品の購入・売却を推奨するものではありません。投資判断はご自身の責任でお願いいたします。
+            本コンテンツは情報提供のみを目的としており、特定の金融商品の売買を勧誘するものではありません。投資判断はご自身の責任でお願いいたします。
           </p>
         </div>
       </article>

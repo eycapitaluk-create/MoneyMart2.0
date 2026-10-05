@@ -46,6 +46,10 @@
     {
       "path": "/api/cron/community-hourly",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/price-series-check",
+      "schedule": "30 8 * * *"
     }
   ],
   "headers": [
@@ -65,6 +69,13 @@
       "source": "/admin(.*)",
       "headers": [
         { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
+      "source": "/business/demo",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow, noarchive" },
+        { "key": "Cache-Control", "value": "private, no-store, max-age=0" }
       ]
     },
     {

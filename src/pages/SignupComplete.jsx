@@ -4,6 +4,7 @@ import Card from '../components/ui/Card'
 import Button from '../components/ui/Button'
 import { supabase } from '../lib/supabase'
 import { consumeAuthRedirectPath } from '../lib/authRedirectStorage'
+import { sanitizeAuthReturnPath } from '../lib/authReturnPath'
 import {
   hasAuthCallbackPayload,
   parseAuthCallbackError,
@@ -18,8 +19,9 @@ export default function SignupComplete() {
   const [phase, setPhase] = useState('loading')
   const [errorDetail, setErrorDetail] = useState('')
 
-  const goNext = () => {
-    const target = consumeAuthRedirectPath('/')
+  const goNext = (session) => {
+    const fromMeta = sanitizeAuthReturnPath(session?.user?.user_metadata?.mm_auth_next || '', '')
+    const target = fromMeta && fromMeta !== '/' ? fromMeta : consumeAuthRedirectPath('/')
     navigate(target, { replace: true })
   }
 
@@ -27,11 +29,11 @@ export default function SignupComplete() {
     let cancelled = false
     let navigated = false
 
-    const finishOk = () => {
+    const finishOk = (session) => {
       if (cancelled || navigated) return
       navigated = true
       scrubAuthCallbackUrl()
-      goNext()
+      goNext(session)
     }
 
     const finishError = (message) => {
@@ -55,7 +57,7 @@ export default function SignupComplete() {
           return
         }
         if (data?.session) {
-          finishOk()
+          finishOk(data.session)
           return
         }
         await new Promise((r) => window.setTimeout(r, 150))
@@ -72,7 +74,7 @@ export default function SignupComplete() {
     const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
       if (cancelled || navigated) return
       if (session && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION')) {
-        finishOk()
+        finishOk(session)
       }
     })
 

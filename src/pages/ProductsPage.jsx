@@ -44,8 +44,8 @@ const PRODUCTS = [
   { id: 26, cat: 'loan', name: '三井住友銀行 カードローン', company: '三井住友銀行', fee: '1.5〜14.5%', feeNote: '実質年率', highlights: ['銀行系の安心感', 'ATM利用しやすい', '口座保有者優遇'], tags: ['web'], popular: false },
   { id: 27, cat: 'loan', name: 'みずほ銀行 カードローン', company: 'みずほ銀行', fee: '2.0〜14.0%', feeNote: '実質年率', highlights: ['銀行口座連携', '低めの上限金利', 'スマホ完結申込'], tags: ['web'], popular: false },
   { id: 28, cat: 'loan', name: '楽天銀行 スーパーローン', company: '楽天銀行', fee: '1.9〜14.5%', feeNote: '実質年率', highlights: ['楽天会員ランク優遇', 'ネット申込完結', '利用限度額が広い'], tags: ['web'], popular: false },
-  { id: 29, cat: 'loan', name: '住信SBIネット銀行 カードローン', company: '住信SBIネット銀行', fee: '1.89〜14.79%', feeNote: '実質年率', highlights: ['ネット銀行ならでは', '条件で金利優遇', 'Web完結'], tags: ['web'], popular: false },
-  { id: 30, cat: 'loan', name: 'auじぶん銀行 カードローン', company: 'auじぶん銀行', fee: '1.48〜17.5%', feeNote: '実質年率', highlights: ['auユーザー優遇', 'アプリ連携', '来店不要'], tags: ['web', 'instant'], popular: false },
+  { id: 29, cat: 'loan', name: 'ドコモSMTBネット銀行 カードローン', company: 'ドコモSMTBネット銀行', fee: '2.04〜14.94%', feeNote: '年率・適用金利は審査等で決定', highlights: ['ネット銀行のカードローン', '条件により金利優遇', 'Web完結'], tags: ['web'], popular: false },
+  { id: 30, cat: 'loan', name: 'auじぶん銀行 カードローン', company: 'auじぶん銀行', fee: '1.38〜17.8%', feeNote: '通常金利・年率', highlights: ['auユーザー向け優遇条件あり', 'アプリ連携', '来店不要'], tags: ['web'], popular: false },
 
   { id: 31, cat: 'insurance', name: 'SBI生命 定期保険', company: 'SBI生命保険', fee: '¥800〜', feeNote: '月額目安', highlights: ['ネット完結申込', 'シンプル保障', '健康告知のみ'], tags: ['web'], popular: false },
   { id: 32, cat: 'insurance', name: 'チューリッヒ 自動車保険', company: 'チューリッヒ保険会社', fee: '見積無料', feeNote: '条件により変動', highlights: ['ネット割引あり', '24時間ロードサービス', '弁護士費用特約'], tags: ['web'], popular: false },
@@ -85,7 +85,7 @@ const PRODUCTS = [
     highlights: [
       '利用者数800万人規模の、自動車保険の一括見積もり・比較サービス',
       '最短約5分の入力で、最大21社分の見積もりを一度に取り寄せ・料金や補償・サービスを比較しやすい',
-      '※インズウェブは保険代理店ではなく、特定の保険のおすすめは行わない中立の比較窓口です',
+      '※インズウェブは保険代理店ではなく、特定の保険の勧誘は行わない中立の比較窓口です',
     ],
     impressionPixelUrl: 'https://www18.a8.net/0.gif?a8mat=4B3HQL+7FX302+2PS+15OZHU',
     tags: ['web'],
@@ -101,7 +101,6 @@ const PRODUCTS = [
   { id: 46, cat: 'other', name: 'GMO外貨 FX口座', company: 'GMO外貨', fee: '0.2銭〜', feeNote: 'ドル円スプレッド', highlights: ['多通貨ペア', '取引ツール充実', 'Web完結口座開設'], tags: ['web', 'instant'], popular: false },
   { id: 47, cat: 'other', name: '外為どっとコム FX', company: '外為どっとコム', fee: '0.2銭〜', feeNote: 'ドル円スプレッド', highlights: ['情報コンテンツ豊富', '初心者向けセミナー', '取引ツール対応'], tags: ['web', 'instant'], popular: false },
   { id: 48, cat: 'other', name: 'みんなのFX', company: 'トレイダーズ証券', fee: '0.2銭〜', feeNote: 'ドル円スプレッド', highlights: ['低スプレッド', 'スワップ実績', '自動売買対応'], tags: ['web', 'instant'], popular: false },
-  { id: 49, cat: 'other', name: 'LINE証券 つみたて', company: 'LINE証券', fee: '¥0〜', feeNote: '取引手数料', highlights: ['LINE連携で使いやすい', '少額投資対応', '初心者向けUI'], tags: ['web', 'nisa'], popular: false },
   { id: 50, cat: 'other', name: 'PayPay資産運用', company: 'PayPay証券', fee: '¥0〜', feeNote: '取引手数料', highlights: ['PayPayアプリ連携', '少額から運用', '簡単な積立設定'], tags: ['web', 'nisa'], popular: false },
 
   {
@@ -132,8 +131,8 @@ const PRODUCTS = [
     cat: 'card',
     name: 'Nexus Card（ネクサスカード）｜デポジット型クレジットカード',
     company: 'Nexus Card株式会社',
-    fee: '¥1,375〜',
-    feeNote: '年会費目安・デポジットは公式で確認',
+    fee: '年会費 ¥1,375',
+    feeNote: '別途発行費用¥1,100・保証金が必要',
     highlights: [
       'デポジット（保証金）と連動する利用枠の、ショッピング専用クレジットカード',
       '建設業・建築業の方向けの訴求あり。審査の通りやすさは個人の状況により異なります',
@@ -141,7 +140,7 @@ const PRODUCTS = [
     ],
     keyPoints: [
       '一般的なクレジットカードと異なり、デポジット預入が前提の仕組みです。限度額・手数料は公式の最新情報をご確認ください',
-      '年会費・発行手数料・デポジット額の条件は商品・キャンペーンにより変わることがあります',
+      '公式掲載の発行費用は税込1,100円、年会費は税込1,375円。保証金は5万円～200万円で、利用枠は保証金と同額です',
       '本掲載は情報提供であり、特定の金融商品の勧誘を目的とするものではありません',
     ],
     detailUrl: 'https://px.a8.net/svt/ejp?a8mat=4B1H1N+E7FDF6+4T5W+656YP',
@@ -332,7 +331,6 @@ const OFFICIAL_LINKS = {
   46: 'https://www.gaikaex.com/',
   47: 'https://www.gaitame.com/',
   48: 'https://min-fx.jp/',
-  49: 'https://line-sec.co.jp/',
   50: 'https://www.paypay-sec.co.jp/',
   51: 'https://www.mitsui.com/jp/ja/profile/affiliates/dam/index.html',
   52: 'https://www.nexuscard.co.jp/',
@@ -967,9 +965,9 @@ export default function ProductsPage() {
           <div style={{ position: 'relative', zIndex: 1 }}>
           <div style={{ fontSize: isMobile ? 11 : 12, fontWeight: 800, letterSpacing: '0.12em', color: '#F97316', textTransform: 'uppercase', marginBottom: 10 }}>MoneyMart 商品比較</div>
           <div style={{ fontSize: isMobile ? 28 : 34, fontWeight: 800, color: '#fff', lineHeight: 1.32, marginBottom: 10 }}>あなたに合った金融商品を、<br />かしこく選ぼう。</div>
-          <div style={{ fontSize: isMobile ? 14 : 16, color: '#CBD5E1', lineHeight: 1.7, fontWeight: 500 }}>金融商品を一覧比較。申し込みはすべて無料です。</div>
+          <div style={{ fontSize: isMobile ? 14 : 16, color: '#CBD5E1', lineHeight: 1.7, fontWeight: 500 }}>MoneyMartでの比較は無料。商品ごとの費用・申込条件は公式情報をご確認ください。</div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: isMobile ? 16 : 28, rowGap: 14, marginTop: 22, maxWidth: '100%' }}>
-            {[{ num: PRODUCTS.length, label: '掲載商品数' }, { num: '5', label: 'カテゴリ' }, { num: '無料', label: '申し込み手数料' }].map((s) => (
+            {[{ num: PRODUCTS.length, label: '掲載商品数' }, { num: CATS.length - 1, label: 'カテゴリ' }, { num: '無料', label: '比較サービス利用料' }].map((s) => (
               <div key={s.label} style={{ minWidth: isMobile ? 'calc(50% - 8px)' : 'auto', flex: isMobile ? '1 1 calc(50% - 8px)' : '0 0 auto' }}>
                 <div style={{ fontSize: isMobile ? 24 : 30, fontWeight: 800, color: '#F97316', lineHeight: 1.1 }}>{s.num}</div>
                 <div style={{ fontSize: isMobile ? 11 : 12, color: '#CBD5E1', marginTop: 4, fontWeight: 600 }}>{s.label}</div>

@@ -13,7 +13,6 @@ import {
   mapMacroEventsCalendarRows,
   parseLocalDateFromYmd,
 } from '../lib/macroEventsCalendar'
-import { fetchFundUniverseSnapshot } from '../lib/fundUniverse'
 import { resolveFundDisplayName } from '../lib/fundDisplayUtils'
 import { LEGAL_NOTICE_TEMPLATES } from '../constants/legalNoticeTemplates'
 import LazyMarketFearBelowA8Ad from '../components/LazyMarketFearBelowA8Ad'
@@ -612,7 +611,7 @@ export default function MarketPage({ session = null }) {
   const [jpThemeTiles, setJpThemeTiles] = useState([])
   const [commodityTiles, setCommodityTiles] = useState([])
   const [selectedThemeId, setSelectedThemeId] = useState(MARKET_THEME_DEFINITIONS[0].id)
-  const [activeEtfTop5Group, setActiveEtfTop5Group] = useState(0)
+  const [etfRankStatus, setEtfRankStatus] = useState('loading')
 
   const isLoggedIn = Boolean(session?.user)
 
@@ -656,14 +655,6 @@ export default function MarketPage({ session = null }) {
     { id: 'return', title: '週間騰落率 Top 5', list: topFunds, metric: (f) => `${Number(f.dayChange ?? f.return1y ?? 0) >= 0 ? '+' : ''}${(f.dayChange ?? f.return1y ?? 0).toFixed(1)}%`, metricClass: (f) => signedReturnTextClassStrong(Number(f.dayChange ?? f.return1y ?? 0)) },
     { id: 'volume', title: '出来高 Top5', list: inflowFunds, metric: (f) => `${Math.round(Number(f.inflow || 0)).toLocaleString('ja-JP')}万`, metricClass: () => 'text-slate-500 dark:text-slate-400' },
   ], [topFunds, inflowFunds])
-
-  useEffect(() => {
-    if (etfTop5Sections.length <= 1) return undefined
-    const timer = window.setInterval(() => {
-      setActiveEtfTop5Group((c) => (c + 1) % etfTop5Sections.length)
-    }, 6000)
-    return () => window.clearInterval(timer)
-  }, [etfTop5Sections.length])
 
   const tickerNews = (newsState.marketTicker || []).filter(isJapaneseNewsItem)
   const pickupNews = (newsState.marketPickup || []).filter(isJapaneseNewsItem)
@@ -717,14 +708,39 @@ export default function MarketPage({ session = null }) {
     let fetchSeq = 0
     const fetchData = async ({ silent = false } = {}) => {
       const seq = ++fetchSeq
-      let processedBase = null
+      const historyFromDate = toIsoDateDaysAgo(10)
+      const etfLatestBatches = []
+      const etfRecentBatches = []
+      for (let i = 0; i < ETF_SYMBOLS_FROM_XLSX.length; i += 80) {
+        etfLatestBatches.push(ETF_SYMBOLS_FROM_XLSX.slice(i, i + 80))
+        etfRecentBatches.push(ETF_SYMBOLS_FROM_XLSX.slice(i, i + 80))
+      }
+      const buildPreviousCloseMap = (latestRows, historyRows) => {
+        const bySymbol = new Map()
+        for (const row of historyRows || []) {
+          const symbol = String(row?.symbol || '').toUpperCase()
+          if (!symbol) continue
+          if (!bySymbol.has(symbol)) bySymbol.set(symbol, [])
+          bySymbol.get(symbol).push(row)
+        }
+        for (const arr of bySymbol.values()) {
+          arr.sort((a, b) => String(b?.trade_date || '').localeCompare(String(a?.trade_date || '')))
+        }
+        const prevMap = new Map()
+        for (const latest of latestRows || []) {
+          const symbol = String(latest?.symbol || '').toUpperCase()
+          const latestTradeDate = String(latest?.trade_date || '')
+          const rows = bySymbol.get(symbol) || []
+          const prev = rows.find((row) => String(row?.trade_date || '') < latestTradeDate)
+          const prevClose = Number(prev?.close)
+          if (Number.isFinite(prevClose) && prevClose > 0) prevMap.set(symbol, prevClose)
+        }
+        return prevMap
+      }
       try {
         if (!silent) setIsLoading(true)
         setMarketDataStatus('')
-        let processed = []
 
-        // v_stock_latest の ETF 終値からヒートマップを構築（並列 fetch で読み込み短縮）
-        const historyFromDate = toIsoDateDaysAgo(10)
         const customHeatmapSymbols = [
           ...new Set([
             ...REGION_TICKER_LIST.map((row) => row.symbol),
@@ -733,15 +749,6 @@ export default function MarketPage({ session = null }) {
             ...COMMODITY_ETF_FALLBACK.map((t) => t.symbol),
           ]),
         ]
-
-        const etfLatestBatches = []
-        for (let i = 0; i < ETF_SYMBOLS_FROM_XLSX.length; i += 80) {
-          etfLatestBatches.push(ETF_SYMBOLS_FROM_XLSX.slice(i, i + 80))
-        }
-        const etfRecentBatches = []
-        for (let i = 0; i < ETF_SYMBOLS_FROM_XLSX.length; i += 80) {
-          etfRecentBatches.push(ETF_SYMBOLS_FROM_XLSX.slice(i, i + 80))
-        }
 
         // 1) First paint fast: heatmap + region + commodity first.
         const [customLatestRes, customRecentRes, commodityRes] = await Promise.all([
@@ -759,31 +766,6 @@ export default function MarketPage({ session = null }) {
         if (customRecentRes.error) throw customRecentRes.error
         const customLatestRows = customLatestRes.data || []
         const customRecentRows = customRecentRes.data || []
-
-        const buildPreviousCloseMap = (latestRows, historyRows) => {
-          const bySymbol = new Map()
-          for (const row of historyRows || []) {
-            const symbol = String(row?.symbol || '').toUpperCase()
-            if (!symbol) continue
-            if (!bySymbol.has(symbol)) bySymbol.set(symbol, [])
-            bySymbol.get(symbol).push(row)
-          }
-          for (const arr of bySymbol.values()) {
-            arr.sort((a, b) => String(b?.trade_date || '').localeCompare(String(a?.trade_date || '')))
-          }
-          const prevMap = new Map()
-          for (const latest of latestRows || []) {
-            const symbol = String(latest?.symbol || '').toUpperCase()
-            const latestTradeDate = String(latest?.trade_date || '')
-            const rows = bySymbol.get(symbol) || []
-            const prev = rows.find((row) => String(row?.trade_date || '') < latestTradeDate)
-            const prevClose = Number(prev?.close)
-            if (Number.isFinite(prevClose) && prevClose > 0) {
-              prevMap.set(symbol, prevClose)
-            }
-          }
-          return prevMap
-        }
 
         const customPrevCloseMap = buildPreviousCloseMap(customLatestRows, customRecentRows)
         const customLatestMap = new Map(
@@ -888,19 +870,25 @@ export default function MarketPage({ session = null }) {
           .filter(Boolean)
           .sort((a, b) => Number(b.volume || 0) - Number(a.volume || 0))
         setRegionPerformanceRows(regionRows.map(({ volume, ...row }) => row))
-        if (sectorRows.length === 0 && regionRows.length === 0) {
-          setHeatmapData([])
-          setHeatmapDataDate(null)
-          setRegionPerformanceRows([])
-          setJpThemeTiles([])
-          setCommodityTiles([])
-          setMarketDataStatus((prev) => prev || 'ヒートマップ用ETFデータがまだありません。')
-        }
 
-        // Heatmap/region blocks are ready at this point; keep ETF ranking hydration in background.
         if (!silent && seq === fetchSeq) setIsLoading(false)
+      } catch (err) {
+        console.error('Heatmap fetch error:', err)
+        if (rankingFetchCancelled || seq !== fetchSeq) return
+        setHeatmapData([])
+        setHeatmapDataDate(null)
+        setRegionPerformanceRows([])
+        setMarketDataStatus('ヒートマップ用データの取得に失敗しました。')
+      } finally {
+        if (!silent && seq === fetchSeq) setIsLoading(false)
+      }
 
-        // 2) Heavy ETF ranking fetch in background.
+      if (rankingFetchCancelled || seq !== fetchSeq) return
+
+      try {
+        if (!silent) setEtfRankStatus('loading')
+        let processedBase = null
+        let processed = []
         const [etfLatestResults, etfRecentResults] = await Promise.all([
           Promise.all(etfLatestBatches.map((batch) =>
             supabase.from('v_stock_latest').select('symbol,trade_date,close,volume').in('symbol', batch)
@@ -962,37 +950,16 @@ export default function MarketPage({ session = null }) {
         setLiveFundSignals(processed)
         setTopFunds([...processed].sort((a, b) => b.return1y - a.return1y).slice(0, 5))
         setInflowFunds([...processed].sort((a, b) => b.inflow - a.inflow).slice(0, 5))
-        if (!processed.length) {
-          setLiveFundSignals([])
+        setEtfRankStatus(processed.length ? 'ready' : 'empty')
+      } catch (err) {
+        console.error('ETF ranking fetch error:', err)
+        if (rankingFetchCancelled || seq !== fetchSeq) return
+        if (!silent) {
           setTopFunds([])
           setInflowFunds([])
-          setMarketDataStatus('ETFランキングデータがまだありません。')
+          setLiveFundSignals([])
         }
-
-        if (processedBase && processedBase.length > 0) {
-          fetchFundUniverseSnapshot()
-            .then((fundUniverseRows) => {
-              if (rankingFetchCancelled || seq !== fetchSeq) return
-              const refined = applyFundUniverseEligibility(processedBase, fundUniverseRows || [])
-              setLiveFundSignals(refined)
-              setTopFunds([...refined].sort((a, b) => b.return1y - a.return1y).slice(0, 5))
-              setInflowFunds([...refined].sort((a, b) => b.inflow - a.inflow).slice(0, 5))
-            })
-            .catch(() => {})
-        }
-      } catch (err) {
-        console.error('Data Fetch Error:', err)
-        setTopFunds([])
-        setInflowFunds([])
-        setLiveFundSignals([])
-        setHeatmapData([])
-        setHeatmapDataDate(null)
-        setRegionPerformanceRows([])
-        setJpThemeTiles([])
-        setCommodityTiles([])
-        setMarketDataStatus('ランキングデータの取得に失敗しました。')
-      } finally {
-        if (!silent) setIsLoading(false)
+        setEtfRankStatus('error')
       }
     }
     fetchData({ silent: false })
@@ -1015,9 +982,11 @@ export default function MarketPage({ session = null }) {
   const marketBriefSummary = useMemo(() => {
     const jp = regionPerformanceRows.find((row) => row.country === 'JP')
     const us = regionPerformanceRows.find((row) => row.country === 'US')
-    const avgTop = topFunds.reduce((acc, cur) => acc + Number((cur.dayChange ?? cur.return1y) || 0), 0) / Math.max(topFunds.length, 1)
-    const jpRet = Number(jp?.retDayOverDay || 0)
-    const usRet = Number(us?.retDayOverDay || 0)
+    const etfAvg = topFunds.length > 0
+      ? topFunds.reduce((acc, cur) => acc + Number((cur.dayChange ?? cur.return1y) || 0), 0) / topFunds.length
+      : null
+    const jpRet = jp ? Number(jp.retDayOverDay) : null
+    const usRet = us ? Number(us.retDayOverDay) : null
 
     const candidates = []
     const brief = newsState?.dailyBrief
@@ -1042,12 +1011,16 @@ export default function MarketPage({ session = null }) {
     return {
       jpRet,
       usRet,
-      etfAvg: avgTop,
+      etfAvg,
       news: topHeadline || '主要ニュースは未取得',
     }
   }, [effectiveTickerNews, newsState?.dailyBrief, regionPerformanceRows, topFunds])
 
-  const signedPctText = (v) => `${Number(v) >= 0 ? '+' : ''}${Number(v).toFixed(1)}%`
+  const signedPctText = (v) => {
+    const n = Number(v)
+    if (!Number.isFinite(n)) return '—'
+    return `${n >= 0 ? '+' : ''}${n.toFixed(1)}%`
+  }
   const pctToneClass = (v) => {
     const n = Number(v)
     if (!Number.isFinite(n) || n === 0) return 'text-slate-600 dark:text-slate-300'
@@ -1194,82 +1167,68 @@ export default function MarketPage({ session = null }) {
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
         <div className="lg:col-span-8 space-y-4">
-          <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col">
-              <h3 className="text-sm font-black text-slate-900 dark:text-white mb-3">今日のマーケット要約</h3>
-              <div className="space-y-2 text-[12px]">
-                <div className="flex items-baseline justify-between gap-3">
-                  <span className="font-bold text-slate-700 dark:text-slate-200 shrink-0">日本</span>
-                  <span className={`font-black tabular-nums shrink-0 ${pctToneClass(marketBriefSummary.jpRet)}`}>
-                    {signedPctText(marketBriefSummary.jpRet)}
-                  </span>
-                </div>
-                <div className="flex items-baseline justify-between gap-3">
-                  <span className="font-bold text-slate-700 dark:text-slate-200 shrink-0">米国</span>
-                  <span className={`font-black tabular-nums shrink-0 ${pctToneClass(marketBriefSummary.usRet)}`}>
-                    {signedPctText(marketBriefSummary.usRet)}
-                  </span>
-                </div>
-                <div className="flex items-baseline justify-between gap-3">
-                  <span className="font-bold text-slate-700 dark:text-slate-200 shrink-0">ETF平均</span>
-                  <span className={`font-black tabular-nums shrink-0 ${pctToneClass(marketBriefSummary.etfAvg)}`}>
-                    {signedPctText(marketBriefSummary.etfAvg)}
-                  </span>
-                </div>
-              </div>
-              <div className="my-3 border-t border-slate-200 dark:border-slate-600" aria-hidden />
-              <div className="min-w-0 space-y-1">
-                <p className="text-[11px] font-black text-slate-900 dark:text-white">注目ニュース:</p>
-                <p className="text-[11px] font-medium text-slate-600 dark:text-slate-300 leading-snug break-words">
-                  {marketBriefSummary.news}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => navigate('/funds')}
-                className="mt-3 w-full px-4 py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-black transition shadow-sm"
-              >
-                ファンド比較へ →
-              </button>
-            </div>
-
+          <section className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
             <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-black text-slate-900 dark:text-white">
-                  {etfTop5Sections[activeEtfTop5Group]?.title ?? 'ETF Top5'}
-                </h3>
-                <div className="flex items-center gap-1">
-                  {etfTop5Sections.map((_, idx) => (
-                    <button
-                      key={`etf-top5-${idx}`}
-                      type="button"
-                      onClick={() => setActiveEtfTop5Group(idx)}
-                      className={`h-1.5 rounded-full transition-all ${activeEtfTop5Group === idx ? 'w-4 bg-orange-500' : 'w-1.5 bg-slate-300 dark:bg-slate-600'}`}
-                      aria-label={`ETF Top5 ${idx + 1}`}
-                    />
-                  ))}
-                </div>
+              <div className="flex items-center justify-between gap-2 mb-3">
+                <h3 className="text-sm font-black text-slate-900 dark:text-white">今日のマーケット要約</h3>
+                <button
+                  type="button"
+                  onClick={() => navigate('/funds')}
+                  className="shrink-0 px-2.5 py-1.5 rounded-lg bg-orange-500 hover:bg-orange-600 text-white text-[10px] font-black transition"
+                >
+                  ファンド比較
+                </button>
               </div>
-              <div className="space-y-1.5">
-                {(etfTop5Sections[activeEtfTop5Group]?.list ?? []).length === 0 ? (
-                  <p className="text-[11px] text-slate-400 py-2">ETFデータを読み込み中...</p>
-                ) : (etfTop5Sections[activeEtfTop5Group]?.list ?? []).map((fund) => (
-                  <button
-                    key={fund.id}
-                    type="button"
-                    onClick={() => navigate(`/funds/${fund.id}`)}
-                    className="w-full flex items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 hover:bg-slate-50 dark:hover:bg-slate-700/50 text-left transition"
-                  >
-                    <span className="min-w-0 flex-1 text-[11px] font-bold text-slate-800 dark:text-slate-200 line-clamp-2 sm:line-clamp-1 sm:truncate">{fund.name}</span>
-                    <span className={`text-[11px] font-black shrink-0 tabular-nums ${etfTop5Sections[activeEtfTop5Group]?.metricClass?.(fund) ?? 'text-slate-500'}`}>
-                      {etfTop5Sections[activeEtfTop5Group]?.metric?.(fund) ?? ''}
-                    </span>
-                  </button>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  ['日本', marketBriefSummary.jpRet],
+                  ['米国', marketBriefSummary.usRet],
+                  ['ETF', marketBriefSummary.etfAvg],
+                ].map(([label, value]) => (
+                  <div key={label} className="rounded-xl bg-slate-50 dark:bg-slate-900/50 px-2 py-2 text-center">
+                    <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400">{label}</p>
+                    <p className={`mt-0.5 text-sm font-black tabular-nums ${pctToneClass(value)}`}>{signedPctText(value)}</p>
+                  </div>
                 ))}
               </div>
+              <p className="mt-3 text-[11px] font-medium text-slate-600 dark:text-slate-300 leading-snug line-clamp-3">
+                {marketBriefSummary.news}
+              </p>
             </div>
 
-            <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
+            <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 md:col-span-2">
+              <h3 className="text-sm font-black text-slate-900 dark:text-white mb-2">ETF</h3>
+              {etfRankStatus === 'error' ? (
+                <p className="text-[11px] font-bold text-slate-400 py-2">ランキングを取得できませんでした。</p>
+              ) : etfRankStatus === 'loading' && topFunds.length === 0 && inflowFunds.length === 0 ? (
+                <p className="text-[11px] font-bold text-slate-400 py-2">読み込み中</p>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {etfTop5Sections.map((section) => (
+                    <div key={section.id}>
+                      <p className="text-[10px] font-black text-slate-500 dark:text-slate-400 mb-1">{section.title}</p>
+                      {section.list.length === 0 ? (
+                        <p className="text-[11px] text-slate-400 py-1">データなし</p>
+                      ) : section.list.map((fund) => (
+                        <button
+                          key={`${section.id}-${fund.id}`}
+                          type="button"
+                          onClick={() => navigate(`/funds/${fund.id}`)}
+                          className="w-full flex items-center justify-between gap-2 rounded-lg px-2 py-1 hover:bg-slate-50 dark:hover:bg-slate-700/50 text-left transition"
+                        >
+                          <span className="min-w-0 flex-1 text-[11px] font-bold text-slate-800 dark:text-slate-200 truncate">{fund.name}</span>
+                          <span className={`text-[11px] font-black shrink-0 tabular-nums ${section.metricClass?.(fund) ?? 'text-slate-500'}`}>
+                            {section.metric?.(fund) ?? ''}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 md:col-span-3">
               <h3 className="text-sm font-black text-slate-900 dark:text-white mb-2">今週の注目テーマ</h3>
               <div className="flex flex-wrap gap-1.5 mb-2">
                 {autoThemes.map((theme) => (
@@ -1295,21 +1254,18 @@ export default function MarketPage({ session = null }) {
           </section>
 
           {/* 2. Heatmap + Region Heatmap */}
-          <div id="heatmap" className="mt-10 scroll-mt-28 space-y-2 rounded-2xl border border-slate-200/90 bg-white/80 px-4 py-3 dark:border-slate-700 dark:bg-slate-900/50">
-            <p className="text-[11px] font-black uppercase tracking-[0.2em] text-blue-700 dark:text-blue-400">Heatmap · sentiment</p>
-            <p className="text-sm font-bold leading-relaxed text-slate-800 dark:text-slate-100">
-              米国<strong className="font-black">セクター</strong>・<strong className="font-black">地域別ETF</strong>を並べた
-              <strong className="font-black">ヒートマップ</strong>（前営業日比の騰落率）と、日本テーマ・商品のモニター、
-              <strong className="font-black">フィアー＆グリード型のセンチメント指標</strong>を同一画面で確認できます。
-            </p>
+          <div id="heatmap" className="scroll-mt-28">
+            <p className="text-[11px] font-black uppercase tracking-[0.16em] text-blue-700 dark:text-blue-400">市場ボード</p>
+            <p className="mt-1 text-xs font-bold text-slate-500 dark:text-slate-400">前営業日終値比。右の投資家心理指数とあわせて見ます。</p>
           </div>
-          <div className="mt-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
-                <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 transition-colors flex flex-col">
-              <div className="flex justify-between items-center mb-6">
+          <div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+                {(isLoading || heatmapData.length > 0) && (
+                <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 transition-colors flex flex-col">
+              <div className="flex justify-between items-center mb-3">
                 <div>
-                  <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                    <MapIcon className="text-blue-600 dark:text-blue-400" size={20} /> セクターヒートマップ
+                  <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <MapIcon className="text-blue-600 dark:text-blue-400" size={18} /> セクターヒートマップ
                   </h2>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                     前営業日終値比の騰落率（各タイルに表示）。サイズは時価総額の近似値。
@@ -1322,11 +1278,11 @@ export default function MarketPage({ session = null }) {
 
               <div className="grid grid-cols-3 gap-2">
                 {isLoading ? (
-                  <div className="col-span-3 flex min-h-[200px] items-center justify-center text-sm font-bold text-slate-400">
+                  <div className="col-span-3 flex items-center justify-center rounded-xl border border-dashed border-slate-200 px-3 py-6 text-xs font-bold text-slate-400 dark:border-slate-700">
                     ヒートマップを読み込み中...
                   </div>
                 ) : heatmapData.length === 0 ? (
-                  <div className="col-span-3 flex min-h-[200px] items-center justify-center text-sm font-bold text-slate-400">
+                  <div className="col-span-3 flex items-center justify-center rounded-xl border border-dashed border-slate-200 px-3 py-6 text-xs font-bold text-slate-400 dark:border-slate-700">
                     ヒートマップ用の実データがまだありません
                   </div>
                 ) : heatmapData.map((item, idx) => {
@@ -1350,12 +1306,14 @@ export default function MarketPage({ session = null }) {
                 })}
               </div>
             </div>
+                )}
 
-            <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 transition-colors flex flex-col">
-              <div className="flex justify-between items-center mb-6">
+            {(isLoading || regionPerformanceRows.length > 0) && (
+            <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 transition-colors flex flex-col">
+              <div className="flex justify-between items-center mb-3">
                 <div>
-                  <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                    <MapIcon className="text-blue-600 dark:text-blue-400" size={20} /> 地域別ヒートマップ
+                  <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <MapIcon className="text-blue-600 dark:text-blue-400" size={18} /> 地域別ヒートマップ
                   </h2>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                     前営業日終値比の騰落率（ETF実データ・各タイルに表示）。
@@ -1367,11 +1325,11 @@ export default function MarketPage({ session = null }) {
               </div>
               <div className="grid grid-cols-3 gap-2">
                 {isLoading ? (
-                  <div className="col-span-3 flex min-h-[200px] items-center justify-center text-sm font-bold text-slate-400">
+                  <div className="col-span-3 flex items-center justify-center rounded-xl border border-dashed border-slate-200 px-3 py-6 text-xs font-bold text-slate-400 dark:border-slate-700">
                     地域別データを読み込み中...
                   </div>
                 ) : regionPerformanceRows.length === 0 ? (
-                  <div className="col-span-3 flex min-h-[200px] items-center justify-center text-sm font-bold text-slate-400">
+                  <div className="col-span-3 flex items-center justify-center rounded-xl border border-dashed border-slate-200 px-3 py-6 text-xs font-bold text-slate-400 dark:border-slate-700">
                     地域別の実データがまだありません
                   </div>
                 ) : regionPerformanceRows.map((row) => {
@@ -1395,13 +1353,7 @@ export default function MarketPage({ session = null }) {
                 })}
               </div>
             </div>
-              </div>
-            </div>
-          <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
-            ※ 表示データは参考情報であり、投資勧誘を目的とするものではありません。データ提供: 外部データプロバイダー（市場データAPI）
-          </p>
-
-          <div className="space-y-4">
+            )}
               <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 transition-colors">
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="text-sm font-black text-slate-900 dark:text-white">日本テーマ</h3>
@@ -1463,7 +1415,11 @@ export default function MarketPage({ session = null }) {
                   )}
                 </div>
               </div>
-          </div>
+              </div>
+            </div>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400">
+            ※ 表示データは参考情報であり、投資勧誘を目的とするものではありません。データ提供: 外部データプロバイダー（市場データAPI）
+          </p>
 
           <div className="bg-white dark:bg-slate-800 p-5 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 transition-colors">
             <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100 dark:border-slate-700">

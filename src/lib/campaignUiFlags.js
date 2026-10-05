@@ -17,6 +17,14 @@ function inCampaignWindow(now = new Date()) {
   return t >= CAMPAIGN_CP2026_SNS_SEP_START_MS && t <= CAMPAIGN_CP2026_SNS_SEP_END_MS
 }
 
+/** 캘린더 기준. 신청 폼이 닫힌 이유를 시작 전과 종료 후로 나눈다. */
+export function getCampaignCp2026SnsSepPublicPhase(now = new Date()) {
+  const t = now.getTime()
+  if (t < CAMPAIGN_CP2026_SNS_SEP_START_MS) return 'before'
+  if (t > CAMPAIGN_CP2026_SNS_SEP_END_MS) return 'ended'
+  return 'open'
+}
+
 /**
  * 公開導線の表示判定
  * - 本番期間（2026/10/1〜10/30 JST）

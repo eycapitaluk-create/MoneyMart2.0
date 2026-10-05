@@ -116,7 +116,7 @@ ${recentTable}
 
 以下JSON形式のみで返してください（説明・Markdown不要）:
 {"last_session":["3〜4文の箇条書き"],"weekly_trends":["3〜4文"],"fundamentals":["2〜3文"],"summary":["2〜3文"]}
-全て日本語。断定的な売買推奨は禁止。`
+全て日本語。売買の指示は出さない。`
 }
 
 async function callGemini(prompt) {

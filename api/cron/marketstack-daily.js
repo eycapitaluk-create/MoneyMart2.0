@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { STOCK_LIST_400 } from '../../src/data/stockList400.js'
 import { MARKETSTACK_BLOCKLIST_EXPORT, ETF_SYMBOLS_FROM_XLSX } from '../../src/data/etfListFromXlsx.js'
+import { partitionIncomingPrices, writePriceQuarantine } from '../_lib/price-ingest-guard.js'
 
 // Fallback when env not set - US+JP from stockList400 (us/jp_prices_final.csv 기반)
 const STOCK_LIST_US_JP_SYMBOLS = STOCK_LIST_400
@@ -707,14 +708,23 @@ export default async function handler(req, res) {
       if (symbolErr) throw symbolErr
     }
 
-    if (priceRows.length > 0) {
+    const guarded = await partitionIncomingPrices(supabase, priceRows)
+    const quarantineWrite = await writePriceQuarantine(supabase, [...guarded.weekend, ...guarded.quarantined])
+    qualitySummary.weekendDropped = guarded.weekend.length
+    qualitySummary.quarantined = guarded.quarantined.length
+    qualitySummary.quarantineStored = quarantineWrite.stored
+    if (guarded.accepted.length > 0) {
       const { error: priceErr } = await supabase
         .from('stock_daily_prices')
-        .upsert(priceRows, { onConflict: 'source,symbol,trade_date' })
+        .upsert(guarded.accepted, { onConflict: 'source,symbol,trade_date' })
       if (priceErr) throw priceErr
+    } else if (priceRows.length > 0 && guarded.accepted.length === 0) {
+      qualitySummary.note = 'all rows held as weekend or extreme move'
     } else {
       throw new Error(`No valid price rows after quality filter. ${JSON.stringify(qualitySummary)}`)
     }
+    priceRows.length = 0
+    priceRows.push(...guarded.accepted)
 
     if (jobId) {
       await supabase

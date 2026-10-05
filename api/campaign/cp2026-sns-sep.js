@@ -5,6 +5,9 @@
 import {
   assertCampaignActive,
   buildCampaignStatusPayload,
+  CAMPAIGN_APPLY_ACCEPTED_MESSAGE,
+  CAMPAIGN_APPLY_REJECTED_MESSAGE,
+  decideCampaignApply,
   getCampaignWindowMeta,
   loadOrCreateCampaignEntry,
   normalizeSurveyAnswers,
@@ -12,6 +15,7 @@ import {
   userHasCampaignAsset,
   CAMPAIGN_CP2026_SNS_SEP_ID,
 } from '../_lib/campaign-cp2026-sns-sep.js'
+import { applyPrivateNoStore } from '../_lib/private-no-store.js'
 import {
   readJsonBody,
   requireSupabaseUser,
@@ -20,6 +24,7 @@ import {
 import { CAMPAIGN_CP2026_SNS_SEP_SURVEY_QUESTIONS } from '../../src/constants/campaignCp2026SnsSep.js'
 
 export default async function handler(req, res) {
+  applyPrivateNoStore(res)
   if (req.method === 'OPTIONS') {
     res.statusCode = 204
     res.end()
@@ -85,6 +90,7 @@ export default async function handler(req, res) {
         })
         .eq('id', entry.id)
         .eq('user_id', user.id)
+        .eq('campaign_id', CAMPAIGN_CP2026_SNS_SEP_ID)
         .select('*')
         .single()
       if (error) throw error
@@ -107,6 +113,7 @@ export default async function handler(req, res) {
         })
         .eq('id', entry.id)
         .eq('user_id', user.id)
+        .eq('campaign_id', CAMPAIGN_CP2026_SNS_SEP_ID)
         .select('*')
         .single()
       if (error) throw error
@@ -134,12 +141,19 @@ export default async function handler(req, res) {
       if (!fresh.sns_submitted_at || !fresh.sns_url) {
         return sendBillingJson(res, 400, { ok: false, code: 'sns_required', error: 'X または Note の投稿URLを入力してください' })
       }
-      if (fresh.status === 'rewarded') {
-        const hasAsset2 = await userHasCampaignAsset(admin, user.id)
+      const decision = decideCampaignApply(fresh)
+      if (decision.action === 'reject') {
+        return sendBillingJson(res, decision.httpStatus, {
+          ok: false,
+          code: decision.code || 'apply_rejected',
+          error: decision.message || CAMPAIGN_APPLY_REJECTED_MESSAGE,
+        })
+      }
+      if (decision.action === 'noop') {
         return sendBillingJson(res, 200, {
-          ...buildCampaignStatusPayload({ entry: fresh, hasAsset: hasAsset2, windowMeta }),
+          ...buildCampaignStatusPayload({ entry: fresh, hasAsset, windowMeta }),
           ok: true,
-          message: 'すでに特典付与済みです',
+          message: decision.message,
         })
       }
       const { data: updated, error } = await admin
@@ -150,13 +164,33 @@ export default async function handler(req, res) {
         })
         .eq('id', fresh.id)
         .eq('user_id', user.id)
+        .eq('campaign_id', CAMPAIGN_CP2026_SNS_SEP_ID)
+        .eq('status', 'draft')
         .select('*')
         .single()
-      if (error) throw error
+      if (error) {
+        const missed = String(error.code || '') === 'PGRST116'
+          || /0 rows|multiple \(or no\) rows/i.test(String(error.message || ''))
+        if (!missed) throw error
+        const raced = await loadOrCreateCampaignEntry(admin, user.id)
+        const again = decideCampaignApply(raced)
+        if (again.action === 'reject') {
+          return sendBillingJson(res, again.httpStatus, {
+            ok: false,
+            code: again.code || 'apply_rejected',
+            error: again.message,
+          })
+        }
+        return sendBillingJson(res, 200, {
+          ...buildCampaignStatusPayload({ entry: raced, hasAsset, windowMeta }),
+          ok: true,
+          message: again.message,
+        })
+      }
       return sendBillingJson(res, 200, {
         ...buildCampaignStatusPayload({ entry: updated, hasAsset, windowMeta }),
         ok: true,
-        message: '応募を受け付けました。審査後、特典をお送りします。',
+        message: decision.message || CAMPAIGN_APPLY_ACCEPTED_MESSAGE,
       })
     }
 

@@ -1,6 +1,12 @@
 import { supabase } from './supabase'
 import { isInternalReferrerDomain } from './crmInternalUsers'
 import { ANALYTICS_DWELL_REPORT_CAP_MS, capDwellMsForReport } from './analyticsDwellStats.js'
+import { isLocalAnalyticsHost } from './analyticsHost.js'
+import { allowlistedCampaignUtm } from './campaignUtm.js'
+import { analyticsQueryForSignupComplete } from './authReturnPath.js'
+import { CAMPAIGN_CP2026_SNS_SEP_ID } from '../constants/campaignCp2026SnsSep.js'
+
+export { allowlistedCampaignUtm } from './campaignUtm.js'
 
 const STORAGE_KEYS = {
   sessionId: 'mm_analytics_session_id',
@@ -23,11 +29,19 @@ const SESSION_IDLE_TTL_MS = 30 * 60 * 1000
 
 let cachedUserId = null
 let cachedUserIdAt = 0
+let cachedUserIdRevision = 0
 let dwellListenersInstalled = false
 
 export { ANALYTICS_DWELL_REPORT_CAP_MS, capDwellMsForReport } from './analyticsDwellStats.js'
 
 const isBrowser = () => typeof window !== 'undefined'
+
+const skipLocalAnalytics = () => isBrowser() && isLocalAnalyticsHost(window.location.hostname)
+
+const queryForAnalytics = (path, query) => {
+  if (String(path || '') === '/signup-complete') return analyticsQueryForSignupComplete(query)
+  return query
+}
 
 const safeStorage = (type = 'local') => {
   if (!isBrowser()) return null
@@ -164,7 +178,9 @@ const mergeLandingAttribution = (existing, incoming, { preferIncomingUtm = false
   }
 
   const signupFlowPath = SIGNUP_FLOW_PATH_RE.test(String(incoming?.landing_path || ''))
-  if (signupFlowPath) {
+  const incomingHasCampaignTags = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'signup_ref']
+    .some((key) => String(incoming?.[key] || '').trim())
+  if (signupFlowPath && incomingHasCampaignTags) {
     if (incoming.landing_path) base.landing_path = incoming.landing_path
     if (incoming.landing_query) base.landing_query = incoming.landing_query
   } else if (!base.landing_path && incoming.landing_path) {
@@ -249,21 +265,29 @@ export const bootstrapAnalytics = () => {
 
 const getLandingContext = () => parseLandingContext() || {}
 
+/** Keep analytics identity in sync with auth transitions, including sign-out. */
+export const syncAnalyticsUserId = (userId) => {
+  cachedUserId = userId || null
+  cachedUserIdAt = Date.now()
+  cachedUserIdRevision += 1
+}
+
 const getCachedUserId = async () => {
   const now = Date.now()
   if ((now - cachedUserIdAt) < SESSION_CACHE_TTL_MS) return cachedUserId
   cachedUserIdAt = now
+  const revision = cachedUserIdRevision
   try {
     const { data: sessionData } = await supabase.auth.getSession()
     const sessionUserId = sessionData?.session?.user?.id || null
     if (sessionUserId) {
-      cachedUserId = sessionUserId
+      if (revision === cachedUserIdRevision) cachedUserId = sessionUserId
       return cachedUserId
     }
     const { data } = await supabase.auth.getUser()
-    cachedUserId = data?.user?.id || null
+    if (revision === cachedUserIdRevision) cachedUserId = data?.user?.id || null
   } catch {
-    cachedUserId = null
+    if (revision === cachedUserIdRevision) cachedUserId = null
   }
   return cachedUserId
 }
@@ -340,7 +364,7 @@ const buildPageExitRow = async ({ path, query = '', dwellMs = 0, meta = {} } = {
     user_id: userId,
     event_name: 'page_exit',
     page_path: path || (isBrowser() ? window.location.pathname || '' : ''),
-    page_query: query || (isBrowser() ? window.location.search || '' : ''),
+    page_query: queryForAnalytics(path || (isBrowser() ? window.location.pathname || '' : ''), query || (isBrowser() ? window.location.search || '' : '')),
     page_title: isBrowser() ? document.title || '' : '',
     internal_referrer_path: getCurrentAnalyticsPath(),
     referrer_url: landing.referrer_url || '',
@@ -368,6 +392,7 @@ const queuePendingPageExit = (row) => {
 }
 
 const flushPendingPageExit = async () => {
+  if (skipLocalAnalytics()) return
   const storage = safeStorage('session')
   if (!storage) return
   const raw = storage.getItem(STORAGE_KEYS.pendingExit)
@@ -383,7 +408,7 @@ const flushPendingPageExit = async () => {
 }
 
 export const commitAnalyticsPageExit = async ({ path, query = '', meta = {} } = {}) => {
-  if (!isBrowser()) return
+  if (!isBrowser() || skipLocalAnalytics()) return
   syncActiveDwellSlice()
   const dwellMs = readPathActiveMs()
   const row = await buildPageExitRow({ path, query, dwellMs, meta })
@@ -485,7 +510,9 @@ const buildAnalyticsRow = async (eventName, eventMeta = {}) => {
     user_id: userId,
     event_name: eventName,
     page_path: isBrowser() ? window.location.pathname || '' : '',
-    page_query: isBrowser() ? window.location.search || '' : '',
+    page_query: isBrowser()
+      ? queryForAnalytics(window.location.pathname || '', window.location.search || '')
+      : '',
     page_title: isBrowser() ? document.title || '' : '',
     internal_referrer_path: getCurrentAnalyticsPath(),
     referrer_url: landing.referrer_url || '',
@@ -497,9 +524,31 @@ const buildAnalyticsRow = async (eventName, eventMeta = {}) => {
   }
 }
 
-export const trackAnalyticsEvent = async (eventName, eventMeta = {}) => {
+const CAMPAIGN_EVENT_PHASES = new Set(['prelaunch', 'open', 'ended'])
+const CAMPAIGN_EVENT_STAGES = new Set(['login', 'signup'])
+
+function campaignEventMeta(eventMeta = {}) {
+  const meta = { campaign_id: CAMPAIGN_CP2026_SNS_SEP_ID }
+  const phase = String(eventMeta?.phase || '')
+  const stage = String(eventMeta?.stage || '')
+  if (CAMPAIGN_EVENT_PHASES.has(phase)) meta.phase = phase
+  if (CAMPAIGN_EVENT_STAGES.has(stage)) meta.stage = stage
+  return meta
+}
+
+export const trackAnalyticsEvent = async (eventName, eventMeta = {}, options = {}) => {
+  if (skipLocalAnalytics()) return
   try {
     const row = await buildAnalyticsRow(eventName, eventMeta)
+    if (options.campaignUtmOnly && isBrowser()) {
+      const safe = allowlistedCampaignUtm(window.location.search || '', getLandingContext())
+      row.page_query = safe.page_query
+      row.referrer_url = ''
+      row.source = safe.utm_source
+      row.medium = safe.utm_medium
+      row.campaign = safe.utm_campaign
+      row.event_meta = withClientContext(campaignEventMeta(eventMeta))
+    }
     const { error } = await supabase.from('site_analytics_events').insert(row)
     if (error && import.meta.env.DEV) console.warn('[analytics] insert error:', error.message)
   } catch {
@@ -508,6 +557,7 @@ export const trackAnalyticsEvent = async (eventName, eventMeta = {}) => {
 }
 
 export const trackPageView = async ({ path, query = '', dwellMs = null, meta = {} } = {}) => {
+  if (skipLocalAnalytics()) return
   try {
     bootstrapAnalytics()
     const landing = getLandingContext()
@@ -518,7 +568,7 @@ export const trackPageView = async ({ path, query = '', dwellMs = null, meta = {
       user_id: userId,
       event_name: 'page_view',
       page_path: path || (isBrowser() ? window.location.pathname || '' : ''),
-      page_query: query || (isBrowser() ? window.location.search || '' : ''),
+      page_query: queryForAnalytics(path || (isBrowser() ? window.location.pathname || '' : ''), query || (isBrowser() ? window.location.search || '' : '')),
       page_title: isBrowser() ? document.title || '' : '',
       internal_referrer_path: getCurrentAnalyticsPath(),
       referrer_url: landing.referrer_url || '',
@@ -535,6 +585,7 @@ export const trackPageView = async ({ path, query = '', dwellMs = null, meta = {
 }
 
 export const trackPageExit = async ({ path, query = '', dwellMs = 0, meta = {} } = {}) => {
+  if (skipLocalAnalytics()) return
   const safeDwellMs = capDwellMsForReport(dwellMs)
   if (safeDwellMs <= 0) return
   try {

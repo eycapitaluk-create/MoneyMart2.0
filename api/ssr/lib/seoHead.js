@@ -150,6 +150,6 @@ export function ssrTrustNavHtml() {
         <a href="mailto:support@moneymart.co.jp" style="color:#475569;font-weight:700;text-decoration:none;">訂正・お問い合わせ</a>
       </nav>
       <p style="margin:14px 0 0 0;font-size:11px;line-height:1.7;color:#64748b;">
-        掲載情報は情報提供のみを目的としており、特定の金融商品の購入・売却を推奨するものではありません。将来の運用成果や配当を保証しません。MoneyMartは投資助言業の登録を受けていません。
+        掲載情報は情報提供のみを目的としており、特定の金融商品の売買を勧誘するものではありません。将来の運用成果や配当を保証しません。MoneyMartは投資助言業の登録を受けていません。
       </p>`
 }

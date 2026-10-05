@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import {
   Heart, MessageCircle, Lock, Send, Bookmark,
   Loader2, LogIn, PenLine, Trash2, ImagePlus, X,
+  Activity, Flame, Hash, RefreshCw, Users,
 } from 'lucide-react'
 import { useDocumentTitle } from '../hooks/useDocumentTitle'
 import CommunityGuidePanel from '../components/community/CommunityGuidePanel'
@@ -105,7 +106,9 @@ export default function CommunityPage({ bootUser = undefined, authReady = false 
   const [sentimentSummary, setSentimentSummary] = useState(null)
   const [trendingTickers, setTrendingTickers] = useState([])
   const [leaderboard, setLeaderboard] = useState([])
-  const [latestInsight, setLatestInsight] = useState(null)
+  const [latestInsights, setLatestInsights] = useState([])
+  const [lastUpdatedAt, setLastUpdatedAt] = useState(null)
+  const [sentimentFilter, setSentimentFilter] = useState('all')
 
   const feedTabForApi = feedTab === 'saved' ? 'saved' : feedTab === 'mine' ? 'mine' : feedTab === 'new' ? 'new' : 'popular'
 
@@ -115,6 +118,44 @@ export default function CommunityPage({ bootUser = undefined, authReady = false 
   const myTier = perms.tier
   const progress = useMemo(() => expProgressToNextTier(myExp), [myExp])
   const gatedPosts = useMemo(() => applyFeedTierGating(posts, myExp, { isLoggedIn }), [posts, myExp, isLoggedIn])
+  const communityStats = useMemo(() => {
+    const authors = new Set(posts.map((post) => post.author_id || post.author_name).filter(Boolean))
+    return {
+      posts: posts.length,
+      authors: authors.size,
+      likes: posts.reduce((sum, post) => sum + Number(post.like_count || 0), 0),
+      comments: posts.reduce((sum, post) => sum + Number(post.comment_count || 0), 0),
+    }
+  }, [posts])
+  const featuredPosts = useMemo(
+    () => [...gatedPosts]
+      .sort((a, b) => (
+        Number(b.like_count || 0) * 2 + Number(b.comment_count || 0) * 3
+        - Number(a.like_count || 0) * 2 - Number(a.comment_count || 0) * 3
+      ))
+      .slice(0, 3),
+    [gatedPosts],
+  )
+  const dominantSentiment = useMemo(() => {
+    const counts = sentimentSummary?.counts || {}
+    const rows = [
+      ['上昇', Number(counts.bullish || 0), 'text-red-600 dark:text-red-400'],
+      ['下落', Number(counts.bearish || 0), 'text-blue-600 dark:text-blue-400'],
+      ['様子見', Number(counts.neutral || 0), 'text-slate-600 dark:text-slate-300'],
+    ]
+    return rows.sort((a, b) => b[1] - a[1])[0]
+  }, [sentimentSummary])
+  const todayPostCount = useMemo(() => {
+    const todayKey = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Tokyo' })
+    return posts.filter((post) => {
+      if (!post?.created_at) return false
+      return new Date(post.created_at).toLocaleDateString('en-CA', { timeZone: 'Asia/Tokyo' }) === todayKey
+    }).length
+  }, [posts])
+  const visiblePosts = useMemo(() => {
+    if (sentimentFilter === 'all') return gatedPosts
+    return gatedPosts.filter((post) => (post.sentiment || 'neutral') === sentimentFilter)
+  }, [gatedPosts, sentimentFilter])
 
   const showToast = (msg) => {
     setToast(msg)
@@ -147,14 +188,15 @@ export default function CommunityPage({ bootUser = undefined, authReady = false 
         fetchCommunitySentimentSummary().catch(() => null),
         fetchTrendingTickersFromPosts(8).catch(() => []),
         fetchCharacterLeaderboardWithNames(5).catch(() => []),
-        fetchInsightPublicCatalog(1).catch(() => []),
+        fetchInsightPublicCatalog(5).catch(() => []),
       ])
       setPosts(feed)
       setTrendingTags(tags)
       setSentimentSummary(sentiment)
       setTrendingTickers(tickers)
       setLeaderboard(leaders)
-      setLatestInsight(insights?.[0] || null)
+      setLatestInsights(Array.isArray(insights) ? insights : [])
+      setLastUpdatedAt(new Date())
       const authorIds = [...new Set(feed.map((p) => p.author_id).filter(Boolean))]
       const statsMap = await fetchCharacterStats(authorIds)
       const expObj = {}
@@ -464,15 +506,28 @@ export default function CommunityPage({ bootUser = undefined, authReady = false 
             テーマ別の議論・意見交換。資産登録で投稿、EXPでコメントやバッジアップ。
           </p>
         </div>
-        {isLoggedIn ? (
-          <div className="inline-flex items-center gap-2.5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 shadow-sm">
-            <CommunityTierBadge tier={myTier} size="md" />
-            <div className="text-xs leading-tight">
-              <p className="font-black text-slate-900 dark:text-white">{myTier.labelJa}</p>
-              <p className="text-slate-500 dark:text-slate-400">{myExp} EXP</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => loadFeed()}
+            disabled={loading}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[11px] font-bold text-slate-600 shadow-sm transition hover:border-orange-300 hover:text-orange-600 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+          >
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            {lastUpdatedAt
+              ? `${lastUpdatedAt.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })} 更新`
+              : '更新'}
+          </button>
+          {isLoggedIn ? (
+            <div className="inline-flex items-center gap-2.5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 shadow-sm">
+              <CommunityTierBadge tier={myTier} size="md" />
+              <div className="text-xs leading-tight">
+                <p className="font-black text-slate-900 dark:text-white">{myTier.labelJa}</p>
+                <p className="text-slate-500 dark:text-slate-400">{myExp} EXP</p>
+              </div>
             </div>
-          </div>
-        ) : null}
+          ) : null}
+        </div>
       </header>
 
       <CommunityGuidePanel
@@ -484,8 +539,73 @@ export default function CommunityPage({ bootUser = undefined, authReady = false 
         compact
       />
 
+      {!loading && posts.length > 0 ? (
+        <section className="grid grid-cols-2 gap-2 sm:grid-cols-5" aria-label="コミュニティ概要">
+          {[
+            ['表示中の投稿', communityStats.posts, <Activity key="activity" size={13} />, 'text-orange-600 bg-orange-50 dark:bg-orange-950/30'],
+            ['参加メンバー', communityStats.authors, <Users key="users" size={13} />, 'text-violet-600 bg-violet-50 dark:bg-violet-950/30'],
+            ['リアクション', communityStats.likes, <Heart key="heart" size={13} />, 'text-red-600 bg-red-50 dark:bg-red-950/30'],
+            ['コメント', communityStats.comments, <MessageCircle key="comment" size={13} />, 'text-sky-600 bg-sky-50 dark:bg-sky-950/30'],
+            ['相場観', dominantSentiment?.[0] || '集計中', <Flame key="flame" size={13} />, 'text-amber-600 bg-amber-50 dark:bg-amber-950/30'],
+          ].map(([label, value, icon, tone]) => (
+            <div key={label} className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2.5 shadow-sm">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">{label}</span>
+                <span className={`grid h-6 w-6 place-items-center rounded-lg ${tone}`}>{icon}</span>
+              </div>
+              <div className={`mt-1 text-lg font-black tabular-nums ${label === '相場観' ? dominantSentiment?.[2] || 'text-slate-900 dark:text-white' : 'text-slate-900 dark:text-white'}`}>{typeof value === 'number' ? formatCount(value) : value}</div>
+            </div>
+          ))}
+        </section>
+      ) : null}
+
       <div className="grid lg:grid-cols-[minmax(0,1fr)_300px] gap-5">
         <div className="space-y-4 min-w-0 order-2 lg:order-none">
+          {!loading && featuredPosts.length > 0 && feedTab !== 'mine' && feedTab !== 'saved' ? (
+            <section>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <h2 className="inline-flex items-center gap-1.5 text-sm font-black text-slate-900 dark:text-white">
+                  <Flame size={15} className="text-orange-500" />
+                  注目のディスカッション
+                </h2>
+                <span className="text-[10px] text-slate-400">反応の多い投稿</span>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {featuredPosts.map((post, index) => (
+                  <button
+                    key={`featured-${post.id}`}
+                    type="button"
+                    onClick={() => handleOpenPost(post)}
+                    className="min-w-0 rounded-xl border border-slate-200 bg-white p-3 text-left shadow-sm transition hover:border-orange-300 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-orange-800"
+                  >
+                    <div className="flex gap-2.5">
+                      {post.image_urls?.[0] ? (
+                        <img
+                          src={post.image_urls[0]}
+                          alt=""
+                          className="h-14 w-14 shrink-0 rounded-lg border border-slate-100 object-cover dark:border-slate-800"
+                          loading="lazy"
+                        />
+                      ) : null}
+                      <div className="min-w-0 flex-1">
+                        <div className="mb-1.5 flex items-center justify-between gap-2">
+                          <span className="rounded-full bg-orange-50 px-2 py-0.5 text-[9px] font-black text-orange-600 dark:bg-orange-950/30 dark:text-orange-400">TOP {index + 1}</span>
+                          <span className="truncate text-[9px] text-slate-400">{post.author_name}</span>
+                        </div>
+                        <div className="line-clamp-2 min-h-9 text-[11px] font-black leading-snug text-slate-900 dark:text-white">{getCommunityPostTitle(post)}</div>
+                      </div>
+                    </div>
+                    <div className="mt-2 flex items-center gap-3 text-[9px] text-slate-500">
+                      <span className="inline-flex items-center gap-1"><Heart size={11} />{formatCount(post.like_count)}</span>
+                      <span className="inline-flex items-center gap-1"><MessageCircle size={11} />{formatCount(post.comment_count)}</span>
+                      {post.ticker ? <span className="ml-auto font-bold text-orange-600">${post.ticker}</span> : null}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
           <div className="flex border-b border-slate-200 dark:border-slate-700">
             <button type="button" onClick={() => handleFeedTabChange('popular')} className={`flex-1 py-2.5 text-sm ${feedTabClass('popular')}`}>
               人気
@@ -504,6 +624,23 @@ export default function CommunityPage({ bootUser = undefined, authReady = false 
               保存
             </button>
           </div>
+
+          {trendingTags.length > 0 && !appliedSearch ? (
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 text-[10px]">
+              <Hash size={13} className="shrink-0 text-slate-400" />
+              <span className="mr-1 shrink-0 font-bold text-slate-500">話題:</span>
+              {trendingTags.slice(0, 7).map((row) => (
+                <button
+                  key={`quick-${row.tag}`}
+                  type="button"
+                  onClick={() => handleTagSearch(row.tag)}
+                  className="shrink-0 rounded-full border border-slate-200 bg-white px-2.5 py-1 font-bold text-slate-600 hover:border-orange-300 hover:text-orange-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+                >
+                  #{row.tag} <span className="text-slate-400">{row.count}</span>
+                </button>
+              ))}
+            </div>
+          ) : null}
 
           {appliedSearch ? (
             <div className="flex items-center justify-between gap-2 text-xs text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800/60 rounded-xl px-3 py-2">
@@ -610,7 +747,7 @@ export default function CommunityPage({ bootUser = undefined, authReady = false 
             </div>
           ) : (
             <div className="rounded-2xl border border-dashed border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/40 p-4 flex items-center justify-between gap-3">
-              <p className="text-sm text-slate-600 dark:text-slate-300">ログインして議論に参加しましょう</p>
+              <p className="text-sm text-slate-600 dark:text-slate-300">ログインして議論に参加できます</p>
               <button
                 type="button"
                 onClick={() => navigate('/login', { state: { from: '/community' } })}
@@ -629,15 +766,27 @@ export default function CommunityPage({ bootUser = undefined, authReady = false 
           ) : error ? (
             <p className="text-sm text-red-600 dark:text-red-400 text-center py-8">{error}</p>
           ) : gatedPosts.length === 0 ? (
-            <p className="text-sm text-slate-500 text-center py-12">
-              {feedTab === 'mine'
-                ? '自分の投稿はまだありません。'
-                : feedTab === 'saved'
-                  ? 'ブックマークした投稿がありません。'
-                  : appliedSearch
-                    ? '該当する投稿が見つかりませんでした。'
-                    : 'まだ投稿がありません。'}
-            </p>
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-5 py-8 text-center dark:border-slate-700 dark:bg-slate-900/50">
+              <p className="text-sm font-black text-slate-700 dark:text-slate-200">
+                {feedTab === 'mine'
+                  ? '自分の投稿はまだありません'
+                  : feedTab === 'saved'
+                    ? 'ブックマークした投稿がありません'
+                    : appliedSearch
+                      ? '該当する投稿が見つかりませんでした'
+                      : '最初のディスカッションを始めましょう'}
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                {feedTab === 'saved' ? '気になる投稿の保存ボタンを押すと、ここに一覧表示されます。' : '銘柄・運用方針・市場テーマについて共有できます。'}
+              </p>
+              {trendingTags.length > 0 ? (
+                <div className="mt-4 flex flex-wrap justify-center gap-2">
+                  {trendingTags.slice(0, 4).map((row) => (
+                    <button key={`empty-${row.tag}`} type="button" onClick={() => handleTagSearch(row.tag)} className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-orange-600 shadow-sm dark:bg-slate-800 dark:text-orange-400">#{row.tag}</button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
           ) : (
             <ul className="space-y-3">
               {gatedPosts.map((post) => {
@@ -776,7 +925,7 @@ export default function CommunityPage({ bootUser = undefined, authReady = false 
             trendingTickers={trendingTickers}
             onTickerSearch={handleTickerSearch}
             leaderboard={leaderboard}
-            latestInsight={latestInsight}
+            latestInsights={latestInsights}
             showMobileSearch
           />
         </div>

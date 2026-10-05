@@ -75,7 +75,7 @@ export default function PortfolioRelatedPanel({
       <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-5 dark:border-slate-600 dark:bg-slate-900">
         <h3 className="text-lg font-black text-slate-900 dark:text-white">保有資産との関連</h3>
         <p className="mt-2 text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-          株式・ファンドの保有を登録すると、今日の市場要因とあなたの資産の重なり（関連度）を表示します。価格の上下予測や売買推奨ではありません。
+          株式・ファンドの保有を登録すると、今日の市場要因とあなたの資産の重なり（関連度）を表示します。価格の上下予測や売買の勧誘ではありません。
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
           <Link to="/mypage?tab=stock" className="rounded-full bg-slate-900 px-4 py-2 text-xs font-black text-white dark:bg-orange-500">
@@ -195,7 +195,7 @@ export default function PortfolioRelatedPanel({
 
       <p className="mt-4 text-[10px] leading-relaxed text-slate-400 dark:text-slate-500">
         {EXPOSURE_LEVEL_META.HIGH.hintJa} / {EXPOSURE_LEVEL_META.MEDIUM.hintJa} / {EXPOSURE_LEVEL_META.LOW.hintJa}。
-        売買推奨や将来リターンの保証ではありません。
+        売買の勧誘や将来リターンの保証ではありません。
       </p>
     </div>
   )

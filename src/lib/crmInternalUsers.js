@@ -1,6 +1,6 @@
 /** Admin CRM: staff / test accounts to exclude from acquisition metrics. */
 
-export const INTERNAL_EMAIL_DOMAINS = ['moneymart.co.jp']
+export const INTERNAL_EMAIL_DOMAINS = ['moneymart.co.jp', 'community.seed']
 
 export const INTERNAL_EMAILS = new Set([
   'justin.nam@moneymart.co.jp',
@@ -87,12 +87,12 @@ export function isSmartNewsSignup(row) {
 }
 
 export function isUnknownSignup(row) {
-  return !Boolean(
+  return !(
     String(row?.signup_referrer_domain || '').trim()
     || String(row?.signup_utm_source || '').trim()
     || String(row?.signup_utm_medium || '').trim()
     || String(row?.signup_utm_campaign || '').trim()
-    || String(row?.signup_ref || '').trim(),
+    || String(row?.signup_ref || '').trim()
   )
 }
 

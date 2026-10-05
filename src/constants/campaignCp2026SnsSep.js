@@ -1,6 +1,8 @@
-/** SNSキャンペーン cp2026_sns_sep — 2026-10-01 00:00 〜 10-30 23:59 JST */
+/** 2026年10月の応募保存 ID。URL /campaign/sns-2026 と API 経路はそのまま。 */
+export const CAMPAIGN_CP2026_SNS_SEP_ID = 'cp2026_sns_oct'
 
-export const CAMPAIGN_CP2026_SNS_SEP_ID = 'cp2026_sns_sep'
+/** 7月以前の保存行。読み取り以外で更新しない。 */
+export const CAMPAIGN_CP2026_SNS_LEGACY_ID = 'cp2026_sns_sep'
 
 /** キャンペーン専用ランディング（応募 UI はここ。マイページはリンクのみ） */
 export const CAMPAIGN_CP2026_SNS_SEP_PATH = '/campaign/sns-2026'
@@ -26,7 +28,7 @@ export function isCampaignCp2026StaffTester(email) {
 export const CAMPAIGN_CP2026_SNS_SEP_SURVEY_INTRO = `日頃よりMoneyMartをご利用いただき、誠にありがとうございます。
 より良いサービスを提供するため、皆さまの貴重なご意見をお聞かせいただきたく、アンケートを実施いたします。
 
-アンケートにご回答いただいた方の中から抽選で、
+応募条件（アンケートへのご回答、X（旧Twitter）またはNoteでの #MoneyMart 付き公開投稿、およびその投稿URLの提出）を満たした方の中から抽選で、
 ・50名様にAmazonギフトカード（1,000円分）
 ・さらに1000名様にMoneyMart Premium 1か月利用クーポン
 をプレゼントいたします。
@@ -150,15 +152,15 @@ export const CAMPAIGN_CP2026_SNS_SEP_SURVEY_QUESTIONS = [
   },
   {
     id: 'nps',
-    label: '8. MoneyMartを周囲の方におすすめしたいと思いますか？',
+    label: '8. MoneyMartを周囲の方に紹介したいと思いますか？',
     hint: '1つ選択',
     type: 'select',
     required: true,
     options: [
-      { value: 'definitely', label: '必ずおすすめする' },
-      { value: 'likely', label: 'おすすめする可能性が高い' },
+      { value: 'definitely', label: '必ず紹介する' },
+      { value: 'likely', label: '紹介する可能性が高い' },
       { value: 'unsure', label: 'まだよくわからない' },
-      { value: 'unlikely', label: 'おすすめしない' },
+      { value: 'unlikely', label: '紹介しない' },
     ],
   },
   {
@@ -288,12 +290,10 @@ export const CAMPAIGN_CP2026_SNS_SEP_SURVEY_QUESTIONS = [
 ]
 
 export const CAMPAIGN_CP2026_SNS_SEP_PARTICIPATION_STEPS = [
-  'MoneyMart会員登録',
+  'MoneyMart会員であること（既存会員・9月の事前登録を含む）',
   'マイページで関心資産または投資資産を1件以上登録（口座連携は不要）',
-  '約1〜2分のアンケートに回答',
-  'X（旧Twitter）またはNoteに #MoneyMart ハッシュタグ付きで感想を投稿',
-  'MoneyMartの画面スクリーンショットを1枚以上添付',
-  'ご利用の感想や改善してほしい点を本文に記載',
+  'アンケートに回答（所要時間はアンケートのみ約1〜2分）',
+  'X（旧Twitter）またはNoteに #MoneyMart 付きの公開投稿（画面スクリーンショット1枚以上、感想や改善点を本文に記載）をし、その投稿URLをこのページで提出',
 ]
 
 export const CAMPAIGN_CP2026_SNS_SEP_PRIZES = [
@@ -308,6 +308,18 @@ export const CAMPAIGN_CP2026_SNS_SEP_PRIZES = [
     note: 'イベント終了後、当選者へ順次付与',
   },
 ]
+
+export const CAMPAIGN_APPLY_ACCEPTED_MESSAGE =
+  '応募を受け付けました。応募締切後に抽選し、当選者の登録メールアドレスへご連絡します。特典の付与は当選した場合に限ります。'
+
+export const CAMPAIGN_APPLY_PENDING_DRAW_MESSAGE =
+  '応募済みです。応募締切後に抽選します。当選者にのみご連絡します。'
+
+export const CAMPAIGN_APPLY_REJECTED_MESSAGE =
+  'この応募は対象外のため、再応募はできません。'
+
+export const CAMPAIGN_PRIOR_EVENT_MESSAGE =
+  '以前の応募記録は残しています。10月の応募完了にはしていません。'
 
 export const CAMPAIGN_CP2026_SNS_SEP_DISCLAIMERS = [
   '1人1回のみ応募できます。',

@@ -614,7 +614,7 @@ export default function PremiumPage({ session = null, userProfile = null }) {
               id="premium-picks-heading"
               className="text-center text-xl sm:text-2xl font-black tracking-tight text-slate-900 dark:text-white"
             >
-              Premiumはこんな方におすすめです
+              Premiumはこんな方に向いています
             </h2>
             <div className="mx-auto mt-6 grid max-w-7xl grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5 xl:grid-cols-4">
               {RECOMMENDATION_CARDS.map((c) => {

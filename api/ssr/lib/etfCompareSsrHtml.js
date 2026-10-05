@@ -3,7 +3,7 @@ import { breadcrumbListJsonLd, buildHeadBlock, escapeHtml, getSiteOrigin, webApp
 
 const TITLE = `国内上場ETF比較（${ETF_UNIVERSE_COUNT}本）｜信託報酬・NISA | MoneyMart`
 const DESCRIPTION_BASE =
-  `国内上場ETF ${ETF_UNIVERSE_COUNT}本を信託報酬・NISA区分・値動きで横並び比較。投信との重複確認の前に使えます。情報提供のみで、売買の推奨ではありません。`
+  `国内上場ETF ${ETF_UNIVERSE_COUNT}本を信託報酬・NISA区分・値動きで横並び比較。投信との重複確認の前に使えます。情報提供のみで、売買の勧誘ではありません。`
 
 /**
  * @param {Array<{ symbol: string, name: string, trustFee: string|null, category: string|null, country: string|null, close: number|null, tradeDate: string|null, volume: number|null }>} rows
@@ -145,7 +145,7 @@ export function buildEtfCompareSsrHtml(opts) {
       </section>
       ${tableBlock}
       <footer style="margin-top:22px;border-top:1px solid #e2e8f0;padding-top:10px;font-size:11px;color:#64748b;line-height:1.7;">
-        表示内容は情報提供のみを目的としており、特定の金融商品の購入・売却を推奨するものではありません。
+        表示内容は情報提供のみを目的としており、特定の金融商品の売買を勧誘するものではありません。
       </footer>
     </main>
   </body>

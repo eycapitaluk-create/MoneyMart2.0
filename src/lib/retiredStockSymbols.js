@@ -1,5 +1,15 @@
 /** Symbols delisted / merged out of the app universe (no listing, no search). */
-const RETIRED_CANONICAL = new Set(['7205.T', '9719.T'])
+const RETIRED_CANONICAL = new Set([
+  '7205.T',
+  '9719.T',
+  'DFS',
+  'JNPR',
+  'PARA',
+  'WBA',
+  'MMC',
+  'IPG',
+  'SEE',
+])
 
 function toCanonicalJpSymbolKey(input = '') {
   const t = String(input || '').trim().toUpperCase()

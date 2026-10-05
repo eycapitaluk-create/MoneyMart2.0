@@ -28,9 +28,10 @@ export function dayRange(startIso, endIso) {
   return out
 }
 
-export function fillMissingDates(ratesByDate, startIso, endIso) {
+export function fillMissingDates(ratesByDate, startIso, endIso, seedRate = null) {
   const full = {}
-  let last = null
+  const seed = Number(seedRate)
+  let last = Number.isFinite(seed) && seed > 0 ? seed : null
   for (const d of dayRange(startIso, endIso)) {
     const v = Number(ratesByDate[d])
     if (Number.isFinite(v) && v > 0) {

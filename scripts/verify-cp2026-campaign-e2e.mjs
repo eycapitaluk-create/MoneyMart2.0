@@ -138,29 +138,34 @@ async function main() {
   // 2) Window dates (ignore preview flag for boundary checks)
   const savedPreview = process.env.CAMPAIGN_CP2026_SNS_PREVIEW
   delete process.env.CAMPAIGN_CP2026_SNS_PREVIEW
-  const before = getCampaignWindowMeta(new Date('2026-08-31T14:59:59Z'), 'user@example.com')
-  const start = getCampaignWindowMeta(new Date('2026-08-31T15:00:00Z'), 'user@example.com')
-  const mid = getCampaignWindowMeta(new Date('2026-09-15T12:00:00Z'), 'user@example.com')
-  const after = getCampaignWindowMeta(new Date('2026-09-30T15:00:00Z'), 'user@example.com')
-  const staff = getCampaignWindowMeta(new Date('2026-07-25T00:00:00Z'), 'justin.nam@moneymart.co.jp')
+  const before = getCampaignWindowMeta(new Date('2026-09-30T14:59:59.999Z'), 'user@example.com')
+  const start = getCampaignWindowMeta(new Date('2026-09-30T15:00:00.000Z'), 'user@example.com')
+  const mid = getCampaignWindowMeta(new Date('2026-10-15T03:00:00.000Z'), 'user@example.com')
+  const end = getCampaignWindowMeta(new Date('2026-10-30T14:59:59.999Z'), 'user@example.com')
+  const after = getCampaignWindowMeta(new Date('2026-10-30T15:00:00.000Z'), 'user@example.com')
+  const staff = getCampaignWindowMeta(new Date('2026-09-27T00:00:00Z'), 'justin.nam@moneymart.co.jp')
   if (savedPreview == null) delete process.env.CAMPAIGN_CP2026_SNS_PREVIEW
   else process.env.CAMPAIGN_CP2026_SNS_PREVIEW = savedPreview
 
-  if (!before.active && !before.inWindow) pass('Window: before Sep 1')
-  else fail('Window: before Sep 1', JSON.stringify(before))
-  if (start.active && start.inWindow) pass('Window: Sep 1 start')
-  else fail('Window: Sep 1 start', JSON.stringify(start))
-  if (mid.active && mid.inWindow) pass('Window: mid September')
-  else fail('Window: mid September', JSON.stringify(mid))
-  if (!after.active && !after.inWindow) pass('Window: after Sep 30')
-  else fail('Window: after Sep 30', JSON.stringify(after))
+  if (!before.active && !before.inWindow) pass('Window: before Oct 1 JST')
+  else fail('Window: before Oct 1 JST', JSON.stringify(before))
+  if (start.active && start.inWindow) pass('Window: Oct 1 00:00 JST')
+  else fail('Window: Oct 1 00:00 JST', JSON.stringify(start))
+  if (mid.active && mid.inWindow) pass('Window: mid October')
+  else fail('Window: mid October', JSON.stringify(mid))
+  if (end.active && end.inWindow) pass('Window: Oct 30 23:59:59.999 JST')
+  else fail('Window: Oct 30 end', JSON.stringify(end))
+  if (!after.active && !after.inWindow) pass('Window: after Oct 30 JST')
+  else fail('Window: after Oct 30 JST', JSON.stringify(after))
   if (staff.active && staff.staffTest) pass('Staff tester bypass (justin)')
   else fail('Staff tester bypass', JSON.stringify(staff))
 
   // 3) SNS URL parsing
   const snsCases = [
-    ['https://x.com/u/status/1', true],
-    ['https://note.com/u/n/nabc', true],
+    ['https://x.com/u/status/1234567890123', true],
+    ['https://note.com/u/n/nabc1234', true],
+    ['https://x.com/', false],
+    ['https://x.com/home', false],
     ['https://instagram.com/p/x', false],
   ]
   for (const [url, shouldPass] of snsCases) {
@@ -172,6 +177,13 @@ async function main() {
       if (!shouldPass) pass(`SNS URL rejected: ${url}`)
       else fail(`SNS URL should accept: ${url}`, e.message)
     }
+  }
+
+  if (process.env.MM_CAMPAIGN_E2E_LIVE !== '1') {
+    pass('Live DB apply skipped', 'set MM_CAMPAIGN_E2E_LIVE=1 to create a test entry')
+    printResults()
+    const failed = results.filter((r) => !r.ok).length
+    process.exit(failed > 0 ? 1 : 0)
   }
 
   if (!SUPABASE_URL || !ANON_KEY || !SERVICE_KEY) {

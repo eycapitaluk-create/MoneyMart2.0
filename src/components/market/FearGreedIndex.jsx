@@ -315,7 +315,7 @@ export default function FearGreedIndex() {
               <div className="mt-1 text-xs text-slate-500">/ 100</div>
               {data.stance ? (
                 <div className="mt-4 w-full rounded-xl border border-slate-200/80 bg-white/70 px-3 py-2.5 text-left dark:border-slate-600 dark:bg-slate-900/40">
-                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-wide">推奨スタンス</p>
+                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-wide">確認ポイント</p>
                   <p className="mt-1 text-sm font-black text-slate-800 dark:text-slate-100">
                     {data.stance.icon} {data.stance.label}
                   </p>

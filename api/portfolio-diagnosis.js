@@ -306,7 +306,7 @@ Important:
 - Tone: informational only (not investment advice). Avoid imperatives like 「〜しなさい」「〜してください」「must」「immediately」.
   Prefer: 可能性があります / 場合があります / 選択肢として考えられます / 検討しうる / 〜の観点で、など.
 - Never instruct the user to buy or sell a specific security. No promises of returns.
-- If you mention a company or ticker (e.g. from holdings), do so only to describe the current allocation, not to recommend a trade.
+- If you mention a company or ticker (e.g. from holdings), do so only to describe the current allocation, not to tell the user to buy or sell.
 - For "actions", treat each item as a hypothetical option or perspective (想定される選択肢), not a directive.
 
 Scope: ${diagnosis.scopeLabel}

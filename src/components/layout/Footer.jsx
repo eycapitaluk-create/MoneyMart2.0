@@ -138,7 +138,7 @@ export default function Footer() {
               <h4 className="font-bold text-white text-sm mb-3">サポート・運営</h4>
               <ul className="space-y-2 text-xs font-medium">
                 <li><button onClick={() => navigate('/about')} className="hover:text-white transition">運営会社</button></li>
-                <li><button onClick={() => navigate('/careers')} className="hover:text-white transition">採用情報</button></li>
+                <li><Link to="/careers" className="hover:text-white transition">採用情報</Link></li>
                 <li><button onClick={() => navigate('/faq')} className="hover:text-white transition flex items-center gap-2"><HelpCircle size={12} /> ヘルプセンター</button></li>
                 <li>
                   <a href={`mailto:${COMPANY_SUPPORT_EMAIL}`} className="hover:text-white transition">
@@ -168,7 +168,7 @@ export default function Footer() {
               <ShieldCheck size={12} className="text-orange-500" /> 免責事項
             </h5>
             <p className="text-[10px] leading-relaxed text-slate-500 text-justify">
-              ※ 本サービスは、金融商品に関する一般的な情報提供および比較を目的としたものであり、金融商品取引法第2条第8項に定める金融商品取引業（投資助言・代理業を含む）には該当しません。特定の金融商品の取得・売却を勧誘・推奨するものではありません。<br />
+              ※ 本サービスは、金融商品に関する一般的な情報提供および比較を目的としたものであり、金融商品取引法第2条第8項に定める金融商品取引業（投資助言・代理業を含む）には該当しません。特定の金融商品の売買を勧誘するものではありません。<br />
               ※ 本サービスで提供するコンテンツの一部は、AI（人工知能）による自動生成または処理を含みます。情報の正確性・最新性の確保に努めておりますが、完全性・正確性を保証するものではありません。<br />
               ※ 投資に関するすべての最終判断は、お客様ご自身の責任において行ってください。本サービスの情報に基づき生じたいかなる損害についても、当社は責任を負いかねます。<br />
               ※ 実際の取引条件・商品詳細については、各金融機関の公式サイトまたは担当者にて必ずご確認ください。<br />
@@ -232,7 +232,7 @@ export default function Footer() {
               <button onClick={() => navigate('/products')} className="hover:text-orange-400">金融商品</button>
             )}
             <button onClick={() => navigate('/about')} className="hover:text-orange-400">運営会社</button>
-            <button onClick={() => navigate('/careers')} className="hover:text-orange-400">採用</button>
+            <Link to="/careers" className="hover:text-orange-400">採用</Link>
             <button onClick={() => navigate('/faq')} className="hover:text-orange-400">FAQ</button>
             <a href={`mailto:${COMPANY_SUPPORT_EMAIL}`} className="hover:text-orange-400">お問い合わせ</a>
             <button onClick={() => navigate('/mypage')} className="hover:text-orange-400">AI診断</button>

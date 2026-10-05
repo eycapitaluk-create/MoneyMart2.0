@@ -1373,10 +1373,10 @@ export default function HomePage({
           </span>
           <span className="min-w-0 flex-1">
             <span className="block text-base md:text-lg font-black text-white leading-snug">
-              ビジネスデベロップメントディレクターを募集しています
+              法人営業・事業開発メンバーを募集しています
             </span>
             <span className="mt-1 block text-xs md:text-sm font-medium text-slate-300">
-              ウェルスマネジメント向けB2B営業・事業開発 日本国内（リモート可）・通年採用
+              銀行・証券・IFA向け。日本国内（リモート可）・募集期間 2026年9月27日〜10月27日
             </span>
           </span>
           <span className="inline-flex items-center gap-1.5 self-start md:self-center rounded-full bg-white text-slate-900 px-4 py-2 text-sm font-black shrink-0 group-hover:bg-orange-500 group-hover:text-white transition">

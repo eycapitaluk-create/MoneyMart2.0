@@ -65,7 +65,7 @@ export default function CustomerChatbot() {
             </button>
           </div>
           <p className="border-b border-slate-100 px-3 py-2 text-[11px] leading-snug text-slate-500 dark:border-slate-800 dark:text-slate-400">
-            金融に関する一般的なご質問にお答えするサービスです。税務・投資判断につきましては、専門家へのご相談または公式情報のご確認をお勧めいたします。ご質問は日本語にてご入力ください（例：新NISAの種類、ETFの確認方法 など）。
+            金融に関する一般的なご質問にお答えするサービスです。税務・投資判断につきましては、専門家へのご相談または公式情報のご確認をご確認ください。ご質問は日本語にてご入力ください（例：新NISAの種類、ETFの確認方法 など）。
           </p>
           <div
             ref={scrollRef}

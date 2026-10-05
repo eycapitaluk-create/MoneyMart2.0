@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { partitionIncomingPrices, writePriceQuarantine } from '../api/_lib/price-ingest-guard.js'
 
 const DEFAULT_MARKETSTACK_SYMBOLS = [
   'AAPL', 'MSFT', 'NVDA', 'AMZN', 'META', 'GOOGL', 'GOOG', 'TSLA', 'AVGO', 'AMD',
@@ -193,10 +194,15 @@ const run = async () => {
       const { error } = await supabase.from('stock_symbols').upsert(symbolRows, { onConflict: 'symbol' })
       if (error) throw error
     }
-    if (priceRows.length > 0) {
+    const guarded = await partitionIncomingPrices(supabase, priceRows)
+    const quarantineWrite = await writePriceQuarantine(supabase, [...guarded.weekend, ...guarded.quarantined])
+    if (guarded.weekend.length || guarded.quarantined.length) {
+      console.warn(`held weekend=${guarded.weekend.length} extreme=${guarded.quarantined.length} stored=${quarantineWrite.stored}`)
+    }
+    if (guarded.accepted.length > 0) {
       const { error } = await supabase
         .from('stock_daily_prices')
-        .upsert(priceRows, { onConflict: 'source,symbol,trade_date' })
+        .upsert(guarded.accepted, { onConflict: 'source,symbol,trade_date' })
       if (error) throw error
     }
 

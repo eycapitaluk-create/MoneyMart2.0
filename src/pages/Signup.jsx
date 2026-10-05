@@ -1,11 +1,12 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Card from '../components/ui/Card'
 import Button from '../components/ui/Button'
 import AppleSignInButton from '../components/auth/AppleSignInButton'
 import GoogleSignInButton, { AuthDivider } from '../components/auth/GoogleSignInButton'
 import { useAuth } from '../hooks/useAuth'
 import { sanitizeInternalRedirectPath } from '../lib/navigationGuards'
+import { storeAuthRedirectPath } from '../lib/authRedirectStorage'
 import { supabase } from '../lib/supabase'
 import { useDocumentTitle } from '../hooks/useDocumentTitle'
 import { isPasswordLongEnough, MIN_PASSWORD_LENGTH, PASSWORD_MIN_LENGTH_MESSAGE } from '../constants/authPassword'
@@ -17,6 +18,10 @@ export default function Signup() {
   const { signUp, loading, resendVerificationEmail } = useAuth()
   const redirectTo = sanitizeInternalRedirectPath(location.state?.from, '/')
   const diagnosisIntent = location.state?.intent === 'diagnosis'
+
+  useEffect(() => {
+    if (redirectTo && redirectTo !== '/') storeAuthRedirectPath(redirectTo)
+  }, [redirectTo])
   const [nickname, setNickname] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')

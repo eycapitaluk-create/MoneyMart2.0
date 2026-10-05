@@ -1,4 +1,5 @@
-import { breadcrumbListJsonLd, buildHeadBlock, getSiteOrigin, organizationJsonLd, ssrTrustNavHtml } from './lib/seoHead.js'
+import { CAREERS_B2B_JD, CAREERS_SEO_TITLE, CAREERS_SEO_DESCRIPTION } from '../../src/data/careers.js'
+import { escapeHtml, breadcrumbListJsonLd, buildHeadBlock, getSiteOrigin, organizationJsonLd, ssrTrustNavHtml } from './lib/seoHead.js'
 import { MM_PATH_PREFIXES_STATIC_PUBLIC, parseMmPathForSsr } from './lib/mmPathAllowlist.js'
 import { COMPANY_NAME_JA_EN, COMPANY_SUPPORT_EMAIL } from '../../src/constants/companyLegal.js'
 
@@ -46,11 +47,18 @@ const PAGES = {
     `,
   },
   '/careers': {
-    title: '採用情報 | MoneyMart',
-    h1: '採用情報',
-    description: 'MoneyMartの採用情報。ビジネスデベロップメントディレクターを通年で募集しています。',
+    title: CAREERS_SEO_TITLE,
+    h1: `採用情報｜${CAREERS_B2B_JD.title}`,
+    description: CAREERS_SEO_DESCRIPTION,
     crumbs: [{ name: 'ホーム', path: '/' }, { name: '採用', path: '/careers' }],
-    body: `<p>詳細な募集要項はブラウザで本ページをご覧ください。お問い合わせは ${COMPANY_SUPPORT_EMAIL} です。</p>`,
+    body: `<p>募集期間：2026年9月27日〜10月27日</p><p>${escapeHtml(CAREERS_B2B_JD.location)}</p>
+      ${CAREERS_B2B_JD.sections.map(section => `<section><h2>${escapeHtml(section.heading)}</h2>
+        ${(section.paragraphs || []).map(text => `<p>${escapeHtml(text)}</p>`).join('')}
+        ${section.items ? `<ul>${section.items.map(text => `<li>${escapeHtml(text)}</li>`).join('')}</ul>` : ''}
+      </section>`).join('')}
+      <p><a href="mailto:${COMPANY_SUPPORT_EMAIL}?subject=${encodeURIComponent('採用応募（法人営業・事業開発）')}">応募する（${COMPANY_SUPPORT_EMAIL}）</a></p>
+      <p>エンジニアリング、プロダクト、コンテンツなど他領域も通年で受け付けます。</p>
+      <p><a href="/about">運営会社について</a></p>`,
   },
   '/premium': {
     title: 'プレミアム会員 | MoneyMart',

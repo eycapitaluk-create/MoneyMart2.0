@@ -33,7 +33,7 @@ export default async function handler(_req, res) {
         <h1 style="margin:8px 0 0 0;font-size:34px;line-height:1.2;font-weight:900;">ポートフォリオの偏りと、投信・ETFの重なりを見える化する</h1>
         <p style="margin:10px 0 0 0;font-size:14px;line-height:1.8;color:#475569;">
           MoneyMartは、保有資産の全体像、投資信託とETFの重複、集中リスク、新NISAの枠、配当の入金予定を一つの画面で整理できる無料ツールです。
-          口座連携は不要です。特定の金融商品の購入を推奨するものではなく、将来の運用成果を保証しません。
+          口座連携は不要です。特定の金融商品の売買を勧誘するものではなく、将来の運用成果を保証しません。
         </p>
       </header>
       <section style="display:grid;gap:10px;">

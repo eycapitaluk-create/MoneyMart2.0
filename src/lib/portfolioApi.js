@@ -100,7 +100,7 @@ export async function fetchPublicPortfolios({ limit = 20, orderBy = 'followers' 
 async function fetchProfileNames(userIds) {
   if (userIds.length === 0) return new Map()
   const { data } = await supabase
-    .from('user_profiles')
+    .from('user_public_profiles')
     .select('user_id,nickname')
     .in('user_id', userIds)
   return new Map(

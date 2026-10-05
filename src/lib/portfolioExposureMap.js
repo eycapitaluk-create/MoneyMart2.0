@@ -30,7 +30,7 @@ export const EXPOSURE_SCORE_THRESHOLDS = {
     '高：露出 25%以上（またはニュース銘柄を保有）',
     '中：露出 10%以上〜25%未満',
     '低：露出 0.5%超〜10%未満',
-    '価格の上下予測・売買推奨ではありません。',
+    '価格の上下予測・売買の勧誘ではありません。',
   ],
 }
 
@@ -514,7 +514,7 @@ export function scoreNewsExposure(news = {}, exposureProfile = null) {
     whyLines,
     pathJa: (best.factor || (factors[0] ? MARKET_FACTORS[factors[0]] : null))?.pathJa || [],
     disclaimerJa:
-      '関連度は「価格がどう動くか」ではなく、保有資産がその市場要因にどれだけ触れているかを示します。売買の推奨や将来リターンの保証ではありません。',
+      '関連度は「価格がどう動くか」ではなく、保有資産がその市場要因にどれだけ触れているかを示します。売買の勧誘や将来リターンの保証ではありません。',
   }
 }
 

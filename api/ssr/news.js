@@ -135,7 +135,7 @@ export default async function handler(_req, res) {
         </div>
       </section>
       <footer style="margin-top:22px;border-top:1px solid #e2e8f0;padding-top:10px;font-size:11px;color:#64748b;line-height:1.7;">
-        本コンテンツは情報提供のみを目的としており、特定の金融商品の購入・売却を推奨するものではありません。
+        本コンテンツは情報提供のみを目的としており、特定の金融商品の売買を勧誘するものではありません。
       </footer>
     </main>
   </body>

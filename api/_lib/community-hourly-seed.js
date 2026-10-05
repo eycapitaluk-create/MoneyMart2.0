@@ -72,18 +72,20 @@ function formatPct(n) {
   return `${sign}${n.toFixed(2)}%`
 }
 
-async function fetchIndexPair(admin, symbol) {
+async function fetchIndexPair(admin, symbol, asOfDay) {
   // Indices (^N225, etc.) live in stock_daily_prices / v_stock_latest — same as equities.
-  return fetchStockPair(admin, symbol)
+  return fetchStockPair(admin, symbol, asOfDay)
 }
 
-async function fetchStockPair(admin, symbol) {
-  const { data, error } = await admin
+async function fetchStockPair(admin, symbol, asOfDay) {
+  let query = admin
     .from('stock_daily_prices')
     .select('trade_date,close')
     .eq('symbol', symbol)
     .order('trade_date', { ascending: false })
     .limit(2)
+  if (asOfDay) query = query.lte('trade_date', asOfDay)
+  const { data, error } = await query
   if (error || !data?.length) return null
   const latest = data[0]
   const prev = data[1]
@@ -169,11 +171,11 @@ async function hourHasPost(admin, hourKey) {
 }
 
 async function buildPostDraft(admin, now, slotSeed) {
-  const { hour, isWeekend } = jstParts(now)
-  const n225 = await fetchIndexPair(admin, '^N225')
+  const { day, hour, isWeekend } = jstParts(now)
+  const n225 = await fetchIndexPair(admin, '^N225', day)
   const tickers = ['NVDA', '6857.T', '285A.T', '9984.T', '1306.T', 'N225']
   const stockSym = pick(tickers, slotSeed + hour)
-  const stock = await fetchStockPair(admin, stockSym)
+  const stock = await fetchStockPair(admin, stockSym, day)
 
   const hourLabels = {
     5: '早朝',
@@ -408,7 +410,7 @@ async function enrichRecentPost(admin, personaMap, now, slotSeed) {
  * @param {import('@supabase/supabase-js').SupabaseClient} admin
  * @param {{ now?: Date, dryRun?: boolean }} opts
  */
-export async function runCommunityHourlySeed(admin, { now = new Date(), dryRun = false } = {}) {
+export async function runCommunityHourlySeed(admin, { now = new Date(), dryRun = false, personaMap = null } = {}) {
   const enabled = String(process.env.COMMUNITY_HOURLY_SEED_ENABLED || 'true').trim().toLowerCase() !== 'false'
   if (!enabled) {
     return { ok: true, skipped: true, reason: 'COMMUNITY_HOURLY_SEED_ENABLED=false' }
@@ -434,7 +436,7 @@ export async function runCommunityHourlySeed(admin, { now = new Date(), dryRun =
     }
   }
 
-  const personaMap = await ensureAllPersonas(admin)
+  const personas = personaMap || await ensureAllPersonas(admin)
   const hasPost = await hourHasPost(admin, hourKey)
 
   if (!hasPost) {
@@ -447,7 +449,7 @@ export async function runCommunityHourlySeed(admin, { now = new Date(), dryRun =
       authorIdx,
       postedAt,
       draft,
-      personaMap,
+      personaMap: personas,
       likeSlots,
       commentCount,
     })
@@ -460,7 +462,7 @@ export async function runCommunityHourlySeed(admin, { now = new Date(), dryRun =
     }
   }
 
-  const enriched = await enrichRecentPost(admin, personaMap, now, slotSeed)
+  const enriched = await enrichRecentPost(admin, personas, now, slotSeed)
   return {
     ok: true,
     action: 'enriched_existing',

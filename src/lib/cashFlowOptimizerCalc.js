@@ -46,7 +46,7 @@ export function evaluateCashFlowOptimizer({
 
   const tasks = []
   if (status === 'buffer_shortage') {
-    tasks.push(`予備資金が不足しています。まずは ¥${shortageYen.toLocaleString('ja-JP')} を確保しましょう。`)
+    tasks.push(`予備資金が不足しています。不足額の目安は ¥${shortageYen.toLocaleString('ja-JP')} です。`)
   } else if (idleCashYen > 0) {
     tasks.push(`余剰現金 ¥${idleCashYen.toLocaleString('ja-JP')} の移動余地があります。`)
   } else {
@@ -55,7 +55,7 @@ export function evaluateCashFlowOptimizer({
   if (rateGap > 0) {
     tasks.push(`高金利口座との差分は年 ${(rateGap * 100).toFixed(2)}% です。`)
   }
-  tasks.push('自動振替を設定して毎月の余剰資金を運用待機口座へ移しましょう。')
+  tasks.push('毎月の余剰資金を運用待機口座へ移す自動振替が、確認ポイントです。')
 
   const insight = `過去3ヶ月で平均 ¥${idleCashYen.toLocaleString('ja-JP')} の余剰現金がありました。連携済み高金利普通預金へ移していれば、年+${(rateGap * 100).toFixed(1)}%で約¥${additionalInterestYen.toLocaleString('ja-JP')}の追加利息が見込めました。`
 

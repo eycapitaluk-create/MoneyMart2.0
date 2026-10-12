@@ -159,7 +159,7 @@ export function useAuth() {
     setLoading(true)
     setError(null)
     try {
-      await supabase.auth.signOut()
+      await supabase.auth.signOut({ scope: 'local' })
     } catch (err) {
       const mapped = mapAuthErrorMessage(err.message)
       setError(mapped)

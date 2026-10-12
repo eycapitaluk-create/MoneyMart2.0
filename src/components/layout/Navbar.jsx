@@ -200,7 +200,7 @@ export default function Navbar({
   ]
 
   const handleLogout = async () => {
-    await supabase.auth.signOut()
+    await supabase.auth.signOut({ scope: 'local' })
     setIsMobileMenuOpen(false)
     setShowMobileAlertPanel(false)
     navigate('/')

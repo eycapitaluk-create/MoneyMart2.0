@@ -15216,7 +15216,7 @@ export default function MyPage({
   }
 
   const handleLogout = async () => {
-    await supabase.auth.signOut()
+    await supabase.auth.signOut({ scope: 'local' })
     navigate('/login')
   }
 
@@ -15252,7 +15252,7 @@ export default function MyPage({
       if (!res.ok || !payload?.ok) {
         throw new Error(payload?.error || '退会処理に失敗しました。')
       }
-      await supabase.auth.signOut()
+      await supabase.auth.signOut({ scope: 'local' })
       navigate('/')
     } catch (err) {
       setAccountActionError(err?.message || '退会処理に失敗しました。')

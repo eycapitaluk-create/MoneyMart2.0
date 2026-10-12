@@ -815,7 +815,7 @@ const App = () => {
       timerId = window.setTimeout(async () => {
         if (!alive) return
         try {
-          await supabase.auth.signOut()
+          await supabase.auth.signOut({ scope: 'local' })
           showUiMessage(
             `${AUTH_IDLE_TIMEOUT_MINUTES}分間操作がなかったため、自動でログアウトしました。`,
             'info',

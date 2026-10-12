@@ -7599,7 +7599,7 @@ const WealthSection = ({
                       <div className="text-lg sm:text-xl">{accountPnlWithRealizedJpy >= 0 ? '+' : ''}¥{Math.round(accountPnlWithRealizedJpy).toLocaleString('ja-JP')}</div>
                       {accountReturnWithRealizedPct != null && Number.isFinite(accountReturnWithRealizedPct) ? (
                         <div className="text-xs sm:text-sm font-bold mt-0.5">
-                          ({accountReturnWithRealizedPct >= 0 ? '+' : ''}{accountReturnWithRealizedPct.toFixed(2)}%)
+                          ({accountReturnWithRealizedPct >= 0 ? '+' : ''}{accountReturnWithRealizedPct.toFixed(1)}%)
                         </div>
                       ) : null}
                     </div>
@@ -7623,7 +7623,7 @@ const WealthSection = ({
                       </div>
                       {monthlyDeltaPct != null && Number.isFinite(monthlyDeltaPct) ? (
                         <div className="text-xs sm:text-sm font-bold mt-0.5">
-                          ({monthlyDeltaPct >= 0 ? '+' : ''}{monthlyDeltaPct.toFixed(2)}%)
+                          ({monthlyDeltaPct >= 0 ? '+' : ''}{monthlyDeltaPct.toFixed(1)}%)
                         </div>
                       ) : null}
                     </div>

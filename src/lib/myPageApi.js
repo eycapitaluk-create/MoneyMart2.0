@@ -676,6 +676,21 @@ const parseBuyLots = (raw) => (
     .filter(Boolean)
 )
 
+/** DB jsonb. 空なら null。画面の buyDate / costJpy も受け取る。 */
+const serializeBuyLots = (raw) => {
+  const lots = parseBuyLots(raw).map((lot) => ({
+    buy_date: lot.buyDate,
+    qty: lot.qty,
+    cost_jpy: lot.costJpy,
+  }))
+  return lots.length > 0 ? lots : null
+}
+
+const stripBuyLotsColumn = (rows) => (Array.isArray(rows) ? rows : []).map((row) => {
+  const { buy_lots, ...rest } = row || {}
+  return rest
+})
+
 const selectRealizedStockRows = async (userId) => {
   const withLots = await supabase
     .from('user_stock_realized_trades')
@@ -1033,6 +1048,7 @@ export const replaceOwnedAssetPositions = async ({
         realized_pnl_jpy: Number.isFinite(realizedPnlJpy) ? realizedPnlJpy : 0,
         sell_fx_rate: Number.isFinite(sellFxRate) && sellFxRate > 0 ? sellFxRate : null,
         sell_fx_date: /^\d{4}-\d{2}-\d{2}$/.test(sellFxDate) ? sellFxDate : null,
+        buy_lots: serializeBuyLots(row?.buyLots ?? row?.buy_lots),
       }
     })
     .filter(Boolean)
@@ -1067,6 +1083,7 @@ export const replaceOwnedAssetPositions = async ({
         cost_basis_jpy: Number.isFinite(costBasisJpy) ? costBasisJpy : 0,
         proceeds_jpy: Number.isFinite(proceedsJpy) ? proceedsJpy : 0,
         realized_pnl_jpy: Number.isFinite(realizedPnlJpy) ? realizedPnlJpy : 0,
+        buy_lots: serializeBuyLots(row?.buyLots ?? row?.buy_lots),
       }
     })
     .filter(Boolean)
@@ -1253,9 +1270,21 @@ export const replaceOwnedAssetPositions = async ({
       runSerializedOwnedStocksReplace(async () => {
         let backupRes = await supabase
           .from('user_stock_realized_trades')
-          .select(REALIZED_STOCK_WRITE_SELECT)
+          .select(`${REALIZED_STOCK_WRITE_SELECT},buy_lots`)
           .eq('user_id', userId)
+        if (backupRes.error && isMissingBuyLotsColumn(backupRes.error)) {
+          backupRes = await supabase
+            .from('user_stock_realized_trades')
+            .select(REALIZED_STOCK_WRITE_SELECT)
+            .eq('user_id', userId)
+        }
         if (backupRes.error && isMissingSellFxColumn(backupRes.error)) {
+          backupRes = await supabase
+            .from('user_stock_realized_trades')
+            .select(`${REALIZED_STOCK_WRITE_BASE},buy_lots`)
+            .eq('user_id', userId)
+        }
+        if (backupRes.error && (isMissingBuyLotsColumn(backupRes.error) || isMissingSellFxColumn(backupRes.error))) {
           backupRes = await supabase
             .from('user_stock_realized_trades')
             .select(REALIZED_STOCK_WRITE_BASE)
@@ -1279,8 +1308,10 @@ export const replaceOwnedAssetPositions = async ({
           let rowsToInsert = realizedRowsUnique
           const tryInsert = async () => supabase.from('user_stock_realized_trades').insert(rowsToInsert)
           let ins = await tryInsert()
-          if (ins.error && isMissingSellFxColumn(ins.error)) {
-            rowsToInsert = stripSellFxColumns(rowsToInsert)
+          for (let attempt = 0; attempt < 2 && ins.error; attempt += 1) {
+            if (isMissingBuyLotsColumn(ins.error)) rowsToInsert = stripBuyLotsColumn(rowsToInsert)
+            else if (isMissingSellFxColumn(ins.error)) rowsToInsert = stripSellFxColumns(rowsToInsert)
+            else break
             ins = await tryInsert()
           }
           if (ins.error?.code === PG_UNIQUE_VIOLATION) {
@@ -1317,10 +1348,17 @@ export const replaceOwnedAssetPositions = async ({
   if (shouldWriteRealizedFunds) {
     tasks.push(
       runSerializedFundRealizedReplace(async () => {
-        const { data: backupRows, error: backupErr } = await supabase
+        let fundBackupRes = await supabase
           .from('user_fund_realized_trades')
-          .select('user_id,trade_id,symbol,sell_date,qty,sell_price,cost_basis_jpy,proceeds_jpy,realized_pnl_jpy')
+          .select('user_id,trade_id,symbol,sell_date,qty,sell_price,cost_basis_jpy,proceeds_jpy,realized_pnl_jpy,buy_lots')
           .eq('user_id', userId)
+        if (fundBackupRes.error && isMissingBuyLotsColumn(fundBackupRes.error)) {
+          fundBackupRes = await supabase
+            .from('user_fund_realized_trades')
+            .select('user_id,trade_id,symbol,sell_date,qty,sell_price,cost_basis_jpy,proceeds_jpy,realized_pnl_jpy')
+            .eq('user_id', userId)
+        }
+        const { data: backupRows, error: backupErr } = fundBackupRes
         if (backupErr && !isTableMissingError(backupErr)) throw backupErr
         const backup = !backupErr && Array.isArray(backupRows) ? backupRows : []
 
@@ -1334,8 +1372,13 @@ export const replaceOwnedAssetPositions = async ({
         }
 
         if (realizedFundRowsUnique.length > 0) {
-          const tryInsert = async () => supabase.from('user_fund_realized_trades').insert(realizedFundRowsUnique)
+          let fundRowsToInsert = realizedFundRowsUnique
+          const tryInsert = async () => supabase.from('user_fund_realized_trades').insert(fundRowsToInsert)
           let ins = await tryInsert()
+          if (ins.error && isMissingBuyLotsColumn(ins.error)) {
+            fundRowsToInsert = stripBuyLotsColumn(fundRowsToInsert)
+            ins = await tryInsert()
+          }
           if (ins.error?.code === PG_UNIQUE_VIOLATION) {
             const { error: del2 } = await supabase.from('user_fund_realized_trades').delete().eq('user_id', userId)
             if (del2) {

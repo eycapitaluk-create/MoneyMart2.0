@@ -1650,6 +1650,7 @@ const fifoStockSellFromLots = ({ symbol, sellQty, ownedLots, fxByDate }) => {
   })
   let remaining = want
   let costBasisJpy = 0
+  const buyLots = []
   const updatedSymLots = []
   for (const lot of sorted) {
     const q = Math.max(0, Number(lot.qty || 0))
@@ -1660,7 +1661,10 @@ const fifoStockSellFromLots = ({ symbol, sellQty, ownedLots, fxByDate }) => {
     }
     const take = Math.min(remaining, q)
     const frac = q > 0 ? take / q : 0
-    costBasisJpy += ownedStockLotCostJpy(lot, symU, fxByDate) * frac
+    const portionCost = ownedStockLotCostJpy(lot, symU, fxByDate) * frac
+    costBasisJpy += portionCost
+    const buyDate = toIsoDate(lot.buyDate || lot.buy_date || '')
+    if (buyDate && take > 0) buyLots.push({ buyDate, qty: take, costJpy: portionCost })
     remaining -= take
     const left = q - take
     if (left > 1e-9) {
@@ -1674,7 +1678,7 @@ const fifoStockSellFromLots = ({ symbol, sellQty, ownedLots, fxByDate }) => {
     (l) => String(l?.symbol || '').trim().toUpperCase() !== symU,
   )
   const updatedOwned = normalizeOwnedLots([...otherLots, ...updatedSymLots])
-  return { ok: true, updatedOwned, costBasisJpy, sellQty: want }
+  return { ok: true, updatedOwned, costBasisJpy, sellQty: want, buyLots }
 }
 
 /**
@@ -1711,6 +1715,7 @@ const fifoFundSellFromLots = ({ symbol, sellUnits, ownedFundLots, fxByDate }) =>
   })
   let remaining = want
   let costBasisJpy = 0
+  const buyLots = []
   const updatedSymLots = []
   for (const lot of sorted) {
     const q = lotUnits(lot)
@@ -1724,7 +1729,10 @@ const fifoFundSellFromLots = ({ symbol, sellUnits, ownedFundLots, fxByDate }) =>
     }
     const take = Math.min(remaining, q)
     const frac = q > 0 ? take / q : 0
-    costBasisJpy += ownedFundLotCostJpy(lot, fxByDate) * frac
+    const portionCost = ownedFundLotCostJpy(lot, fxByDate) * frac
+    costBasisJpy += portionCost
+    const buyDate = toIsoDate(lot.buyDate || lot.buy_date || '')
+    if (buyDate && take > 0) buyLots.push({ buyDate, qty: take, costJpy: portionCost })
     remaining -= take
     const invest = Math.max(0, Number(lot.investAmount ?? lot.invest_amount ?? 0))
     const buyP = Math.max(0, Number(lot.buyPrice ?? lot.buy_price ?? 0))
@@ -1746,7 +1754,7 @@ const fifoFundSellFromLots = ({ symbol, sellUnits, ownedFundLots, fxByDate }) =>
     (l) => String(l?.symbol || '').trim().toUpperCase() !== symU,
   )
   const updatedOwned = normalizeOwnedFundAmounts([...otherLots, ...updatedSymLots])
-  return { ok: true, updatedOwned, costBasisJpy, sellUnits: want }
+  return { ok: true, updatedOwned, costBasisJpy, sellUnits: want, buyLots }
 }
 
 /** buildAssetGrowthTrendData と同じ日付軸（アンカー + ラベル） */
@@ -13484,6 +13492,8 @@ export default function MyPage({
 
   useEffect(() => {
     if (!user?.id || !ownedAssetDbReady) return
+    // 読み込みで state が入っただけでは書き戻さない。売却・修正・削除のときだけ置換する。
+    if (!ownedRealizedCloudTouchedRef.current) return
     if (!realizedDbAvailable) {
       try {
         localStorage.setItem(
@@ -13493,13 +13503,14 @@ export default function MyPage({
       } catch {
         // ignore
       }
+      ownedRealizedCloudTouchedRef.current = false
       return
     }
     if (!ownedAssetDbAvailable) return
     const n = Array.isArray(realizedStockTrades) ? realizedStockTrades.length : 0
-    if (n === 0 && !ownedRealizedCloudTouchedRef.current) return
     let alive = true
     const timer = window.setTimeout(async () => {
+      ownedRealizedCloudTouchedRef.current = false
       try {
         await replaceOwnedAssetPositions({
           userId: user.id,
@@ -13509,7 +13520,7 @@ export default function MyPage({
           persistStocks: false,
           persistFunds: false,
           persistRealized: true,
-          allowEmptyRealizedReplace: n === 0 && ownedRealizedCloudTouchedRef.current,
+          allowEmptyRealizedReplace: n === 0,
         })
       } catch (err) {
         if (!alive) return
@@ -13524,6 +13535,7 @@ export default function MyPage({
 
   useEffect(() => {
     if (!user?.id || !ownedAssetDbReady) return
+    if (!ownedRealizedFundCloudTouchedRef.current) return
     if (!realizedFundDbAvailable) {
       try {
         localStorage.setItem(
@@ -13533,13 +13545,14 @@ export default function MyPage({
       } catch {
         // ignore
       }
+      ownedRealizedFundCloudTouchedRef.current = false
       return
     }
     if (!ownedAssetDbAvailable) return
     const n = Array.isArray(realizedFundTrades) ? realizedFundTrades.length : 0
-    if (n === 0 && !ownedRealizedFundCloudTouchedRef.current) return
     let alive = true
     const timer = window.setTimeout(async () => {
+      ownedRealizedFundCloudTouchedRef.current = false
       try {
         await replaceOwnedAssetPositions({
           userId: user.id,
@@ -13549,7 +13562,7 @@ export default function MyPage({
           persistStocks: false,
           persistFunds: false,
           persistRealizedFunds: true,
-          allowEmptyRealizedFundReplace: n === 0 && ownedRealizedFundCloudTouchedRef.current,
+          allowEmptyRealizedFundReplace: n === 0,
         })
       } catch (err) {
         if (!alive) return
@@ -15964,6 +15977,7 @@ export default function MyPage({
       realizedPnlJpy,
       sellFxRate,
       sellFxDate,
+      buyLots: fifo.buyLots || [],
     }
     ownedStockCloudTouchedRef.current = true
     ownedRealizedCloudTouchedRef.current = true
@@ -16033,6 +16047,7 @@ export default function MyPage({
       costBasisJpy: fifo.costBasisJpy,
       proceedsJpy,
       realizedPnlJpy,
+      buyLots: fifo.buyLots || [],
     }
     ownedFundCloudTouchedRef.current = true
     ownedRealizedFundCloudTouchedRef.current = true

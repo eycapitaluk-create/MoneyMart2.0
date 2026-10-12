@@ -20,6 +20,7 @@ import {
 } from '../lib/fundDisplayUtils'
 import {
   computeOneYearPriceReturnPct,
+  oneYearPriceHistoryCutoffIso,
   formatOneYearPriceReturnPct,
   hasOneYearPriceReturn,
   ONE_YEAR_RETURN_MISSING_TEXT,
@@ -179,9 +180,7 @@ export default function FundDetailPage({ myWatchlist = [], toggleWatchlist }) {
       }
       setError('')
       try {
-        const cutoff = new Date()
-        cutoff.setFullYear(cutoff.getFullYear() - 1)
-        const cutoffStr = cutoff.toISOString().slice(0, 10)
+        const cutoffStr = oneYearPriceHistoryCutoffIso()
 
         const dbSymVariants = fundSymbolLookupVariants(symbol)
         const [

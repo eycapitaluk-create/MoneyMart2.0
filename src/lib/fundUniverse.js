@@ -2,7 +2,7 @@ import { supabase } from './supabase'
 import { ETF_LIST_FROM_XLSX } from '../data/etfListFromXlsx'
 import { resolveFundDisplayName, resolveFundNisaCategory, normalizeFundSymbolKey } from './fundDisplayUtils'
 import { normalizeNisaCategoryField } from './textEncodingUtils'
-import { computeOneYearPriceReturnPct } from './calendarDateUtils'
+import { computeOneYearPriceReturnPct, oneYearPriceHistoryCutoffIso } from './calendarDateUtils'
 import {
   buildSplitAdjustedCloses,
   resolveSpotCloseAndSessionChange,
@@ -174,9 +174,7 @@ export const fetchFundUniverseSnapshot = async () => {
       .sort((a, b) => Number(b.volume || 0) - Number(a.volume || 0))
       .map((row) => row.symbol)
 
-    const cutoff = new Date()
-    cutoff.setFullYear(cutoff.getFullYear() - 1)
-    const cutoffStr = cutoff.toISOString().slice(0, 10)
+    const cutoffStr = oneYearPriceHistoryCutoffIso()
 
     const historyBySymbol = await fetchStockDailyHistoryBySymbolMap(supabase, sortedSymbols, cutoffStr, {
       select: 'symbol,trade_date,close,volume,source,fetched_at',

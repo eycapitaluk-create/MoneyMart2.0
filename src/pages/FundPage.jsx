@@ -37,6 +37,7 @@ import { normalizeNisaCategoryField } from '../lib/textEncodingUtils'
 import {
   findBaseCloseByCalendarOffset,
   computeOneYearPriceReturnPct,
+  oneYearPriceHistoryCutoffIso,
   formatOneYearPriceReturnPct,
   ONE_YEAR_RETURN_MISSING_TEXT,
   ONE_YEAR_RETURN_BASIS_TEXT,
@@ -1143,9 +1144,7 @@ export default function FundPage({
         }
 
         const etfSymbolsFromLatest = [...new Set(sortedSymbolsByVolume)]
-        const cutoff = new Date()
-        cutoff.setFullYear(cutoff.getFullYear() - 1)
-        const cutoffStr = cutoff.toISOString().slice(0, 10)
+        const cutoffStr = oneYearPriceHistoryCutoffIso()
 
         const MAX_SYMBOLS_FOR_HISTORY = 999
         const symbolsForHistory = etfSymbolsFromLatest.slice(0, MAX_SYMBOLS_FOR_HISTORY)

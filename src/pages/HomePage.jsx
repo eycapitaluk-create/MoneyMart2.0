@@ -31,7 +31,7 @@ import {
   HIGH_DIVIDEND_ISIN_SET,
 } from '../data/etfThemeFlags'
 import { looksLikeHighDividendFromText } from '../lib/fundSubcategoryHeuristics'
-import { findBaseCloseByCalendarOffset, computeOneYearPriceReturnPct, hasOneYearPriceReturn } from '../lib/calendarDateUtils'
+import { findBaseCloseByCalendarOffset, computeOneYearPriceReturnPct, hasOneYearPriceReturn, oneYearPriceHistoryCutoffIso } from '../lib/calendarDateUtils'
 import { buildSplitAdjustedCloses, resolveSpotCloseAndSessionChange, skipEodSplitHeuristicForSymbol } from '../lib/fundAdjustedCloses'
 import { dedupeStockDailyPricesByTradeDate } from '../lib/stockDailyHistory'
 import { trackAnalyticsEvent } from '../lib/analytics'
@@ -404,9 +404,7 @@ export default function HomePage({
           .slice(0, HOME_FUND_HISTORY_FETCH_LIMIT)
           .map((row) => row.symbol)
 
-        const cutoff = new Date()
-        cutoff.setFullYear(cutoff.getFullYear() - 1)
-        const cutoffStr = cutoff.toISOString().slice(0, 10)
+        const cutoffStr = oneYearPriceHistoryCutoffIso()
         const historyBySymbol = new Map()
 
         const fetchHistoryBySymbol = async (symbol) => {

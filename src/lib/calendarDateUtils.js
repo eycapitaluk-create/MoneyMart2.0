@@ -127,6 +127,21 @@ export const ONE_YEAR_RETURN_MISSING_TEXT = '1年分のデータがありませ�
 export const ONE_YEAR_RETURN_BASIS_TEXT = '市場終値・分配金除く'
 
 /**
+ * 1年価格騰落の取得開始日。今日のちょうど1年前だと、最新取引日が今日より前のとき
+ * その取引日の1年前の終値が窓の外に落ち、後ろの日を基準にしてしまう。
+ * アプリの370日分と同じく、さらに5日さかのぼる。
+ */
+export function oneYearPriceHistoryCutoffIso(now = new Date()) {
+  const cutoff = new Date(now.getTime())
+  cutoff.setFullYear(cutoff.getFullYear() - 1)
+  cutoff.setDate(cutoff.getDate() - 5)
+  const y = cutoff.getFullYear()
+  const m = String(cutoff.getMonth() + 1).padStart(2, '0')
+  const d = String(cutoff.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+/**
  * 直近終値と、約1年前の市場終値から価格騰落率(%)を返す。
  * 1年前の終値がなければ null。実測の 0% は 0 のまま返す。
  */

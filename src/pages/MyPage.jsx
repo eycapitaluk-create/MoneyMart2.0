@@ -6482,7 +6482,7 @@ const WealthSection = ({
                   評価が原価以上のとき → 灰＝<span className="font-black">取得原価</span>、その上の青＝<span className="font-black">含み益</span>（柱の合計高さ＝評価額）。評価が原価を下回るとき → 灰＝<span className="font-black">評価額</span>、その上の薄青＝<span className="font-black">含み損</span>の分（合計高さ＝原価）。「ベース」が常に原価だけではありません。
                 </p>
                 <p>
-                  売却記録の<span className="font-black">実現損益</span>はこのグラフには入りません（上部レポートの「実現」）。売却でロットが減ると、以降の柱は評価・原価ともに下がって見えます。売却済みロットは買付日から売却日前日まで、売却記録の buy_lots があるときだけ足します。
+                  売却記録の<span className="font-black">実現損益</span>はこのグラフには入りません（上部レポートの「実現」）。売却でロットが減ると、以降の柱は評価・原価ともに下がって見えます。売却した分は、買付日から売却日の前日まで推移に含めます。
                 </p>
               </div>
             </div>
@@ -7426,7 +7426,7 @@ const WealthSection = ({
                   評価が原価以上のとき → 灰＝<span className="font-black">取得原価</span>、その上の緑＝<span className="font-black">含み益</span>（柱の合計高さ＝評価額）。評価が原価を下回るとき → 灰＝<span className="font-black">評価額</span>、その上の赤＝<span className="font-black">含み損</span>の分（合計高さ＝原価）。「ベース」が常に原価だけではありません。
                 </p>
                 <p>
-                  売却記録の<span className="font-black">実現損益</span>はこのグラフには入りません（上部レポートの「実現」）。売却でロットが減ると、以降の柱は評価・原価ともに下がって見えます。売却済みロットは買付日から売却日前日まで、売却記録の buy_lots があるときだけ足します。
+                  売却記録の<span className="font-black">実現損益</span>はこのグラフには入りません（上部レポートの「実現」）。売却でロットが減ると、以降の柱は評価・原価ともに下がって見えます。売却した分は、買付日から売却日の前日まで推移に含めます。
                 </p>
               </div>
             </div>

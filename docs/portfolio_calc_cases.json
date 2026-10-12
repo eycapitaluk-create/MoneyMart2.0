@@ -1,0 +1,58 @@
+{
+  "spec": "docs/PORTFOLIO_CALC_SPEC.md",
+  "note": "金額は円. total_value = 画面の評価額合計 (為替が無いロットの参考時価を含む), pnl_value = 損益・元本の計算に使う評価額 (省略時は total_value と同じ). qty / buy_price は保存単位 (取得時点). prices は分割調整済みの終値 [日付, 終値]. today の USD/JPY は fx_latest. pct は小数 2 桁で比較.",
+  "cases": [
+    {
+      "id": "jpy_fund_basic",
+      "today": "2026-10-12",
+      "lots": [{ "ticker": "1306.T", "kind": "fund", "listing": "JPY", "buy_date": "2026-09-01", "qty": 100, "buy_price": 1000 }],
+      "prices": { "1306.T": [["2026-09-01", 1000], ["2026-10-12", 1100]] },
+      "expected": { "total_value": 110000, "total_cost": 100000, "realized_pnl": 0, "principal": 100000, "pnl": 10000, "pct": 10.00 }
+    },
+    {
+      "id": "usd_stock_buy_fx",
+      "today": "2026-10-12",
+      "fx_latest": 155,
+      "lots": [{ "ticker": "VOO", "kind": "stock", "listing": "USD", "buy_date": "2026-09-01", "qty": 10, "buy_price": 100, "buy_fx_rate": 150 }],
+      "prices": { "VOO": [["2026-10-12", 110]] },
+      "expected": { "total_value": 170500, "total_cost": 150000, "principal": 150000, "pnl": 20500, "pct": 13.67 }
+    },
+    {
+      "id": "usd_lot_without_buy_fx_is_excluded",
+      "today": "2026-10-12",
+      "fx_latest": 155,
+      "lots": [
+        { "ticker": "1306.T", "kind": "fund", "listing": "JPY", "buy_date": "2026-09-01", "qty": 100, "buy_price": 1000 },
+        { "ticker": "VOO", "kind": "stock", "listing": "USD", "buy_date": "2026-09-01", "qty": 10, "buy_price": 100 }
+      ],
+      "prices": { "1306.T": [["2026-10-12", 1100]], "VOO": [["2026-10-12", 110]] },
+      "expected": { "total_value": 280500, "pnl_value": 110000, "total_cost": 100000, "principal": 100000, "pnl": 10000, "pct": 10.00, "unvalued_lots": 1 }
+    },
+    {
+      "id": "split_after_buy",
+      "today": "2026-10-12",
+      "splits": [{ "symbol": "285A.T", "ex_date": "2026-09-29", "ratio": 3 }],
+      "lots": [{ "ticker": "285A.T", "kind": "stock", "listing": "JPY", "buy_date": "2026-09-01", "qty": 10, "buy_price": 54000 }],
+      "prices": { "285A.T": [["2026-09-01", 18000], ["2026-10-12", 18000]] },
+      "expected": { "adjusted_qty": 30, "total_value": 540000, "total_cost": 540000, "pnl": 0, "pct": 0.00 }
+    },
+    {
+      "id": "partial_sale_realized",
+      "today": "2026-10-12",
+      "lots": [{ "ticker": "1306.T", "kind": "fund", "listing": "JPY", "buy_date": "2026-08-01", "qty": 60, "buy_price": 1000 }],
+      "trades": [{ "symbol": "1306.T", "kind": "fund", "sell_date": "2026-10-01", "qty": 40, "sell_price": 1200, "cost_basis_jpy": 40000, "proceeds_jpy": 48000, "realized_pnl_jpy": 8000 }],
+      "prices": { "1306.T": [["2026-08-01", 1000], ["2026-10-12", 1100]] },
+      "expected": { "total_value": 66000, "total_cost": 60000, "realized_pnl": 8000, "sold_cost": 40000, "principal": 100000, "pnl": 14000, "pct": 14.00 }
+    },
+    {
+      "id": "monthly_change_with_sale_buy_lots",
+      "today": "2026-10-12",
+      "lots": [{ "ticker": "1306.T", "kind": "fund", "listing": "JPY", "buy_date": "2026-08-01", "qty": 60, "buy_price": 1000 }],
+      "trades": [{ "symbol": "1306.T", "kind": "fund", "sell_date": "2026-10-01", "qty": 40, "sell_price": 1200, "cost_basis_jpy": 40000, "proceeds_jpy": 48000, "realized_pnl_jpy": 8000,
+                   "buy_lots": [{ "buy_date": "2026-08-01", "qty": 40, "cost_jpy": 40000 }] }],
+      "prices": { "1306.T": [["2026-08-01", 1000], ["2026-09-12", 1050], ["2026-10-01", 1200], ["2026-10-12", 1100]] },
+      "expected": { "base_date": "2026-09-12", "base_pnl": 5000, "pnl": 14000, "monthly_delta": 9000, "monthly_pct": 9.00 },
+      "without_buy_lots_expected": { "base_pnl": 3000, "monthly_delta": 11000, "monthly_pct": 11.00 }
+    }
+  ]
+}

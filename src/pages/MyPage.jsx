@@ -18,6 +18,7 @@ import {
   AreaChart, Area, LabelList
 } from 'recharts'
 import { supabase } from '../lib/supabase'
+import { monthlyChange, splitRatioAfter } from '../lib/portfolioCalc'
 import { signedReturnTextClassStrong } from '../lib/marketDirectionColors'
 import {
   loadMyPageData,
@@ -339,6 +340,15 @@ const normalizeRealizedStockTrades = (rows = []) => (
         realizedPnlJpy: Number.isFinite(realizedPnlJpy) ? realizedPnlJpy : 0,
         sellFxRate: Number.isFinite(sellFxRate) && sellFxRate > 0 ? sellFxRate : null,
         sellFxDate: /^\d{4}-\d{2}-\d{2}$/.test(sellFxDate) ? sellFxDate : '',
+        buyLots: (Array.isArray(row?.buyLots) ? row.buyLots : Array.isArray(row?.buy_lots) ? row.buy_lots : [])
+          .map((lot) => {
+            const buyDate = String(lot?.buyDate || lot?.buy_date || '').slice(0, 10)
+            const lotQty = Number(lot?.qty)
+            const costJpy = Number(lot?.costJpy ?? lot?.cost_jpy)
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(buyDate) || !(lotQty > 0)) return null
+            return { buyDate, qty: lotQty, costJpy: Number.isFinite(costJpy) ? costJpy : 0 }
+          })
+          .filter(Boolean),
       }
     })
     .filter(Boolean)
@@ -768,9 +778,6 @@ const normalizeOwnedDisplayPrice = (symbol, value) => {
 
 const FX_RATES_TO_JPY = {
   JPY: 1,
-  USD: 150,
-  EUR: 160,
-  GBP: 190,
 }
 
 const isJpListedCode = (symbol = '') => {
@@ -908,20 +915,21 @@ const lotYenParts = (lot, qty, buyPrice, currentPrice, fxByDate, valuationUsdJpy
     const valueJpy = toJpy(qty * currentPrice, ccy)
     return { costJpy, valueJpy, pricePnlJpy: valueJpy - costJpy, fxPnlJpy: 0, included: true, costKnown: true, currency: ccy }
   }
-  const buyFx = resolveBuyFx(lot, fxByDate, currentPrice)
+  const storedBuyFx = Number(lot?.buyFxRate)
+  const buyRate = Number.isFinite(storedBuyFx) && storedBuyFx > 0 ? storedBuyFx : null
   const now = positiveUsdJpy(valuationUsdJpy)
-  const costKnown = buyFx.rate > 0
+  const costKnown = buyRate != null
   const valueKnown = now != null
-  const costJpy = costKnown ? qty * buyPrice * buyFx.rate : 0
   const valueJpy = valueKnown ? qty * currentPrice * now : 0
   if (!costKnown || !valueKnown) {
-    return { costJpy, valueJpy, pricePnlJpy: null, fxPnlJpy: null, included: valueKnown, costKnown, currency: 'USD' }
+    return { costJpy: 0, valueJpy, pricePnlJpy: null, fxPnlJpy: null, included: valueKnown, costKnown: false, currency: 'USD' }
   }
+  const costJpy = qty * buyPrice * buyRate
   return {
     costJpy,
     valueJpy,
-    pricePnlJpy: (currentPrice - buyPrice) * qty * buyFx.rate,
-    fxPnlJpy: currentPrice * qty * (now - buyFx.rate),
+    pricePnlJpy: (currentPrice - buyPrice) * qty * buyRate,
+    fxPnlJpy: currentPrice * qty * (now - buyRate),
     included: true,
     costKnown: true,
     currency: 'USD',
@@ -1008,8 +1016,8 @@ const inferFundCountryLabel = (symbol = '', name = '') => {
 const toJpy = (value, currency = 'JPY') => {
   const n = Number(value)
   if (!Number.isFinite(n)) return 0
-  const rate = Number(FX_RATES_TO_JPY[currency] || 1)
-  return n * rate
+  if (String(currency || 'JPY').toUpperCase() !== 'JPY') return 0
+  return n
 }
 
 const formatStockNativePrice = (value, currency = 'JPY') => {
@@ -1441,69 +1449,15 @@ const mergeMonthEndsAndLotBuysIntoAnchors = ({
 const buildAssetGrowthTrendData = (totalInvested, totalCurrentValue, opts = {}) => {
   const base = Math.max(0, Number(totalInvested || 0))
   const end = Math.max(0, Number(totalCurrentValue || 0))
-  const simplified = opts.simplified === true
-  const nPoints = Math.max(2, Math.min(36, Number(opts.months) || 6))
   const earliestBuyRaw = opts.earliestBuyDate ? String(opts.earliestBuyDate).trim().slice(0, 10) : ''
-
   const now = new Date()
-  if (simplified || (base <= 0 && end <= 0)) {
-    const cst = Math.round(base)
-    return [
-      { month: trendChartStartLabel(earliestBuyRaw), value: base, costJpy: cst, pnlJpy: Math.round(base - cst) },
-      { month: formatAssetTrendMd(now), value: end, costJpy: cst, pnlJpy: Math.round(end - cst) },
-    ]
-  }
-
-  let earliestYm = null
-  if (earliestBuyRaw) {
-    const parsed = new Date(`${earliestBuyRaw}T12:00:00`)
-    if (Number.isFinite(parsed.getTime())) {
-      earliestYm = parsed.getFullYear() * 12 + parsed.getMonth()
-    }
-  }
-
-  const y = now.getFullYear()
-  const m = now.getMonth()
-  const monthEndAnchors = []
-  for (let k = nPoints - 1; k >= 1; k -= 1) {
-    const firstOfMonth = new Date(y, m - k, 1)
-    const lastDay = new Date(firstOfMonth.getFullYear(), firstOfMonth.getMonth() + 1, 0)
-    if (lastDay.getTime() > now.getTime()) continue
-    const lastYm = lastDay.getFullYear() * 12 + lastDay.getMonth()
-    if (earliestYm != null && lastYm < earliestYm) continue
-    monthEndAnchors.push(lastDay)
-  }
-
-  const merged = mergeMonthEndsAndLotBuysIntoAnchors({
-    monthEndAnchorDates: monthEndAnchors,
-    now,
-    lotBuyIsoDates: Array.isArray(opts.lotBuyIsoDates) ? opts.lotBuyIsoDates : [],
-    lotMonthlyLabelByYmd: opts.lotMonthlyLabelByYmd && typeof opts.lotMonthlyLabelByYmd === 'object' ? opts.lotMonthlyLabelByYmd : null,
-    earliestBuyRaw,
-  })
-  const anchors = merged ? merged.anchors : [...monthEndAnchors, now]
-  if (anchors.length < 2) {
-    const cst = Math.round(base)
-    return [
-      { month: trendChartStartLabel(earliestBuyRaw), value: base, costJpy: cst, pnlJpy: Math.round(base - cst) },
-      { month: formatAssetTrendMd(now), value: end, costJpy: cst, pnlJpy: Math.round(end - cst) },
-    ]
-  }
-
-  const diff = end - base
-  const len = anchors.length
-  const costFlat = Math.round(base)
-  return anchors.map((d, idx) => {
-    const t = len > 1 ? idx / (len - 1) : 1
-    const value = Math.max(0, Math.round(base + diff * t))
-    const label = merged
-      ? merged.labels[idx]
-      : (idx === len - 1 ? formatAssetTrendMd(now) : formatAssetTrendMd(d))
-    return { month: label, value, costJpy: costFlat, pnlJpy: Math.round(value - costFlat) }
-  })
+  const cst = Math.round(base)
+  return [
+    { month: trendChartStartLabel(earliestBuyRaw), value: base, costJpy: cst, pnlJpy: Math.round(base - cst) },
+    { month: formatAssetTrendMd(now), value: end, costJpy: cst, pnlJpy: Math.round(end - cst) },
+  ]
 }
 
-/** 資産タブ: 合算と同じ日付軸で株式・ファンドを積み上げ（補間モード時は各系列を元本→現在を同じtで補間） */
 const buildAssetGrowthTrendSplitData = (stockInvested, stockCurrent, fundInvested, fundCurrent, opts = {}) => {
   const si = Math.max(0, Number(stockInvested || 0))
   const se = Math.max(0, Number(stockCurrent || 0))
@@ -1633,9 +1587,9 @@ const ownedStockLotCostJpy = (lot, sym, fxByDate) => {
   const ccy = resolveLotCurrency(row, lot?.price)
   if (!ccy) return 0
   if (ccy === 'USD') {
-    const fx = resolveBuyFx(row, fxByDate, lot?.price)
-    if (!(fx.rate > 0)) return 0
-    return q * buy * fx.rate
+    const stored = Number(row?.buyFxRate)
+    if (!(stored > 0)) return 0
+    return q * buy * stored
   }
   if (ccy === 'JPY') return q * buy
   return toJpy(q * buy, ccy)
@@ -1647,10 +1601,9 @@ const ownedFundLotCostJpy = (lot, fxByDate) => {
   const sym = String(lot.symbol || '').trim().toUpperCase()
   const fundCurrency = inferStockCurrency(sym)
   if (fundCurrency === 'USD') {
-    const buyDateIso = toIsoDate(lot.buyDate || lot.buy_date || '')
-    const found = fxOnOrBefore(buyDateIso, fxByDate)
-    if (!(found?.rate > 0)) return 0
-    return invest * found.rate
+    const stored = Number(lot?.buyFxRate)
+    if (!(stored > 0)) return 0
+    return invest * stored
   }
   return toJpy(invest, fundCurrency)
 }
@@ -1893,6 +1846,8 @@ const computeHistoricalWealthTrendSeries = ({
   valuationUsdJpy,
   liveStockJpy,
   liveFundJpy,
+  splits = [],
+  trades = [],
 }) => {
   const { anchors, labels } = anchorPack
   const stockRows = Array.isArray(ownedStockItems) ? ownedStockItems : []
@@ -1930,18 +1885,21 @@ const computeHistoricalWealthTrendSeries = ({
       if (!buyIso || buyIso > anchorIso) continue
       const sym = String(lot.symbol || '').trim().toUpperCase()
       if (!sym) continue
-      const qty = Math.max(0, Number(lot.qty || 0))
+      const rawQty = Math.max(0, Number(lot.qty || 0))
+      const ratio = splitRatioAfter(buyIso, sym, splits)
+      const qty = rawQty * ratio
       if (qty <= 0) continue
       const series = priceBySymbol.get(sym)
-      const px = resolveStockPriceOnDate({ lot, series, asOfIso: anchorIso })
+      const adjustedBuy = ratio > 0 ? Number(lot.buyPrice || 0) / ratio : Number(lot.buyPrice || 0)
+      const px = resolveStockPriceOnDate({ lot: { ...lot, buyPrice: adjustedBuy }, series, asOfIso: anchorIso })
       if (!px) continue
       const cur = inferStockCurrency(sym)
       const nativeVal = qty * px
       if (cur === 'USD') {
-        const r = lookupFxUsdJpyOn(anchorIso, fxByDate, valuationUsdJpy)
-        stockJpy += nativeVal * r
-      } else {
-        stockJpy += toJpy(nativeVal, cur)
+        const r = lookupFxUsdJpyOn(anchorIso, fxByDate)
+        if (r > 0) stockJpy += nativeVal * r
+      } else if (cur === 'JPY') {
+        stockJpy += nativeVal
       }
       stockCostJpy += ownedStockLotCostJpy(lot, sym, fxByDate)
     }
@@ -1961,12 +1919,46 @@ const computeHistoricalWealthTrendSeries = ({
       const cur = inferStockCurrency(sym)
       const nativeVal = units * px
       if (cur === 'USD') {
-        const r = lookupFxUsdJpyOn(anchorIso, fxByDate, valuationUsdJpy)
-        fundJpy += nativeVal * r
-      } else {
-        fundJpy += toJpy(nativeVal, cur)
+        const r = lookupFxUsdJpyOn(anchorIso, fxByDate)
+        if (r > 0) fundJpy += nativeVal * r
+      } else if (cur === 'JPY') {
+        fundJpy += nativeVal
       }
       fundCostJpy += ownedFundLotCostJpy(lot, fxByDate)
+    }
+
+    for (const trade of Array.isArray(trades) ? trades : []) {
+      const sell = toIsoDate(trade.sellDate || trade.sell_date || '')
+      if (!sell || anchorIso >= sell) continue
+      const sym = String(trade.symbol || '').trim().toUpperCase()
+      const soldLots = Array.isArray(trade.buyLots) ? trade.buyLots : []
+      for (const sold of soldLots) {
+        const buy = toIsoDate(sold.buyDate || sold.buy_date || '')
+        if (!buy || buy > anchorIso) continue
+        const soldQty = Number(sold.qty)
+        const soldCost = Number(sold.costJpy ?? sold.cost_jpy)
+        if (!(soldQty > 0)) continue
+        const series = priceBySymbol.get(sym)
+        const px = series ? closeOnOrBeforeSorted(series, anchorIso) : null
+        const price = px || (Number.isFinite(soldCost) && soldCost > 0 ? soldCost / soldQty : 0)
+        if (!(price > 0)) continue
+        const cur = inferStockCurrency(sym)
+        let value = soldQty * price
+        if (cur === 'USD') {
+          const r = lookupFxUsdJpyOn(anchorIso, fxByDate)
+          if (!(r > 0)) continue
+          value *= r
+        } else if (cur !== 'JPY') {
+          continue
+        }
+        if (trade.kind === 'fund') {
+          fundJpy += value
+          fundCostJpy += Number.isFinite(soldCost) ? soldCost : 0
+        } else {
+          stockJpy += value
+          stockCostJpy += Number.isFinite(soldCost) ? soldCost : 0
+        }
+      }
     }
 
     return {
@@ -3899,6 +3891,16 @@ const WealthSection = ({
   const [wealthMonthlyFundRealizedOpen, setWealthMonthlyFundRealizedOpen] = useState(false)
   /** stock_daily_prices から再評価した推移。取得できないときは null（補間フォールバック） */
   const [historicalWealthTrend, setHistoricalWealthTrend] = useState(null)
+  const [stockSplits, setStockSplits] = useState([])
+  const [monthlyPnlBase, setMonthlyPnlBase] = useState(null)
+  useEffect(() => {
+    let alive = true
+    supabase.from('stock_splits').select('symbol,ex_date,ratio').then(({ data, error }) => {
+      if (!alive || error) return
+      setStockSplits(Array.isArray(data) ? data : [])
+    })
+    return () => { alive = false }
+  }, [])
   const [portfolioDropSnapshot, setPortfolioDropSnapshot] = useState(null)
   const [portfolioDropThresholdPct, setPortfolioDropThresholdPct] = useState(DEFAULT_PORTFOLIO_DROP_ALERT_THRESHOLD_PCT)
   const [portfolioRiseThresholdPct, setPortfolioRiseThresholdPct] = useState(DEFAULT_PORTFOLIO_RISE_ALERT_THRESHOLD_PCT)
@@ -4266,15 +4268,22 @@ const WealthSection = ({
     let sawUsd = false
     let fxSplitReady = true
     let hideFxSplit = false
+    let pnlValueJpy = 0
     for (const lot of group.lots) {
-      const q = Math.max(0, Number(lot.qty || 0))
-      const buy = Math.max(0, Number(lot.buyPrice || 0))
+      const storedQty = Math.max(0, Number(lot.qty || 0))
+      const storedBuy = Math.max(0, Number(lot.buyPrice || 0))
+      const ratio = splitRatioAfter(toIsoDate(lot.buyDate || ''), group.symbol, stockSplits)
+      const q = storedQty * ratio
+      const buy = ratio > 0 ? storedBuy / ratio : storedBuy
       const parts = lotYenParts(lot, q, buy, price, fxRatesByDate, valuationUsdJpy)
       if (parts.currency === 'USD') sawUsd = true
       if (parts.hideFxSplit) hideFxSplit = true
       if (!parts.costKnown) fxSplitReady = false
       if (parts.included) currentValueJpy += parts.valueJpy
-      if (parts.costKnown) totalCostJpy += parts.costJpy
+      if (parts.costKnown) {
+        totalCostJpy += parts.costJpy
+        pnlValueJpy += parts.valueJpy
+      }
       if (parts.pricePnlJpy != null) pricePnlJpy += parts.pricePnlJpy
       if (parts.fxPnlJpy != null) fxPnlJpy += parts.fxPnlJpy
     }
@@ -4291,6 +4300,7 @@ const WealthSection = ({
       totalCostJpy,
       currentValue,
       currentValueJpy,
+      pnlValueJpy,
       pnlRate,
       pricePnlJpy: sawUsd && fxSplitReady && !hideFxSplit ? pricePnlJpy : null,
       fxPnlJpy: sawUsd && fxSplitReady && !hideFxSplit ? fxPnlJpy : null,
@@ -4390,17 +4400,23 @@ const WealthSection = ({
       const effectiveLatestPrice = latestPrice > 0 ? latestPrice : buyPrice
       const units = buyPrice > 0 ? totalCost / buyPrice : 0
       const currentValue = units > 0 && effectiveLatestPrice > 0 ? units * effectiveLatestPrice : 0
-      const totalCostJpy = (fundCurrency === 'USD')
-        ? (() => {
-          const found = fxOnOrBefore(toIsoDate(row.buyDate || ''), fxRatesByDate)
-          if (!(found?.rate > 0)) return 0
-          return totalCost * found.rate
-        })()
-        : toJpy(totalCost, fundCurrency)
+      const storedFundFx = Number(row.buyFxRate)
       const liveUsd = positiveUsdJpy(valuationUsdJpy)
-      const currentValueJpy = (fundCurrency === 'USD')
-        ? (liveUsd != null ? currentValue * liveUsd : 0)
-        : toJpy(currentValue, fundCurrency)
+      let totalCostJpy = 0
+      let currentValueJpy = 0
+      let costKnown = false
+      if (fundCurrency === 'USD') {
+        currentValueJpy = liveUsd != null ? currentValue * liveUsd : 0
+        if (storedFundFx > 0 && liveUsd != null) {
+          totalCostJpy = totalCost * storedFundFx
+          costKnown = true
+        }
+      } else if (fundCurrency === 'JPY') {
+        totalCostJpy = totalCost
+        currentValueJpy = currentValue
+        costKnown = true
+      }
+      const pnlValueJpy = costKnown ? currentValueJpy : 0
       return {
         id: row.id,
         symbol: row.symbol,
@@ -4416,11 +4432,13 @@ const WealthSection = ({
         currentValue,
         totalCostJpy,
         currentValueJpy,
+        pnlValueJpy,
         raw: row,
       }
     })
     const totalCostJpy = lotCalcs.reduce((s, x) => s + x.totalCostJpy, 0)
     const currentValueJpy = lotCalcs.reduce((s, x) => s + x.currentValueJpy, 0)
+    const pnlValueJpy = lotCalcs.reduce((s, x) => s + Number(x.pnlValueJpy || 0), 0)
     const totalCostNative = lotCalcs.reduce((s, x) => s + x.totalCost, 0)
     const totalUnits = lotCalcs.reduce((s, x) => s + x.units, 0)
     const pnlRate = totalCostJpy > 0 ? ((currentValueJpy - totalCostJpy) / totalCostJpy) * 100 : null
@@ -4447,6 +4465,7 @@ const WealthSection = ({
       currentValue,
       totalCostJpy,
       currentValueJpy,
+      pnlValueJpy,
       pnlRate,
     }
   })
@@ -4552,7 +4571,9 @@ const WealthSection = ({
   const totalInvested = stockTotalInvestedJpy + fundTotalInvestedJpy
   const totalCurrentValue = stockTotalCurrentJpy + fundTotalCurrentJpy
   liveWealthTotalsRef.current = { stock: stockTotalCurrentJpy, fund: fundTotalCurrentJpy }
-  const totalPnL = totalCurrentValue - totalInvested
+  const stockPnlValueJpy = groupedOwnedStocks.reduce((sum, stock) => sum + Number(stock.pnlValueJpy || 0), 0)
+  const fundPnlValueJpy = groupedOwnedFunds.reduce((sum, row) => sum + Number(row.pnlValueJpy || 0), 0)
+  const totalPnL = (stockPnlValueJpy + fundPnlValueJpy) - totalInvested
   const totalReturnRate = totalInvested > 0 ? (totalPnL / totalInvested) * 100 : 0
   const stockRealizedPnlSum = (Array.isArray(realizedStockTrades) ? realizedStockTrades : []).reduce(
     (s, t) => s + Number(t.realizedPnlJpy || 0),
@@ -4581,7 +4602,7 @@ const WealthSection = ({
       : null
   const stockOpenAndRealizedCostDenom = stockTotalInvestedJpy + stockRealizedCostSum
   const stockPnlWithRealizedJpy =
-    Number(stockTotalCurrentJpy || 0) - Number(stockTotalInvestedJpy || 0) + stockRealizedPnlSum
+    stockPnlValueJpy - Number(stockTotalInvestedJpy || 0) + stockRealizedPnlSum
   const stockReturnWithRealizedPct =
     stockOpenAndRealizedCostDenom > 0 && Number.isFinite(stockPnlWithRealizedJpy)
       ? (stockPnlWithRealizedJpy / stockOpenAndRealizedCostDenom) * 100
@@ -4619,7 +4640,7 @@ const WealthSection = ({
       : null
   const fundOpenAndRealizedCostDenom = fundTotalInvestedJpy + fundRealizedCostSum
   const fundPnlWithRealizedJpy =
-    Number(fundTotalCurrentJpy || 0) - Number(fundTotalInvestedJpy || 0) + fundRealizedPnlSum
+    fundPnlValueJpy - Number(fundTotalInvestedJpy || 0) + fundRealizedPnlSum
   const fundReturnWithRealizedPct =
     fundOpenAndRealizedCostDenom > 0 && Number.isFinite(fundPnlWithRealizedJpy)
       ? (fundPnlWithRealizedJpy / fundOpenAndRealizedCostDenom) * 100
@@ -4630,6 +4651,12 @@ const WealthSection = ({
     accountCostWithRealizedDenom > 0 && Number.isFinite(accountPnlWithRealizedJpy)
       ? (accountPnlWithRealizedJpy / accountCostWithRealizedDenom) * 100
       : null
+  const monthlyDeltaJpy = monthlyPnlBase
+    ? accountPnlWithRealizedJpy - Number(monthlyPnlBase.basePnl || 0)
+    : null
+  const monthlyDeltaPct = monthlyDeltaJpy != null && accountCostWithRealizedDenom > 0
+    ? (monthlyDeltaJpy / accountCostWithRealizedDenom) * 100
+    : null
   const totalHoldingsCount = groupedOwnedStocks.length + effectiveFundRows.length
   const assetEarliestBuy = (() => {
     const stockDates = []
@@ -4682,9 +4709,21 @@ const WealthSection = ({
         return
       }
 
-      const packC = collectTrendAnchorsFromOpts(assetGrowthOpts)
-      const packS = collectTrendAnchorsFromOpts(stockGrowthOpts)
-      const packF = collectTrendAnchorsFromOpts(fundGrowthOpts)
+      const endForPack = toLocalYmd(new Date())
+      let startForPack = [...buyDates].sort()[0]
+      const minStart = shiftIsoDateByDays(endForPack, -399)
+      if (minStart && startForPack < minStart) startForPack = minStart
+      const dailyAnchors = []
+      for (let day = startForPack, n = 0; day && day <= endForPack && n < 400; day = shiftIsoDateByDays(day, 1), n += 1) {
+        dailyAnchors.push(new Date(`${day}T12:00:00`))
+      }
+      const dailyPack = {
+        anchors: dailyAnchors,
+        labels: dailyAnchors.map((d, idx) => (idx === dailyAnchors.length - 1 ? formatAssetTrendLatestLabel(d) : formatAssetTrendMd(d))),
+      }
+      const packC = dailyPack.anchors.length >= 2 ? dailyPack : collectTrendAnchorsFromOpts(assetGrowthOpts)
+      const packS = packC
+      const packF = packC
 
       const endStr = toLocalYmd(new Date())
       const startCandidates = [
@@ -4779,6 +4818,8 @@ const WealthSection = ({
         })
 
         const live = liveWealthTotalsRef.current
+        const stockTrades = (Array.isArray(realizedStockTrades) ? realizedStockTrades : []).map((t) => ({ ...t, kind: 'stock' }))
+        const fundTrades = (Array.isArray(realizedFundTrades) ? realizedFundTrades : []).map((t) => ({ ...t, kind: 'fund' }))
         const seriesC = computeHistoricalWealthTrendSeries({
           anchorPack: packC,
           ownedStockItems: stocks,
@@ -4788,6 +4829,8 @@ const WealthSection = ({
           valuationUsdJpy,
           liveStockJpy: Number(live.stock || 0),
           liveFundJpy: Number(live.fund || 0),
+          splits: stockSplits,
+          trades: [...stockTrades, ...fundTrades],
         })
         const seriesS = computeHistoricalWealthTrendSeries({
           anchorPack: packS,
@@ -4798,6 +4841,8 @@ const WealthSection = ({
           valuationUsdJpy,
           liveStockJpy: Number(live.stock || 0),
           liveFundJpy: 0,
+          splits: stockSplits,
+          trades: stockTrades,
         })
         const seriesF = computeHistoricalWealthTrendSeries({
           anchorPack: packF,
@@ -4808,7 +4853,44 @@ const WealthSection = ({
           valuationUsdJpy,
           liveStockJpy: 0,
           liveFundJpy: Number(live.fund || 0),
+          splits: stockSplits,
+          trades: fundTrades,
         })
+        const priceBook = {}
+        for (const [sym, rows] of priceBySymbol) {
+          priceBook[sym] = (rows || []).map((r) => [String(r.trade_date || ''), Number(r.close)])
+        }
+        const month = monthlyChange({
+          today: toLocalYmd(new Date()),
+          fx_latest: valuationUsdJpy,
+          splits: stockSplits,
+          prices: priceBook,
+          lots: [
+            ...stocks.map((lot) => ({
+              ticker: lot.symbol,
+              buy_date: toIsoDate(lot.buyDate || ''),
+              qty: Number(lot.qty),
+              buy_price: Number(lot.buyPrice),
+              buy_fx_rate: Number(lot.buyFxRate) > 0 ? Number(lot.buyFxRate) : null,
+            })),
+            ...funds.map((lot) => ({
+              ticker: lot.symbol,
+              buy_date: toIsoDate(lot.buyDate || lot.buy_date || ''),
+              qty: Number(lot.buyPrice || lot.buy_price) > 0 ? Number(lot.investAmount || lot.invest_amount) / Number(lot.buyPrice || lot.buy_price) : 0,
+              buy_price: Number(lot.buyPrice || lot.buy_price),
+              invest_amount: Number(lot.investAmount || lot.invest_amount),
+              buy_fx_rate: Number(lot.buyFxRate) > 0 ? Number(lot.buyFxRate) : null,
+            })),
+          ],
+          trades: [...stockTrades, ...fundTrades].map((t) => ({
+            symbol: t.symbol,
+            sell_date: toIsoDate(t.sellDate || ''),
+            realized_pnl_jpy: Number(t.realizedPnlJpy || 0),
+            cost_basis_jpy: Number(t.costBasisJpy || 0),
+            buy_lots: t.buyLots || [],
+          })),
+        })
+        if (alive) setMonthlyPnlBase({ baseDate: month.base_date, basePnl: month.base_pnl })
 
         if (!alive) return
         setHistoricalWealthTrend({
@@ -4866,6 +4948,9 @@ const WealthSection = ({
     effectiveFundRows.length,
     stockTotalInvestedJpy,
     fundTotalInvestedJpy,
+    stockSplits,
+    realizedStockTrades,
+    realizedFundTrades,
   ])
 
   const stockGrowthData = historicalWealthTrend?.stockGrowthData ?? stockGrowthDataFb
@@ -5267,8 +5352,8 @@ const WealthSection = ({
     }
   }, [portfolioAlertHistoryKey])
   /** 株式／ファンドを分けた累計（評価−元本）と収益率（月次変動サマリー・合計の定義は totalPnL／totalReturnRate と一致） */
-  const aggStockPnLJpy = Number(stockTotalCurrentJpy || 0) - Number(stockTotalInvestedJpy || 0)
-  const aggFundPnLJpy = Number(fundTotalCurrentJpy || 0) - Number(fundTotalInvestedJpy || 0)
+  const aggStockPnLJpy = stockPnlValueJpy - Number(stockTotalInvestedJpy || 0)
+  const aggFundPnLJpy = fundPnlValueJpy - Number(fundTotalInvestedJpy || 0)
   const aggStockReturnPct = stockTotalInvestedJpy > 0 && Number.isFinite(aggStockPnLJpy)
     ? (aggStockPnLJpy / stockTotalInvestedJpy) * 100
     : null
@@ -6397,7 +6482,7 @@ const WealthSection = ({
                   評価が原価以上のとき → 灰＝<span className="font-black">取得原価</span>、その上の青＝<span className="font-black">含み益</span>（柱の合計高さ＝評価額）。評価が原価を下回るとき → 灰＝<span className="font-black">評価額</span>、その上の薄青＝<span className="font-black">含み損</span>の分（合計高さ＝原価）。「ベース」が常に原価だけではありません。
                 </p>
                 <p>
-                  売却記録の<span className="font-black">実現損益</span>はこのグラフには入りません（上部レポートの「実現」）。売却でロットが減ると、以降の柱は評価・原価ともに下がって見えます。日足がDBに無い区間は補間になることがあります。
+                  売却記録の<span className="font-black">実現損益</span>はこのグラフには入りません（上部レポートの「実現」）。売却でロットが減ると、以降の柱は評価・原価ともに下がって見えます。売却済みロットは買付日から売却日前日まで、売却記録の buy_lots があるときだけ足します。
                 </p>
               </div>
             </div>
@@ -7341,7 +7426,7 @@ const WealthSection = ({
                   評価が原価以上のとき → 灰＝<span className="font-black">取得原価</span>、その上の緑＝<span className="font-black">含み益</span>（柱の合計高さ＝評価額）。評価が原価を下回るとき → 灰＝<span className="font-black">評価額</span>、その上の赤＝<span className="font-black">含み損</span>の分（合計高さ＝原価）。「ベース」が常に原価だけではありません。
                 </p>
                 <p>
-                  売却記録の<span className="font-black">実現損益</span>はこのグラフには入りません（上部レポートの「実現」）。売却でロットが減ると、以降の柱は評価・原価ともに下がって見えます。日足がDBに無い区間は補間になることがあります。
+                  売却記録の<span className="font-black">実現損益</span>はこのグラフには入りません（上部レポートの「実現」）。売却でロットが減ると、以降の柱は評価・原価ともに下がって見えます。売却済みロットは買付日から売却日前日まで、売却記録の buy_lots があるときだけ足します。
                 </p>
               </div>
             </div>
@@ -7499,46 +7584,48 @@ const WealthSection = ({
             </h3>
             <div className="mt-4 flex flex-col min-h-0 xl:flex-1 xl:min-h-0">
             <div className="space-y-3 text-sm">
-              {totalInvested > 0 && Number.isFinite(totalPnL) ? (
+              {accountCostWithRealizedDenom > 0 && Number.isFinite(accountPnlWithRealizedJpy) ? (
                 <div className="rounded-xl border border-emerald-200/80 dark:border-emerald-900/50 bg-emerald-50/50 dark:bg-emerald-950/20 px-3 py-3">
                   <div className="flex items-start justify-between gap-2.5">
                     <div className="min-w-0 pr-1">
                       <span className="text-slate-600 dark:text-slate-300 text-xs sm:text-[13px] block leading-snug font-bold">
-                        合計の含み損益（現在評価合計 − 取得元本合計）
+                        総損益（評価額 − 保有原価 + 実現損益）
                       </span>
                       <span className="mt-1 block text-[11px] sm:text-xs font-semibold leading-snug text-emerald-800/80 dark:text-emerald-300/80">
-                        累計：元本に利益を繰り入れません。（評価−元本）÷元本＝括弧の%。
+                        元本は保有原価に、売却した分の取得原価を足したもの。括弧の%は総損益÷元本。
                       </span>
                     </div>
-                    <div className={`shrink-0 font-black tabular-nums text-right leading-tight ${signedReturnTextClassStrong(totalPnL)}`}>
-                      <div className="text-lg sm:text-xl">{totalPnL >= 0 ? '+' : ''}¥{Math.round(totalPnL).toLocaleString('ja-JP')}</div>
-                      {Number.isFinite(totalReturnRate) ? (
+                    <div className={`shrink-0 font-black tabular-nums text-right leading-tight ${signedReturnTextClassStrong(accountPnlWithRealizedJpy)}`}>
+                      <div className="text-lg sm:text-xl">{accountPnlWithRealizedJpy >= 0 ? '+' : ''}¥{Math.round(accountPnlWithRealizedJpy).toLocaleString('ja-JP')}</div>
+                      {accountReturnWithRealizedPct != null && Number.isFinite(accountReturnWithRealizedPct) ? (
                         <div className="text-xs sm:text-sm font-bold mt-0.5">
-                          ({totalReturnRate >= 0 ? '+' : ''}{totalReturnRate.toFixed(2)}%)
+                          ({accountReturnWithRealizedPct >= 0 ? '+' : ''}{accountReturnWithRealizedPct.toFixed(2)}%)
                         </div>
                       ) : null}
                     </div>
                   </div>
                 </div>
               ) : null}
-              {accountCostWithRealizedDenom > 0 && accountReturnWithRealizedPct != null && Number.isFinite(accountReturnWithRealizedPct) && (stockRealizedPnlSum !== 0 || stockRealizedCostSum !== 0 || fundRealizedPnlSum !== 0 || fundRealizedCostSum !== 0) ? (
+              {monthlyDeltaJpy != null && Number.isFinite(monthlyDeltaJpy) ? (
                 <div className="rounded-xl border border-indigo-200/80 dark:border-indigo-900/50 bg-indigo-50/50 dark:bg-indigo-950/20 px-3 py-3">
                   <div className="flex items-start justify-between gap-2.5">
                     <div className="min-w-0 pr-1">
                       <span className="text-slate-600 dark:text-slate-300 text-xs sm:text-[13px] block leading-snug font-bold">
-                        口座全体・総損益（含み + 株式・ファンドの実現）
+                        1ヶ月の変化
                       </span>
                       <span className="mt-1 block text-[11px] sm:text-xs font-semibold leading-snug text-indigo-900/80 dark:text-indigo-200/85">
-                        株式・ファンドの確定損益を上の含み損益に加算。分母は保有元本合計に、売却した株式・ファンドの取得原価（累計）を加えたもの。
+                        今日の総損益から、1ヶ月前以前で最後に評価できた日{monthlyPnlBase?.baseDate ? `（${monthlyPnlBase.baseDate}）` : ''}の総損益を引いた差。括弧の%はその差÷今日の元本。
                       </span>
                     </div>
-                    <div className={`shrink-0 font-black tabular-nums text-right leading-tight ${signedReturnTextClassStrong(accountPnlWithRealizedJpy)}`}>
+                    <div className={`shrink-0 font-black tabular-nums text-right leading-tight ${signedReturnTextClassStrong(monthlyDeltaJpy)}`}>
                       <div className="text-lg sm:text-xl">
-                        {accountPnlWithRealizedJpy >= 0 ? '+' : ''}¥{Math.round(accountPnlWithRealizedJpy).toLocaleString('ja-JP')}
+                        {monthlyDeltaJpy >= 0 ? '+' : ''}¥{Math.round(monthlyDeltaJpy || 0).toLocaleString('ja-JP')}
                       </div>
-                      <div className="text-xs sm:text-sm font-bold mt-0.5">
-                        ({accountReturnWithRealizedPct >= 0 ? '+' : ''}{accountReturnWithRealizedPct.toFixed(2)}%)
-                      </div>
+                      {monthlyDeltaPct != null && Number.isFinite(monthlyDeltaPct) ? (
+                        <div className="text-xs sm:text-sm font-bold mt-0.5">
+                          ({monthlyDeltaPct >= 0 ? '+' : ''}{monthlyDeltaPct.toFixed(2)}%)
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 </div>
@@ -14210,24 +14297,6 @@ export default function MyPage({
       .catch(() => { if (alive) setFxRatesByDate({}) })
     return () => { alive = false }
   }, [ownedStockItems])
-
-  useEffect(() => {
-    if (!fxRatesByDate || Object.keys(fxRatesByDate).length === 0) return
-    setOwnedStocks((prev) => {
-      let changed = false
-      const next = prev.map((lot) => {
-        if (String(lot?.currency || '').toUpperCase() !== 'USD') return lot
-        if (Number(lot?.buyFxRate) > 0) return lot
-        const found = fxOnOrBefore(lot?.buyDate, fxRatesByDate)
-        if (!(found?.rate > 0)) return lot
-        changed = true
-        return { ...lot, buyFxRate: found.rate, buyFxDate: found.asOf }
-      })
-      if (!changed) return prev
-      ownedStockCloudTouchedRef.current = true
-      return next
-    })
-  }, [fxRatesByDate])
 
   useEffect(() => {
     let alive = true

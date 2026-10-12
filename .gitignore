@@ -33,3 +33,5 @@ dist-ssr
 .tmp_*
 .tmp_pydeps/
 *.bak
+
+supabase/.temp/pooler-url

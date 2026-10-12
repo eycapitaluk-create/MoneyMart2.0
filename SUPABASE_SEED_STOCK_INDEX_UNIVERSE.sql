@@ -78,7 +78,7 @@ values
   ('AZN', 'US', 'stock', 'SP500', 250, 'ヘルスケア', 'Pharmaceuticals', 750),
   ('HSBC', 'US', 'stock', 'SP500', 180, '金融', 'Banks', 760),
   ('BP', 'US', 'stock', 'SP500', 110, 'エネルギー', 'Integrated Oil & Gas', 770),
-  ('VRT', 'US', 'stock', 'SP500', 35, '資本財・産業', 'Electrical Components & Equipment', 780),
+  ('VRT', 'US', 'stock', 'SP500', 35, 'Industrials', 'Electrical Components & Equipment', 780),
   -- JP NIKKEI225
   ('7203.T', 'JP', 'stock', 'NIKKEI225', 350, '資本財・産業', 'Auto Manufacturers', 10),
   ('6758.T', 'JP', 'stock', 'NIKKEI225', 120, 'テクノロジー', 'Consumer Electronics', 20),

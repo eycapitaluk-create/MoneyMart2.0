@@ -25,7 +25,7 @@ function normalizeSecret(value) {
   return raw
 }
 
-const DEFAULT_MODEL = 'claude-3-5-haiku-20241022'
+const DEFAULT_MODEL = 'claude-haiku-4-5-20251001'
 const GEMINI_DEFAULT_MODEL = 'gemini-2.0-flash'
 
 function escapeRegExp(s) {

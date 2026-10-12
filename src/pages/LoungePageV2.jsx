@@ -849,7 +849,7 @@ export default function LoungePageV2({ bootUser = undefined, authReady = false }
                   className="hidden"
                 />
                 <textarea
-                  placeholder="市場の動向、気になる銘柄、金融のギモンをシェアしましょう...（#ハッシュタグで銘柄・トピックを追加）"
+                  placeholder="市場の動向、気になる銘柄、金融のギモンを共有できます...（#ハッシュタグで銘柄・トピックを追加）"
                   value={composeText}
                   onChange={(e) => setComposeText(e.target.value)}
                   className="w-full bg-transparent resize-none outline-none text-[15px] sm:text-[16px] leading-6 text-slate-900 dark:text-slate-100 placeholder-slate-400 min-h-[80px]"
@@ -1254,7 +1254,7 @@ export default function LoungePageV2({ bootUser = undefined, authReady = false }
           </div>
 
           <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-700 shadow-sm">
-            <h3 className="font-extrabold text-[14px] text-slate-900 dark:text-slate-100 mb-3">おすすめユーザー</h3>
+            <h3 className="font-extrabold text-[14px] text-slate-900 dark:text-slate-100 mb-3">メンバー</h3>
             <div className="space-y-2">
               {suggestedUsers.map((row, index) => (
                 <div key={row.id} className="flex items-center justify-between gap-2">
@@ -1283,7 +1283,7 @@ export default function LoungePageV2({ bootUser = undefined, authReady = false }
               ))}
               {!suggestedUsersLoading && suggestedUsers.length === 0 && (
                 <div className="rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-600 px-4 py-4 text-sm font-medium text-slate-400 dark:text-slate-500">
-                  おすすめユーザーはまだありません。
+                  表示できるメンバーはまだありません。
                 </div>
               )}
               {suggestedUsersLoading && (

@@ -13,6 +13,7 @@
 import { readFileSync } from 'fs'
 import { resolve } from 'path'
 import { createClient } from '@supabase/supabase-js'
+import { isWeekendTradeDate } from '../api/_lib/price-series-cleaner.js'
 
 try {
   const raw = readFileSync(resolve(process.cwd(), '.env.local'), 'utf8')
@@ -170,7 +171,7 @@ async function main() {
     const tradeDate = toDateOnly(r?.date)
     const rawClose = r?.marketstack_last ?? r?.last ?? r?.close ?? r?.mid
     const close = normalizePriceNumber(rawClose)
-    if (!tradeDate || close == null) {
+    if (!tradeDate || close == null || isWeekendTradeDate(tradeDate)) {
       dropped.push(r)
       continue
     }

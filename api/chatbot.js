@@ -6,16 +6,20 @@
  * Response: { reply: string, usage?: { input_tokens, output_tokens } }
  */
 import Anthropic from '@anthropic-ai/sdk'
+import {
+  PAYJP_CARD_BRANDS_CHATBOT_CONTEXT,
+  PAYJP_ELEVEN_YEN_CHATBOT_CONTEXT,
+} from '../src/constants/payjpBillingFaq.js'
+import { GOOGLE_LOGIN_CHATBOT_CONTEXT } from '../src/constants/authFaq.js'
 
-const DEFAULT_MODEL = 'claude-3-5-haiku-20241022'
+const DEFAULT_MODEL = 'claude-haiku-4-5-20251001'
 const DEFAULT_ANTHROPIC_FALLBACKS = [
-  'claude-3-5-haiku-latest',
-  'claude-3-5-sonnet-latest',
-  'claude-sonnet-4-20250514',
+  'claude-haiku-4-5',
+  'claude-sonnet-4-6',
 ]
 const DEFAULT_GEMINI_MODEL = 'gemini-2.0-flash'
 const OFF_TOPIC_REPLY = 'MoneyMartサポートは、投資・金融・税制（一般情報）およびサービス利用方法に関するご質問を中心にご案内しています。恐れ入りますが、投資・金融に関する内容（例：新NISA、ETF、積立、手数料、配当、ポートフォリオ）をご質問ください。'
-const HIGH_RISK_ADVICE_REPLY = '個別銘柄の売買推奨や、いつ買う/売るべきかといった投資判断の指示はご案内できません。MoneyMartでは一般的な情報整理（制度の違い、確認ポイント、リスクの見方）をお手伝いします。必要に応じて、金融機関の公式情報や専門家へご相談ください。'
+const HIGH_RISK_ADVICE_REPLY = '個別銘柄の売買の指示や、いつ買う・売るかという判断はご案内できません。MoneyMartでは一般的な情報整理（制度の違い、確認ポイント、リスクの見方）をお手伝いします。必要に応じて、金融機関の公式情報や専門家へご相談ください。'
 const IN_SCOPE_KEYWORDS = [
   // Japanese
   '投資', '金融', '株', '株式', '銘柄', 'ファンド', '投信', '投資信託', 'etf', 'nisa', '新nisa', 'ideco',
@@ -26,6 +30,8 @@ const IN_SCOPE_KEYWORDS = [
   '투자', '주식', '펀드', '배당', '세금', '포트폴리오', '자산', '시장', 'etf', 'nisa',
   // Product/support scope
   'moneymart', 'マネーマート', '회원', '가입', '로그인', 'login', 'signup', 'mypage', 'マイページ', '프리미엄', 'プレミアム',
+  'pay.jp', 'payjp', '決済', '課金', 'カード', 'クレジット', '返金', 'オーソリ', '11円', '11円', '明細', '請求', '解約',
+  'google', 'googleログイン', 'supabase', 'oauth', 'ソーシャル', '外部認証', '続行', 'supabase.co',
 ]
 const HIGH_RISK_ADVICE_KEYWORDS = [
   // Japanese
@@ -96,10 +102,13 @@ const SYSTEM_PROMPT = [
   'Respond in Japanese unless the user writes clearly in another language; then mirror their language briefly or use Japanese with a short note.',
   'Scope: general education on investing, ETFs, funds, taxes at a high level, platform usage, and how to find information on the site.',
   'Tone: polite, concise, practical. Use bullet lists when it helps readability.',
-  'Do not provide personalized legal, tax, or investment advice that could be construed as a recommendation to buy/sell specific securities for this user.',
+  'Do not provide personalized legal, tax, or investment advice that could be construed as an instruction to buy or sell specific securities for this user.',
   'Do not guarantee outcomes. For tax and regulations, tell the user to confirm with qualified professionals and official sources (e.g. 国税庁, 金融庁).',
   'You cannot see the user\'s account balance, holdings, or private data. If asked, explain that limitation and suggest using My Page or official statements.',
   'If unsure, say you are not sure rather than inventing facts.',
+  PAYJP_ELEVEN_YEN_CHATBOT_CONTEXT,
+  PAYJP_CARD_BRANDS_CHATBOT_CONTEXT,
+  GOOGLE_LOGIN_CHATBOT_CONTEXT,
 ].join(' ')
 
 function sendJson(res, status, payload) {

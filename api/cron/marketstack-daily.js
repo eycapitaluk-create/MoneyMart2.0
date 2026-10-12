@@ -1,6 +1,13 @@
 import { createClient } from '@supabase/supabase-js'
 import { STOCK_LIST_400 } from '../../src/data/stockList400.js'
 import { MARKETSTACK_BLOCKLIST_EXPORT, ETF_SYMBOLS_FROM_XLSX } from '../../src/data/etfListFromXlsx.js'
+import { partitionIncomingPrices, writePriceQuarantine } from '../_lib/price-ingest-guard.js'
+import {
+  getLastJPTradingDate,
+  getLastUSTradingDate,
+  rowsForRequestedSession,
+} from '../_lib/tradingSessionDate.js'
+export { getLastJPTradingDate, getLastUSTradingDate, rowsForRequestedSession }
 
 // Fallback when env not set - US+JP from stockList400 (us/jp_prices_final.csv 기반)
 const STOCK_LIST_US_JP_SYMBOLS = STOCK_LIST_400
@@ -14,7 +21,7 @@ const DEFAULT_MARKETSTACK_SYMBOLS = [
   'NVDA','AAPL','MSFT','AMZN','GOOGL','META','TSLA','AVGO','GOOG','COST',
   'NFLX','TMUS','ADBE','AMD','PEP','LIN','CSCO','INTU','ISRG','AMGN',
   'QCOM','TXN','HON','AMAT','BKNG','ADP','SBUX','MDLZ','GILD','ADI',
-  'MU','REGN','VRTX','VRT','PANW','SNPS','CDNS','KLAC','ASML','PYPL','MELI',
+  'MU','REGN','VRTX','VRT','PANW','SNPS','CDNS','KLAC','ASML','SKHY','PYPL','MELI',
   'MAR','LRCX','NXPI','CTAS','ORLY','FTNT','MNST','ADSK','WDAY','PDD',
   'AEP','MCHP','KDP','CPRT','CHTR','KHC','IDXX','EXC','ROST','PAYX',
   'PCAR','DXCM','MRVL','CSX','GEHC','TEAM','AZN','BKR','ON',
@@ -75,6 +82,8 @@ const MARKETSTACK_TEMP_BAD_SYMBOLS = new Set([
 // EU/UK 제외 (EUNK.DE 등)
 const REQUIRED_HEATMAP_SYMBOLS = [
   'ACWI', 'MCHI', '1329.T', '1475.T', 'AAXJ', 'EEM', 'IVV', 'IJH', 'IJR',
+  'VOO', 'QQQ', 'VWO', 'VT', 'BND',
+  'VEA', 'LQD', 'IEF', 'VNQ', 'VTI',
   'IYE', 'IYM', 'IYJ', 'IYC', 'IYK', 'IYH', 'IYF', 'IYW', 'IYZ', 'IDU', 'IYR',
   'TLT', '2621.T',
   // 원자재 (Commodities via ETF proxies, fallback when commodity_daily_prices empty)
@@ -165,12 +174,8 @@ const normalizeVolumeNumber = (value) => {
 }
 
 const pickReliableClose = (row = {}) => {
-  const close = normalizePriceNumber(row?.close)
-  const marketstackLast = normalizePriceNumber(row?.marketstack_last)
-  const last = normalizePriceNumber(row?.last)
-  const mid = normalizePriceNumber(row?.mid)
-  // Prefer canonical close first. Some symbols return inconsistent marketstack_last.
-  return close ?? marketstackLast ?? last ?? mid
+  // Published close is the unadjusted session close. Adjusted fields stay unused.
+  return normalizePriceNumber(row?.close)
 }
 
 const getJson = async (url, init) => {
@@ -227,32 +232,45 @@ const fetchMarketstackRows = async (marketstackKey, symbols, opts = {}) => {
 
 
 
-const getLastUSTradingDate = () => {
-  const d = new Date()
-  const utcDay = d.getUTCDay()
-  const utcDate = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()))
-  if (utcDay === 0) utcDate.setUTCDate(utcDate.getUTCDate() - 2)
-  else if (utcDay === 6) utcDate.setUTCDate(utcDate.getUTCDate() - 1)
-  return utcDate.toISOString().slice(0, 10)
-}
-
-/** 東京市場の最終営業日 (Asia/Tokyo) */
-const getLastJPTradingDate = () => {
-  const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit' })
-  const [y, m, d] = fmt.format(new Date()).split('-').map(Number)
-  const jstDate = new Date(Date.UTC(y, m - 1, d))
-  const day = jstDate.getUTCDay()
-  if (day === 0) jstDate.setUTCDate(jstDate.getUTCDate() - 2)
-  else if (day === 6) jstDate.setUTCDate(jstDate.getUTCDate() - 1)
-  return jstDate.toISOString().slice(0, 10)
-}
-
 const isUSSymbol = (s) => {
   if (!s || typeof s !== 'string') return false
   const u = s.toUpperCase()
   if (u.endsWith('.T') || u.endsWith('.L')) return false
   if (/\.(AS|DE|PA|MC|BR|OL|SW|HE|IR|CO|SE|MI|MC|ST|VX)$/.test(u)) return false
   return true
+}
+
+export const US_INDEX_SYMBOLS = Object.freeze(['^GSPC', '^DJI', '^IXIC', '^VIX', '^TNX', '^MOVE'])
+export const JP_INDEX_SYMBOLS = Object.freeze(['^N225'])
+
+export function resolveScheduledSymbolSet({ indexScope, jpEtfOnly, etfSymbols }) {
+  if (indexScope === 'us') {
+    return { symbols: [...US_INDEX_SYMBOLS], budgetMode: 'index_us', priceDateMarket: 'us' }
+  }
+  if (indexScope === 'jp') {
+    return { symbols: [...JP_INDEX_SYMBOLS], budgetMode: 'index_jp', priceDateMarket: 'jp' }
+  }
+  if (jpEtfOnly) {
+    return { symbols: [...etfSymbols], budgetMode: 'jp_etf_universe', priceDateMarket: 'jp' }
+  }
+  return null
+}
+
+export function scheduledEodPlan({ symbols, priceDateMarket, usTradeDate, jpTradeDate }) {
+  const list = Array.isArray(symbols) ? symbols : []
+  const market = priceDateMarket === 'jp' || priceDateMarket === 'us'
+    ? priceDateMarket
+    : list.length > 0 && list.every((s) => String(s || '').toUpperCase().endsWith('.T'))
+      ? 'jp'
+      : list.length > 0 && list.every((s) => isUSSymbol(s))
+        ? 'us'
+        : 'latest'
+  if (market === 'us') return { kind: 'us', date: usTradeDate, exchange: '' }
+  if (market === 'jp') {
+    const xtks = list.every((s) => String(s || '').toUpperCase().endsWith('.T'))
+    return { kind: 'jp', date: jpTradeDate, exchange: xtks ? 'XTKS' : '' }
+  }
+  return { kind: 'latest', date: '', exchange: '' }
 }
 
 /** jp / jp_etf / us / all — 같은 scope 내에서만 8h 중복 스킵 (US·JP 크론이 서로 막히지 않게) */
@@ -277,57 +295,31 @@ const fetchChunkRows = async (marketstackKey, symbols, opts = {}) => {
     const authQuery = useHeaderAuth ? '' : `access_key=${encodedKey}&`
     const init = useHeaderAuth ? { headers: { apikey: marketstackKey } } : undefined
 
-    // v2 + US 청크: intraday 먼저 (IEX)
-    const allUS = symbols.every((s) => isUSSymbol(s))
-    if (version === 'v2' && allUS) {
-      try {
-        const tradeDate = safeOpts.usTradeDateOverride || getLastUSTradingDate()
-        const intradayUrl = `https://api.marketstack.com/v2/intraday/${tradeDate}?${authQuery}symbols=${encodedSymbols}&interval=15min&limit=100&sort=DESC`
-        const intradayJson = await getJson(intradayUrl, init)
-        const intradayRows = Array.isArray(intradayJson?.data) ? intradayJson.data : []
-        if (intradayRows.length > 0) {
-          const seen = new Set()
-          const deduped = intradayRows.filter((r) => {
-            const s = r?.symbol || r?.ticker
-            if (!s || seen.has(s)) return false
-            seen.add(s)
-            return true
-          })
-          const normalized = deduped.map((r) => ({
-            ...r,
-            close: pickReliableClose(r),
-          }))
-          return { rows: normalized, endpoint: `v2:intraday:${authMode}` }
-        }
-      } catch (_) { /* intraday fallback to EOD */ }
-    }
-
-    // EOD: US 청크는 eod/{US날짜}, JP 전용 청크는 eod/{JP날짜}&exchange=XTKS로 날짜 지정 조회
+    // Official dated EOD is the daily bar. Intraday is not stored as the close.
     const usTradeDate = safeOpts.usTradeDateOverride || getLastUSTradingDate()
     const jpTradeDate = safeOpts.jpTradeDateOverride || getLastJPTradingDate()
-    const hasNonUS = symbols.some((s) => !isUSSymbol(s))
-    const allJP = symbols.every((s) => s?.toUpperCase().endsWith('.T'))
+    const eodPlan = scheduledEodPlan({
+      symbols,
+      priceDateMarket: safeOpts.priceDateMarket,
+      usTradeDate,
+      jpTradeDate,
+    })
 
-    if (!hasNonUS) {
-      const dateUrl = `https://api.marketstack.com/${version}/eod/${usTradeDate}?${authQuery}symbols=${encodedSymbols}`
-      try {
-        const dateJson = await getJson(dateUrl, init)
-        const dateRows = Array.isArray(dateJson?.data) ? dateJson.data : []
-        if (dateRows.length > 0) {
-          return { rows: dateRows, endpoint: `${version}:eod:${usTradeDate}:${authMode}` }
-        }
-      } catch (_) { /* fallback to latest */ }
-    }
-
-    if (allJP) {
-      const jpDateUrl = `https://api.marketstack.com/${version}/eod/${jpTradeDate}?${authQuery}symbols=${encodedSymbols}&exchange=XTKS`
-      try {
-        const jpDateJson = await getJson(jpDateUrl, init)
-        const jpDateRows = Array.isArray(jpDateJson?.data) ? jpDateJson.data : []
-        if (jpDateRows.length > 0) {
-          return { rows: jpDateRows, endpoint: `${version}:eod:${jpTradeDate}:XTKS:${authMode}` }
-        }
-      } catch (_) { /* fallback to latest */ }
+    if (eodPlan.kind === 'us' || eodPlan.kind === 'jp') {
+      const exchangeQuery = eodPlan.exchange ? `&exchange=${eodPlan.exchange}` : ''
+      const dateUrl = `https://api.marketstack.com/${version}/eod/${eodPlan.date}?${authQuery}symbols=${encodedSymbols}${exchangeQuery}`
+      const endpointBase = eodPlan.exchange
+        ? `${version}:eod:${eodPlan.date}:${eodPlan.exchange}:${authMode}`
+        : `${version}:eod:${eodPlan.date}:${authMode}`
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          const dateJson = await getJson(dateUrl, init)
+          const dateRows = rowsForRequestedSession(dateJson?.data, eodPlan.date)
+          if (dateRows.length > 0) return { rows: dateRows, endpoint: endpointBase }
+        } catch (_) { /* retry this same session date; do not move the date */ }
+        if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 500))
+      }
+      return { rows: [], endpoint: `${endpointBase}:no-data`, noData: true }
     }
 
     const latestUrl = `https://api.marketstack.com/${version}/eod/latest?${authQuery}symbols=${encodedSymbols}`
@@ -397,12 +389,16 @@ export default async function handler(req, res) {
   const overrideSymbols = parseSymbols(requestUrl.searchParams.get('symbols') || '')
   const tradeDateOverride = requestUrl.searchParams.get('trade_date') || ''
   const jpEtfOnly = parseBoolLike(requestUrl.searchParams.get('jp_etf_only'))
+  const indexScopeRaw = String(requestUrl.searchParams.get('index_scope') || '').trim().toLowerCase()
+  const indexScope = indexScopeRaw === 'us' || indexScopeRaw === 'jp' ? indexScopeRaw : ''
   const jpOnly = parseBoolLike(requestUrl.searchParams.get('jp_only')) || jpEtfOnly
   const hasUsOnlyParam = requestUrl.searchParams.has('us_only')
   const usOnly = hasUsOnlyParam
     ? parseBoolLike(requestUrl.searchParams.get('us_only'))
     : String(process.env.MARKETSTACK_US_ONLY || 'true').toLowerCase() !== 'false'
-  const runScope = jpEtfOnly ? 'jp_etf' : jpOnly ? 'jp' : usOnly ? 'us' : 'all'
+  const runScope = indexScope
+    ? `index_${indexScope}`
+    : jpEtfOnly ? 'jp_etf' : jpOnly ? 'jp' : usOnly ? 'us' : 'all'
   const monthlyBudgetRequests = parsePositiveInt(
     process.env.MARKETSTACK_MONTHLY_BUDGET_REQUESTS,
     10000
@@ -565,12 +561,21 @@ export default async function handler(req, res) {
         selectedSymbols = selectedSymbols.filter((s) => etfUpperStatic.has(String(s).toUpperCase()))
         budgetMode = `${budgetMode}_jp_etf`
       }
-    } else if (usOnly) {
+    } else if (usOnly && !indexScope) {
       selectedSymbols = selectedSymbols.filter((s) => isUSSymbol(s))
       budgetMode = `${budgetMode}_us_only`
     }
+    const scheduledSet = resolveScheduledSymbolSet({
+      indexScope,
+      jpEtfOnly,
+      etfSymbols: ETF_SYMBOLS_FROM_XLSX.filter((s) => !MARKETSTACK_BLOCKLIST_EXPORT.has(s)),
+    })
+    if (scheduledSet) {
+      selectedSymbols = scheduledSet.symbols
+      budgetMode = scheduledSet.budgetMode
+    }
     // MARKETSTACK_MAX_SYMBOLS: 통합(비지역) 실행에만 적용. jp_only / us_only 크론은 지역 심볼 전부 수집.
-    const regionDedicatedRun = jpOnly || usOnly
+    const regionDedicatedRun = jpOnly || usOnly || Boolean(scheduledSet)
     if (!regionDedicatedRun && maxSymbolsPerRun > 0 && selectedSymbols.length > maxSymbolsPerRun) {
       selectedSymbols = selectedSymbols.slice(0, maxSymbolsPerRun)
       budgetMode = budgetMode === 'all_tiers' ? 'all_tiers_capped' : `${budgetMode}_capped`
@@ -633,6 +638,7 @@ export default async function handler(req, res) {
     }
 
     const fetchOpts = {}
+    if (scheduledSet?.priceDateMarket) fetchOpts.priceDateMarket = scheduledSet.priceDateMarket
     if (/^\d{4}-\d{2}-\d{2}$/.test(tradeDateOverride)) {
       fetchOpts.usTradeDateOverride = tradeDateOverride
       fetchOpts.jpTradeDateOverride = tradeDateOverride
@@ -685,7 +691,16 @@ export default async function handler(req, res) {
         low: normalizePriceNumber(r?.low),
         close,
         volume: normalizeVolumeNumber(r?.volume),
-        raw: r,
+        raw: {
+          price_basis: 'unadjusted_close',
+          date: r?.date ?? null,
+          open: r?.open ?? null,
+          high: r?.high ?? null,
+          low: r?.low ?? null,
+          close: r?.close ?? null,
+          volume: r?.volume ?? null,
+          exchange: r?.exchange ?? null,
+        },
       })
     }
 
@@ -705,14 +720,23 @@ export default async function handler(req, res) {
       if (symbolErr) throw symbolErr
     }
 
-    if (priceRows.length > 0) {
+    const guarded = await partitionIncomingPrices(supabase, priceRows)
+    const quarantineWrite = await writePriceQuarantine(supabase, [...guarded.weekend, ...guarded.quarantined])
+    qualitySummary.weekendDropped = guarded.weekend.length
+    qualitySummary.quarantined = guarded.quarantined.length
+    qualitySummary.quarantineStored = quarantineWrite.stored
+    if (guarded.accepted.length > 0) {
       const { error: priceErr } = await supabase
         .from('stock_daily_prices')
-        .upsert(priceRows, { onConflict: 'source,symbol,trade_date' })
+        .upsert(guarded.accepted, { onConflict: 'source,symbol,trade_date' })
       if (priceErr) throw priceErr
+    } else if (priceRows.length > 0 && guarded.accepted.length === 0) {
+      qualitySummary.note = 'all rows held as weekend or extreme move'
     } else {
       throw new Error(`No valid price rows after quality filter. ${JSON.stringify(qualitySummary)}`)
     }
+    priceRows.length = 0
+    priceRows.push(...guarded.accepted)
 
     if (jobId) {
       await supabase

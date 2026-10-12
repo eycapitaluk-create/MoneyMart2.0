@@ -6,7 +6,7 @@ const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
 const GEMINI_KEY = process.env.GEMINI_API_KEY
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash'
 const CLAUDE_KEY = process.env.ANTHROPIC_API_KEY
-const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-3-5-haiku-20241022'
+const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-haiku-4-5-20251001'
 
 if (!SUPABASE_URL || !SERVICE_KEY) {
   console.error('Missing SUPABASE_URL and/or SUPABASE_SERVICE_ROLE_KEY')
@@ -116,7 +116,7 @@ ${recentTable}
 
 以下JSON形式のみで返してください（説明・Markdown不要）:
 {"last_session":["3〜4文の箇条書き"],"weekly_trends":["3〜4文"],"fundamentals":["2〜3文"],"summary":["2〜3文"]}
-全て日本語。断定的な売買推奨は禁止。`
+全て日本語。売買の指示は出さない。`
 }
 
 async function callGemini(prompt) {

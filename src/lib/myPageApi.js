@@ -6,6 +6,8 @@ import {
   FREE_OWNED_DISTINCT_FUND_SYMBOLS,
 } from './membership'
 import { decodeHtmlEntities } from './fundDisplayUtils'
+import { isMisclassifiedStockHeldAsFundSymbol } from './ownedFundSymbolGuard'
+import { insertRowsSkippingDuplicates } from './expenseChildInsert'
 
 const TABLE_NOT_FOUND_CODE = '42P01'
 const COLUMN_NOT_FOUND_CODE = '42703'
@@ -14,7 +16,8 @@ const PG_UNIQUE_VIOLATION = '23505'
 const EXPENSE_SELECT_WITH_RECURRING = 'id,spent_on,category,merchant,amount,payment_method,notes,created_at,recurring_type,recurring_anchor_day,recurring_start_on,recurring_end_on,recurring_parent_id'
 const EXPENSE_SELECT_LEGACY = 'id,spent_on,category,merchant,amount,payment_method,notes,created_at'
 const RECURRING_TYPES = ['weekly', 'monthly']
-const RECURRING_MATERIALIZE_AHEAD_MONTHS = 1
+/** 定期支出を DB に先に作る先読み幅（月）。1 だと翌月末までしか出ず、月選択にも先の月が載らない */
+const RECURRING_MATERIALIZE_AHEAD_MONTHS = 12
 const DEFAULT_REVOLVING_PROFILE = {
   balance_yen: 0,
   apr: 15,
@@ -67,6 +70,37 @@ const isTableMissingError = (error) => (
 const isMissingNisaColumnError = (error) => (
   error?.code === COLUMN_NOT_FOUND_CODE
   && /is_nisa/i.test(String(error?.message || ''))
+)
+const isMissingMonthsColumnError = (error) => (
+  (error?.code === COLUMN_NOT_FOUND_CODE || error?.code === 'PGRST204')
+  && /months/i.test(String(error?.message || ''))
+)
+
+/** 워치리스트·배당 키. 7203 → 7203.T, 130a → 130A.T. 미국 티커는 대문자만. */
+export const normalizeListedSymbolId = (raw) => {
+  const s = String(raw || '').trim().toUpperCase()
+  if (!s) return ''
+  if (/^(?:\d{4}|\d{3}[A-Z])$/.test(s)) return `${s}.T`
+  return s
+}
+
+const listedSymbolLookupIds = (raw) => {
+  const canonical = normalizeListedSymbolId(raw)
+  if (!canonical) return []
+  const ids = [canonical]
+  if (canonical.endsWith('.T')) {
+    const bare = canonical.slice(0, -2)
+    if (/^(?:\d{4}|\d{3}[A-Z])$/.test(bare)) ids.push(bare)
+  }
+  return [...new Set(ids)]
+}
+
+export const dividendMonthsFromDividends = (dividends) => (
+  [...new Set(
+    (Array.isArray(dividends) ? dividends : [])
+      .map((d) => Number(d?.month))
+      .filter((m) => Number.isInteger(m) && m >= 1 && m <= 12),
+  )].sort((a, b) => a - b)
 )
 const isMissingRecurringColumnError = (error) => (
   error?.code === COLUMN_NOT_FOUND_CODE
@@ -217,10 +251,10 @@ const materializeRecurringExpenses = async (userId) => {
     }
   }
 
-  if (pendingRows.length > 0) {
-    const { error } = await supabase.from('user_expenses').insert(pendingRows)
-    if (error) throw error
-  }
+  await insertRowsSkippingDuplicates(pendingRows, async (batch) => {
+    const { error } = await supabase.from('user_expenses').insert(batch)
+    return { error }
+  })
 }
 
 export const loadMyPageData = async (userId) => {
@@ -286,6 +320,74 @@ export const loadMyPageData = async (userId) => {
     assetPositions: assetRes.data || [],
     pointAccounts: pointRes.data || [],
     profile: profileRes.data || { annual_income_manwon: 0, budget_target_yen: 0, loan_remaining_yen: 0 },
+    available: true,
+  }
+}
+
+/** Navbar 通知（保険満期・ポイント期限・今月予算）専用。loadMyPageData より列・行を絞り、挙動は buildMyPageAlertSummary 相当に揃える。 */
+const EXPENSE_SELECT_NAVBAR_ALERT = 'spent_on,amount,created_at'
+
+export const loadNavbarAlertMyPageData = async (userId) => {
+  if (!userId) {
+    return {
+      expenses: [],
+      insurances: [],
+      pointAccounts: [],
+      profile: { budget_target_yen: 0 },
+      available: false,
+    }
+  }
+
+  try {
+    await materializeRecurringExpenses(userId)
+  } catch (error) {
+    if (!isMissingRecurringColumnError(error)) throw error
+  }
+
+  const [expenseRes, insuranceRes, pointRes, profileRes] = await Promise.all([
+    supabase
+      .from('user_expenses')
+      .select(EXPENSE_SELECT_NAVBAR_ALERT)
+      .eq('user_id', userId)
+      .order('spent_on', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(300),
+    supabase
+      .from('user_insurances')
+      .select('maturity_date')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false }),
+    supabase
+      .from('user_point_accounts')
+      .select('expiry')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false }),
+    supabase
+      .from('user_finance_profiles')
+      .select('budget_target_yen')
+      .eq('user_id', userId)
+      .maybeSingle(),
+  ])
+
+  const firstErr = expenseRes.error || insuranceRes.error || pointRes.error || profileRes.error
+  if (firstErr) {
+    if (isTableMissingError(firstErr)) {
+      return {
+        expenses: [],
+        insurances: [],
+        pointAccounts: [],
+        profile: { budget_target_yen: 0 },
+        available: false,
+      }
+    }
+    throw firstErr
+  }
+
+  return {
+    expenses: expenseRes.data || [],
+    insurances: insuranceRes.data || [],
+    pointAccounts: pointRes.data || [],
+    profile: profileRes.data || { budget_target_yen: 0 },
     available: true,
   }
 }
@@ -513,20 +615,87 @@ export const deleteAssetPositionById = async (assetId, userId) => {
   if (error) throw error
 }
 
+const OWNED_STOCK_SELECT_BASE = 'lot_id,symbol,buy_date,buy_price,qty,created_at'
+const OWNED_STOCK_SELECT = `${OWNED_STOCK_SELECT_BASE},currency,buy_fx_rate,buy_fx_date`
+const REALIZED_STOCK_SELECT_BASE = 'trade_id,symbol,sell_date,qty,sell_price,cost_basis_jpy,proceeds_jpy,realized_pnl_jpy,created_at'
+const REALIZED_STOCK_SELECT = `${REALIZED_STOCK_SELECT_BASE},sell_fx_rate,sell_fx_date`
+const REALIZED_STOCK_WRITE_BASE = 'user_id,trade_id,symbol,sell_date,qty,sell_price,cost_basis_jpy,proceeds_jpy,realized_pnl_jpy'
+const REALIZED_STOCK_WRITE_SELECT = `${REALIZED_STOCK_WRITE_BASE},sell_fx_rate,sell_fx_date`
+
+const isMissingOwnedFxColumn = (error) => {
+  const msg = String(error?.message || '')
+  const code = String(error?.code || '')
+  return code === '42703' || code === 'PGRST204' || /buy_fx_rate|buy_fx_date|\bcurrency\b/.test(msg)
+}
+
+const selectOwnedStockRows = async (userId) => {
+  const full = await supabase
+    .from('user_owned_stocks')
+    .select(OWNED_STOCK_SELECT)
+    .eq('user_id', userId)
+    .order('created_at', { ascending: true })
+  if (!full.error || !isMissingOwnedFxColumn(full.error)) return full
+  return supabase
+    .from('user_owned_stocks')
+    .select(OWNED_STOCK_SELECT_BASE)
+    .eq('user_id', userId)
+    .order('created_at', { ascending: true })
+}
+
+const stripOwnedFxColumns = (rows) => (Array.isArray(rows) ? rows : []).map((row) => {
+  const { currency, buy_fx_rate, buy_fx_date, ...rest } = row || {}
+  return rest
+})
+
+const isMissingSellFxColumn = (error) => {
+  const msg = String(error?.message || '')
+  const code = String(error?.code || '')
+  return code === '42703' || code === 'PGRST204' || /sell_fx_rate|sell_fx_date/.test(msg)
+}
+
+const stripSellFxColumns = (rows) => (Array.isArray(rows) ? rows : []).map((row) => {
+  const { sell_fx_rate, sell_fx_date, ...rest } = row || {}
+  return rest
+})
+
+const selectRealizedStockRows = async (userId) => {
+  const full = await supabase
+    .from('user_stock_realized_trades')
+    .select(REALIZED_STOCK_SELECT)
+    .eq('user_id', userId)
+    .order('created_at', { ascending: true })
+  if (!full.error || !isMissingSellFxColumn(full.error)) return full
+  return supabase
+    .from('user_stock_realized_trades')
+    .select(REALIZED_STOCK_SELECT_BASE)
+    .eq('user_id', userId)
+    .order('created_at', { ascending: true })
+}
+
 export const loadOwnedAssetPositions = async (userId) => {
   if (!userId) {
-    return { ownedStocks: [], ownedFunds: [], available: false }
+    return {
+      ownedStocks: [],
+      ownedFunds: [],
+      available: false,
+      realizedStockTrades: [],
+      realizedAvailable: false,
+      realizedFundTrades: [],
+      realizedFundAvailable: false,
+    }
   }
 
-  const [stockRes, fundRes] = await Promise.all([
-    supabase
-      .from('user_owned_stocks')
-      .select('lot_id,symbol,buy_date,buy_price,qty,created_at')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: true }),
+  const [stockRes, fundRes, realizedRes, realizedFundRes] = await Promise.all([
+    selectOwnedStockRows(userId),
     supabase
       .from('user_owned_funds')
       .select('fund_row_id,symbol,name,invest_amount,buy_date,buy_price,created_at')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: true }),
+    selectRealizedStockRows(userId),
+    supabase
+      .from('user_fund_realized_trades')
+      .select('trade_id,symbol,sell_date,qty,sell_price,cost_basis_jpy,proceeds_jpy,realized_pnl_jpy,created_at')
       .eq('user_id', userId)
       .order('created_at', { ascending: true }),
   ])
@@ -534,9 +703,43 @@ export const loadOwnedAssetPositions = async (userId) => {
   const firstErr = stockRes.error || fundRes.error
   if (firstErr) {
     if (isTableMissingError(firstErr)) {
-      return { ownedStocks: [], ownedFunds: [], available: false }
+      return {
+        ownedStocks: [],
+        ownedFunds: [],
+        available: false,
+        realizedStockTrades: [],
+        realizedAvailable: false,
+        realizedFundTrades: [],
+        realizedFundAvailable: false,
+      }
     }
     throw firstErr
+  }
+
+  let realizedAvailable = true
+  let realizedRows = []
+  if (realizedRes.error) {
+    if (isTableMissingError(realizedRes.error)) {
+      realizedAvailable = false
+      realizedRows = []
+    } else {
+      throw realizedRes.error
+    }
+  } else {
+    realizedRows = realizedRes.data || []
+  }
+
+  let realizedFundAvailable = true
+  let realizedFundRows = []
+  if (realizedFundRes.error) {
+    if (isTableMissingError(realizedFundRes.error)) {
+      realizedFundAvailable = false
+      realizedFundRows = []
+    } else {
+      throw realizedFundRes.error
+    }
+  } else {
+    realizedFundRows = realizedFundRes.data || []
   }
 
   const stockDedup = new Map()
@@ -553,13 +756,20 @@ export const loadOwnedAssetPositions = async (userId) => {
     if (tNew >= tOld) stockDedup.set(id, row)
   })
 
-  const ownedStocks = [...stockDedup.values()].map((row) => ({
-    lotId: String(row.lot_id || ''),
-    symbol: String(row.symbol || '').toUpperCase(),
-    buyDate: String(row.buy_date || ''),
-    buyPrice: Number(row.buy_price || 0),
-    qty: Number(row.qty || 0),
-  }))
+  const ownedStocks = [...stockDedup.values()].map((row) => {
+    const currency = String(row.currency || '').trim().toUpperCase()
+    const buyFxRate = Number(row.buy_fx_rate)
+    return {
+      lotId: String(row.lot_id || ''),
+      symbol: String(row.symbol || '').toUpperCase(),
+      buyDate: String(row.buy_date || ''),
+      buyPrice: Number(row.buy_price || 0),
+      qty: Number(row.qty || 0),
+      currency: currency === 'USD' || currency === 'JPY' ? currency : '',
+      buyFxRate: Number.isFinite(buyFxRate) && buyFxRate > 0 ? buyFxRate : '',
+      buyFxDate: String(row.buy_fx_date || '').slice(0, 10),
+    }
+  })
 
   /** 並行 replace で DB に重複行ができた場合も 1 件にまとめる（fund_row_id 単位・新しい created_at を優先） */
   const fundDedup = new Map()
@@ -585,12 +795,77 @@ export const loadOwnedAssetPositions = async (userId) => {
     buyPrice: Number(row.buy_price || 0),
   }))
 
-  return { ownedStocks, ownedFunds, available: true }
+  const realizedDedup = new Map()
+  ;(realizedRows || []).forEach((row) => {
+    const id = String(row.trade_id || '').trim()
+    if (!id) return
+    const prev = realizedDedup.get(id)
+    if (!prev) {
+      realizedDedup.set(id, row)
+      return
+    }
+    const tNew = new Date(row.created_at || 0).getTime()
+    const tOld = new Date(prev.created_at || 0).getTime()
+    if (tNew >= tOld) realizedDedup.set(id, row)
+  })
+
+  const realizedStockTrades = [...realizedDedup.values()].map((row) => {
+    const sellFxRate = Number(row.sell_fx_rate)
+    const sellFxDate = String(row.sell_fx_date || '').slice(0, 10)
+    return {
+      tradeId: String(row.trade_id || ''),
+      symbol: String(row.symbol || '').toUpperCase(),
+      sellDate: String(row.sell_date || ''),
+      qty: Number(row.qty || 0),
+      sellPrice: Number(row.sell_price || 0),
+      costBasisJpy: Number(row.cost_basis_jpy || 0),
+      proceedsJpy: Number(row.proceeds_jpy || 0),
+      realizedPnlJpy: Number(row.realized_pnl_jpy || 0),
+      sellFxRate: Number.isFinite(sellFxRate) && sellFxRate > 0 ? sellFxRate : null,
+      sellFxDate: /^\d{4}-\d{2}-\d{2}$/.test(sellFxDate) ? sellFxDate : '',
+    }
+  })
+
+  const realizedFundDedup = new Map()
+  ;(realizedFundRows || []).forEach((row) => {
+    const id = String(row.trade_id || '').trim()
+    if (!id) return
+    const prev = realizedFundDedup.get(id)
+    if (!prev) {
+      realizedFundDedup.set(id, row)
+      return
+    }
+    const tNew = new Date(row.created_at || 0).getTime()
+    const tOld = new Date(prev.created_at || 0).getTime()
+    if (tNew >= tOld) realizedFundDedup.set(id, row)
+  })
+
+  const realizedFundTrades = [...realizedFundDedup.values()].map((row) => ({
+    tradeId: String(row.trade_id || ''),
+    symbol: String(row.symbol || '').toUpperCase(),
+    sellDate: String(row.sell_date || ''),
+    qty: Number(row.qty || 0),
+    sellPrice: Number(row.sell_price || 0),
+    costBasisJpy: Number(row.cost_basis_jpy || 0),
+    proceedsJpy: Number(row.proceeds_jpy || 0),
+    realizedPnlJpy: Number(row.realized_pnl_jpy || 0),
+  }))
+
+  return {
+    ownedStocks,
+    ownedFunds,
+    available: true,
+    realizedStockTrades,
+    realizedAvailable,
+    realizedFundTrades,
+    realizedFundAvailable,
+  }
 }
 
 /** 同テーブルへの replace が非同期で重なると delete→insert が交差し行が倍増するため、テーブル単位で直列化 */
 let ownedStocksReplaceChain = Promise.resolve()
 let ownedFundsReplaceChain = Promise.resolve()
+let ownedFundRealizedReplaceChain = Promise.resolve()
 
 const runSerializedOwnedStocksReplace = (fn) => {
   const p = ownedStocksReplaceChain.then(() => fn())
@@ -601,6 +876,12 @@ const runSerializedOwnedStocksReplace = (fn) => {
 const runSerializedOwnedFundsReplace = (fn) => {
   const p = ownedFundsReplaceChain.then(() => fn())
   ownedFundsReplaceChain = p.catch(() => {})
+  return p
+}
+
+const runSerializedFundRealizedReplace = (fn) => {
+  const p = ownedFundRealizedReplaceChain.then(() => fn())
+  ownedFundRealizedReplaceChain = p.catch(() => {})
   return p
 }
 
@@ -622,15 +903,22 @@ const fetchUserProfilePaidFlag = async (userId) => {
  * allowEmptyStocksReplace / allowEmptyFundsReplace:
  * false（既定）のとき、該当スナップショットが空配列なら DELETE を実行しない（誤った全消去を防ぐ）。
  * ユーザーが UI 上で最後の 1 件まで削除したときのみクライアントが true を渡す。
+ * 個別株が user_owned_funds に混入していた場合は ownedFundSymbolGuard で除去し、除去のみのときも DB を書き換える。
  */
 export const replaceOwnedAssetPositions = async ({
   userId,
   ownedStocks = [],
   ownedFunds = [],
+  realizedStockTrades = [],
+  realizedFundTrades = [],
   persistStocks = true,
   persistFunds = true,
+  persistRealized = false,
+  persistRealizedFunds = false,
   allowEmptyStocksReplace = false,
   allowEmptyFundsReplace = false,
+  allowEmptyRealizedReplace = false,
+  allowEmptyRealizedFundReplace = false,
 }) => {
   if (!userId) return
 
@@ -643,14 +931,21 @@ export const replaceOwnedAssetPositions = async ({
       const buyDate = String(row?.buyDate || '').trim()
       const buyPrice = Number(row?.buyPrice || 0)
       const qty = Number(row?.qty || 0)
-      return {
+      const currency = String(row?.currency || '').trim().toUpperCase()
+      const buyFxRate = Number(row?.buyFxRate)
+      const buyFxDate = String(row?.buyFxDate || '').trim().slice(0, 10)
+      const payload = {
         user_id: userId,
         lot_id: lotId,
         symbol,
         buy_date: buyDate || null,
         buy_price: Number.isFinite(buyPrice) && buyPrice >= 0 ? buyPrice : 0,
         qty: Number.isFinite(qty) && qty >= 0 ? qty : 0,
+        currency: currency === 'USD' || currency === 'JPY' ? currency : null,
+        buy_fx_rate: Number.isFinite(buyFxRate) && buyFxRate > 0 ? buyFxRate : null,
+        buy_fx_date: /^\d{4}-\d{2}-\d{2}$/.test(buyFxDate) ? buyFxDate : null,
       }
+      return payload
     })
     .filter(Boolean)
 
@@ -675,6 +970,78 @@ export const replaceOwnedAssetPositions = async ({
     })
     .filter(Boolean)
 
+  const realizedRows = (Array.isArray(realizedStockTrades) ? realizedStockTrades : [])
+    .map((row, idx) => {
+      const symbol = String(row?.symbol || '').trim().toUpperCase()
+      let tradeId = String(row?.tradeId || '').trim()
+      if (!tradeId) tradeId = `rt_${idx}`
+      if (!symbol || !tradeId) return null
+      const sellDate = String(row?.sellDate || '').trim()
+      const qty = Number(row?.qty || 0)
+      const sellPrice = Number(row?.sellPrice || 0)
+      const costBasisJpy = Number(row?.costBasisJpy || 0)
+      const proceedsJpy = Number(row?.proceedsJpy || 0)
+      const realizedPnlJpy = Number(row?.realizedPnlJpy ?? (proceedsJpy - costBasisJpy))
+      const sellFxRate = Number(row?.sellFxRate)
+      const sellFxDate = String(row?.sellFxDate || '').trim().slice(0, 10)
+      return {
+        user_id: userId,
+        trade_id: tradeId,
+        symbol,
+        sell_date: sellDate || null,
+        qty: Number.isFinite(qty) && qty >= 0 ? qty : 0,
+        sell_price: Number.isFinite(sellPrice) && sellPrice >= 0 ? sellPrice : 0,
+        cost_basis_jpy: Number.isFinite(costBasisJpy) ? costBasisJpy : 0,
+        proceeds_jpy: Number.isFinite(proceedsJpy) ? proceedsJpy : 0,
+        realized_pnl_jpy: Number.isFinite(realizedPnlJpy) ? realizedPnlJpy : 0,
+        sell_fx_rate: Number.isFinite(sellFxRate) && sellFxRate > 0 ? sellFxRate : null,
+        sell_fx_date: /^\d{4}-\d{2}-\d{2}$/.test(sellFxDate) ? sellFxDate : null,
+      }
+    })
+    .filter(Boolean)
+
+  const realizedRowMap = new Map()
+  realizedRows.forEach((r) => {
+    const k = String(r?.trade_id || '').trim()
+    if (!k) return
+    realizedRowMap.set(k, { ...r, trade_id: k })
+  })
+  const realizedRowsUnique = [...realizedRowMap.values()]
+
+  const realizedFundRows = (Array.isArray(realizedFundTrades) ? realizedFundTrades : [])
+    .map((row, idx) => {
+      const symbol = String(row?.symbol || '').trim().toUpperCase()
+      let tradeId = String(row?.tradeId || '').trim()
+      if (!tradeId) tradeId = `rf_${idx}`
+      if (!symbol || !tradeId) return null
+      const sellDate = String(row?.sellDate || '').trim()
+      const qty = Number(row?.qty || 0)
+      const sellPrice = Number(row?.sellPrice || 0)
+      const costBasisJpy = Number(row?.costBasisJpy || 0)
+      const proceedsJpy = Number(row?.proceedsJpy || 0)
+      const realizedPnlJpy = Number(row?.realizedPnlJpy ?? (proceedsJpy - costBasisJpy))
+      return {
+        user_id: userId,
+        trade_id: tradeId,
+        symbol,
+        sell_date: sellDate || null,
+        qty: Number.isFinite(qty) && qty >= 0 ? qty : 0,
+        sell_price: Number.isFinite(sellPrice) && sellPrice >= 0 ? sellPrice : 0,
+        cost_basis_jpy: Number.isFinite(costBasisJpy) ? costBasisJpy : 0,
+        proceeds_jpy: Number.isFinite(proceedsJpy) ? proceedsJpy : 0,
+        realized_pnl_jpy: Number.isFinite(realizedPnlJpy) ? realizedPnlJpy : 0,
+      }
+    })
+    .filter(Boolean)
+
+  const realizedFundRowMap = new Map()
+  realizedFundRows.forEach((r) => {
+    const k = String(r?.trade_id || '').trim()
+    if (!k) return
+    realizedFundRowMap.set(k, { ...r, trade_id: k })
+  })
+  const realizedFundRowsUnique = [...realizedFundRowMap.values()]
+
   const stockRowMap = new Map()
   stockRows.forEach((r) => {
     const k = String(r?.lot_id || '').trim()
@@ -691,6 +1058,11 @@ export const replaceOwnedAssetPositions = async ({
   })
   const fundRowsUnique = [...fundRowMap.values()]
 
+  const fundRowsSanitized = fundRowsUnique.filter(
+    (r) => !isMisclassifiedStockHeldAsFundSymbol(String(r.symbol || '')),
+  )
+  const strippedMisclassifiedFunds = fundRowsUnique.length - fundRowsSanitized.length
+
   const paid = await fetchUserProfilePaidFlag(userId)
   if (!paid && ENFORCE_FREE_OWNED_DISTINCT_SYMBOL_CAPS) {
     if (persistStocks) {
@@ -702,7 +1074,7 @@ export const replaceOwnedAssetPositions = async ({
       }
     }
     if (persistFunds) {
-      const fundSymCount = new Set(fundRowsUnique.map((r) => String(r.symbol || '').toUpperCase())).size
+      const fundSymCount = new Set(fundRowsSanitized.map((r) => String(r.symbol || '').toUpperCase())).size
       if (fundSymCount > FREE_OWNED_DISTINCT_FUND_SYMBOLS) {
         throw new Error(
           `保有ファンドは銘柄種類${FREE_OWNED_DISTINCT_FUND_SYMBOLS}件まで登録できます。`,
@@ -714,16 +1086,32 @@ export const replaceOwnedAssetPositions = async ({
   const shouldWriteStocks =
     persistStocks && (stockRowsUnique.length > 0 || allowEmptyStocksReplace)
   const shouldWriteFunds =
-    persistFunds && (fundRowsUnique.length > 0 || allowEmptyFundsReplace)
+    persistFunds
+    && (
+      fundRowsSanitized.length > 0
+      || allowEmptyFundsReplace
+      || strippedMisclassifiedFunds > 0
+    )
+  const shouldWriteRealized =
+    persistRealized && (realizedRowsUnique.length > 0 || allowEmptyRealizedReplace)
+  const shouldWriteRealizedFunds =
+    persistRealizedFunds && (realizedFundRowsUnique.length > 0 || allowEmptyRealizedFundReplace)
 
   const tasks = []
   if (shouldWriteStocks) {
     tasks.push(
       runSerializedOwnedStocksReplace(async () => {
-        const { data: backupStockRows, error: backupStockErr } = await supabase
+        let backupStockQuery = await supabase
           .from('user_owned_stocks')
-          .select('user_id,lot_id,symbol,buy_date,buy_price,qty')
+          .select('user_id,lot_id,symbol,buy_date,buy_price,qty,currency,buy_fx_rate,buy_fx_date')
           .eq('user_id', userId)
+        if (backupStockQuery.error && isMissingOwnedFxColumn(backupStockQuery.error)) {
+          backupStockQuery = await supabase
+            .from('user_owned_stocks')
+            .select('user_id,lot_id,symbol,buy_date,buy_price,qty')
+            .eq('user_id', userId)
+        }
+        const { data: backupStockRows, error: backupStockErr } = backupStockQuery
         if (backupStockErr) throw backupStockErr
         const backupStocks = Array.isArray(backupStockRows) ? backupStockRows : []
 
@@ -734,7 +1122,13 @@ export const replaceOwnedAssetPositions = async ({
         if (delStockErr) throw delStockErr
 
         if (stockRowsUnique.length > 0) {
-          const tryInsert = async () => supabase.from('user_owned_stocks').insert(stockRowsUnique)
+          const tryInsert = async () => {
+            let ins = await supabase.from('user_owned_stocks').insert(stockRowsUnique)
+            if (ins.error && isMissingOwnedFxColumn(ins.error)) {
+              ins = await supabase.from('user_owned_stocks').insert(stripOwnedFxColumns(stockRowsUnique))
+            }
+            return ins
+          }
           let ins = await tryInsert()
           if (ins.error?.code === PG_UNIQUE_VIOLATION) {
             const { error: del2 } = await supabase.from('user_owned_stocks').delete().eq('user_id', userId)
@@ -783,8 +1177,8 @@ export const replaceOwnedAssetPositions = async ({
           .eq('user_id', userId)
         if (delFundErr) throw delFundErr
 
-        if (fundRowsUnique.length > 0) {
-          const tryInsert = async () => supabase.from('user_owned_funds').insert(fundRowsUnique)
+        if (fundRowsSanitized.length > 0) {
+          const tryInsert = async () => supabase.from('user_owned_funds').insert(fundRowsSanitized)
           let ins = await tryInsert()
           if (ins.error?.code === PG_UNIQUE_VIOLATION) {
             const { error: del2 } = await supabase.from('user_owned_funds').delete().eq('user_id', userId)
@@ -807,6 +1201,125 @@ export const replaceOwnedAssetPositions = async ({
               if (reErr) {
                 throw new Error(
                   `保有ファンドの保存に失敗し、直前のデータの復元にも失敗しました: ${reErr.message}（元: ${ins.error.message}）`,
+                )
+              }
+            }
+            throw ins.error
+          }
+        }
+      }),
+    )
+  }
+
+  if (shouldWriteRealized) {
+    tasks.push(
+      runSerializedOwnedStocksReplace(async () => {
+        let backupRes = await supabase
+          .from('user_stock_realized_trades')
+          .select(REALIZED_STOCK_WRITE_SELECT)
+          .eq('user_id', userId)
+        if (backupRes.error && isMissingSellFxColumn(backupRes.error)) {
+          backupRes = await supabase
+            .from('user_stock_realized_trades')
+            .select(REALIZED_STOCK_WRITE_BASE)
+            .eq('user_id', userId)
+        }
+        const backupErr = backupRes.error
+        const backupRows = backupRes.data
+        if (backupErr && !isTableMissingError(backupErr)) throw backupErr
+        const backup = !backupErr && Array.isArray(backupRows) ? backupRows : []
+
+        const { error: delErr } = await supabase
+          .from('user_stock_realized_trades')
+          .delete()
+          .eq('user_id', userId)
+        if (delErr) {
+          if (isTableMissingError(delErr)) return
+          throw delErr
+        }
+
+        if (realizedRowsUnique.length > 0) {
+          let rowsToInsert = realizedRowsUnique
+          const tryInsert = async () => supabase.from('user_stock_realized_trades').insert(rowsToInsert)
+          let ins = await tryInsert()
+          if (ins.error && isMissingSellFxColumn(ins.error)) {
+            rowsToInsert = stripSellFxColumns(rowsToInsert)
+            ins = await tryInsert()
+          }
+          if (ins.error?.code === PG_UNIQUE_VIOLATION) {
+            const { error: del2 } = await supabase.from('user_stock_realized_trades').delete().eq('user_id', userId)
+            if (del2) {
+              if (backup.length > 0) {
+                const { error: reErr } = await supabase.from('user_stock_realized_trades').insert(backup)
+                if (reErr) {
+                  throw new Error(
+                    `実現損益ログの保存に失敗し、復元にも失敗しました: ${reErr.message}（元: ${del2.message}）`,
+                  )
+                }
+              }
+              throw del2
+            }
+            ins = await tryInsert()
+          }
+          if (ins.error) {
+            if (backup.length > 0) {
+              const { error: reErr } = await supabase.from('user_stock_realized_trades').insert(backup)
+              if (reErr) {
+                throw new Error(
+                  `実現損益ログの保存に失敗し、直前のデータの復元にも失敗しました: ${reErr.message}（元: ${ins.error.message}）`,
+                )
+              }
+            }
+            throw ins.error
+          }
+        }
+      }),
+    )
+  }
+
+  if (shouldWriteRealizedFunds) {
+    tasks.push(
+      runSerializedFundRealizedReplace(async () => {
+        const { data: backupRows, error: backupErr } = await supabase
+          .from('user_fund_realized_trades')
+          .select('user_id,trade_id,symbol,sell_date,qty,sell_price,cost_basis_jpy,proceeds_jpy,realized_pnl_jpy')
+          .eq('user_id', userId)
+        if (backupErr && !isTableMissingError(backupErr)) throw backupErr
+        const backup = !backupErr && Array.isArray(backupRows) ? backupRows : []
+
+        const { error: delErr } = await supabase
+          .from('user_fund_realized_trades')
+          .delete()
+          .eq('user_id', userId)
+        if (delErr) {
+          if (isTableMissingError(delErr)) return
+          throw delErr
+        }
+
+        if (realizedFundRowsUnique.length > 0) {
+          const tryInsert = async () => supabase.from('user_fund_realized_trades').insert(realizedFundRowsUnique)
+          let ins = await tryInsert()
+          if (ins.error?.code === PG_UNIQUE_VIOLATION) {
+            const { error: del2 } = await supabase.from('user_fund_realized_trades').delete().eq('user_id', userId)
+            if (del2) {
+              if (backup.length > 0) {
+                const { error: reErr } = await supabase.from('user_fund_realized_trades').insert(backup)
+                if (reErr) {
+                  throw new Error(
+                    `ファンド実現損益ログの保存に失敗し、復元にも失敗しました: ${reErr.message}（元: ${del2.message}）`,
+                  )
+                }
+              }
+              throw del2
+            }
+            ins = await tryInsert()
+          }
+          if (ins.error) {
+            if (backup.length > 0) {
+              const { error: reErr } = await supabase.from('user_fund_realized_trades').insert(backup)
+              if (reErr) {
+                throw new Error(
+                  `ファンド実現損益ログの保存に失敗し、直前のデータの復元にも失敗しました: ${reErr.message}（元: ${ins.error.message}）`,
                 )
               }
             }
@@ -1199,7 +1712,7 @@ export const loadDbWatchlists = async (userId) => {
   const fund = rows
     .filter((r) => r.item_type === 'fund')
     .map((r) => ({
-      id: r.item_id,
+      id: normalizeListedSymbolId(r.item_id),
       name: r.item_name || r.item_id,
       change: Number(r.metadata?.change || 0),
       trend: Number(r.metadata?.change || 0) >= 0 ? 'up' : 'down',
@@ -1219,38 +1732,12 @@ export const loadDbWatchlists = async (userId) => {
   const stock = rows
     .filter((r) => r.item_type === 'stock')
     .map((r) => ({
-      id: String(r.item_id || '').trim().toUpperCase(),
+      id: normalizeListedSymbolId(r.item_id),
       name: String(r.item_name || r.item_id || '').trim() || String(r.item_id),
     }))
     .filter((r) => r.id)
 
   return { fund, product, stock, available: true }
-}
-
-export const addDbWatchlistItem = async ({ userId, itemType, itemId, itemName, metadata = {} }) => {
-  const { error } = await supabase
-    .from('user_watchlists')
-    .upsert(
-      {
-        user_id: userId,
-        item_type: itemType,
-        item_id: String(itemId),
-        item_name: itemName || String(itemId),
-        metadata,
-      },
-      { onConflict: 'user_id,item_type,item_id' }
-    )
-  if (error) throw error
-}
-
-export const removeDbWatchlistItem = async ({ userId, itemType, itemId }) => {
-  const { error } = await supabase
-    .from('user_watchlists')
-    .delete()
-    .eq('user_id', userId)
-    .eq('item_type', itemType)
-    .eq('item_id', String(itemId))
-  if (error) throw error
 }
 
 /** 株式ウォッチリスト（銘柄コードの配列）。ログインユーザーは DB を正とする。 */
@@ -1267,35 +1754,182 @@ export const loadStockWatchlistSymbolsFromDb = async (userId) => {
     return { symbols: [], available: false }
   }
   const symbols = (data || [])
-    .map((r) => String(r.item_id || '').trim().toUpperCase())
+    .map((r) => normalizeListedSymbolId(r.item_id))
     .filter(Boolean)
   return { symbols: [...new Set(symbols)], available: true }
 }
 
-export const replaceStockWatchlistInDb = async ({ userId, symbols = [] }) => {
-  if (!userId) return
-  const unique = [...new Set((symbols || []).map((s) => String(s).trim().toUpperCase()).filter(Boolean))]
-  const { error: delErr } = await supabase
+const pickKeptWatchlistName = (rows, canonical) => {
+  const keeper = (rows || []).find((row) => {
+    const name = String(row?.item_name || '').trim()
+    const id = String(row?.item_id || '').trim().toUpperCase()
+    return name && name.toUpperCase() !== id && name.toUpperCase() !== canonical
+  }) || (rows || [])[0]
+  return String(keeper?.item_name || '').trim()
+}
+
+export const addDbWatchlistItem = async ({ userId, itemType, itemId, itemName, metadata = {} }) => {
+  const type = String(itemType || '').trim()
+  const canonical = (type === 'stock' || type === 'fund')
+    ? normalizeListedSymbolId(itemId)
+    : String(itemId ?? '').trim()
+  if (!userId || !type || !canonical) return
+  if (type === 'stock' || type === 'fund') {
+    const aliases = listedSymbolLookupIds(canonical)
+    const { data, error: readErr } = await supabase
+      .from('user_watchlists')
+      .select('item_id,item_name,metadata')
+      .eq('user_id', userId)
+      .eq('item_type', type)
+      .in('item_id', aliases)
+    if (readErr) throw readErr
+    const rows = data || []
+    if (rows.length > 0) {
+      const hasCanonical = rows.some((row) => String(row.item_id || '').trim().toUpperCase() === canonical)
+      if (!hasCanonical) {
+        const keptName = pickKeptWatchlistName(rows, canonical) || itemName || canonical
+        const keeper = rows[0]
+        const { error } = await supabase.from('user_watchlists').upsert({
+          user_id: userId,
+          item_type: type,
+          item_id: canonical,
+          item_name: keptName,
+          metadata: keeper?.metadata && typeof keeper.metadata === 'object' ? keeper.metadata : (metadata || {}),
+        }, { onConflict: 'user_id,item_type,item_id' })
+        if (error) throw error
+      }
+      const staleIds = rows
+        .map((row) => String(row.item_id || '').trim())
+        .filter((id) => id && id.toUpperCase() !== canonical)
+      if (staleIds.length > 0) {
+        const { error: delErr } = await supabase
+          .from('user_watchlists')
+          .delete()
+          .eq('user_id', userId)
+          .eq('item_type', type)
+          .in('item_id', staleIds)
+        if (delErr) throw delErr
+      }
+      return
+    }
+  }
+  const { error } = await supabase
+    .from('user_watchlists')
+    .upsert(
+      {
+        user_id: userId,
+        item_type: type,
+        item_id: canonical,
+        item_name: itemName || canonical,
+        metadata,
+      },
+      { onConflict: 'user_id,item_type,item_id' },
+    )
+  if (error) throw error
+}
+
+export const removeDbWatchlistItem = async ({ userId, itemType, itemId }) => {
+  const type = String(itemType || '').trim()
+  const ids = (type === 'stock' || type === 'fund')
+    ? listedSymbolLookupIds(itemId)
+    : [String(itemId ?? '').trim()].filter(Boolean)
+  if (!userId || !type || ids.length === 0) return
+  const { error } = await supabase
     .from('user_watchlists')
     .delete()
     .eq('user_id', userId)
-    .eq('item_type', 'stock')
-  if (delErr) throw delErr
-  if (unique.length === 0) return
-  const rows = unique.map((symbol) => ({
-    user_id: userId,
-    item_type: 'stock',
-    item_id: symbol,
-    item_name: symbol,
-    metadata: {},
-  }))
-  const { error } = await supabase.from('user_watchlists').insert(rows)
+    .eq('item_type', type)
+    .in('item_id', ids)
   if (error) throw error
+}
+
+/** 로컬에만 있던 종목을 넣는다. 이미 있는 행의 item_name 은 덮어쓰지 않고, 없는 종목은 지우지 않는다. */
+export const mergeStockWatchlistSymbolsInDb = async ({ userId, symbols = [] }) => {
+  if (!userId) return
+  for (const raw of symbols || []) {
+    const id = normalizeListedSymbolId(raw)
+    if (!id) continue
+    await addDbWatchlistItem({ userId, itemType: 'stock', itemId: id, itemName: id })
+  }
+}
+
+/**
+ * 로컬 목록과 DB 를 맞춘다. 빠진 종목만 지우고, 새 종목만 넣는다.
+ * 이미 있는 행의 item_name 은 유지한다.
+ */
+export const replaceStockWatchlistInDb = async ({ userId, symbols = [] }) => {
+  if (!userId) return
+  const nextIds = [...new Set((symbols || []).map((s) => normalizeListedSymbolId(s)).filter(Boolean))]
+  const nextSet = new Set(nextIds)
+  const { data, error: readErr } = await supabase
+    .from('user_watchlists')
+    .select('item_id,item_name,metadata')
+    .eq('user_id', userId)
+    .eq('item_type', 'stock')
+  if (readErr) throw readErr
+  const existing = data || []
+  const byNorm = new Map()
+  for (const row of existing) {
+    const norm = normalizeListedSymbolId(row.item_id)
+    if (!norm) continue
+    if (!byNorm.has(norm)) byNorm.set(norm, [])
+    byNorm.get(norm).push(row)
+  }
+  const staleIds = []
+  for (const [norm, rows] of byNorm) {
+    if (!nextSet.has(norm)) {
+      for (const row of rows) {
+        const id = String(row.item_id || '').trim()
+        if (id) staleIds.push(id)
+      }
+      continue
+    }
+    for (const row of rows) {
+      const stored = String(row.item_id || '').trim().toUpperCase()
+      if (stored && stored !== norm) {
+        const id = String(row.item_id || '').trim()
+        if (id) staleIds.push(id)
+      }
+    }
+    const hasCanonical = rows.some((row) => String(row.item_id || '').trim().toUpperCase() === norm)
+    if (!hasCanonical) {
+      const keptName = pickKeptWatchlistName(rows, norm) || norm
+      const keeper = rows[0]
+      const { error } = await supabase.from('user_watchlists').upsert({
+        user_id: userId,
+        item_type: 'stock',
+        item_id: norm,
+        item_name: keptName,
+        metadata: keeper?.metadata && typeof keeper.metadata === 'object' ? keeper.metadata : {},
+      }, { onConflict: 'user_id,item_type,item_id' })
+      if (error) throw error
+    }
+  }
+  if (staleIds.length > 0) {
+    const { error: delErr } = await supabase
+      .from('user_watchlists')
+      .delete()
+      .eq('user_id', userId)
+      .eq('item_type', 'stock')
+      .in('item_id', [...new Set(staleIds)])
+    if (delErr) throw delErr
+  }
+  for (const symbol of nextIds) {
+    if (byNorm.has(symbol)) continue
+    await addDbWatchlistItem({ userId, itemType: 'stock', itemId: symbol, itemName: symbol })
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  配当カレンダー (user_dividend_watchlist)
 // ─────────────────────────────────────────────────────────────────────────────
+
+/** qty 列が integer の DB では小数が保存できない。numeric へ変更は SUPABASE_PATCH_DIVIDEND_WATCHLIST_QTY_DECIMAL_IDEMPOTENT.sql */
+const normalizeDividendWatchlistQtyForDb = (raw) => {
+  const n = Number(raw)
+  if (!Number.isFinite(n) || n <= 0) return 10
+  return Math.round(n * 1e6) / 1e6
+}
 
 export const loadDividendWatchlist = async (userId) => {
   const withNisa = await supabase
@@ -1315,49 +1949,69 @@ export const loadDividendWatchlist = async (userId) => {
 }
 
 export const upsertDividendWatchlistItem = async (userId, item) => {
+  const stockId = normalizeListedSymbolId(item?.stock_id)
+  if (!userId || !stockId) return
   const safeIsNisa = Boolean(item?.is_nisa)
   const payload = {
     user_id:    userId,
-    stock_id:   item.stock_id,
+    stock_id:   stockId,
     stock_name: item.stock_name,
     flag:       item.flag      || '🏳️',
     sector:     item.sector    || '',
     color:      item.color     || '#6b7280',
     price:      item.price     || 0,
-    qty:        item.qty       ?? 10,
+    qty: normalizeDividendWatchlistQtyForDb(item?.qty),
     is_nisa:    safeIsNisa,
     dividends:  item.dividends || [],
+    months:     dividendMonthsFromDividends(item?.dividends),
     notes:      item.notes     || '',
   }
-  const withNisa = await supabase
+  let body = { ...payload }
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const { error } = await supabase
+      .from('user_dividend_watchlist')
+      .upsert(body, { onConflict: 'user_id,stock_id' })
+    if (!error) break
+    if (isMissingNisaColumnError(error) && Object.prototype.hasOwnProperty.call(body, 'is_nisa')) {
+      delete body.is_nisa
+      body = { ...body }
+      continue
+    }
+    if (isMissingMonthsColumnError(error) && Object.prototype.hasOwnProperty.call(body, 'months')) {
+      delete body.months
+      body = { ...body }
+      continue
+    }
+    throw error
+  }
+  const staleIds = listedSymbolLookupIds(stockId).filter((id) => id !== stockId)
+  if (staleIds.length === 0) return
+  const { error: delErr } = await supabase
     .from('user_dividend_watchlist')
-    .upsert(payload, { onConflict: 'user_id,stock_id' })
-  if (!withNisa.error) return
-  if (!isMissingNisaColumnError(withNisa.error)) throw withNisa.error
-  // Backward compatibility: DB not migrated yet.
-  const legacyPayload = { ...payload }
-  delete legacyPayload.is_nisa
-  const { error } = await supabase
-    .from('user_dividend_watchlist')
-    .upsert(legacyPayload, { onConflict: 'user_id,stock_id' })
-  if (error) throw error
+    .delete()
+    .eq('user_id', userId)
+    .in('stock_id', staleIds)
+  if (delErr) throw delErr
 }
 
 export const updateDividendWatchlistQty = async (userId, stockId, qty) => {
+  const safeQty = normalizeDividendWatchlistQtyForDb(qty)
   const { error } = await supabase
     .from('user_dividend_watchlist')
-    .update({ qty })
+    .update({ qty: safeQty })
     .eq('user_id', userId)
     .eq('stock_id', stockId)
   if (error) throw error
 }
 
 export const deleteDividendWatchlistItem = async (userId, stockId) => {
+  const ids = listedSymbolLookupIds(stockId)
+  if (!userId || ids.length === 0) return
   const { error } = await supabase
     .from('user_dividend_watchlist')
     .delete()
     .eq('user_id', userId)
-    .eq('stock_id', stockId)
+    .in('stock_id', ids)
   if (error) throw error
 }
 

@@ -1,5 +1,5 @@
 /**
- * Admin IP allowlist — Stripe 일본 보안 요건 대응
+ * Admin IP allowlist — 관리 API 접근 제한용
  * Vercel 환경변수 ALLOWED_ADMIN_IPS 에 허용할 IP를 콤마로 설정
  * 예: ALLOWED_ADMIN_IPS=1.2.3.4,5.6.7.8
  */

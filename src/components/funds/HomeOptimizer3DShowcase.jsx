@@ -1,5 +1,5 @@
 /**
- * ホーム「登録前にイメージ」用。実オプティマイザーUIの見た目のみ（数値・3Dはイメージ、非機能）。
+ * ホーム「ご利用イメージ」用。実オプティマイザーUIの見た目のみ（数値・3Dはイメージ、非機能）。
  */
 
 const SLIDERS = [
@@ -68,7 +68,7 @@ function FakeOptimizer3DPanel() {
           <div
             className="absolute inset-0 rounded-[3px] shadow-[inset_0_0_24px_rgba(255,255,255,0.12),0_12px_28px_rgba(15,23,42,0.18)] dark:shadow-[inset_0_0_28px_rgba(255,255,255,0.06),0_12px_28px_rgba(0,0,0,0.45)]"
             style={{
-              transform: 'rotateX(58deg) rotateZ(-28deg)',
+              transform: 'rotateX(52deg) rotateZ(-22deg)',
               transformStyle: 'preserve-3d',
               background: `
                 linear-gradient(118deg, rgba(20,184,166,0.92) 0%, rgba(37,99,235,0.78) 38%, rgba(79,70,229,0.88) 68%, rgba(250,204,21,0.55) 100%)
@@ -78,7 +78,7 @@ function FakeOptimizer3DPanel() {
           <div
             className="absolute inset-0 rounded-[3px] opacity-[0.22] dark:opacity-[0.18] pointer-events-none"
             style={{
-              transform: 'rotateX(58deg) rotateZ(-28deg)',
+              transform: 'rotateX(52deg) rotateZ(-22deg)',
               backgroundImage: `
                 linear-gradient(90deg, rgba(15,23,42,0.5) 1px, transparent 1px),
                 linear-gradient(rgba(15,23,42,0.45) 1px, transparent 1px)
@@ -116,7 +116,7 @@ export default function HomeOptimizer3DShowcase() {
         </div>
         <div className="flex flex-wrap items-center gap-1 shrink-0 justify-end">
           <span className="text-[6px] sm:text-[7px] font-bold text-slate-500 dark:text-slate-400 whitespace-nowrap">
-            上位3自動
+            上位3件を自動選択
           </span>
           <span className="text-[6px] sm:text-[7px] font-black px-1.5 py-0.5 rounded-md border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 bg-white/80 dark:bg-slate-800/80 whitespace-nowrap">
             最適配分を適用

@@ -2,8 +2,11 @@
 -- Run in Supabase SQL Editor after user_profiles + user_roles exist.
 --
 -- 1) Adds columns on user_profiles
--- 2) Extends handle_new_user_profile to copy from auth raw_user_meta_data (email signup + email-confirm-before-session)
--- 3) RPC admin_crm_users: admin-only list (email + profile + attribution)
+-- 2) Extends handle_new_user_profile to copy from auth raw_user_meta_data
+--
+-- For admin RPCs (admin_crm_users, admin_crm_traffic_dashboard), run next:
+--   SUPABASE_ADMIN_CRM_ENHANCED.sql
+-- Do NOT re-run the old admin_crm_users block here if ENHANCED is already applied.
 
 alter table public.user_profiles
   add column if not exists signup_referrer_domain text,
@@ -105,60 +108,5 @@ begin
 end;
 $$;
 
--- Admin-only CRM list (joins auth.users for email)
-create or replace function public.admin_crm_users(p_limit integer default 250)
-returns table (
-  user_id uuid,
-  email text,
-  user_created_at timestamptz,
-  full_name text,
-  nickname text,
-  phone text,
-  marketing_opt_in boolean,
-  signup_referrer_domain text,
-  signup_utm_source text,
-  signup_utm_medium text,
-  signup_utm_campaign text,
-  signup_landing_path text,
-  signup_landing_query text,
-  signup_attribution_captured_at timestamptz
-)
-language plpgsql
-security definer
-set search_path = public
-as $$
-begin
-  if not exists (
-    select 1
-    from public.user_roles ur
-    where ur.user_id = auth.uid()
-      and ur.role = 'admin'
-  ) then
-    raise exception 'not allowed';
-  end if;
-
-  return query
-  select
-    u.id,
-    u.email::text,
-    u.created_at,
-    coalesce(p.full_name, ''),
-    coalesce(p.nickname, ''),
-    p.phone,
-    coalesce(p.marketing_opt_in, false),
-    p.signup_referrer_domain,
-    p.signup_utm_source,
-    p.signup_utm_medium,
-    p.signup_utm_campaign,
-    p.signup_landing_path,
-    p.signup_landing_query,
-    p.signup_attribution_captured_at
-  from auth.users u
-  left join public.user_profiles p on p.user_id = u.id
-  order by u.created_at desc
-  limit greatest(1, least(coalesce(p_limit, 250), 500));
-end;
-$$;
-
-revoke all on function public.admin_crm_users(integer) from public;
-grant execute on function public.admin_crm_users(integer) to authenticated;
+-- admin_crm_users RPC lives in SUPABASE_ADMIN_CRM_ENHANCED.sql (extended columns + traffic dashboard).
+-- Keeping RPC out of this file avoids "cannot change return type" when ENHANCED is already applied.

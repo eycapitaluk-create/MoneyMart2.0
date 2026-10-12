@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Sparkles, RefreshCw, ArrowRight } from 'lucide-react'
 import { ETF_LIST_FROM_XLSX } from '../data/etfListFromXlsx'
-import { normalizeFundDisplayName } from '../lib/fundDisplayUtils'
+import { getEtfListedJaName } from '../data/etfListedJaNameMap'
+import { normalizeFundDisplayName, resolveFundNisaCategory } from '../lib/fundDisplayUtils'
 
-const FALLBACK_FUNDS = ETF_LIST_FROM_XLSX.filter((item) => item?.symbol && item?.jpName)
+const FALLBACK_FUNDS = ETF_LIST_FROM_XLSX.filter((item) => item?.symbol)
 
 const pickRandomFund = (excludeSymbol) => {
   const pool = excludeSymbol
@@ -17,7 +18,7 @@ const pickRandomFund = (excludeSymbol) => {
 const getFundCountry = (fund) => (String(fund?.symbol || '').endsWith('.T') ? '日本' : '米国')
 
 const getFundCategory = (fund) => {
-  const name = String(fund?.jpName || '').toUpperCase()
+  const name = String(fund?.jpName || getEtfListedJaName(fund?.symbol) || '').toUpperCase()
   if (name.includes('全世界') || name.includes('GLOBAL') || name.includes('ACWI')) return '全世界株式'
   if (name.includes('米国') || name.includes('S&P') || name.includes('NASDAQ')) return '米国株式'
   if (name.includes('先進国')) return '先進国株式'
@@ -25,7 +26,7 @@ const getFundCategory = (fund) => {
   if (name.includes('TOPIX') || name.includes('日経') || name.includes('日本')) return '国内株式'
   if (name.includes('ＲＥＩＴ') || name.includes('REIT') || name.includes('リート')) return 'REIT'
   if (name.includes('債券') || name.includes('BOND')) return '債券'
-  if (name.includes('金') || name.includes('GOLD') || name.includes('原油') || name.includes('COMMODITY')) return 'コモディティ'
+  if (name.includes('金') || name.includes('GOLD') || name.includes('原油') || name.includes('COMMODITY')) return '原材料'
   if (name.includes('高配当') || name.includes('DIVIDEND')) return '高配当'
   if (name.includes('半導体') || name.includes('TECH')) return 'テクノロジー'
   return 'ETF'
@@ -52,6 +53,12 @@ export default function AdBanner({ variant = 'horizontal', className = '' }) {
 
   const countryLabel = getFundCountry(fund)
   const categoryLabel = getFundCategory(fund)
+  const nisaCategory = resolveFundNisaCategory(
+    fund.symbol,
+    null,
+    fund.nisaCategory ?? fund.nisa_category ?? null,
+  )
+  const nisaLabel = nisaCategory && nisaCategory !== '-' ? nisaCategory : '—'
 
   return (
     <div
@@ -88,26 +95,49 @@ export default function AdBanner({ variant = 'horizontal', className = '' }) {
             </button>
           </div>
           <p className="mt-1 text-sm font-black text-slate-900 dark:text-slate-100 line-clamp-2">
-            {normalizeFundDisplayName(fund.jpName)}
+            {normalizeFundDisplayName(
+              fund.jpName || getEtfListedJaName(fund.symbol) || fund.symbol,
+            )}
           </p>
           <p className="mt-1 text-[11px] text-slate-600 dark:text-slate-300">
             実際の掲載ファンドからランダム表示中
           </p>
-          <div className={`mt-3 grid ${isCompact ? 'grid-cols-2' : 'grid-cols-3'} gap-2`}>
-            <div className="rounded-xl bg-white/85 dark:bg-slate-900/80 px-3 py-2 border border-orange-100 dark:border-slate-800">
-              <p className="text-[10px] text-slate-500 dark:text-slate-400">Category</p>
-              <p className="text-xs font-black text-slate-900 dark:text-white">{categoryLabel}</p>
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            <div
+              className={`rounded-xl bg-white/85 dark:bg-slate-900/80 border border-orange-100 dark:border-slate-800 ${
+                isCompact ? 'px-2 py-1.5' : 'px-3 py-2'
+              }`}
+            >
+              <p className={`text-slate-500 dark:text-slate-400 ${isCompact ? 'text-[9px]' : 'text-[10px]'}`}>Category</p>
+              <p className={`font-black text-slate-900 dark:text-white ${isCompact ? 'text-[10px] leading-tight' : 'text-xs'}`}>
+                {categoryLabel}
+              </p>
             </div>
-            <div className="rounded-xl bg-white/85 dark:bg-slate-900/80 px-3 py-2 border border-orange-100 dark:border-slate-800">
-              <p className="text-[10px] text-slate-500 dark:text-slate-400">Country</p>
-              <p className="text-xs font-black text-sky-600 dark:text-sky-300">{countryLabel}</p>
+            <div
+              className={`rounded-xl bg-white/85 dark:bg-slate-900/80 border border-orange-100 dark:border-slate-800 ${
+                isCompact ? 'px-2 py-1.5' : 'px-3 py-2'
+              }`}
+            >
+              <p className={`text-slate-500 dark:text-slate-400 ${isCompact ? 'text-[9px]' : 'text-[10px]'}`}>Country</p>
+              <p className={`font-black text-sky-600 dark:text-sky-300 ${isCompact ? 'text-[10px] leading-tight' : 'text-xs'}`}>
+                {countryLabel}
+              </p>
             </div>
-            {!isCompact && (
-              <div className="rounded-xl bg-white/85 dark:bg-slate-900/80 px-3 py-2 border border-orange-100 dark:border-slate-800">
-                <p className="text-[10px] text-slate-500 dark:text-slate-400">NISA</p>
-                <p className="text-xs font-black text-emerald-600 dark:text-emerald-300">{fund.nisaCategory || '-'}</p>
-              </div>
-            )}
+            <div
+              className={`rounded-xl bg-white/85 dark:bg-slate-900/80 border border-orange-100 dark:border-slate-800 ${
+                isCompact ? 'px-2 py-1.5' : 'px-3 py-2'
+              }`}
+            >
+              <p className={`text-slate-500 dark:text-slate-400 ${isCompact ? 'text-[9px]' : 'text-[10px]'}`}>NISA</p>
+              <p
+                className={`font-black ${
+                  nisaLabel !== '—' ? 'text-emerald-600 dark:text-emerald-300' : 'text-slate-400 dark:text-slate-500'
+                } ${isCompact ? 'text-[10px] leading-tight line-clamp-2' : 'text-xs line-clamp-2'}`}
+                title={nisaLabel !== '—' ? nisaLabel : undefined}
+              >
+                {nisaLabel}
+              </p>
+            </div>
           </div>
           <Link
             to={`/funds/${encodeURIComponent(fund.symbol)}`}

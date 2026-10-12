@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useRef, lazy, Suspense } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom'
 import { ArrowLeft, Loader2, TrendingUp, Shield, X, Heart } from 'lucide-react'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
@@ -8,6 +8,7 @@ import {
 import { supabase } from '../lib/supabase'
 import MarketDataEodFreshnessNote from '../components/MarketDataEodFreshnessNote'
 import { ETF_LIST_FROM_XLSX, ETF_SYMBOLS_FROM_XLSX } from '../data/etfListFromXlsx'
+import { getEtfListedJaName } from '../data/etfListedJaNameMap'
 import {
   loadFundOptimizerWatchsets,
   saveFundOptimizerWatchsets,
@@ -16,18 +17,38 @@ import {
   deleteFundOptimizerWatchsetFromDb,
   loadFundOptimizerWatchsetsFromDb,
 } from '../lib/fundOptimizerWatchsets'
-import { isPaidPlanTier } from '../lib/membership'
-import { normalizeFundDisplayName } from '../lib/fundDisplayUtils'
-import { normalizeNisaCategoryField } from '../lib/textEncodingUtils'
-import { findBaseCloseByCalendarOffset } from '../lib/calendarDateUtils'
+import { hasPremiumEntitlement } from '../lib/membership'
+import {
+  normalizeFundDisplayName,
+  resolveFundNisaCategory,
+  resolveFundDisplayName,
+  fundSymbolLookupVariants,
+  normalizeFundSymbolKey,
+} from '../lib/fundDisplayUtils'
+import {
+  computeOneYearPriceReturnPct,
+  formatOneYearPriceReturnPct,
+  hasOneYearPriceReturn,
+  ONE_YEAR_RETURN_MISSING_TEXT,
+  ONE_YEAR_RETURN_BASIS_TEXT,
+} from '../lib/calendarDateUtils'
 import {
   buildSplitAdjustedCloses,
   chartDownsampleIndices,
+  calculateRealizedVolatilityFromAscHistory,
   resolveSpotCloseAndSessionChange,
   skipEodSplitHeuristicForSymbol,
 } from '../lib/fundAdjustedCloses'
 import { dedupeStockDailyPricesByTradeDate } from '../lib/stockDailyHistory'
 import { signedReturnTextClassStrong } from '../lib/marketDirectionColors'
+import { LEGAL_NOTICE_TEMPLATES } from '../constants/legalNoticeTemplates'
+import GuestEtfCompareTrialWall from '../components/funds/GuestEtfCompareTrialWall'
+import { formatTrustFeePercent, parseTrustFeePercent } from '../lib/trustFee'
+import {
+  consumeGuestEtfCompareTrial,
+  getGuestEtfCompareGrantedKey,
+  isGuestEtfCompareTrialConsumed,
+} from '../lib/guestEtfCompareTrial'
 const PortfolioOptimizer3D = lazy(() => import('../components/funds/PortfolioOptimizer3D'))
 
 function Optimizer3DLoadingCard() {
@@ -40,7 +61,34 @@ function Optimizer3DLoadingCard() {
   )
 }
 
-const ETF_META_MAP = new Map(ETF_LIST_FROM_XLSX.map((item) => [item.symbol, item]))
+const ETF_META_MAP = new Map(
+  ETF_LIST_FROM_XLSX.map((item) => [String(item.symbol || '').trim().toUpperCase(), item]),
+)
+
+const pickMatchingSymbolMetaRow = (rows, symKey) => {
+  const list = Array.isArray(rows) ? rows : []
+  const pref = String(symKey || '').trim().toUpperCase()
+  if (!pref) return {}
+  const normKey = normalizeFundSymbolKey(pref)
+  return (
+    list.find((r) => String(r?.symbol || '').trim().toUpperCase() === pref)
+    || list.find((r) => normalizeFundSymbolKey(String(r?.symbol || '').trim().toUpperCase()) === normKey)
+    || {}
+  )
+}
+
+const pickMatchingProfileRow = (rows, symKey) => {
+  const list = Array.isArray(rows) ? rows : []
+  const pref = String(symKey || '').trim().toUpperCase()
+  if (!pref) return null
+  const normKey = normalizeFundSymbolKey(pref)
+  return (
+    list.find((r) => String(r?.symbol || '').trim().toUpperCase() === pref)
+    || list.find((r) => normalizeFundSymbolKey(String(r?.symbol || '').trim().toUpperCase()) === normKey)
+    || null
+  )
+}
+
 const SERIES_COLORS = ['#2563eb', '#f97316', '#8b5cf6']
 
 const fmtPct = (v) => {
@@ -74,26 +122,11 @@ const toProjectionAnnualRatePct = (rawPct) => {
   // keep variation by allocation, but avoid unrealistic explosion.
   return Math.max(-20, Math.min(80, raw * 0.35))
 }
-const formatTrustFee = (value) => {
-  const n = Number(value)
-  if (!Number.isFinite(n)) return '-'
-  return `${n.toFixed(2)}%`
-}
+const formatTrustFee = (value) => formatTrustFeePercent(value)
 const formatMonthDay = (isoDate) => {
   const [year, month, day] = String(isoDate || '').split('-')
   if (!year || !month || !day) return String(isoDate || '')
   return `${Number(month)}/${Number(day)}`
-}
-
-const calculateRealizedVolatility = (closes = []) => {
-  const normalized = closes.map((v) => Number(v)).filter((v) => Number.isFinite(v) && v > 0)
-  if (normalized.length < 3) return null
-  const dailyReturns = []
-  for (let i = 1; i < normalized.length; i += 1) dailyReturns.push((normalized[i] - normalized[i - 1]) / normalized[i - 1])
-  if (dailyReturns.length < 2) return null
-  const mean = dailyReturns.reduce((acc, cur) => acc + cur, 0) / dailyReturns.length
-  const variance = dailyReturns.reduce((acc, cur) => acc + ((cur - mean) ** 2), 0) / (dailyReturns.length - 1)
-  return Math.sqrt(variance) * Math.sqrt(252) * 100
 }
 
 const firstPositiveAdjustedBase = (adjustedAsc = []) => {
@@ -112,11 +145,6 @@ const shortenFundLabel = (name = '', max = 18) => {
 const SAFE_DIVISOR = 1e-9
 const MIN_WEIGHT_FOR_3FUND_OPTIMIZATION = 10
 const OPTIMIZER_COLORS = ['#38bdf8', '#34d399', '#fb923c']
-const PREMIUM_EMAIL_ALLOWLIST = new Set([
-  'justin.nam@moneymart.co.jp',
-  'kelly.nam@moneymart.co.jp',
-])
-
 const normalizeWeightVector = (weights = []) => {
   const sanitized = weights.map((w) => Math.max(0, Number(w) || 0))
   const sum = sanitized.reduce((acc, cur) => acc + cur, 0)
@@ -189,6 +217,7 @@ const calcPortfolioMetrics = (funds, weightPctVector) => {
 
 export default function FundComparePage({
   user = null,
+  userProfile = null,
   myWatchlist = [],
   toggleWatchlist = null,
   onUiMessage = null,
@@ -197,7 +226,12 @@ export default function FundComparePage({
   onClose = null,
 }) {
   const navigate = useNavigate()
+  const location = useLocation()
   const [searchParams, setSearchParams] = useSearchParams()
+  const authReturnPath = `${location.pathname}${location.search}`
+  const isLoggedIn = Boolean(user?.id)
+  const [grantedGuestKey, setGrantedGuestKey] = useState(null)
+  const [guestTrialNotice, setGuestTrialNotice] = useState('')
   const [loading, setLoading] = useState(true)
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
@@ -211,15 +245,19 @@ export default function FundComparePage({
   const [savedWatchSets, setSavedWatchSets] = useState(() => {
     return loadFundOptimizerWatchsets()
   })
+  /** DB 同期が遅いとき、保存/削除後に古い一覧で上書きされるのを防ぐ */
+  const watchsetsSyncGenRef = useRef(0)
 
   // Supabase에서 세트 로드 (iOS 포함 크로스 디바이스 동기화)
   useEffect(() => {
     const userId = user?.id
     if (!userId) return
     let cancelled = false
+    const fetchBaselineGen = watchsetsSyncGenRef.current
     loadFundOptimizerWatchsetsFromDb(userId)
       .then(({ data, available }) => {
         if (cancelled || !available || !data) return
+        if (watchsetsSyncGenRef.current !== fetchBaselineGen) return
         setSavedWatchSets(data)
         saveFundOptimizerWatchsets(data)
       })
@@ -231,14 +269,17 @@ export default function FundComparePage({
   ))
   const pendingWatchSetWeightsRef = useRef(null)
   const planTier = String(
-    user?.app_metadata?.plan_tier
+    userProfile?.planTier
+    || userProfile?.plan_tier
+    || userProfile?.membership_tier
+    || user?.app_metadata?.plan_tier
     || user?.user_metadata?.plan_tier
     || user?.app_metadata?.membership_tier
     || user?.user_metadata?.membership_tier
     || '',
   ).toLowerCase()
-  const userEmailLower = String(user?.email || '').trim().toLowerCase()
-  const isPaidMember = isPaidPlanTier(planTier) || PREMIUM_EMAIL_ALLOWLIST.has(userEmailLower)
+  const premiumTrialEndsAt = userProfile?.premiumTrialEndsAt ?? userProfile?.premium_trial_ends_at ?? null
+  const isPaidMember = hasPremiumEntitlement({ planTier, premiumTrialEndsAt })
 
   useEffect(() => {
     if (!embeddedMode) return
@@ -267,12 +308,45 @@ export default function FundComparePage({
     return [...new Set(raw)].slice(0, 3)
   }, [idsParam])
 
+  const guestCompareKey = [...requestedSymbols].sort().join(',')
+  const guestCompareBlocked = !embeddedMode
+    && !isLoggedIn
+    && requestedSymbols.length >= 2
+    && isGuestEtfCompareTrialConsumed()
+    && getGuestEtfCompareGrantedKey() !== guestCompareKey
+    && grantedGuestKey !== guestCompareKey
+
+  useEffect(() => {
+    if (embeddedMode || isLoggedIn || requestedSymbols.length < 2) {
+      setGuestTrialNotice('')
+      return
+    }
+    const key = [...requestedSymbols].sort().join(',')
+    if (!isGuestEtfCompareTrialConsumed()) {
+      consumeGuestEtfCompareTrial(key)
+      setGrantedGuestKey(key)
+      setGuestTrialNotice('無料お試しは1回です。信託報酬とリターンはこの画面で確認できます。次の比較と保存はログイン後です。')
+      return
+    }
+    if (getGuestEtfCompareGrantedKey() === key || grantedGuestKey === key) {
+      setGuestTrialNotice('無料お試しは1回です。信託報酬とリターンはこの画面で確認できます。次の比較と保存はログイン後です。')
+      return
+    }
+    setGuestTrialNotice('')
+  }, [embeddedMode, grantedGuestKey, isLoggedIn, requestedSymbols])
+
   useEffect(() => {
     let cancelled = false
     const run = async () => {
       setLoading(true)
       setError('')
       setNotice('')
+      if (requestedSymbols.length < 2 || guestCompareBlocked) {
+        setFunds([])
+        setChartData([])
+        setLoading(false)
+        return
+      }
       try {
         const fetchLatestBySymbols = async (symbolList) => {
           const allRows = []
@@ -301,14 +375,40 @@ export default function FundComparePage({
         cutoff.setFullYear(cutoff.getFullYear() - 1)
         const cutoffStr = cutoff.toISOString().slice(0, 10)
 
-        const [latestRows, symbolRowsResult] = await Promise.all([
-          fetchLatestBySymbols(compareSymbols),
-          supabase.from('stock_symbols').select('symbol,name,exchange,trust_fee,nisa_category').limit(5000),
-        ])
+        const variants = [...new Set(compareSymbols.flatMap((s) => fundSymbolLookupVariants(s)))]
+        const profilePromise = variants.length
+          ? supabase.from('stock_symbol_profiles').select('symbol,name_jp,name_en').in('symbol', variants)
+          : Promise.resolve({ data: [], error: null })
+
+        let symbolRowsResult = await supabase
+          .from('stock_symbols')
+          .select('symbol,name,exchange,trust_fee,nisa_category')
+          .limit(8000)
+        if (symbolRowsResult.error) {
+          symbolRowsResult = await supabase
+            .from('stock_symbols')
+            .select('symbol,name,exchange,trust_fee,nisa_category')
+            .limit(8000)
+        }
         if (symbolRowsResult.error) throw symbolRowsResult.error
 
-        const symbolMap = new Map((symbolRowsResult.data || []).map((r) => [r.symbol, r]))
-        const latestMap = new Map((latestRows || []).map((r) => [r.symbol, r]))
+        const [latestRows, profileResult] = await Promise.all([
+          fetchLatestBySymbols(compareSymbols),
+          profilePromise,
+        ])
+        if (profileResult.error) throw profileResult.error
+
+        const symbolRows = symbolRowsResult.data || []
+        const symbolMap = new Map(
+          symbolRows.map((r) => [String(r.symbol || '').trim().toUpperCase(), r]),
+        )
+        const profileRows = profileResult.data || []
+        const latestMap = new Map(
+          (latestRows || []).map((r) => {
+            const s = String(r.symbol || '').trim().toUpperCase()
+            return [s, { ...r, symbol: s }]
+          }),
+        )
 
         const historyBySymbol = new Map()
         for (const s of compareSymbols) {
@@ -320,36 +420,33 @@ export default function FundComparePage({
             .order('trade_date', { ascending: true })
             .limit(800)
           if (historyErr) throw historyErr
-          historyBySymbol.set(s, dedupeStockDailyPricesByTradeDate(data || []))
+          historyBySymbol.set(s, dedupeStockDailyPricesByTradeDate(data || [], { mode: 'continuity' }))
         }
 
-        const rows = compareSymbols.map((symbol) => {
-          const latest = latestMap.get(symbol) || {}
-          const meta = symbolMap.get(symbol) || {}
-          const xlsx = ETF_META_MAP.get(symbol)
-          const history = historyBySymbol.get(symbol) || []
+        let rows = compareSymbols.map((symbol) => {
+          const symKey = String(symbol || '').trim().toUpperCase()
+          const latest = latestMap.get(symKey) || {}
+          const meta = symbolMap.get(symKey) || pickMatchingSymbolMetaRow(symbolRows, symKey)
+          const profileRow = pickMatchingProfileRow(profileRows, symKey)
+          const xlsx = ETF_META_MAP.get(symKey)
+          const history = historyBySymbol.get(symKey) || []
           const volumes = history.map((r) => Number(r.volume)).filter((v) => Number.isFinite(v) && v >= 0)
           const adjustedSeries = buildSplitAdjustedCloses(history, {
-            skipSplitHeuristic: skipEodSplitHeuristicForSymbol(symbol),
+            skipSplitHeuristic: skipEodSplitHeuristicForSymbol(symKey),
           })
-          const oneYearBaseClose = findBaseCloseByCalendarOffset(history, { years: 1 }, adjustedSeries)
           const { close, sessionDod } = resolveSpotCloseAndSessionChange(history, adjustedSeries, latest)
-          const adjPositiveCount = adjustedSeries.filter((v) => Number.isFinite(Number(v)) && Number(v) > 0).length
-          const return1y = (adjPositiveCount >= 20 && oneYearBaseClose != null && oneYearBaseClose > 0)
-            ? ((close - oneYearBaseClose) / oneYearBaseClose) * 100
-            : null
-          const vol = calculateRealizedVolatility(adjustedSeries)
+          const return1y = computeOneYearPriceReturnPct(history, adjustedSeries, close)
+          const vol = calculateRealizedVolatilityFromAscHistory(history, adjustedSeries)
           const sharpe = (Number.isFinite(return1y) && Number.isFinite(vol) && vol > 0) ? (return1y / vol) : null
           const avgVol30 = volumes.length > 0
             ? volumes.slice(-30).reduce((acc, cur) => acc + cur, 0) / Math.min(30, volumes.length)
             : Number(latest.volume || 0)
           const change1d = Number.isFinite(sessionDod.changePct) ? sessionDod.changePct : null
-          const trustFeeValue = Number.isFinite(Number(meta.trust_fee)) ? Number(meta.trust_fee) : Number(xlsx?.trustFee)
-          const normalizedNisaCategory = normalizeNisaCategoryField(meta.nisa_category || xlsx?.nisaCategory)
+          const trustFeeValue = parseTrustFeePercent(meta.trust_fee) ?? parseTrustFeePercent(xlsx?.trustFee)
+          const normalizedNisaCategory = resolveFundNisaCategory(symKey, meta.nisa_category, xlsx?.nisaCategory)
           return {
-            symbol,
-            isin: xlsx?.isin || '-',
-            name: normalizeFundDisplayName(xlsx?.jpName || meta.name || symbol),
+            symbol: symKey,
+            name: resolveFundDisplayName(symKey, meta, xlsx, profileRow),
             exchange: meta.exchange || '-',
             trustFee: Number.isFinite(trustFeeValue) ? trustFeeValue : null,
             nisaCategory: normalizedNisaCategory,
@@ -362,7 +459,9 @@ export default function FundComparePage({
             history,
             adjustedClosesAsc: adjustedSeries,
           }
-        }).filter((r) => Number.isFinite(r.price) && r.price > 0)
+        })
+
+        rows = rows.filter((r) => Number.isFinite(r.price) && r.price > 0)
 
         const chartDateSet = new Set()
         rows.forEach((f) => {
@@ -413,11 +512,11 @@ export default function FundComparePage({
     }
     run()
     return () => { cancelled = true }
-  }, [requestedSymbols])
+  }, [requestedSymbols, embeddedMode, isLoggedIn, guestCompareBlocked])
 
   const scatterData = useMemo(() => (
     funds
-      .filter((f) => Number.isFinite(Number(f.return1y)) && Number.isFinite(Number(f.volatility)))
+      .filter((f) => hasOneYearPriceReturn(f.return1y) && Number.isFinite(Number(f.volatility)) && f.volatility !== null && f.volatility !== '')
       .map((f, idx) => ({
         ...f,
         x: Number(f.volatility),
@@ -648,7 +747,8 @@ export default function FundComparePage({
     if (!query) return base
     return base.filter((symbol) => {
       const name = String(ETF_META_MAP.get(symbol)?.jpName || '').toLowerCase()
-      return symbol.toLowerCase().includes(query) || name.includes(query)
+      const listedJa = String(getEtfListedJaName(symbol) || '').toLowerCase()
+      return symbol.toLowerCase().includes(query) || name.includes(query) || listedJa.includes(query)
     })
   }, [requestedSymbols, compareSearchTerm])
 
@@ -689,6 +789,7 @@ export default function FundComparePage({
         : null,
     })
     if (!payload) return
+    watchsetsSyncGenRef.current += 1
     setSavedWatchSets((prev) => {
       const next = [payload, ...prev].slice(0, 20)
       try {
@@ -724,6 +825,7 @@ export default function FundComparePage({
   }
 
   const removeWatchSet = (setId) => {
+    watchsetsSyncGenRef.current += 1
     setSavedWatchSets((prev) => {
       const next = prev.filter((row) => row.id !== setId)
       try {
@@ -774,8 +876,15 @@ export default function FundComparePage({
     }
     const keys = funds.map((_, idx) => `f${idx + 1}`)
     const baseByKey = {}
-    keys.forEach((key) => {
-      const first = visiblePerformanceSeries.find((row) => Number.isFinite(Number(row?.[key])))
+    keys.forEach((key, idx) => {
+      if (performanceTimeline === '1Y' && !hasOneYearPriceReturn(funds[idx]?.return1y)) {
+        baseByKey[key] = null
+        return
+      }
+      const first = visiblePerformanceSeries.find((row) => {
+        const value = row?.[key]
+        return value != null && value !== '' && Number.isFinite(Number(value))
+      })
       const base = Number(first?.[key] || 0)
       baseByKey[key] = base > 0 ? base : null
     })
@@ -793,7 +902,7 @@ export default function FundComparePage({
       })
       return next
     })
-  }, [visiblePerformanceSeries, funds.length])
+  }, [visiblePerformanceSeries, funds, performanceTimeline])
   const performanceYAxisDomain = useMemo(() => {
     if (!Array.isArray(rebasedPerformanceSeries) || rebasedPerformanceSeries.length === 0 || funds.length === 0) return ['auto', 'auto']
     const keys = funds.map((_, idx) => `f${idx + 1}`)
@@ -820,6 +929,23 @@ export default function FundComparePage({
       Number((maxVal + pad).toFixed(2)),
     ]
   }, [rebasedPerformanceSeries, funds.length])
+
+  if (guestCompareBlocked && !embeddedMode) {
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 pb-20 font-sans">
+        <div className="max-w-3xl mx-auto px-4 py-8">
+          <button
+            type="button"
+            onClick={() => navigate('/funds')}
+            className="mb-6 inline-flex items-center gap-2 text-sm font-bold text-slate-600 dark:text-slate-300"
+          >
+            <ArrowLeft size={16} /> ファンド一覧へ
+          </button>
+          <GuestEtfCompareTrialWall returnPath={authReturnPath} />
+        </div>
+      </div>
+    )
+  }
 
   if (loading) {
     if (embeddedMode) {
@@ -883,6 +1009,12 @@ export default function FundComparePage({
           ) : null}
         </div>
 
+        {guestTrialNotice ? (
+          <div className="mb-4 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-xs font-bold text-sky-800 dark:border-sky-900/40 dark:bg-sky-950/30 dark:text-sky-200">
+            {guestTrialNotice}
+          </div>
+        ) : null}
+
         {notice && (
           <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 text-blue-700 px-4 py-3 text-sm font-bold">
             {notice}
@@ -895,8 +1027,11 @@ export default function FundComparePage({
         )}
 
         {!embeddedMode ? (
-          <div className="mb-4">
+          <div className="mb-4 space-y-3">
             <MarketDataEodFreshnessNote variant="fund" />
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[11px] font-semibold leading-relaxed text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-100">
+              {LEGAL_NOTICE_TEMPLATES.investment}
+            </div>
           </div>
         ) : null}
 
@@ -924,6 +1059,11 @@ export default function FundComparePage({
             <p className="mt-2 text-[11px] font-semibold text-amber-800/90 dark:text-amber-200/90">
               例: <span className="font-mono">/etf-compare?ids=1306.T,1321.T</span>
             </p>
+            {!isLoggedIn ? (
+              <p className="mt-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-[11px] font-bold text-sky-800 dark:border-sky-900/40 dark:bg-sky-950/30 dark:text-sky-200">
+                比較結果（信託報酬・リターン）は1回だけ登録前に見られます。2回目と保存はログイン後です。
+              </p>
+            ) : null}
           </div>
         ) : null}
 
@@ -941,22 +1081,42 @@ export default function FundComparePage({
                     </div>
                   ) : (
               <ResponsiveContainer width="100%" height="100%">
-                      <ScatterChart margin={{ top: 8, right: 20, left: 0, bottom: 0 }}>
+                      <ScatterChart margin={{ top: 8, right: 12, left: 36, bottom: 32 }}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                         <XAxis
                           type="number"
                           dataKey="x"
                           name="変動性"
-                          unit="%"
                           tick={{ fontSize: 11 }}
+                          tickFormatter={(v) => `${Math.round(Number(v))}%`}
                           domain={[0, scatterVolatilityDomainMax]}
+                          label={{
+                            value: '変動性（年率標準偏差 %）',
+                            position: 'insideBottom',
+                            offset: -18,
+                            style: { fontSize: 11, fill: '#64748b', fontWeight: 700 },
+                          }}
                         />
-                        <YAxis type="number" dataKey="y" name="1年リターン" unit="%" tick={{ fontSize: 11 }} />
+                        <YAxis
+                          type="number"
+                          dataKey="y"
+                          name="1年リターン"
+                          tick={{ fontSize: 11 }}
+                          tickFormatter={(v) => `${Math.round(Number(v))}%`}
+                          width={56}
+                          label={{
+                            value: '1年リターン（市場終値・分配金除く）',
+                            angle: -90,
+                            position: 'left',
+                            offset: 8,
+                            style: { fontSize: 11, fill: '#64748b', fontWeight: 700, textAnchor: 'middle' },
+                          }}
+                        />
                         <ZAxis type="number" dataKey="z" range={[120, 1100]} />
                         <Tooltip
                           formatter={(v, key) => {
                             if (key === 'x' || key === 'y') return `${Number(v).toFixed(1)}%`
-                            return Math.round(Number(v)).toLocaleString()
+                            return Math.round(Number(v)).toLocaleString('ja-JP')
                           }}
                           labelFormatter={(_, payload) => payload?.[0]?.payload?.name || ''}
                         />
@@ -987,6 +1147,13 @@ export default function FundComparePage({
                     <option value="1Y">1Y</option>
                   </select>
                 </div>
+                {performanceTimeline === '1Y' && funds.some((fund) => !hasOneYearPriceReturn(fund.return1y)) ? (
+                  <p className="mb-2 text-[11px] font-bold leading-relaxed text-slate-500 dark:text-slate-400">
+                    {ONE_YEAR_RETURN_MISSING_TEXT}
+                    {' '}
+                    （{funds.filter((fund) => !hasOneYearPriceReturn(fund.return1y)).map((fund) => fund.name || fund.symbol).join('、')}）
+                  </p>
+                ) : null}
             <div className="h-[220px] sm:h-[280px] md:h-[300px]">
               <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={rebasedPerformanceSeries} margin={{ top: 8, right: 8, bottom: 56, left: 0 }}>
@@ -1010,6 +1177,7 @@ export default function FundComparePage({
                         iconSize={8}
                       />
                       {funds.map((f, idx) => (
+                        performanceTimeline === '1Y' && !hasOneYearPriceReturn(f.return1y) ? null : (
                     <Line
                           key={f.symbol}
                       type="monotone"
@@ -1020,6 +1188,7 @@ export default function FundComparePage({
                           dot={false}
                           connectNulls={false}
                     />
+                        )
                   ))}
                 </LineChart>
               </ResponsiveContainer>
@@ -1068,18 +1237,16 @@ export default function FundComparePage({
                         </button>
                       </div>
                       <dl className="mt-3 grid grid-cols-2 gap-x-2 gap-y-2 text-[11px]">
-                        <div className="col-span-2">
-                          <dt className="font-bold text-slate-500 dark:text-slate-400">ISIN</dt>
-                          <dd className="mt-0.5 break-all font-mono text-slate-800 dark:text-slate-200">{f.isin || '—'}</dd>
-                        </div>
                         <div>
                           <dt className="font-bold text-slate-500 dark:text-slate-400">1年リターン</dt>
+                          <dd className="text-[10px] font-bold text-slate-400">{ONE_YEAR_RETURN_BASIS_TEXT}</dd>
                           <dd
                             className={`mt-0.5 font-black ${
-                              Number.isFinite(Number(f.return1y)) ? signedReturnTextClassStrong(Number(f.return1y)) : 'text-slate-400'
+                              hasOneYearPriceReturn(f.return1y) ? signedReturnTextClassStrong(Number(f.return1y)) : 'text-slate-400'
                             }`}
+                            title={hasOneYearPriceReturn(f.return1y) ? ONE_YEAR_RETURN_BASIS_TEXT : ONE_YEAR_RETURN_MISSING_TEXT}
                           >
-                            {fmtPct(f.return1y)}
+                            {formatOneYearPriceReturnPct(f.return1y)}
                           </dd>
                         </div>
                         <div>
@@ -1105,12 +1272,12 @@ export default function FundComparePage({
                         <div>
                           <dt className="font-bold text-slate-500 dark:text-slate-400">出来高(30日)</dt>
                           <dd className="mt-0.5 text-slate-800 dark:text-slate-200">
-                            {Number(f.avgVol30) > 0 ? `${Math.round(Number(f.avgVol30)).toLocaleString()}株` : '-'}
+                            {Number(f.avgVol30) > 0 ? `${Math.round(Number(f.avgVol30)).toLocaleString('ja-JP')}株` : '-'}
                           </dd>
                         </div>
                         <div>
                           <dt className="font-bold text-slate-500 dark:text-slate-400">終値</dt>
-                          <dd className="mt-0.5 font-bold text-slate-800 dark:text-slate-200">¥{Math.round(Number(f.price || 0)).toLocaleString()}</dd>
+                          <dd className="mt-0.5 font-bold text-slate-800 dark:text-slate-200">¥{Math.round(Number(f.price || 0)).toLocaleString('ja-JP')}</dd>
                         </div>
                         <div className="col-span-2">
                           <dt className="font-bold text-slate-500 dark:text-slate-400">前日比</dt>
@@ -1139,8 +1306,10 @@ export default function FundComparePage({
                   <tr>
                     <th className="px-4 py-3 text-left">銘柄</th>
                     <th className="px-4 py-3 text-center">ウォッチ</th>
-                    <th className="px-4 py-3 text-left">ISIN</th>
-                    <th className="px-4 py-3 text-right">1年リターン</th>
+                    <th className="px-4 py-3 text-right" title={ONE_YEAR_RETURN_BASIS_TEXT}>
+                      1年リターン
+                      <span className="mt-0.5 block text-[10px] font-normal">{ONE_YEAR_RETURN_BASIS_TEXT}</span>
+                    </th>
                     <th className="px-4 py-3 text-right">変動性</th>
                     <th className="px-4 py-3 text-right">シャープレシオ</th>
                     <th className="px-4 py-3 text-right">信託報酬</th>
@@ -1186,12 +1355,14 @@ export default function FundComparePage({
                           />
                         </button>
                       </td>
-                      <td className="px-4 py-3 text-slate-700 dark:text-slate-300">{f.isin}</td>
-                      <td className={`px-4 py-3 text-right font-bold ${
-                        Number.isFinite(Number(f.return1y))
-                          ? signedReturnTextClassStrong(Number(f.return1y))
-                          : 'text-slate-400'
-                      }`}>{fmtPct(f.return1y)}</td>
+                      <td
+                        className={`px-4 py-3 text-right font-bold ${
+                          hasOneYearPriceReturn(f.return1y)
+                            ? signedReturnTextClassStrong(Number(f.return1y))
+                            : 'text-slate-400'
+                        }`}
+                        title={hasOneYearPriceReturn(f.return1y) ? ONE_YEAR_RETURN_BASIS_TEXT : ONE_YEAR_RETURN_MISSING_TEXT}
+                      >{formatOneYearPriceReturnPct(f.return1y)}</td>
                       <td className="px-4 py-3 text-right text-slate-700 dark:text-slate-300">{Number.isFinite(f.volatility) ? `${f.volatility.toFixed(1)}%` : '-'}</td>
                       <td className="px-4 py-3 text-right text-slate-700 dark:text-slate-300">{Number.isFinite(f.sharpe) ? f.sharpe.toFixed(2) : '-'}</td>
                       <td className="px-4 py-3 text-right text-slate-700 dark:text-slate-300">{formatTrustFee(f.trustFee)}</td>
@@ -1211,9 +1382,9 @@ export default function FundComparePage({
                         )}
                       </td>
                       <td className="px-4 py-3 text-right text-slate-700 dark:text-slate-300">
-                        {Number(f.avgVol30) > 0 ? `${Math.round(Number(f.avgVol30)).toLocaleString()}株` : '-'}
+                        {Number(f.avgVol30) > 0 ? `${Math.round(Number(f.avgVol30)).toLocaleString('ja-JP')}株` : '-'}
                       </td>
-                      <td className="px-4 py-3 text-right text-slate-700 dark:text-slate-300">¥{Math.round(Number(f.price || 0)).toLocaleString()}</td>
+                      <td className="px-4 py-3 text-right text-slate-700 dark:text-slate-300">¥{Math.round(Number(f.price || 0)).toLocaleString('ja-JP')}</td>
                       <td className={`px-4 py-3 text-right font-bold ${
                         Number.isFinite(Number(f.change1d))
                           ? signedReturnTextClassStrong(Number(f.change1d))

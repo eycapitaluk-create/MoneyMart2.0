@@ -16,10 +16,10 @@ export const looksLikeHighDividendFromText = (rawName = '', dbSub = '') => {
 export const isTrueCommodityName = (normalizedUpperName = '') => {
   const x = String(normalizedUpperName || '')
   // BAR/GOLD/SILVER は単独だと BARCLAYS / GOLDMAN 等に誤マッチするので境界を付ける
-  return /COMMODITY|\bGOLD\b|\bSILVER\b|CRUDE|WTI|BRENT|UNG|USO|\bGLD\b|\bSLV\b|\bGDX\b|GDXJ|\bDBA\b|\bDBC\b|\bIAU\b|\bSGOL\b|\bBAR\b|原油|貴金属|商品指数|コモディティ|天然ガス|パラジウム|プラチナ|白金|金先物|銀先物|金地金|ゴールド|金ETF|銀ETF|白金ETF|ETF.*金|金価格/i.test(x)
+  return /COMMODITY|\bGOLD\b|\bSILVER\b|CRUDE|WTI|BRENT|UNG|USO|\bGLD\b|\bSLV\b|\bGDX\b|GDXJ|\bDBA\b|\bDBC\b|\bIAU\b|\bSGOL\b|\bBAR\b|原油|貴金属|商品指数|コモディティ|原材料|天然ガス|パラジウム|プラチナ|白金|金先物|銀先物|金地金|ゴールド|金ETF|銀ETF|白金ETF|ETF.*金|金価格/i.test(x)
 }
 
-/** 銀行・金融セクター株指数など（DBがコモディティでも株式として扱う） */
+/** 銀行・金融セクター株指数など（DBが原材料扱いでも株式として扱う） */
 export const isEquityFinancialSectorName = (normalizedUpperName = '', rawName = '') => {
   const x = String(normalizedUpperName || '')
   const raw = String(rawName || '').normalize('NFKC')
@@ -51,7 +51,7 @@ export const normalizeDbCountryToken = (raw) => {
   if (cc === 'EU' || cc === 'EUROPE' || /欧州/.test(base)) return 'EU'
   if (cc === 'UK' || cc === 'GB' || /英国/.test(base)) return 'UK'
   if (cc === 'REIT' || /REIT|リート/.test(base)) return 'REIT'
-  if (cc === 'COMMODITY' || cc === 'COMMODITIES' || /コモディティ|商品/.test(base)) return 'COMMODITY'
+  if (cc === 'COMMODITY' || cc === 'COMMODITIES' || /コモディティ|原材料|商品/.test(base)) return 'COMMODITY'
   if (cc === 'FX' || cc === 'FOREX' || /為替/.test(base)) return 'FX'
   if (/高配当/.test(base)) return 'HIGH_DIVIDEND'
   return cc

@@ -81,6 +81,256 @@ html.dark select option {
   animation: mm-bell-site-ring 2.2s ease-out infinite;
 }
 
+/* ホーム：SNSキャンペーンバナー */
+@keyframes mm-campaign-banner-shimmer {
+  0% {
+    left: -55%;
+    opacity: 0;
+  }
+  8% {
+    opacity: 1;
+  }
+  42% {
+    left: 155%;
+    opacity: 1;
+  }
+  52%,
+  100% {
+    left: 155%;
+    opacity: 0;
+  }
+}
+
+@keyframes mm-campaign-banner-shimmer-2 {
+  0%,
+  48% {
+    left: -55%;
+    opacity: 0;
+  }
+  56% {
+    opacity: 0.85;
+  }
+  88% {
+    left: 155%;
+    opacity: 0.85;
+  }
+  96%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes mm-campaign-banner-glow {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 1px rgba(251, 146, 60, 0.5),
+      0 0 0 0 rgba(251, 191, 36, 0),
+      0 4px 16px rgba(249, 115, 22, 0.12);
+    border-color: rgba(251, 146, 60, 0.55);
+  }
+  50% {
+    box-shadow:
+      0 0 0 2px rgba(251, 191, 36, 0.95),
+      0 0 32px rgba(249, 115, 22, 0.45),
+      0 0 56px rgba(251, 191, 36, 0.25);
+    border-color: rgba(251, 191, 36, 0.95);
+  }
+}
+
+@keyframes mm-campaign-banner-tint {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+@keyframes mm-campaign-star-deco {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.8);
+    filter: drop-shadow(0 0 0 rgba(251, 191, 36, 0));
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.25);
+    filter: drop-shadow(0 0 8px rgba(251, 191, 36, 1));
+  }
+}
+
+@keyframes mm-campaign-gift-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 4px 14px rgba(249, 115, 22, 0.35);
+  }
+  50% {
+    transform: scale(1.08);
+    box-shadow: 0 0 22px rgba(251, 191, 36, 0.75);
+  }
+}
+
+@keyframes mm-campaign-cta-flash {
+  0%,
+  65%,
+  100% {
+    filter: brightness(1);
+    box-shadow: 0 4px 16px rgba(249, 115, 22, 0.35);
+    transform: scale(1);
+  }
+  70% {
+    filter: brightness(1.3);
+    box-shadow: 0 0 28px rgba(251, 191, 36, 0.85);
+    transform: scale(1.03);
+  }
+  75% {
+    filter: brightness(1);
+    transform: scale(1);
+  }
+  80% {
+    filter: brightness(1.2);
+    box-shadow: 0 0 20px rgba(249, 115, 22, 0.6);
+  }
+}
+
+@keyframes mm-campaign-live-badge-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.6);
+  }
+  50% {
+    transform: scale(1.06);
+    box-shadow: 0 0 14px rgba(251, 191, 36, 0.9);
+  }
+}
+
+.mm-campaign-banner-flash {
+  position: relative;
+  overflow: hidden;
+  animation: mm-campaign-banner-glow 1.35s ease-in-out infinite;
+}
+
+.mm-campaign-shine-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.mm-campaign-shine-overlay::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -55%;
+  width: 38%;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.25) 30%,
+    rgba(254, 243, 199, 0.75) 48%,
+    rgba(255, 255, 255, 0.95) 50%,
+    rgba(254, 243, 199, 0.75) 52%,
+    rgba(255, 255, 255, 0.25) 70%,
+    transparent 100%
+  );
+  animation: mm-campaign-banner-shimmer-2 2.2s ease-in-out infinite;
+}
+
+.mm-campaign-shine-overlay::after {
+  content: '';
+  position: absolute;
+  top: -10%;
+  bottom: -10%;
+  left: -55%;
+  width: 42%;
+  z-index: 2;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.4) 28%,
+    rgba(255, 255, 255, 1) 46%,
+    #fffef8 50%,
+    rgba(255, 255, 255, 1) 54%,
+    rgba(255, 255, 255, 0.4) 72%,
+    transparent 100%
+  );
+  mix-blend-mode: soft-light;
+  animation: mm-campaign-banner-shimmer 1.65s ease-in-out infinite;
+}
+
+html.dark .mm-campaign-shine-overlay::before {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(251, 191, 36, 0.12) 30%,
+    rgba(251, 191, 36, 0.45) 50%,
+    rgba(251, 191, 36, 0.12) 70%,
+    transparent 100%
+  );
+}
+
+html.dark .mm-campaign-shine-overlay::after {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.08) 28%,
+    rgba(255, 255, 255, 0.55) 50%,
+    rgba(255, 255, 255, 0.08) 72%,
+    transparent 100%
+  );
+  mix-blend-mode: screen;
+}
+
+.mm-campaign-banner-tint {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(90deg, rgba(251, 191, 36, 0.2), rgba(249, 115, 22, 0.15), rgba(251, 191, 36, 0.2));
+  animation: mm-campaign-banner-tint 1.35s ease-in-out infinite;
+}
+
+.mm-campaign-star-deco {
+  display: inline-flex;
+  z-index: 3;
+  animation: mm-campaign-star-deco 1.35s ease-in-out infinite;
+}
+
+.mm-campaign-live-badge {
+  animation: mm-campaign-live-badge-pulse 1.35s ease-in-out infinite;
+}
+
+.mm-campaign-gift-pulse {
+  animation: mm-campaign-gift-pulse 1.35s ease-in-out infinite;
+}
+
+.mm-campaign-cta-flash {
+  animation: mm-campaign-cta-flash 1.65s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mm-campaign-banner-flash,
+  .mm-campaign-shine-overlay::before,
+  .mm-campaign-shine-overlay::after,
+  .mm-campaign-banner-tint,
+  .mm-campaign-star-deco,
+  .mm-campaign-gift-pulse,
+  .mm-campaign-cta-flash,
+  .mm-campaign-live-badge {
+    animation: none !important;
+  }
+}
+
 @layer utilities {
   .scrollbar-hide {
     -ms-overflow-style: none;

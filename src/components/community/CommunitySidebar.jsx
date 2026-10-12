@@ -31,7 +31,7 @@ export default function CommunitySidebar({
   trendingTickers = [],
   onTickerSearch,
   leaderboard = [],
-  latestInsight = null,
+  latestInsights = [],
   showMobileSearch = false,
 }) {
   const [hintsOpen, setHintsOpen] = useState(false)
@@ -42,6 +42,8 @@ export default function CommunitySidebar({
 
   const total = sentimentSummary?.total || 0
   const counts = sentimentSummary?.counts || { bullish: 0, bearish: 0, neutral: 0 }
+  const primaryInsight = latestInsights?.[0] || null
+  const moreInsights = latestInsights?.slice(1, 3) || []
 
   const searchForm = (className = '') => (
     <form onSubmit={onSearchSubmit} className={`relative ${className}`}>
@@ -173,21 +175,47 @@ export default function CommunitySidebar({
         )}
       </div>
 
-      {latestInsight?.slug ? (
-        <div className="rounded-2xl border border-amber-200 dark:border-amber-900/50 bg-amber-50/50 dark:bg-amber-950/20 p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <BookOpen size={15} className="text-amber-600" />
-            <h2 className="text-sm font-black text-slate-900 dark:text-white">新着インサイト</h2>
-          </div>
-          <Link
-            to={`/insights/${encodeURIComponent(latestInsight.slug)}`}
-            className="block text-sm font-bold text-slate-800 dark:text-slate-100 hover:text-orange-600 dark:hover:text-orange-400 leading-snug line-clamp-2"
-          >
-            {latestInsight.pageTitle || latestInsight.page_title || 'インサイトを読む'}
-          </Link>
-          {latestInsight.categoryLabel || latestInsight.category_label ? (
-            <p className="text-[10px] text-slate-500 mt-1">{latestInsight.categoryLabel || latestInsight.category_label}</p>
+      {primaryInsight?.slug ? (
+        <div className="overflow-hidden rounded-2xl border border-amber-200 bg-white dark:border-amber-900/50 dark:bg-slate-900">
+          {primaryInsight.coverImageUrl ? (
+            <Link to={`/insights/${encodeURIComponent(primaryInsight.slug)}`} className="block aspect-[16/8] overflow-hidden bg-amber-50 dark:bg-amber-950/20">
+              <img
+                src={primaryInsight.coverImageUrl}
+                alt=""
+                loading="lazy"
+                className="h-full w-full object-cover transition duration-300 hover:scale-[1.02]"
+              />
+            </Link>
           ) : null}
+          <div className="p-4">
+            <div className="mb-2 flex items-center gap-2">
+              <BookOpen size={15} className="text-amber-600" />
+              <h2 className="text-sm font-black text-slate-900 dark:text-white">MoneyMart 新着インサイト</h2>
+            </div>
+            <Link
+              to={`/insights/${encodeURIComponent(primaryInsight.slug)}`}
+              className="block text-sm font-bold leading-snug text-slate-800 hover:text-orange-600 dark:text-slate-100 dark:hover:text-orange-400"
+            >
+              {primaryInsight.pageTitle || primaryInsight.page_title || 'インサイトを読む'}
+            </Link>
+            {primaryInsight.categoryLabel || primaryInsight.category_label ? (
+              <p className="mt-1 text-[10px] text-slate-500">{primaryInsight.categoryLabel || primaryInsight.category_label}</p>
+            ) : null}
+            {moreInsights.length > 0 ? (
+              <div className="mt-3 space-y-2 border-t border-slate-100 pt-3 dark:border-slate-800">
+                {moreInsights.map((insight) => (
+                  <Link
+                    key={insight.slug}
+                    to={`/insights/${encodeURIComponent(insight.slug)}`}
+                    className="flex items-start gap-2 text-[11px] font-bold leading-snug text-slate-600 hover:text-orange-600 dark:text-slate-300 dark:hover:text-orange-400"
+                  >
+                    <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
+                    <span className="line-clamp-2">{insight.pageTitle || insight.page_title || 'インサイトを読む'}</span>
+                  </Link>
+                ))}
+              </div>
+            ) : null}
+          </div>
         </div>
       ) : null}
 

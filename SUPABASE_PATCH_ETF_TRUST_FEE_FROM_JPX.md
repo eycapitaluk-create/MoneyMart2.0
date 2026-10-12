@@ -1,0 +1,11 @@
+-- Applied via: node scripts/apply-etf-trust-fee-from-jpx-audit.mjs
+-- Source: JPX ETF 銘柄一覧 (税抜) → MoneyMart trust_fee as 税込 estimate (×1.1),
+-- with prospectus overrides: 2558/2630=0.077, 2631/2632=0.22
+-- Audit after apply: mismatch ~1 left (2558 intentional prospectus 税込).
+-- Details: reports/ETF_TRUST_FEE_APPLY_FROM_JPX.tsv
+-- Re-audit: node scripts/audit-etf-trust-fee-vs-jpx.mjs --jpx-md=reports/jpx_etf_list_01.md
+
+-- Spot-check expected:
+-- SELECT symbol, trust_fee FROM stock_symbols
+-- WHERE symbol IN ('2631.T','2632.T','2630.T','2558.T','1348.T');
+-- 2631/2632 → 0.22 | 2630/2558 → 0.077 | 1348 → 0.066

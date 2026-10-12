@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
-import { buildHeadBlock, escapeHtml, webApplicationLd } from './lib/seoHead.js'
-import { isMarketRelevantManualNews } from '../../src/lib/marketNewsRelevance.js'
+import { breadcrumbListJsonLd, buildHeadBlock, escapeHtml, getSiteOrigin, webApplicationLd } from './lib/seoHead.js'
+import { isMarketRelevantManualNews, MARKET_PICKUP_COUNT } from '../../src/lib/marketNewsRelevance.js'
+import { manualNewsRowRecencyMs, stripJapaneseCalendarPhrasesFromTitle } from '../../src/lib/newsManualRecency.js'
 
 const toTimeText = (value = '') => {
   if (!value) return '--:--'
@@ -28,7 +29,7 @@ export default async function handler(_req, res) {
   const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.VITE_SUPABASE_ANON_KEY
   if (!supabaseUrl || !supabaseKey) {
-    return sendHtml(res, 500, '<h1>Market unavailable</h1><p>Missing Supabase environment variables.</p>')
+    return sendHtml(res, 500, '<h1>マーケット指標を表示できません</h1><p>しばらくしてから再度お試しください。</p>')
   }
 
   try {
@@ -61,15 +62,28 @@ export default async function handler(_req, res) {
     if (historyErr) throw historyErr
 
     const rows = manualRows || []
-    const tickerCandidates = rows.filter((r) => r.bucket === 'market_ticker').filter(isMarketRelevantManualNews)
+    const tickerCandidates = rows
+      .filter((r) => r.bucket === 'market_ticker')
+      .filter(isMarketRelevantManualNews)
+      .sort(
+        (a, b) =>
+          manualNewsRowRecencyMs(b?.published_at, b?.updated_at)
+          - manualNewsRowRecencyMs(a?.published_at, a?.updated_at),
+      )
     const pickupCandidates = rows.filter((r) => r.bucket === 'market_pickup').filter(isMarketRelevantManualNews)
     const fundCandidates = rows.filter((r) => r.bucket === 'fund_pickup').filter(isMarketRelevantManualNews)
-    const briefRow = rows.find((r) => r.bucket === 'daily_brief') || null
-    const dailyBrief =
-      briefRow && isMarketRelevantManualNews(briefRow) ? briefRow : null
+    const briefCandidates = rows
+      .filter((r) => r.bucket === 'daily_brief')
+      .filter(isMarketRelevantManualNews)
+      .sort(
+        (a, b) =>
+          manualNewsRowRecencyMs(b?.published_at, b?.updated_at)
+          - manualNewsRowRecencyMs(a?.published_at, a?.updated_at),
+      )
+    const dailyBrief = briefCandidates[0] || null
     const byBucket = {
       market_ticker: tickerCandidates.slice(0, 10),
-      market_pickup: pickupCandidates.slice(0, 6),
+      market_pickup: pickupCandidates.slice(0, MARKET_PICKUP_COUNT),
       fund_pickup: fundCandidates.slice(0, 6),
       daily_brief: dailyBrief,
     }
@@ -97,19 +111,19 @@ export default async function handler(_req, res) {
     }).filter(Boolean)
 
     const tickerLine = byBucket.market_ticker
-      .map((item) => `<span style="margin-right:20px;"><strong style="color:#f97316;">${escapeHtml(item.source || 'News')}</strong> ${escapeHtml(item.title || '')} <span style="color:#94a3b8;">${escapeHtml(item.time_text || '')}</span></span>`)
+      .map((item) => `<span style="margin-right:28px;"><span style="color:#e2e8f0;font-weight:700;">${escapeHtml(stripJapaneseCalendarPhrasesFromTitle(item.title || ''))}</span> <span style="color:#94a3b8;font-family:ui-monospace,monospace;">${escapeHtml(item.time_text || '')}</span></span>`)
       .join('')
 
     const pickupCards = byBucket.market_pickup.map((item) => `
       <article style="border:1px solid #e2e8f0;border-radius:14px;padding:14px;background:#fff;">
-        <h3 style="margin:0;font-size:15px;line-height:1.6;color:#0f172a;font-weight:800;">${escapeHtml(item.title || '')}</h3>
+        <h3 style="margin:0;font-size:15px;line-height:1.6;color:#0f172a;font-weight:800;">${escapeHtml(stripJapaneseCalendarPhrasesFromTitle(item.title || ''))}</h3>
         <p style="margin:8px 0 0 0;font-size:13px;line-height:1.7;color:#475569;">${escapeHtml(item.description || '')}</p>
       </article>
     `).join('')
 
     const fundCards = byBucket.fund_pickup.map((item) => `
       <article style="border:1px solid #e2e8f0;border-radius:14px;padding:14px;background:#fff;">
-        <h3 style="margin:0;font-size:15px;line-height:1.6;color:#0f172a;font-weight:800;">${escapeHtml(item.title || '')}</h3>
+        <h3 style="margin:0;font-size:15px;line-height:1.6;color:#0f172a;font-weight:800;">${escapeHtml(stripJapaneseCalendarPhrasesFromTitle(item.title || ''))}</h3>
         <p style="margin:8px 0 0 0;font-size:13px;line-height:1.7;color:#475569;">${escapeHtml(item.description || '')}</p>
       </article>
     `).join('')
@@ -133,9 +147,15 @@ export default async function handler(_req, res) {
     const head = buildHeadBlock({
       title: '日本マーケット指標・センチメント | MoneyMart',
       description:
-        '日本市場のセンチメントや関連ニュースを整理する無料マーケット指標。ETF・株式のタイミング検討や、NISA枠の配分検討に活用できます。',
-      canonicalPath: '/market-indicator',
-      jsonLd: [webApplicationLd({ name: 'MoneyMart マーケット指標', url: '/market-indicator' })],
+        '米国セクター・地域別ETFのヒートマップ（騰落率）、日本テーマ・商品モニター、ニュースとフィアーアンドグリード型のセンチメント指標をまとめた無料ボード。ヒートマップの数値タイルは無料会員ログイン後にご利用いただけます。',
+      canonicalPath: '/market',
+      jsonLd: [
+        webApplicationLd({ name: 'MoneyMart マーケット指標', url: '/market' }),
+        breadcrumbListJsonLd(getSiteOrigin(), [
+          { name: 'ホーム', path: '/' },
+          { name: 'マーケット', path: '/market' },
+        ]),
+      ],
     })
 
     const html = `<!doctype html>
@@ -155,7 +175,7 @@ export default async function handler(_req, res) {
         ? `
         <section style="border:1px solid #fdba74;background:#fff7ed;border-radius:14px;padding:14px;margin-bottom:14px;">
           <p style="margin:0;font-size:11px;color:#9a3412;font-weight:900;">DAILY BRIEF</p>
-          <p style="margin:6px 0 0 0;font-size:16px;line-height:1.6;font-weight:800;color:#0f172a;">${escapeHtml(byBucket.daily_brief.title || '')}</p>
+          <p style="margin:6px 0 0 0;font-size:16px;line-height:1.6;font-weight:800;color:#0f172a;">${escapeHtml(stripJapaneseCalendarPhrasesFromTitle(byBucket.daily_brief.title || ''))}</p>
           <p style="margin:6px 0 0 0;font-size:13px;line-height:1.7;color:#7c2d12;">${escapeHtml(byBucket.daily_brief.description || '')}</p>
         </section>
       `
@@ -189,9 +209,7 @@ export default async function handler(_req, res) {
 </html>`
 
     return sendHtml(res, 200, html)
-  } catch (e) {
-    const message = escapeHtml(e?.message || 'Unknown error')
-    return sendHtml(res, 500, `<!doctype html><html lang="ja"><body><h1>Market unavailable</h1><p>${message}</p></body></html>`)
+  } catch {
+    return sendHtml(res, 500, `<!doctype html><html lang="ja"><body><h1>マーケット指標を表示できません</h1><p>しばらくしてから再度お試しください。</p></body></html>`)
   }
 }
-

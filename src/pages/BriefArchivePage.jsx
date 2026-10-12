@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { fetchDailyBriefArchive } from '../lib/newsManualClient'
+import { fetchDailyBriefArchive, stripJapaneseCalendarPhrasesFromTitle } from '../lib/newsManualClient'
 import { supabase } from '../lib/supabase'
 
 const formatDateTime = (value) => {
@@ -136,7 +136,7 @@ export default function BriefArchivePage() {
                   <span className="text-[11px] font-black text-indigo-600 dark:text-indigo-300">{row.tone || '中立'}</span>
                   <span className="text-[11px] text-slate-400">{formatDateTime(row.published_at || row.updated_at)}</span>
                 </div>
-                <h2 className="text-sm md:text-base font-black text-slate-900 dark:text-white">{row.title || '-'}</h2>
+                <h2 className="text-sm md:text-base font-black text-slate-900 dark:text-white">{stripJapaneseCalendarPhrasesFromTitle(row.title || '') || '-'}</h2>
                 <p className="text-xs text-slate-600 dark:text-slate-300 mt-1.5 leading-relaxed">{row.description || ''}</p>
                 <div className="mt-2 flex items-center justify-between gap-2">
                   <p className="text-[11px] text-slate-400">Source: {row.source || 'MoneyMart News Desk'}</p>

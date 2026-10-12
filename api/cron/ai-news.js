@@ -523,7 +523,7 @@ Sector: ${article.sector}
 
 Strict rules:
 - Use ONLY facts that appear in Headline or Description above. Do not invent numbers, dates, quotes, or unnamed sources.
-- Do NOT give investment advice, price targets, buy/sell recommendations, or "what investors should do."
+- Do NOT give investment advice, price targets, buy/sell instructions, or "what investors should do."
 - "summary" must be two complete Japanese sentences that state WHO did WHAT and WHY it matters per the text (not generic filler). If the source text is thin, still paraphrase what is explicitly written—never output placeholder text.
 - If the text is too thin to explain safely, write analysis as 2 short paragraphs that paraphrase only what is given and one sentence saying detail is limited—link to the original article for more.
 - "analysis" must be 2–5 short paragraphs (blank line between paragraphs), plain text: context and rewording only from the given lines—not new reporting.
@@ -579,9 +579,9 @@ function extractJsonObject(text = '') {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
-/** Sonnet 3.5 が JSON 指示に強い。環境で上書き可。 */
-const AI_NEWS_DEFAULT_MODEL = 'claude-3-5-sonnet-20241022'
-const AI_NEWS_FALLBACK_MODEL = 'claude-3-5-haiku-20241022'
+/** 未指定時は Sonnet 4.6 → Haiku 4.5。環境で上書き可。 */
+const AI_NEWS_DEFAULT_MODEL = 'claude-sonnet-4-6'
+const AI_NEWS_FALLBACK_MODEL = 'claude-haiku-4-5-20251001'
 
 const isRetriableAnthropicError = (status, message = '') => {
   const m = String(message || '').toLowerCase()
@@ -730,7 +730,7 @@ function inferFallbackSentiment(article, snippet = '') {
 }
 
 /**
- * 本番は要約成功率優先: 未指定時は Sonnet → Haiku。軽量優先なら AI_NEWS_MODEL=claude-3-5-haiku-20241022 等。
+ * 本番は要約成功率優先: 未指定時は Sonnet → Haiku。軽量優先なら AI_NEWS_MODEL=claude-haiku-4-5-20251001 等。
  */
 async function summarizeWithClaude(article, apiKey, timeoutMs = 45000) {
   const fromEnv = String(env('AI_NEWS_MODEL') || '').trim()

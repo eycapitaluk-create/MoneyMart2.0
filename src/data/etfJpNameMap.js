@@ -9,12 +9,19 @@ export const ETF_JP_NAME_MAP = {
   VOO: 'バンガード S&P500 ETF',
   VTI: 'バンガード 米国全株ETF',
   QQQ: 'インベスコ QQQトラスト',
+  DIA: 'SPDR ダウ平均ETF',
+  IWM: 'iシェアーズ ラッセル2000 ETF',
+  SCHD: 'シュワブ 米国高配当株式ETF',
+  XLK: 'SPDR テクノロジー・セレクターETF',
+  XLF: 'SPDR 金融セレクターETF',
+  ARKK: 'ARK イノベーションETF',
   VT: 'バンガード 全世界株式ETF',
   ACWI: 'iシェアーズ MSCI ACWI ETF',
   VXUS: 'バンガード 米国除く全世界株式ETF',
   EFA: 'iシェアーズ MSCI EAFE ETF（先進国除外米国）',
   IEFA: 'iシェアーズ コア MSCI EAFE ETF',
   EEM: 'iシェアーズ MSCI 新興国ETF',
+  VWO: 'バンガード 新興国株式ETF',
   VEA: 'バンガード 先進国株式ETF',
   EWG: 'iシェアーズ MSCI ドイツETF',
   EWJ: 'iシェアーズ MSCI 日本ETF',
@@ -34,7 +41,7 @@ export const ETF_JP_NAME_MAP = {
   // REIT
   VNQ: 'バンガード 米国REIT ETF',
   VNQI: 'バンガード 国際REIT ETF',
-  // コモディティ
+  // 原材料
   GLD: 'SPDR 金ETF',
   SLV: 'iシェアーズ 銀ETF',
   USO: 'US 原油ETF',

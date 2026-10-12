@@ -2,15 +2,15 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 /**
- * Admin Basic Auth 가드 — Stripe 일본 보안 요건 대응
- * ADMIN_BASIC_USER / ADMIN_BASIC_PASS 환경변수 기반
+ * 管理画面用 Basic 認証ガード（管理ツールのアクセス制御）
+ * 環境変数 ADMIN_BASIC_USER / ADMIN_BASIC_PASS を使用
  */
 export default function AdminIpGuard({ children }) {
   const [status, setStatus] = useState('checking')
   const navigate = useNavigate()
 
   useEffect(() => {
-    // 저장된 인증 정보 확인
+    // セッションに保存済みの認証情報を確認
     const saved = sessionStorage.getItem('mm_admin_auth')
     if (saved) {
       verifyAuth(saved)
@@ -45,7 +45,7 @@ export default function AdminIpGuard({ children }) {
           sessionStorage.setItem('mm_admin_auth', credentials)
           setStatus('allowed')
         } else {
-          alert('認証に失敗しました')
+          alert('Authentication failed')
           navigate('/')
         }
       })
@@ -55,7 +55,7 @@ export default function AdminIpGuard({ children }) {
   if (status === 'checking') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900">
-        <p className="text-sm font-bold text-slate-500">認証確認中...</p>
+        <p className="text-sm font-bold text-slate-500">Checking credentials…</p>
       </div>
     )
   }

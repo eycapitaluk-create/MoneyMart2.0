@@ -108,7 +108,7 @@ struct StocksView: View {
                     HStack {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Stocks").font(.title3.bold())
-                            Text("実データ: v_stock_latest").font(.caption).foregroundStyle(.secondary)
+                            Text("取得できた最新の終値などを表示します（欠損があり得ます）").font(.caption).foregroundStyle(.secondary)
                         }
                         Spacer()
                         MMBadge(text: "\(vm.rows.count) symbols", tint: .orange)

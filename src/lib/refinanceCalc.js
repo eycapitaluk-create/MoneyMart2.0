@@ -11,7 +11,8 @@ export const normalizeOfferApr = (offer = {}) => {
   const min = toNonNegative(offer.apr_min, 0)
   const max = toNonNegative(offer.apr_max, min)
   if (max < min) return min
-  return (min + max) / 2
+  // The approved rate is unknown until underwriting. Avoid inventing a midpoint rate.
+  return max
 }
 
 export const simulateCostTimeline = ({

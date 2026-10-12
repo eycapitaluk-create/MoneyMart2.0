@@ -50,18 +50,26 @@ export const isLikelyUsdDivStock = (item) => {
   return /^[A-Z][A-Z0-9]*(?:\.[A-Z]+)?$/i.test(id)
 }
 
+/** UI・保存は 🇯🇵 / 🇺🇸 のみ。旧版の 🇬🇧 🇪🇺 等はティッカー等から寄せる */
+export const normalizeDividendStockFlag = (flag, item = {}) => {
+  const f = String(flag ?? '').trim()
+  if (f === '🇯🇵' || f === '🇺🇸') return f
+  const stub = { ...item, flag: f }
+  return isLikelyUsdDivStock(stub) ? '🇺🇸' : '🇯🇵'
+}
+
 export const formatDividendCash = (amount = 0, item = null) => {
   const n = Number(amount)
   if (!Number.isFinite(n)) return '—'
   if (isLikelyUsdDivStock(item)) {
-    const d = Math.abs(n) >= 100 ? 2 : 3
-    return `$${n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: d })}`
+    const d = Math.abs(n) >= 100 ? 2 : 6
+    return `$${n.toLocaleString('ja-JP', { minimumFractionDigits: 0, maximumFractionDigits: d })}`
   }
   const rounded = Math.abs(n - Math.round(n)) < 1e-6 ? Math.round(n) : Math.round(n * 100) / 100
-  return `¥${rounded.toLocaleString()}`
+  return `¥${rounded.toLocaleString('ja-JP')}`
 }
 
-/** 配当カレンダー用: USD建て株は rate で円換算、円建てはそのまま */
+/** 配当カレンダー用: USD建て株は rate で円換算（生の浮動小数）、円建てはそのまま。複数株の整数円表示は {@link dividendGrossTotalJpyFromPerShare} を使う。 */
 export const dividendCashToJpyApprox = (amountNative, item, usdJpyRate) => {
   const n = Math.max(0, Number(amountNative) || 0)
   const r = Number(usdJpyRate) > 0 ? Number(usdJpyRate) : 150
@@ -100,6 +108,35 @@ export const getDividendNetCashInNative = (grossAmountNative = 0, item = null) =
 export const getDividendNetJpyApprox = (grossAmountNative = 0, item = null, usdJpyRate = 150) => (
   dividendCashToJpyApprox(getDividendNetCashInNative(grossAmountNative, item), item, usdJpyRate)
 )
+
+/**
+ * 配当の税引前・円換算総額（1株あたり×株数）。
+ * USD: `round(1株あたりUSD×株数×レート)`。1株ごとの丸め誤差を累積させない。
+ * JPY: そのまま円の総額。
+ */
+export const dividendGrossTotalJpyFromPerShare = (perShareAmount, qty, item, usdJpyRate) => {
+  const ps = Math.max(0, Number(perShareAmount) || 0)
+  const q = Math.max(0, Number(qty) || 0)
+  if (!Number.isFinite(ps) || !Number.isFinite(q)) return 0
+  if (isLikelyUsdDivStock(item)) {
+    const r = Number(usdJpyRate) > 0 ? Number(usdJpyRate) : 150
+    return Math.round(ps * q * r)
+  }
+  return ps * q
+}
+
+/** 税引後の配当・円換算総額（総額を換算してから最終丸め） */
+export const dividendNetTotalJpyFromPerShare = (perShareGross, qty, item, usdJpyRate) => {
+  const ps = Math.max(0, Number(perShareGross) || 0)
+  const q = Math.max(0, Number(qty) || 0)
+  if (!Number.isFinite(ps) || !Number.isFinite(q)) return 0
+  if (isLikelyUsdDivStock(item)) {
+    const netPs = Math.max(0, getDividendNetCashInNative(ps, item))
+    const r = Number(usdJpyRate) > 0 ? Number(usdJpyRate) : 150
+    return Math.round(netPs * q * r)
+  }
+  return getDividendNetJpyApprox(ps * q, item, usdJpyRate)
+}
 
 export const getDividendCadenceMeta = (dividends = []) => {
   const cadence = getDividendCadence(dividends)

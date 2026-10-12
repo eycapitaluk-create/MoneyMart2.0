@@ -9,6 +9,7 @@ import { acknowledgeDividendBellForCurrentMonth } from '../../lib/dividendBellAc
 import { hasPremiumEntitlement } from '../../lib/membership'
 import { scheduleIdleTask } from '../../lib/scheduleIdle'
 import BrandLogoMark from '../BrandLogoMark'
+import CampaignCp2026NavLink from '../campaign/CampaignCp2026NavLink'
 import CommunityTierBadge from '../community/CommunityTierBadge'
 import { useCommunityTier } from '../../hooks/useCommunityTier'
 
@@ -42,7 +43,7 @@ function isMainNavActive(pathname, key) {
 }
 
 function desktopMainNavClass(active) {
-  const base = 'rounded-sm px-0.5 -mx-0.5 transition'
+  const base = 'inline-flex items-center whitespace-nowrap shrink-0 leading-none rounded-sm px-0.5 -mx-0.5 transition'
   return active
     ? `${base} text-orange-600 dark:text-orange-400 font-black underline underline-offset-[7px] decoration-2 decoration-orange-500`
     : `${base} text-slate-600 dark:text-slate-300 font-bold hover:text-orange-500`
@@ -210,7 +211,7 @@ export default function Navbar({
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16 gap-3">
           {/* 1. ロゴ & メインメニュー */}
-          <div className="flex items-center gap-3 lg:gap-5 min-w-0">
+          <div className="flex items-center gap-3 lg:gap-4 min-w-0 shrink">
             <Link to="/" className="flex-shrink-0 flex items-center gap-1.5">
               <BrandLogoMark />
               <div className="flex flex-col items-start xl:items-center text-left xl:text-center">
@@ -220,7 +221,7 @@ export default function Navbar({
             </Link>
 
             {/* デスクトップメニュー — コア5 + その他ドロップダウン */}
-            <div className="hidden lg:flex items-center gap-4 xl:gap-6 text-[13px] xl:text-sm">
+            <div className="hidden lg:flex items-center gap-2.5 xl:gap-4 text-[13px] xl:text-sm shrink-0">
               <Link to="/market" className={desktopMainNavClass(isMainNavActive(pathname, 'market'))}>マーケット</Link>
               <Link to="/stocks" className={desktopMainNavClass(isMainNavActive(pathname, 'stocks'))}>株式</Link>
               <Link to="/funds" className={desktopMainNavClass(isMainNavActive(pathname, 'funds'))}>ファンド</Link>
@@ -240,7 +241,7 @@ export default function Navbar({
                 <button
                   type="button"
                   onClick={() => setDesktopMoreOpen((v) => !v)}
-                  className={`inline-flex items-center gap-0.5 rounded-sm px-1 -mx-1 transition font-bold ${
+                  className={`inline-flex items-center gap-0.5 whitespace-nowrap shrink-0 leading-none rounded-sm px-1 -mx-1 transition font-bold ${
                     moreNavActive
                       ? 'text-orange-600 dark:text-orange-400 underline underline-offset-[7px] decoration-2 decoration-orange-500'
                       : 'text-slate-600 dark:text-slate-300 hover:text-orange-500'
@@ -302,6 +303,7 @@ export default function Navbar({
             >
               インサイト
             </Link>
+            <CampaignCp2026NavLink userEmail={session?.user?.email} />
             {session ? (
               <Link
                 to="/mypage?tab=wealth"
@@ -478,12 +480,12 @@ export default function Navbar({
                                     <span className="font-bold block">
                                       {isPremium && dividendMonthAlertsForView.find((a) => a.stock_id === '__MONTH_NET_SUMMARY__')
                                         ? dividendMonthAlertsForView.find((a) => a.stock_id === '__MONTH_NET_SUMMARY__')?.title
-                                        : `今月は配当予定月（ウォッチ ${dividendMonthAlertCount}）`}
+                                        : `登録銘柄の公式支払日が今月です（${dividendMonthAlertCount}件）`}
                                     </span>
                                     <span className="text-slate-500 dark:text-slate-400 line-clamp-4">
                                       {dividendMonthAlertsForView
                                         .filter((a) => a.stock_id !== '__MONTH_NET_SUMMARY__')
-                                        .map((a) => `${a.title} が今月配当します。`)
+                                        .map((a) => `${a.title}：受取資格・保有条件は公式資料をご確認ください。`)
                                         .join('、')}
                                     </span>
                                   </span>
@@ -705,12 +707,12 @@ export default function Navbar({
                         <span className="font-bold block">
                           {isPremium && dividendMonthAlertsForView.find((a) => a.stock_id === '__MONTH_NET_SUMMARY__')
                             ? dividendMonthAlertsForView.find((a) => a.stock_id === '__MONTH_NET_SUMMARY__')?.title
-                            : `今月は配当予定月（ウォッチ ${dividendMonthAlertCount}）`}
+                            : `登録銘柄の公式支払日が今月です（${dividendMonthAlertCount}件）`}
                         </span>
                         <span className="text-slate-500 dark:text-slate-400 line-clamp-4">
                           {dividendMonthAlertsForView
                             .filter((a) => a.stock_id !== '__MONTH_NET_SUMMARY__')
-                            .map((a) => `${a.title} が今月配当します。`)
+                            .map((a) => `${a.title}：受取資格・保有条件は公式資料をご確認ください。`)
                             .join('、')}
                         </span>
                       </span>
@@ -742,6 +744,11 @@ export default function Navbar({
             ) : null}
           </Link>
           <Link to="/tools" onClick={() => { notifyToolsHubReset(); setIsMobileMenuOpen(false) }} className={mobileNavRowClass(isMainNavActive(pathname, 'tools'))}>ツール</Link>
+          <CampaignCp2026NavLink
+            userEmail={session?.user?.email}
+            variant="mobile"
+            onClick={() => setIsMobileMenuOpen(false)}
+          />
 
           <div className="space-y-2">
             <button

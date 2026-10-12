@@ -99,14 +99,14 @@ export async function fetchCharacterLeaderboard(limit = 10) {
 }
 
 /**
- * Leaderboard with display names from user_profiles.
+ * Leaderboard with display names from user_public_profiles.
  */
 export async function fetchCharacterLeaderboardWithNames(limit = 5) {
   const rows = await fetchCharacterLeaderboard(limit)
   if (rows.length === 0) return []
   const ids = rows.map((r) => r.user_id)
   const { data: profiles } = await supabase
-    .from('user_profiles')
+    .from('user_public_profiles')
     .select('user_id, nickname')
     .in('user_id', ids)
   const nameByUserId = new Map(

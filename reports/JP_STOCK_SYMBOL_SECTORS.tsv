@@ -1,0 +1,236 @@
+symbol	sector	industry	name_jp	name_en	asset_type
+1332.T	生活必需品	水産・農林業	ニッスイ	Nissui Corporation	stock
+1475.T	日本総合	Japan Broad Market			stock
+1541.T			純プラチナ上場信託（現物国内保管型）		etf
+1542.T			純銀上場信託（現物国内保管型）		etf
+1605.T	エネルギー	石油・ガス探査開発	INPEX	INPEX Corporation	stock
+1618.T			ＮＥＸＴ ＦＵＮＤＳ エネルギー資源(ＴＯＰＩＸ－１７)上場投信		etf
+1623.T			ＮＥＸＴ ＦＵＮＤＳ 鉄鋼・非鉄(ＴＯＰＩＸ－１７)上場投信		etf
+1631.T			ＮＥＸＴ ＦＵＮＤＳ 銀行(ＴＯＰＩＸ－１７)上場投信		etf
+1671.T			WTI原油価格連動型上場投信		etf
+1699.T			NEXT FUNDS NOMURA原油インデックス連動型上場投信		etf
+1721.T	資本財・産業	建設業	コムシスホールディングス	Comsis Holdings	stock
+1801.T	資本財・産業	建設業	大成建設	Taisei Corporation	stock
+1802.T	資本財・産業	建設業	大林組	Obayashi Corporation	stock
+1803.T	資本財・産業	建設業	清水建設	Shimizu Corporation	stock
+1808.T	一般消費財	建設業	長谷工コーポレーション	Haseko Corporation	stock
+1812.T	資本財・産業	建設業	鹿島建設	Kajima Corporation	stock
+1925.T	不動産	建設業	大和ハウス工業	Daiwa House Industry	stock
+1928.T	一般消費財	建設業	積水ハウス	Sekisui House	stock
+1963.T	資本財・産業	建設業	日揮ホールディングス	JGC Holdings	stock
+2002.T	生活必需品	食料品	日清製粉グループ本社	Nisshin Seifun Group	stock
+200A.T			ＮＥＸＴ ＦＵＮＤＳ 日経半導体株指数連動型上場投信		etf
+213A.T			上場インデックスファンド日経半導体株		etf
+221A.T			ＭＡＸＩＳ日経半導体株上場投信		etf
+223A.T			グローバルＸ AI＆ビッグデータ ETF		etf
+2243.T			グローバルＸ 半導体 ETF		etf
+224A.T			グローバルＸ ウラニウムビジネス ETF		etf
+2269.T	生活必需品	食料品	明治ホールディングス	Meiji Holdings	stock
+2282.T	生活必需品	食料品	日本ハム	NH Foods	stock
+2413.T	ヘルスケア	医療情報サービス	エムスリー	M3	stock
+2432.T	コミュニケーション	情報・通信業	DeNA	DeNA Co.	stock
+2501.T	生活必需品	食料品	サッポロホールディングス	Sapporo Holdings	stock
+2502.T	生活必需品	飲料	アサヒグループホールディングス	Asahi Group Holdings	stock
+2503.T	生活必需品	飲料	キリンホールディングス	Kirin Holdings	stock
+2531.T	生活必需品	食料品	宝ホールディングス	Takara Holdings	stock
+2637.T			グローバルＸ クリーンテック-日本株式 ETF		etf
+2644.T			グローバルＸ 半導体関連-日本株式 ETF		etf
+2646.T			グローバルＸ メタルビジネス-日本株式 ETF		etf
+2768.T	資本財・産業	卸売業	双日	Sojitz Corporation	stock
+2801.T	生活必需品	食料品	キッコーマン	Kikkoman Corporation	stock
+2802.T	生活必需品	食品・調味料	味の素	Ajinomoto Co.	stock
+282A.T			グローバルＸ 半導体・トップ10-日本株式 ETF		etf
+2867.T			グローバルＸ 自動運転＆EV ETF		etf
+2871.T	生活必需品	食料品	ニチレイ	Nichirei Corporation	stock
+2914.T	生活必需品	食料品	日本たばこ産業	Japan Tobacco Inc.	stock
+3086.T	一般消費財	小売業	Jフロントリテイリング	J. Front Retailing	stock
+3092.T	一般消費財	小売業	ZOZO	ZOZO Inc.	stock
+3099.T	一般消費財	小売業	三越伊勢丹ホールディングス	Isetan Mitsukoshi Holdings	stock
+3101.T	素材	繊維製品	東洋紡	Toyobo Co.	stock
+3105.T	資本財・産業	繊維製品	日清紡ホールディングス	Nisshinbo Holdings	stock
+315A.T			グローバルＸ 銀行 高配当-日本株式 ETF		etf
+3289.T	不動産	不動産業	東急不動産ホールディングス	Tokyu Fudosan Holdings	stock
+3382.T	生活必需品	スーパーマーケット	セブン&アイ・ホールディングス	Seven & i Holdings	stock
+3401.T	素材	繊維製品	帝人	Teijin Limited	stock
+3402.T	素材	繊維製品	東レ	Toray Industries	stock
+3407.T	素材	合成繊維・化学	旭化成	Asahi Kasei Corporation	stock
+3436.T	テクノロジー	半導体・電子部品	SUMCO	SUMCO Corporation	stock
+346A.T			ＮＥＸＴ ＦＵＮＤＳ Ｓ＆Ｐ 500 半導体・半導体製造装置35％キャップ指数連動型上場投信		etf
+3659.T	コミュニケーション	情報・通信業	ネクソン	Nexon Co.	stock
+4004.T	素材	化学	レゾナック・ホールディングス	Resonac Holdings	stock
+4005.T	素材	化学	住友化学	Sumitomo Chemical	stock
+4021.T	素材	化学	日産化学	Nissan Chemical	stock
+4042.T	素材	化学	東ソー	Tosoh Corporation	stock
+4043.T	素材	化学	トクヤマ	Tokuyama Corporation	stock
+4061.T	素材	化学	デンカ	Denka Company	stock
+4063.T	素材	特殊化学品	信越化学工業	Shin-Etsu Chemical	stock
+4151.T	ヘルスケア	医薬品	協和キリン	Kyowa Kirin Co.	stock
+4188.T	素材	化学	三菱ケミカルグループ	Mitsubishi Chemical Group	stock
+4208.T	素材	化学	UBE	UBE Corporation	stock
+4324.T	コミュニケーション	広告・PR	電通グループ	Dentsu Group	stock
+4452.T	生活必需品	家庭用洗剤・化学品	花王	Kao Corporation	stock
+4502.T	ヘルスケア	医薬品	武田薬品工業	Takeda Pharmaceutical	stock
+4503.T	ヘルスケア	医薬品	アステラス製薬	Astellas Pharma	stock
+4507.T	ヘルスケア	医薬品	塩野義製薬	Shionogi & Co.	stock
+4519.T	ヘルスケア	医薬品	中外製薬	Chugai Pharmaceutical	stock
+4523.T	ヘルスケア	医薬品	エーザイ	Eisai Co.	stock
+4543.T	ヘルスケア	医療機器	テルモ	Terumo Corporation	stock
+4568.T	ヘルスケア	医薬品	第一三共	Daiichi Sankyo	stock
+4578.T	ヘルスケア	医薬品	大塚ホールディングス	Otsuka Holdings	stock
+4631.T	素材	化学	DIC	DIC Corporation	stock
+4661.T	一般消費財	テーマパーク・レジャー	オリエンタルランド	Oriental Land Co.	stock
+4689.T	コミュニケーション	情報・通信業	LINEヤフー	LY Corporation	stock
+4704.T	テクノロジー	セキュリティソフトウェア	トレンドマイクロ	Trend Micro	stock
+4751.T	コミュニケーション	情報・通信業	サイバーエージェント	CyberAgent Inc.	stock
+4755.T	一般消費財	情報・通信業	楽天グループ	Rakuten Group	stock
+4901.T	テクノロジー	写真・化学品	富士フイルムホールディングス	FUJIFILM Holdings	stock
+4911.T	生活必需品	化粧品・日用品	資生堂	Shiseido Company	stock
+5020.T	エネルギー	石油精製	ENEOSホールディングス	ENEOS Holdings	stock
+5101.T	一般消費財	ゴム製品	横浜ゴム	Yokohama Rubber	stock
+5108.T	一般消費財	タイヤ・ゴム製品	ブリヂストン	Bridgestone Corporation	stock
+5201.T	資本財・産業	ガラス・土石製品	AGC	AGC Inc.	stock
+5202.T	資本財・産業	ガラス・土石製品	日本板硝子	Nippon Sheet Glass	stock
+5214.T	テクノロジー	ガラス・土石製品	日本電気硝子	Nippon Electric Glass	stock
+5232.T	素材	ガラス・土石製品	住友大阪セメント	Sumitomo Osaka Cement	stock
+5233.T	素材	ガラス・土石製品	太平洋セメント	Taiheiyo Cement	stock
+5301.T	素材	ガラス・土石製品	東海カーボン	Tokai Carbon	stock
+5332.T	資本財・産業	ガラス・土石製品	TOTO	TOTO Ltd.	stock
+5333.T	資本財・産業	ガラス・土石製品	日本碍子	NGK Insulators	stock
+5401.T	素材	鉄鋼	日本製鉄	Nippon Steel Corporation	stock
+5406.T	素材	鉄鋼	神戸製鋼所	Kobe Steel	stock
+5411.T	素材	鉄鋼	JFEホールディングス	JFE Holdings	stock
+5541.T	素材	鉄鋼	大平洋金属	Pacific Metals	stock
+5631.T	資本財・産業	機械	日本製鋼所	Japan Steel Works	stock
+5703.T	素材	非鉄金属	日本軽金属ホールディングス	UACJ Corporation	stock
+5706.T	素材	非鉄金属	三井金属鉱業	Mitsui Mining & Smelting	stock
+5707.T	素材	非鉄金属	東邦亜鉛	Toho Zinc	stock
+5711.T	素材	非鉄金属	三菱マテリアル	Mitsubishi Materials	stock
+5713.T	素材	非鉄金属	住友金属鉱山	Sumitomo Metal Mining	stock
+5714.T	素材	非鉄金属	DOWAホールディングス	DOWA Holdings	stock
+5801.T	資本財・産業	非鉄金属	古河電気工業	Furukawa Electric	stock
+5802.T	一般消費財	電線・ケーブル	住友電気工業	Sumitomo Electric Industries	stock
+5803.T	資本財・産業	非鉄金属	フジクラ	Fujikura Ltd.	stock
+6098.T	資本財・産業	人材サービス	リクルートホールディングス	Recruit Holdings	stock
+6113.T	資本財・産業	機械	アマダ	Amada Co.	stock
+6146.T	テクノロジー	精密切削工具	ディスコ	Disco Corporation	stock
+6178.T	金融	その他金融業	日本郵政	Japan Post Holdings	stock
+6273.T	資本財・産業	空圧・油圧機器	SMC	SMC Corporation	stock
+6301.T	資本財・産業	建設機械	小松製作所	Komatsu Ltd.	stock
+6302.T	資本財・産業	機械	住友重機械工業	Sumitomo Heavy Industries	stock
+6305.T	資本財・産業	機械	日立建機	Hitachi Construction Machinery	stock
+6326.T	資本財・産業	農業機械	クボタ	Kubota Corporation	stock
+6361.T	資本財・産業	機械	荏原製作所	Ebara Corporation	stock
+6367.T	資本財・産業	空調機器	ダイキン工業	Daikin Industries	stock
+6471.T	資本財・産業	軸受	日本精工	NSK Ltd.	stock
+6472.T	資本財・産業	機械	NTN	NTN Corporation	stock
+6479.T	資本財・産業	機械	ミネベアミツミ	MinebeaMitsumi	stock
+6501.T	資本財・産業	電気機器・インフラ	日立製作所	Hitachi Ltd.	stock
+6503.T	資本財・産業	変圧器・電気機器	三菱電機	Mitsubishi Electric	stock
+6504.T	資本財・産業	電気機器	富士電機	Fuji Electric	stock
+6506.T	資本財・産業	モーター・産業機器	安川電機	Yaskawa Electric	stock
+6594.T	テクノロジー	モーター・精密部品	日本電産（ニデック）	Nidec Corporation	stock
+6645.T	テクノロジー	電気機器	オムロン	OMRON Corporation	stock
+6674.T	資本財・産業	電気機器	GSユアサ	GS Yuasa Corporation	stock
+6701.T	テクノロジー	通信機器・ITソリューション	NEC	NEC Corporation	stock
+6702.T	テクノロジー	ITサービス・システム	富士通	Fujitsu Limited	stock
+6723.T	テクノロジー	半導体・電子部品	ルネサスエレクトロニクス	Renesas Electronics	stock
+6724.T	テクノロジー	電気機器	セイコーエプソン	Seiko Epson	stock
+6752.T	一般消費財	電気機器	パナソニックホールディングス	Panasonic Holdings	stock
+6753.T	一般消費財	電気機器	シャープ	Sharp Corporation	stock
+6758.T	一般消費財	家電・消費電子機器	ソニーグループ	Sony Group	stock
+6762.T	テクノロジー	電子部品	TDK	TDK Corporation	stock
+6770.T	テクノロジー	電気機器	アルプスアルパイン	Alps Alpine	stock
+6841.T	テクノロジー	電気機器	横河電機	Yokogawa Electric	stock
+6857.T	テクノロジー	半導体製造装置・検査装置	アドバンテスト	Advantest Corporation	stock
+6861.T	テクノロジー	電子部品	キーエンス	Keyence Corporation	stock
+6902.T	一般消費財	自動車部品・電装	デンソー	DENSO Corporation	stock
+6920.T	テクノロジー	半導体・電子部品	レーザーテック	Lasertec Corporation	stock
+6952.T	テクノロジー	電気機器	カシオ計算機	Casio Computer	stock
+6954.T	資本財・産業	FAシステム・ロボット	ファナック	Fanuc Corporation	stock
+6971.T	テクノロジー	電気機器	京セラ	Kyocera Corporation	stock
+6981.T	テクノロジー	電子部品	村田製作所	Murata Manufacturing	stock
+6988.T	素材	化学	日東電工	Nitto Denko	stock
+7003.T	資本財・産業	輸送用機器	三井E&S	Mitsui E&S Co.	stock
+7004.T	資本財・産業	機械	日立造船	Hitachi Zosen	stock
+7011.T	資本財・産業	重工業・エネルギー機器	三菱重工業	Mitsubishi Heavy Industries	stock
+7012.T	資本財・産業	造船・防衛	川崎重工業	Kawasaki Heavy Industries	stock
+7013.T	資本財・産業	機械	IHI	IHI Corporation	stock
+7201.T	一般消費財	自動車	日産自動車	Nissan Motor	stock
+7202.T	一般消費財	トラック・バス	いすゞ自動車	Isuzu Motors	stock
+7203.T	一般消費財	自動車メーカー	トヨタ自動車	Toyota Motor	stock
+7205.T	一般消費財	輸送用機器	日野自動車	Hino Motors	stock
+7211.T	一般消費財	輸送用機器	三菱自動車工業	Mitsubishi Motors	stock
+7261.T	一般消費財	自動車	マツダ	Mazda Motor	stock
+7267.T	一般消費財	二輪・四輪自動車	本田技研工業	Honda Motor	stock
+7269.T	一般消費財	輸送用機器	スズキ	Suzuki Motor	stock
+7270.T	一般消費財	自動車	SUBARU	Subaru Corporation	stock
+7272.T	一般消費財	輸送用機器	ヤマハ発動機	Yamaha Motor	stock
+7309.T	一般消費財	輸送用機器	シマノ	Shimano Inc.	stock
+7731.T	一般消費財	精密機器	ニコン	Nikon Corporation	stock
+7733.T	ヘルスケア	医療機器・光学機器	オリンパス	Olympus Corporation	stock
+7735.T	テクノロジー	半導体・電子部品	SCREEN Holdings	SCREEN Holdings	stock
+7741.T	ヘルスケア	眼鏡レンズ・精密光学	HOYA	Hoya Corporation	stock
+7751.T	テクノロジー	カメラ・プリンター	キヤノン	Canon Inc.	stock
+7762.T	テクノロジー	精密機器	シチズン時計	Citizen Watch	stock
+7832.T	一般消費財	その他製品	バンダイナムコホールディングス	Bandai Namco Holdings	stock
+7911.T	資本財・産業	その他製品	凸版印刷（TOPPAN）	Toppan Holdings	stock
+7912.T	資本財・産業	その他製品	大日本印刷	Dai Nippon Printing	stock
+7974.T	コミュニケーション	その他製品	任天堂	Nintendo Co.	stock
+8001.T	資本財・産業	総合商社	伊藤忠商事	Itochu Corporation	stock
+8002.T	資本財・産業	卸売業	丸紅	Marubeni Corporation	stock
+8015.T	資本財・産業	総合商社	豊田通商	Toyota Tsusho	stock
+8031.T	資本財・産業	総合商社	三井物産	Mitsui & Co.	stock
+8035.T	テクノロジー	半導体製造装置	東京エレクトロン	Tokyo Electron	stock
+8051.T	資本財・産業	専門商社	山善	Yamazen Corporation	stock
+8053.T	資本財・産業	総合商社	住友商事	Sumitomo Corporation	stock
+8058.T	資本財・産業	総合商社	三菱商事	Mitsubishi Corporation	stock
+8233.T	一般消費財	小売業	高島屋	Takashimaya Co.	stock
+8267.T	生活必需品	スーパーマーケット	イオン	Aeon Co.	stock
+8304.T	金融	銀行業	あおぞら銀行	Aozora Bank	stock
+8306.T	金融	銀行	三菱UFJフィナンシャル・グループ	MUFG	stock
+8308.T	金融	銀行	りそなホールディングス	Resona Holdings	stock
+8309.T	金融	銀行業	三井住友トラスト・ホールディングス	Sumitomo Mitsui Trust Holdings	stock
+8316.T	金融	銀行	三井住友フィナンシャルグループ	Sumitomo Mitsui Financial Group	stock
+8411.T	金融	銀行	みずほフィナンシャルグループ	Mizuho Financial Group	stock
+8591.T	金融	リース・金融	オリックス	ORIX Corporation	stock
+8601.T	金融	証券・商品先物取引業	大和証券グループ本社	Daiwa Securities Group	stock
+8604.T	金融	証券	野村ホールディングス	Nomura Holdings	stock
+8630.T	金融	保険業	SOMPOホールディングス	Sompo Holdings	stock
+8725.T	金融	損害保険	MS&ADインシュアランスグループホールディングス	MS&AD Insurance Group	stock
+8750.T	金融	保険業	第一生命ホールディングス	Dai-ichi Life Holdings	stock
+8766.T	金融	損害保険	東京海上ホールディングス	Tokio Marine Holdings	stock
+8801.T	不動産	不動産	三井不動産	Mitsui Fudosan	stock
+8802.T	不動産	不動産	三菱地所	Mitsubishi Estate	stock
+8830.T	不動産	不動産業	住友不動産	Sumitomo Realty & Development	stock
+9001.T	資本財・産業	陸運業	東武鉄道	Tobu Railway	stock
+9005.T	資本財・産業	鉄道・バス	東急	Tokyu Corporation	stock
+9007.T	資本財・産業	陸運業	小田急電鉄	Odakyu Electric Railway	stock
+9008.T	資本財・産業	陸運業	京王電鉄	Keio Corporation	stock
+9009.T	資本財・産業	陸運業	京成電鉄	Keisei Electric Railway	stock
+9020.T	資本財・産業	鉄道	東日本旅客鉄道（JR東日本）	East Japan Railway	stock
+9021.T	資本財・産業	鉄道	西日本旅客鉄道（JR西日本）	West Japan Railway	stock
+9022.T	資本財・産業	鉄道	東海旅客鉄道（JR東海）	Central Japan Railway	stock
+9064.T	資本財・産業	陸運業	ヤマトホールディングス	Yamato Holdings	stock
+9101.T	資本財・産業	海運	日本郵船	Nippon Yusen	stock
+9104.T	資本財・産業	海運	商船三井	Mitsui O.S.K. Lines	stock
+9107.T	資本財・産業	海運業	川崎汽船	Kawasaki Kisen Kaisha	stock
+9201.T	資本財・産業	航空	日本航空	Japan Airlines	stock
+9202.T	資本財・産業	航空	ANAホールディングス	ANA Holdings	stock
+9301.T	資本財・産業	倉庫・運輸関連業	三菱倉庫	Mitsubishi Logistics	stock
+9432.T	コミュニケーション	通信サービス	日本電信電話（NTT）	NTT	stock
+9433.T	コミュニケーション	通信サービス	KDDI	KDDI Corporation	stock
+9434.T	コミュニケーション	情報・通信業	ソフトバンク	SoftBank Corp.	stock
+9501.T	電力・ガス	電気・ガス業	東京電力ホールディングス	Tokyo Electric Power	stock
+9502.T	電力・ガス	電力	中部電力	Chubu Electric Power	stock
+9503.T	電力・ガス	電力	関西電力	Kansai Electric Power	stock
+9531.T	電力・ガス	ガス	東京ガス	Tokyo Gas	stock
+9532.T	電力・ガス	ガス	大阪ガス	Osaka Gas	stock
+9602.T	コミュニケーション	サービス業	東宝	Toho Co.	stock
+9735.T	資本財・産業	警備・セキュリティサービス	セコム	Secom Co.	stock
+9766.T	コミュニケーション	その他製品	コナミグループ	Konami Group	stock
+9983.T	一般消費財	ファストファッション小売	ファーストリテイリング	Fast Retailing	stock
+9984.T	コミュニケーション	持株会社	ソフトバンクグループ	SoftBank Group	stock
+3103.T	素材	繊維製品	ユニチカ	Unitika	stock
+6532.T	テクノロジー	サービス業	ベイカレント	BayCurrent	stock
+7186.T	金融	銀行業	横浜フィナンシャルグループ	Yokohama Financial Group	stock
+7914.T	資本財・産業	その他製品	共同印刷	Dai Nippon Printing	stock

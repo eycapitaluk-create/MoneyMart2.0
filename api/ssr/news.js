@@ -1,11 +1,16 @@
 import { createClient } from '@supabase/supabase-js'
 import { buildHeadBlock, escapeHtml, webApplicationLd } from './lib/seoHead.js'
+import { sortNewsEditorial } from '../../src/lib/newsEditorial.js'
+
+/** Keep in sync with src/lib/aiNewsClient.js isAiNewsJapaneseRow (SSR must not import browser supabase bundle). */
+const JP_CHAR_RE = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/
+const isJapaneseNewsProbe = (parts) => JP_CHAR_RE.test(parts.map((s) => String(s || '')).join(' '))
 
 const toTimeLabel = (value) => {
   if (!value) return '--:--'
   const d = new Date(value)
   if (Number.isNaN(d.getTime())) return '--:--'
-  return d.toLocaleString('ja-JP', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+  return d.toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
 const normalizeAiRow = (row) => ({
@@ -18,6 +23,7 @@ const normalizeAiRow = (row) => ({
   sourceUrl: String(row?.source_url || ''),
   sentiment: String(row?.sentiment || '中立'),
   updatedAt: row?.updated_at || row?.published_at || '',
+  publishedAt: row?.published_at || '',
 })
 
 const normalizeManualRow = (row) => ({
@@ -38,7 +44,7 @@ export default async function handler(_req, res) {
   const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.VITE_SUPABASE_ANON_KEY
   if (!supabaseUrl || !supabaseKey) {
-    return sendHtml(res, 500, '<h1>News unavailable</h1><p>Missing Supabase environment variables.</p>')
+    return sendHtml(res, 500, '<h1>ニュースを表示できません</h1><p>しばらくしてから再度お試しください。</p>')
   }
 
   try {
@@ -47,11 +53,11 @@ export default async function handler(_req, res) {
     const [{ data: aiRows, error: aiErr }, { data: manualRows, error: manualErr }] = await Promise.all([
       supabase
         .from('ai_news_summaries')
-        .select('ticker,company_name,headline,summary,analysis,source,source_url,sentiment,published_at,updated_at,sort_order')
+        .select('ticker,company_name,headline,summary,analysis,source,source_url,sentiment,published_at,updated_at,sort_order,batch_key')
         .eq('is_active', true)
         .order('updated_at', { ascending: false })
         .order('sort_order', { ascending: true })
-        .limit(12),
+        .limit(300),
       supabase
         .from('news_manual')
         .select('id,title,description,source,published_at,sort_order')
@@ -64,9 +70,15 @@ export default async function handler(_req, res) {
     if (aiErr) throw aiErr
     if (manualErr) throw manualErr
 
-    const ai = (aiRows || []).map(normalizeAiRow).filter((row) => row.headline)
-    const manual = (manualRows || []).map(normalizeManualRow).filter((row) => row.title)
-    const updatedAt = ai[0]?.updatedAt || manual[0]?.publishedAt || new Date().toISOString()
+    const ai = sortNewsEditorial((aiRows || [])
+      .filter((row) => row.headline && isJapaneseNewsProbe([row.headline, row.summary])))
+      .slice(0, 12)
+      .map(normalizeAiRow)
+    const manual = (manualRows || [])
+      .map(normalizeManualRow)
+      .filter((row) => row.title && isJapaneseNewsProbe([row.title, row.description]))
+    const updatedAt = ai.map((row) => row.updatedAt).filter(Boolean).sort().slice(-1)[0]
+      || manual[0]?.publishedAt || new Date().toISOString()
 
     const aiCards = ai.map((item) => `
       <article style="border:1px solid #e2e8f0;border-radius:16px;padding:16px;background:#fff;box-shadow:0 1px 2px rgba(15,23,42,.05);">
@@ -78,7 +90,7 @@ export default async function handler(_req, res) {
         <p style="margin:8px 0 0 0;font-size:14px;line-height:1.8;color:#334155;">${escapeHtml(item.summary)}</p>
         ${item.analysis ? `<p style="margin:10px 0 0 0;font-size:13px;line-height:1.85;color:#475569;white-space:pre-line;">${escapeHtml(item.analysis)}</p>` : ''}
         <div style="margin-top:10px;display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;color:#64748b;">
-          <span>${escapeHtml(item.source)} · ${escapeHtml(toTimeLabel(item.updatedAt))}</span>
+          <span>${escapeHtml(item.source)} · ${escapeHtml(toTimeLabel(item.publishedAt))}</span>
           ${item.sourceUrl ? `<a href="${escapeHtml(item.sourceUrl)}" target="_blank" rel="noopener noreferrer" style="color:#ea580c;font-weight:800;text-decoration:none;">元記事</a>` : ''}
         </div>
       </article>
@@ -127,16 +139,14 @@ export default async function handler(_req, res) {
         </div>
       </section>
       <footer style="margin-top:22px;border-top:1px solid #e2e8f0;padding-top:10px;font-size:11px;color:#64748b;line-height:1.7;">
-        本コンテンツは情報提供のみを目的としており、特定の金融商品の購入・売却を推奨するものではありません。
+        本コンテンツは情報提供のみを目的としており、特定の金融商品の売買を勧誘するものではありません。
       </footer>
     </main>
   </body>
 </html>`
 
     return sendHtml(res, 200, html)
-  } catch (e) {
-    const message = escapeHtml(e?.message || 'Unknown error')
-    return sendHtml(res, 500, `<!doctype html><html lang="ja"><body><h1>News unavailable</h1><p>${message}</p></body></html>`)
+  } catch {
+    return sendHtml(res, 500, `<!doctype html><html lang="ja"><body><h1>ニュースを表示できません</h1><p>しばらくしてから再度お試しください。</p></body></html>`)
   }
 }
-

@@ -108,7 +108,7 @@ function evaluateTaxShieldCore({
     todo.push('一部項目が上限を超えています。控除対象金額を確認してください。')
   }
   if (totalRemainingCapYen > 0) {
-    todo.push(`今年の控除余地は合計 ¥${roundYen(totalRemainingCapYen).toLocaleString()} です。`)
+    todo.push(`今年の控除余地は合計 ¥${roundYen(totalRemainingCapYen).toLocaleString('ja-JP')} です。`)
   } else {
     todo.push('今年の控除枠はほぼ使い切っています。')
   }

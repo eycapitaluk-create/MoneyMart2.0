@@ -1,20 +1,173 @@
 import { useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
-import { Shield, FileText, Lock, Building, ArrowLeft } from 'lucide-react'
+import { useParams, useNavigate, Link } from 'react-router-dom'
+import { Shield, FileText, Lock, Building, ArrowLeft, Scale } from 'lucide-react'
+import {
+  PREMIUM_ANNUAL_PRICE_INCL_TAX_YEN,
+  PREMIUM_MONTHLY_PRICE_INCL_TAX_YEN,
+  PREMIUM_TRIAL_DAYS,
+} from '../lib/membership'
+import { PAYJP_WEB_CARD_BRANDS_LABEL } from '../constants/payjpBillingFaq'
+import {
+  COMPANY_ADDRESS,
+  COMPANY_NAME_JA,
+  COMPANY_NAME_JA_EN,
+  COMPANY_PHONE,
+  COMPANY_PHONE_NOTE,
+  COMPANY_REPRESENTATIVE,
+  COMPANY_SUPPORT_EMAIL,
+} from '../constants/companyLegal'
 
 const LEGAL_CONTENTS = {
+  commerce: {
+    title: '特定商取引法に基づく表記',
+    icon: Scale,
+    content: (
+      <div className="space-y-4 text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+        <p className="font-black text-slate-900 dark:text-white text-base">{COMPANY_NAME_JA_EN} / MoneyMart</p>
+        <table className="w-full text-left border-collapse">
+          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+            <tr>
+              <th className="py-3 align-top font-bold w-[min(40%,11rem)] text-slate-900 dark:text-white">販売業者</th>
+              <td className="py-3">{COMPANY_NAME_JA}</td>
+            </tr>
+            <tr>
+              <th className="py-3 align-top font-bold text-slate-900 dark:text-white">運営責任者</th>
+              <td className="py-3">{COMPANY_REPRESENTATIVE}</td>
+            </tr>
+            <tr>
+              <th className="py-3 align-top font-bold text-slate-900 dark:text-white">所在地</th>
+              <td className="py-3">{COMPANY_ADDRESS}</td>
+            </tr>
+            <tr>
+              <th className="py-3 align-top font-bold text-slate-900 dark:text-white">電話番号</th>
+              <td className="py-3">
+                <a href={`tel:${COMPANY_PHONE.replace(/-/g, '')}`} className="font-mono font-bold text-orange-600 dark:text-orange-400 underline underline-offset-2">{COMPANY_PHONE}</a>
+                <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">{COMPANY_PHONE_NOTE}</p>
+              </td>
+            </tr>
+            <tr>
+              <th className="py-3 align-top font-bold text-slate-900 dark:text-white">メールアドレス</th>
+              <td className="py-3">
+                <a
+                  href={`mailto:${COMPANY_SUPPORT_EMAIL}`}
+                  className="font-mono font-bold text-orange-600 dark:text-orange-400 underline underline-offset-2 break-all"
+                >
+                  {COMPANY_SUPPORT_EMAIL}
+                </a>
+              </td>
+            </tr>
+            <tr>
+              <th className="py-3 align-top font-bold text-slate-900 dark:text-white">商品代金以外の必要料金</th>
+              <td className="py-3 space-y-2">
+                <p>なし（インターネット接続に伴う通信費等はお客様のご負担となります）。</p>
+              </td>
+            </tr>
+            <tr>
+              <th className="py-3 align-top font-bold text-slate-900 dark:text-white">サービス名・販売価格</th>
+              <td className="py-3">
+                <p className="font-bold text-slate-800 dark:text-slate-200">MoneyMart プレミアムサービス（デジタルサービス）</p>
+                <p className="mt-2">
+                  月額プラン：税込{' '}
+                  {PREMIUM_MONTHLY_PRICE_INCL_TAX_YEN.toLocaleString('ja-JP')}
+                  円／月（自動更新）
+                </p>
+                <p className="mt-1">
+                  年額プラン：税込{' '}
+                  {PREMIUM_ANNUAL_PRICE_INCL_TAX_YEN.toLocaleString('ja-JP')}
+                  円／年（一括・自動更新。チャネルにより取り扱いの有無が異なる場合があります）
+                </p>
+                <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                  ※表示価格はすべて消費税込みです。※新規登録から {PREMIUM_TRIAL_DAYS} 日間の無料お試しがある場合は、申込画面の表示に従います（お試し終了後にご契約が継続する場合のみ課金）。
+                </p>
+              </td>
+            </tr>
+            <tr>
+              <th className="py-3 align-top font-bold text-slate-900 dark:text-white">支払方法</th>
+              <td className="py-3 space-y-2">
+                <p>
+                  <span className="font-bold text-slate-800 dark:text-slate-200">ウェブサイト：</span>
+                  決済代行サービス PAY.JP を利用したクレジットカード決済（
+                  {PAYJP_WEB_CARD_BRANDS_LABEL}
+                  ）
+                </p>
+                <p>
+                  <span className="font-bold text-slate-800 dark:text-slate-200">iOS アプリ：</span>
+                  App Store における自動更新サブスクリプション（請求・解約等は Apple の規約に従います）
+                </p>
+              </td>
+            </tr>
+            <tr>
+              <th className="py-3 align-top font-bold text-slate-900 dark:text-white">支払時期</th>
+              <td className="py-3 space-y-2">
+                <p>
+                  <span className="font-bold text-slate-800 dark:text-slate-200">ウェブサイト（PAY.JP・クレジットカード・定期課金）：</span>
+                  初回はお申し込み手続き完了時に決済します。月額プランは、初回決済を基準におおむね毎月同様のタイミングで自動更新時に決済します（月の日数や決済処理により前後する場合があります）。年額プランは、お申し込み時に表示される更新周期に従い、更新日に決済します。カード会社の明細上の引き落とし日は各社の規定により異なります。
+                </p>
+                <p>
+                  <span className="font-bold text-slate-800 dark:text-slate-200">iOS アプリ（App Store・自動更新サブスクリプション）：</span>
+                  初回および更新は、Apple が定めるサブスクリプションの請求タイミングに従います（詳細は App Store の購入・サブスクリプション画面および Apple の規約をご確認ください）。
+                </p>
+              </td>
+            </tr>
+            <tr>
+              <th className="py-3 align-top font-bold text-slate-900 dark:text-white">サービス提供時期</th>
+              <td className="py-3">プレミアムサービスの登録手続き完了後、直ちにご利用いただけます。</td>
+            </tr>
+            <tr>
+              <th className="py-3 align-top font-bold text-slate-900 dark:text-white">返品・キャンセルについて</th>
+              <td className="py-3 space-y-2">
+                <p>
+                  デジタルサービスの性質上、一度ご利用が開始されたコンテンツについて、お客様都合による返品・契約の撤回はお受けできません。既に決済された期間に対する日割・按分による返金は、原則お受けできません。
+                </p>
+                <p className="font-bold text-slate-800 dark:text-slate-200">定期課金の解約（次回以降の請求を止めるために）</p>
+                <ul className="list-disc pl-5 space-y-1 text-slate-600 dark:text-slate-400">
+                  <li>
+                    <span className="font-semibold text-slate-800 dark:text-slate-200">ウェブサイト（PAY.JP）：</span>
+                    MoneyMart のプレミアム（
+                    <Link to="/premium" className="font-bold text-orange-600 underline underline-offset-2 dark:text-orange-400">
+                      /premium
+                    </Link>
+                    ）またはマイページ内の案内に従い、解約手続きを行ってください。決済完了メール等に記載の案内がある場合はそれに従ってください。不明な点は本表のメールアドレスまでお問い合わせください。
+                    <span className="block mt-1">
+                      次回更新課金日の前までに解約手続きが完了した場合、次回以降の更新料金は発生いたしません（更新日を過ぎてからの解約でも、既に決済された更新分の返金はできない場合があります）。
+                    </span>
+                  </li>
+                  <li>
+                    <span className="font-semibold text-slate-800 dark:text-slate-200">iOS アプリ（App Store）：</span>
+                    Apple ID の「サブスクリプション」または App Store のアカウント設定から解約できます。次回更新課金の前までに解約すると、次回以降の請求は発生しません（請求・返金条件は Apple の規約に準じます）。
+                  </li>
+                </ul>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  ※サービスに重大な瑕疵がある場合や法令により認められる場合は、この限りではありません。
+                </p>
+              </td>
+            </tr>
+            <tr>
+              <th className="py-3 align-top font-bold text-slate-900 dark:text-white">動作環境</th>
+              <td className="py-3 space-y-2">
+                <p>ウェブ：インターネット接続環境および対応ブラウザが必要です。</p>
+                <p>iOS アプリ：対応 OS の Apple デバイスおよび App Store にて入手できる環境が必要です。</p>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    ),
+  },
   company: {
-    title: '運営会社 (About Us)',
+    title: '運営会社',
     icon: Building,
     content: (
       <div className="space-y-4 text-sm text-slate-600 dark:text-slate-400">
         <table className="w-full text-left border-collapse">
           <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-            <tr><th className="py-3 font-bold w-32 text-slate-900 dark:text-white">会社名</th><td className="py-3">MoneyLab Ltd.（MoneyMart運営会社）</td></tr>
-            <tr><th className="py-3 font-bold text-slate-900 dark:text-white">代表者</th><td className="py-3">代表取締役 Kelly Nam</td></tr>
-            <tr><th className="py-3 font-bold text-slate-900 dark:text-white">所在地</th><td className="py-3">〒100-0004 東京都千代田区大手町1-1-1</td></tr>
-            <tr><th className="py-3 font-bold text-slate-900 dark:text-white">設立</th><td className="py-3">2026年 1月</td></tr>
-            <tr><th className="py-3 font-bold text-slate-900 dark:text-white">事業内容</th><td className="py-3">金融商品比較プラットフォームの企画・開発・運営</td></tr>
+            <tr><th className="py-3 font-bold w-32 text-slate-900 dark:text-white">会社名</th><td className="py-3">マネーラボ株式会社（MoneyLab Inc.・MoneyMart運営）</td></tr>
+            <tr><th className="py-3 font-bold text-slate-900 dark:text-white">代表者</th><td className="py-3">代表取締役 片桐 明子</td></tr>
+            <tr><th className="py-3 font-bold text-slate-900 dark:text-white">所在地</th><td className="py-3">〒150-0022 東京都渋谷区恵比寿南 2-12-4-207</td></tr>
+            <tr><th className="py-3 font-bold text-slate-900 dark:text-white">設立</th><td className="py-3">2025年 12月</td></tr>
+            <tr><th className="py-3 font-bold text-slate-900 dark:text-white">資本金</th><td className="py-3">105万円</td></tr>
+            <tr><th className="py-3 font-bold text-slate-900 dark:text-white">主要取引銀行</th><td className="py-3">三井住友銀行</td></tr>
+            <tr><th className="py-3 font-bold text-slate-900 dark:text-white">事業内容</th><td className="py-3">データモニタリングシステムおよび分析ツールの提供、情報分析サービス、リスク管理支援ソリューションの開発・運営</td></tr>
           </tbody>
         </table>
       </div>
@@ -26,7 +179,7 @@ const LEGAL_CONTENTS = {
     content: (
       <div className="space-y-6 text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
         <p>
-          この利用規約（以下「本規約」）は、MoneyLab Ltd.（以下「当社」）が提供する本サービス「MoneyMart」の利用条件を定めるものです。
+          この利用規約（以下「本規約」）は、マネーラボ株式会社（英文商号 MoneyLab Inc.、以下「当社」）が提供する本サービス「MoneyMart」の利用条件を定めるものです。
           ユーザーは本サービスを利用することにより、本規約に同意したものとみなします。
         </p>
         <section>
@@ -49,12 +202,15 @@ const LEGAL_CONTENTS = {
         </section>
         <section>
           <h3 className="font-bold text-slate-900 dark:text-white mb-2">第3条 免責事項</h3>
-          <p>当社は、本サービスに掲載される情報の正確性について万全を期していますが、その完全性・最新性を保証するものではありません。本サービスの情報に基づいてユーザーが被った損害について、当社は一切の責任を負いません。</p>
+          <p>当社は、本サービスに掲載される情報の正確性について万全を期していますが、その完全性・最新性を保証するものではありません。本サービスの情報に基づいてユーザーが被った損害について、法令上認められる範囲において当社は責任を負いません。</p>
           <p className="mt-2">当社は、金融商品取引法に基づく投資助言業・投資運用業の登録を受けておらず、本サービスを通じて投資助言を提供するものではありません。投資の最終判断はユーザーご自身の責任において行ってください。</p>
         </section>
         <section>
           <h3 className="font-bold text-slate-900 dark:text-white mb-2">第4条 有料サービス・料金</h3>
           <p>本サービスの一部機能については、有料プランへの加入が必要となる場合があります。有料プランの内容・料金・支払方法については、別途サービス内で定めるものとし、本規約の一部を構成します。</p>
+          <p className="mt-2">
+            有料プランのお申し込み・自動更新・解約は、App Store（サブスクリプション）、またはウェブの決済代行（PAY.JP）ごとの規約・画面に従います。料金・請求日・無料試用の条件は申込時の表示が優先します。
+          </p>
           <p className="mt-2">当社は、有料プランの内容・料金を変更する場合、事前に合理的な期間をもってユーザーに通知します。</p>
         </section>
         <section>
@@ -84,7 +240,7 @@ const LEGAL_CONTENTS = {
             <li>天災・感染症等の不可抗力が発生した場合</li>
             <li>その他当社が必要と判断した場合</li>
           </ul>
-          <p className="mt-2">サービスの変更・停止・終了によってユーザーに生じた損害について、当社は責任を負いません。</p>
+          <p className="mt-2">サービスの変更・停止・終了によってユーザーに生じた損害について、法令上認められる範囲において当社は責任を負いません。</p>
         </section>
         <section>
           <h3 className="font-bold text-slate-900 dark:text-white mb-2">第8条 退会</h3>
@@ -110,7 +266,7 @@ const LEGAL_CONTENTS = {
     icon: Lock,
     content: (
       <div className="space-y-6 text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
-        <p>MoneyLab Ltd.（以下「当社」）は、個人情報保護の重要性を認識し、個人情報の保護に関する法律（個人情報保護法）を遵守し、以下の通りプライバシーポリシーを定めます。</p>
+        <p>マネーラボ株式会社（英文商号 MoneyLab Inc.、以下「当社」）は、個人情報保護の重要性を認識し、個人情報の保護に関する法律（個人情報保護法）を遵守し、以下の通りプライバシーポリシーを定めます。</p>
         <section>
           <h3 className="font-bold text-slate-900 dark:text-white mb-2">第1条 個人情報の収集</h3>
           <p>当社は、ユーザーが本サービスを利用する際に、氏名、メールアドレス、資産情報等の個人情報を適正な手段で取得します。</p>
@@ -149,7 +305,20 @@ const LEGAL_CONTENTS = {
         </section>
         <section>
           <h3 className="font-bold text-slate-900 dark:text-white mb-2">第5条 Cookieおよびアクセス解析</h3>
-          <p>本サービスでは、利便性向上およびサービス改善を目的として、Cookie（クッキー）を使用しています。また、Googleアナリティクス等のアクセス解析ツールを利用する場合があります。これらのツールはトラフィックデータの収集のためにCookieを使用しますが、個人を特定する情報は含まれません。</p>
+          <p>本サービスでは、利便性向上およびサービス改善を目的として、Cookie（クッキー）を使用しています。</p>
+          <p className="mt-2">
+            また、Microsoft Clarity（マイクロソフト社提供の行動分析ツール）を利用し、クリック・スクロール等の利用状況を匿名化された形で収集する場合があります。マイページ（資産・家計データを含む画面）、管理画面、パスワード再設定画面では記録を行いません。Clarityのプライバシーについては
+            {' '}
+            <a
+              href="https://privacy.microsoft.com/privacystatement"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-orange-600 dark:text-orange-400 font-semibold hover:underline"
+            >
+              Microsoftのプライバシーステートメント
+            </a>
+            をご参照ください。
+          </p>
           <p className="mt-2">ブラウザの設定によりCookieを無効にすることができますが、一部のサービス機能がご利用いただけなくなる場合があります。</p>
         </section>
         <section>
@@ -162,7 +331,7 @@ const LEGAL_CONTENTS = {
         </section>
         <section>
           <h3 className="font-bold text-slate-900 dark:text-white mb-2">第8条 お問い合わせ窓口</h3>
-          <p>会社名: MoneyLab Ltd.</p>
+          <p>会社名: マネーラボ株式会社（英文商号 MoneyLab Inc.）</p>
           <p>個人情報保護責任者: 代表取締役 片桐 明子</p>
         </section>
       </div>
@@ -183,7 +352,7 @@ const LEGAL_CONTENTS = {
         <section>
           <h3 className="font-bold text-slate-900 dark:text-white mb-2">第2条（投資判断に関する免責）</h3>
           <p>
-            投資に関するすべての最終判断は、お客様ご自身の責任において行ってください。本サービスの情報のみに基づく投資判断を推奨するものではありません。
+            投資に関するすべての最終判断は、お客様ご自身の責任において行ってください。特定の金融商品の売買を勧誘するものではありません。
           </p>
           <p className="mt-2">
             過去の運用実績・配当実績・数値データは、将来の運用成果・利回りを保証するものではありません。市場環境の変化により、元本割れが生じる可能性があります。
@@ -220,7 +389,7 @@ const LEGAL_CONTENTS = {
         <section>
           <h3 className="font-bold text-slate-900 dark:text-white mb-2">第7条（外部リンク）</h3>
           <p>
-            本サービスに掲載されている外部リンク先のコンテンツについて、当社は一切の責任を負いません。リンク先のサービス利用により生じた損害についても同様です。
+            本サービスに掲載されている外部リンク先のコンテンツについて、法令上認められる範囲において当社は責任を負いません。リンク先のサービス利用により生じた損害についても同様です。
           </p>
         </section>
         <section>
@@ -238,16 +407,56 @@ const LEGAL_CONTENTS = {
       </div>
     ),
   },
+  methodology: {
+    title: '編集・データ方針',
+    icon: FileText,
+    content: (
+      <div className="space-y-6 text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+        <p className="text-xs text-slate-500">最終更新：2026年9月18日</p>
+        <section>
+          <h2 className="font-bold text-slate-900 dark:text-white mb-2 text-base">編集の立場</h2>
+          <p>
+            インサイト記事は MoneyMart 編集部が公開情報を整理して提供します。記事ごとの個人名がデータベースにない場合は「MoneyMart編集部」と表示します。
+            一部の文章の下書きにAIを使うことがあります。公開前に編集チームが内容を確認します。本コンテンツは情報提供であり、投資助言ではありません。
+          </p>
+        </section>
+        <section>
+          <h2 className="font-bold text-slate-900 dark:text-white mb-2 text-base">一次情報の扱い</h2>
+          <p>
+            信託報酬、分配、制度、企業情報など取引や税務に関わる数値は、各運用会社・取引所・官公庁の公式資料を優先して確認する方針です。
+            本サイトの表示と公式資料が異なる場合は、公式資料を正とします。
+          </p>
+        </section>
+        <section>
+          <h2 className="font-bold text-slate-900 dark:text-white mb-2 text-base">市場データの目安</h2>
+          <p>
+            価格・騰落率などは、原則として各取引所の前営業日終値（EOD）をもとに更新します。目安として、国内上場は日本時間の午後（おおむね16時頃）、米国上場は翌営業日の日本時間の朝（おおむね8時頃）です。休場や提供元の遅延で前後することがあります。欠測時に推定値で埋めません。
+          </p>
+        </section>
+        <section>
+          <h2 className="font-bold text-slate-900 dark:text-white mb-2 text-base">訂正・お問い合わせ</h2>
+          <p>
+            誤りを見つけた場合は、
+            <a href={`mailto:${COMPANY_SUPPORT_EMAIL}`} className="font-bold text-orange-600 underline underline-offset-2">{COMPANY_SUPPORT_EMAIL}</a>
+            または
+            <Link to="/about#about-contact" className="font-bold text-orange-600 underline underline-offset-2">運営会社のお問い合わせ</Link>
+            までご連絡ください。確認できた事実に基づき、該当ページの更新を検討します。
+          </p>
+          <p className="mt-2">関連：<Link to="/legal/disclaimer" className="text-orange-600 underline underline-offset-2">免責事項</Link></p>
+        </section>
+      </div>
+    ),
+  },
   security: {
     title: 'セキュリティ宣言',
     icon: Shield,
     content: (
       <div className="space-y-6 text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
-        <p>MoneyMartはお客様の大切な資産情報を守るため、金融機関レベルのセキュリティ対策を実施しています。</p>
+        <p>MoneyMartはお客様の大切な資産情報を守るため、通信暗号化やアクセス管理など、必要な安全管理措置の実施に努めています。</p>
         <ul className="list-disc pl-5 space-y-2">
           <li><strong>SSL/TLS暗号化：</strong> 全ての通信を暗号化し、第三者による盗聴を防ぎます。</li>
-          <li><strong>厳格なデータ管理：</strong> お客様の資産データは、インターネットから隔離されたセキュアな環境で保管されます。</li>
-          <li><strong>24時間365日の監視：</strong> 専門のセキュリティチームがシステムの異常を常時監視しています。</li>
+          <li><strong>厳格なデータ管理：</strong> お客様の資産データは、アクセス権限を管理した環境で取り扱います。</li>
+          <li><strong>継続的な確認：</strong> システムの状態を確認し、必要に応じてセキュリティ対策を見直します。</li>
         </ul>
       </div>
     ),
@@ -257,11 +466,11 @@ const LEGAL_CONTENTS = {
     icon: FileText,
     content: (
       <div className="space-y-4 text-sm text-slate-600 dark:text-slate-400">
-        <p>当社は、「金融商品の販売等に関する法律」に基づき、以下の勧誘方針を定めております。</p>
+        <p>当社は、提携先の商品・サービスに関する広告、紹介、案内を行う場合について、以下の方針を定めております。なお、投資助言、投資運用、特定の金融商品の取得・売却の勧誘は行いません。</p>
         <ol className="list-decimal pl-5 space-y-2">
-          <li>お客様の知識、経験、財産状況および目的に照らし、適切な商品の勧誘に努めます。</li>
+          <li>広告・紹介を行う場合は、利用者が条件やリスクを確認しやすい表示に努めます。</li>
           <li>お客様に誤解を招くような説明や、不確実な事項を断定的に告げるような行為はいたしません。</li>
-          <li>深夜や早朝など、お客様のご迷惑となる時間帯や場所での勧誘は行いません。</li>
+          <li>深夜や早朝など、お客様のご迷惑となる時間帯や方法で一方的な案内は行いません。</li>
         </ol>
       </div>
     ),

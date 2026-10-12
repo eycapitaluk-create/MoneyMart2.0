@@ -20,13 +20,11 @@ export default function ToolLandingPage({
     .trim()
     .slice(0, 160)
   const pageTitle = title ? `${title} | MoneyMart` : 'MoneyMart'
-  const loginTo = (() => {
-    if (ctaTo !== '/login') return ctaTo
-    return '/login'
-  })()
-  const loginState = ctaTo === '/login'
-    ? { from: `${location.pathname || '/'}${location.search || ''}` }
-    : undefined
+  const returnPath = `${location.pathname || '/'}${location.search || ''}`
+  const returnState = { from: returnPath }
+  const loginTo = ctaTo
+  const primaryState = (ctaTo === '/login' || ctaTo === '/signup') ? returnState : undefined
+  const secondaryState = (secondaryTo === '/login' || secondaryTo === '/signup') ? returnState : undefined
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
@@ -48,19 +46,25 @@ export default function ToolLandingPage({
           <div className="mt-6 flex flex-wrap items-center gap-3">
             <Link
               to={loginTo}
-              state={loginState}
+              state={primaryState}
               className="inline-flex items-center justify-center px-4 py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-sm font-black transition"
             >
               {ctaLabel}
             </Link>
             <Link
               to={secondaryTo}
+              state={secondaryState}
               className="inline-flex items-center justify-center px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-sm font-black hover:bg-slate-100 dark:hover:bg-slate-800 transition"
             >
               {secondaryLabel}
             </Link>
           </div>
           <p className="mt-6 text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">{MM_SIMULATION_PAST_PERFORMANCE_JA}</p>
+          <div className="mt-6 flex flex-wrap gap-x-4 gap-y-2 text-sm font-bold">
+            <Link to="/etf-compare" className="text-orange-600 dark:text-orange-400 hover:underline">ETF比較で重複を確認</Link>
+            <Link to="/tools/nisa-etf-checklist" className="text-orange-600 dark:text-orange-400 hover:underline">NISAチェックリスト</Link>
+            <Link to="/legal/methodology" className="text-slate-500 dark:text-slate-400 hover:underline">編集・データ方針</Link>
+          </div>
         </div>
       </div>
     </div>

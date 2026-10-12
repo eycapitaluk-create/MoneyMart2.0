@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, Suspense, useCallback } from 'react'
 import { flushSync } from 'react-dom'
 import { lazyWithRetry } from './lib/lazyWithRetry'
 import { supabase } from './lib/supabase'
-import { trackAnalyticsEvent, backfillSignupAttributionIfEmpty, getSignupAttributionForProfile } from './lib/analytics'
+import { trackAnalyticsEvent, backfillSignupAttributionIfEmpty, getSignupAttributionForProfile, syncAnalyticsUserId } from './lib/analytics'
 import { captureReferralFromUrl } from './lib/referralStorage'
 import Layout from './components/layout/Layout'
 import ErrorBoundary from './components/ErrorBoundary'
@@ -109,6 +109,7 @@ const BriefArchivePage = lazyWithRetry(() => import('./pages/BriefArchivePage'))
 const LegalPage = lazyWithRetry(() => import('./pages/LegalPage'))
 const FAQPage = lazyWithRetry(() => import('./pages/FAQPage'))
 const AboutPage = lazyWithRetry(() => import('./pages/AboutPage'))
+const CareersPage = lazyWithRetry(() => import('./pages/CareersPage'))
 const ToolsHubPage = lazyWithRetry(() => import('./pages/ToolsHubPage'))
 const ToolLandingPage = lazyWithRetry(() => import('./pages/ToolLandingPage'))
 const NisaEtfChecklistPage = lazyWithRetry(() => import('./pages/NisaEtfChecklistPage'))
@@ -117,6 +118,7 @@ const InsightResearchMockPage = lazyWithRetry(() => import('./pages/InsightResea
 const NotFoundPage = lazyWithRetry(() => import('./pages/NotFoundPage'))
 const PremiumPage = lazyWithRetry(() => import('./pages/PremiumPage'))
 const CampaignCp2026SnsSepPage = lazyWithRetry(() => import('./pages/CampaignCp2026SnsSepPage'))
+const BusinessDemoPage = lazyWithRetry(() => import('./pages/BusinessDemoPage'))
 
 const RouteSkeleton = ({ title = 'ページを読み込み中...' }) => (
   <div className="min-h-[50vh] max-w-5xl mx-auto px-4 py-8">
@@ -145,9 +147,73 @@ const PREMIUM_EMAIL_ALLOWLIST = new Set([
   'ellen.nam@moneymart.co.jp',
   'moneymartjp@gmail.com',
 ])
+const BUSINESS_DEMO_EMAIL_ALLOWLIST = new Set([
+  'kelly.nam@moneymart.co.jp',
+  'justin.nam@moneymart.co.jp',
+  'ellen.nam@moneymart.co.jp',
+])
 /** QA용: 강제 프리미엄·프리트라이얼 없음（DB에 trial/prime이 있어도 무료 UX로 고정） */
 const PREMIUM_ENTITLEMENT_DENY_EMAILS = new Set(['test@moneymart.co.jp'])
 const FREE_FUND_WATCHLIST_LIMIT = 3
+
+function RequireBusinessDemo({ session, authReady, children }) {
+  const location = useLocation()
+  const [verification, setVerification] = useState({ token: '', allowed: false })
+  const email = String(session?.user?.email || '').trim().toLowerCase()
+
+  useEffect(() => {
+    if (!authReady || !session?.user?.id) return undefined
+    if (!BUSINESS_DEMO_EMAIL_ALLOWLIST.has(email) || import.meta.env.DEV) return undefined
+
+    const controller = new AbortController()
+    const token = session.access_token
+    fetch('/api/business-demo-access', {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}` },
+      credentials: 'same-origin',
+      cache: 'no-store',
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => ({}))
+        if (!response.ok || payload?.allowed !== true) throw new Error('forbidden')
+        setVerification({ token, allowed: true })
+      })
+      .catch((error) => {
+        if (error?.name !== 'AbortError') setVerification({ token, allowed: false })
+      })
+    return () => controller.abort()
+  }, [authReady, email, session?.access_token, session?.user?.id])
+
+  if (!authReady) return <RouteSkeleton title="認証情報を確認中..." />
+  if (!session) {
+    return <Navigate to="/login" replace state={{ from: `${location.pathname}${location.search}` }} />
+  }
+  const emailAllowed = BUSINESS_DEMO_EMAIL_ALLOWLIST.has(email)
+  const accessAllowed = emailAllowed && (
+    import.meta.env.DEV
+    || (verification.token === session.access_token && verification.allowed)
+  )
+  const verificationPending = emailAllowed
+    && !import.meta.env.DEV
+    && verification.token !== session.access_token
+  if (verificationPending) return <RouteSkeleton title="ビジネスデモのアクセス権限を確認中..." />
+  if (!accessAllowed) {
+    return (
+      <main className="grid min-h-screen place-items-center bg-slate-50 px-4">
+        <section className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+          <div className="text-xs font-extrabold tracking-[0.2em] text-amber-700">MONEYMART BUSINESS</div>
+          <h1 className="mt-3 text-2xl font-extrabold text-slate-900">アクセス権限がありません</h1>
+          <p className="mt-3 text-sm leading-relaxed text-slate-500">
+            このビジネスデモは許可された社内アカウントのみ利用できます。
+          </p>
+          <a href="/" className="mt-6 inline-flex rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-bold text-white">ホームへ戻る</a>
+        </section>
+      </main>
+    )
+  }
+  return children
+}
 
 /** /funds/compare?ids=… は /etf-compare へ統合するが、クエリ（ids/weights）を落とさない */
 function FundsCompareRedirect() {
@@ -600,6 +666,7 @@ const App = () => {
       if (!mounted) return
       const nextSession = data?.session ?? null
       sessionUserIdRef.current = nextSession?.user?.id ?? null
+      syncAnalyticsUserId(sessionUserIdRef.current)
       setSession(nextSession)
       setAuthReady(true)
       await loadDisplayProfile(nextSession)
@@ -609,6 +676,7 @@ const App = () => {
     const { data: authListener } = supabase.auth.onAuthStateChange((event, nextSession) => {
       const nextUserId = nextSession?.user?.id ?? null
       const prevUserId = sessionUserIdRef.current
+      syncAnalyticsUserId(nextUserId)
 
       if (event === 'SIGNED_OUT') {
         clearFundListPageSessionStorage()
@@ -939,6 +1007,14 @@ const App = () => {
     >
       <Routes>
         <Route
+          path="/business/demo"
+          element={(
+            <RequireBusinessDemo session={session} authReady={authReady}>
+              <BusinessDemoPage />
+            </RequireBusinessDemo>
+          )}
+        />
+        <Route
           element={(
             <Layout
               session={session}
@@ -1132,6 +1208,7 @@ const App = () => {
           <Route path="/legal/:type" element={<LegalPage />} />
           <Route path="/faq" element={<FAQPage />} />
           <Route path="/about" element={<AboutPage />} />
+          <Route path="/careers" element={<CareersPage />} />
           <Route path="/tools" element={<ToolsHubPage session={session} />} />
           <Route path="/tools/nisa-etf-checklist" element={<NisaEtfChecklistPage />} />
           <Route path="/nisa-etf-checklist" element={<Navigate to="/tools/nisa-etf-checklist" replace />} />

@@ -2424,6 +2424,14 @@ export const STOCK_LIST_400 = [
     "sector": "未分類"
   },
   {
+    "symbol": "CHRW",
+    "name": "CHRW",
+    "region": "US",
+    "index_tag": "SP500",
+    "market_cap": 0,
+    "sector": "未分類"
+  },
+  {
     "symbol": "CINF",
     "name": "CINF",
     "region": "US",
@@ -3696,6 +3704,14 @@ export const STOCK_LIST_400 = [
     "sector": "未分類"
   },
   {
+    "symbol": "SKHY",
+    "name": "SKHY",
+    "region": "US",
+    "index_tag": "",
+    "market_cap": 0,
+    "sector": "未分類"
+  },
+  {
     "symbol": "SW",
     "name": "SW",
     "region": "US",
@@ -4624,14 +4640,6 @@ export const STOCK_LIST_400 = [
     "sector": "未分類"
   },
   {
-    "symbol": "9719.T",
-    "name": "9719.T",
-    "region": "JP",
-    "index_tag": "NIKKEI225",
-    "market_cap": 0,
-    "sector": "未分類"
-  },
-  {
     "symbol": "5020.T",
     "name": "5020.T",
     "region": "JP",
@@ -5461,7 +5469,7 @@ export const STOCK_LIST_400 = [
     "region": "JP",
     "index_tag": "NIKKEI225",
     "market_cap": 0,
-    "sector": "未分類"
+    "sector": "素材"
   },
   {
     "symbol": "5707.T",
@@ -5616,14 +5624,6 @@ export const STOCK_LIST_400 = [
     "sector": "未分類"
   },
   {
-    "symbol": "7205.T",
-    "name": "7205.T",
-    "region": "JP",
-    "index_tag": "NIKKEI225",
-    "market_cap": 0,
-    "sector": "未分類"
-  },
-  {
     "symbol": "7272.T",
     "name": "7272.T",
     "region": "JP",
@@ -5742,6 +5742,118 @@ export const STOCK_LIST_400 = [
     "index_tag": "NIKKEI225",
     "market_cap": 0,
     "sector": "未分類"
+  },
+  {
+    "symbol": "285A.T",
+    "name": "285A.T",
+    "region": "JP",
+    "index_tag": "",
+    "market_cap": 0,
+    "sector": "テクノロジー"
+  },
+  {
+    "symbol": "6976.T",
+    "name": "6976.T",
+    "region": "JP",
+    "index_tag": "",
+    "market_cap": 0,
+    "sector": "テクノロジー"
+  },
+  {
+    "symbol": "4062.T",
+    "name": "4062.T",
+    "region": "JP",
+    "index_tag": "",
+    "market_cap": 0,
+    "sector": "テクノロジー"
+  },
+  {
+    "symbol": "6963.T",
+    "name": "6963.T",
+    "region": "JP",
+    "index_tag": "",
+    "market_cap": 0,
+    "sector": "テクノロジー"
+  },
+  {
+    "symbol": "VOO",
+    "name": "Vanguard S&P 500 ETF",
+    "region": "US",
+    "index_tag": "ETF",
+    "market_cap": 0,
+    "sector": "指数ETF"
+  },
+  {
+    "symbol": "QQQ",
+    "name": "Invesco QQQ Trust",
+    "region": "US",
+    "index_tag": "ETF",
+    "market_cap": 0,
+    "sector": "指数ETF"
+  },
+  {
+    "symbol": "VWO",
+    "name": "Vanguard FTSE Emerging Markets ETF",
+    "region": "US",
+    "index_tag": "ETF",
+    "market_cap": 0,
+    "sector": "海外株式ETF"
+  },
+  {
+    "symbol": "VT",
+    "name": "Vanguard Total World Stock ETF",
+    "region": "US",
+    "index_tag": "ETF",
+    "market_cap": 0,
+    "sector": "グローバル株式ETF"
+  },
+  {
+    "symbol": "BND",
+    "name": "Vanguard Total Bond Market ETF",
+    "region": "US",
+    "index_tag": "ETF",
+    "market_cap": 0,
+    "sector": "債券ETF"
+  },
+  {
+    "symbol": "VEA",
+    "name": "Vanguard FTSE Developed Markets ETF",
+    "region": "US",
+    "index_tag": "ETF",
+    "market_cap": 0,
+    "sector": "海外株式ETF"
+  },
+  {
+    "symbol": "LQD",
+    "name": "iShares iBoxx $ Investment Grade Corporate Bond ETF",
+    "region": "US",
+    "index_tag": "ETF",
+    "market_cap": 0,
+    "sector": "債券ETF"
+  },
+  {
+    "symbol": "IEF",
+    "name": "iShares 7-10 Year Treasury Bond ETF",
+    "region": "US",
+    "index_tag": "ETF",
+    "market_cap": 0,
+    "sector": "債券ETF"
+  },
+  {
+    "symbol": "VNQ",
+    "name": "Vanguard Real Estate ETF",
+    "region": "US",
+    "index_tag": "ETF",
+    "market_cap": 0,
+    "sector": "不動産ETF"
+  },
+  {
+    "symbol": "VTI",
+    "name": "Vanguard Total Stock Market ETF",
+    "region": "US",
+    "index_tag": "ETF",
+    "market_cap": 0,
+    "sector": "指数ETF"
   }
 ]
 export const STOCK_LIST_400_SYMBOLS = new Set(STOCK_LIST_400.map((r) => r.symbol))

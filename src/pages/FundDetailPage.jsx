@@ -7,25 +7,40 @@ import {
 } from 'recharts'
 import { supabase } from '../lib/supabase'
 import { ETF_LIST_FROM_XLSX, ETF_SYMBOLS_FROM_XLSX } from '../data/etfListFromXlsx'
-import { FUND_DESCRIPTIONS_BY_ISIN } from '../data/fundDescriptionsByIsin'
+import { FUND_ISIN_BY_SYMBOL } from '../data/fundIsinBySymbol'
+import { formatTrustFeePercent, parseTrustFeePercent } from '../lib/trustFee'
 
 const FUND_SYMBOL_SET = new Set(ETF_SYMBOLS_FROM_XLSX.map((s) => String(s || '').toUpperCase()))
 import { trackAnalyticsEvent } from '../lib/analytics'
-import { normalizeFundDisplayName } from '../lib/fundDisplayUtils'
-import { findBaseCloseByCalendarOffset } from '../lib/calendarDateUtils'
+import {
+  fundSymbolLookupVariants,
+  pickStockMetaRow,
+  resolveFundDisplayName,
+  resolveFundNisaCategory,
+} from '../lib/fundDisplayUtils'
+import {
+  computeOneYearPriceReturnPct,
+  formatOneYearPriceReturnPct,
+  hasOneYearPriceReturn,
+  ONE_YEAR_RETURN_MISSING_TEXT,
+  ONE_YEAR_RETURN_BASIS_TEXT,
+} from '../lib/calendarDateUtils'
 import {
   buildSplitAdjustedCloses,
   chartDownsampleIndices,
+  calculateRealizedVolatilityFromAscHistory,
   resolveSpotCloseAndSessionChange,
   skipEodSplitHeuristicForSymbol,
 } from '../lib/fundAdjustedCloses'
 import { dedupeStockDailyPricesByTradeDate } from '../lib/stockDailyHistory'
 import { signedReturnTextClassStrong } from '../lib/marketDirectionColors'
+import { getFundDescription } from '../lib/fundDetailDescription'
+import { useDocumentTitle } from '../hooks/useDocumentTitle'
 
 const ETF_META_MAP = new Map(ETF_LIST_FROM_XLSX.map((item) => [item.symbol, item]))
 const FUND_DETAIL_CACHE_TTL_MS = 1000 * 60 * 5
 const fundDetailMemoryCache = new Map()
-const getFundDetailCacheKey = (symbol) => `mm_fund_detail_cache:v6:${String(symbol || '').toUpperCase()}`
+const getFundDetailCacheKey = (symbol) => `mm_fund_detail_cache:v11:${String(symbol || '').toUpperCase()}`
 const readFundDetailCache = (symbol) => {
   const key = getFundDetailCacheKey(symbol)
   const now = Date.now()
@@ -69,13 +84,9 @@ const formatMonthDay = (isoDate) => {
   if (!year || !month || !day) return String(isoDate || '')
   return `${Number(month)}/${Number(day)}`
 }
-const fmtNum = (v) => (Number.isFinite(Number(v)) ? Number(v).toLocaleString() : '-')
-const fmtPrice = (v) => (Number.isFinite(Number(v)) ? `¥${Number(v).toLocaleString()}` : '-')
-const formatTrustFee = (value) => {
-  const n = Number(value)
-  if (!Number.isFinite(n)) return '-'
-  return `${n.toFixed(2)}%`
-}
+const fmtNum = (v) => (Number.isFinite(Number(v)) ? Number(v).toLocaleString('ja-JP') : '-')
+const fmtPrice = (v) => (Number.isFinite(Number(v)) ? `¥${Number(v).toLocaleString('ja-JP')}` : '-')
+const formatTrustFee = (value) => formatTrustFeePercent(value)
 
 /** xlsx の aum_oku_yen（億円単位の数値）を表示用に整形。1兆円=1万億円換算で兆表記 */
 const formatAumOkuYen = (oku) => {
@@ -85,112 +96,39 @@ const formatAumOkuYen = (oku) => {
   return `${v.toLocaleString('ja-JP', { maximumFractionDigits: 1 })}億円`
 }
 
-const calculateRealizedVolatility = (closes = []) => {
-  const normalized = closes.map((v) => Number(v)).filter((v) => Number.isFinite(v) && v > 0)
-  if (normalized.length < 3) return null
-  const dailyReturns = []
-  for (let i = 1; i < normalized.length; i += 1) {
-    dailyReturns.push((normalized[i] - normalized[i - 1]) / normalized[i - 1])
-  }
-  if (dailyReturns.length < 2) return null
-  const mean = dailyReturns.reduce((acc, cur) => acc + cur, 0) / dailyReturns.length
-  const variance = dailyReturns.reduce((acc, cur) => acc + ((cur - mean) ** 2), 0) / (dailyReturns.length - 1)
-  return Math.sqrt(variance) * Math.sqrt(252) * 100
-}
-
 const RSI_PERIOD = 14
-const calculateRSI = (closes = [], period = RSI_PERIOD) => {
-  const arr = (Array.isArray(closes) ? closes : []).map((v) => Number(v)).filter((v) => Number.isFinite(v) && v > 0)
-  if (arr.length < period + 1) return []
-  const rsi = []
-  for (let i = 0; i < arr.length; i += 1) {
-    if (i < period) {
-      rsi.push(null)
-      continue
+const calculateRSI = (series = [], period = RSI_PERIOD) => {
+  const len = series.length
+  const rsi = new Array(len).fill(null)
+  for (let i = period; i < len; i += 1) {
+    let windowOk = true
+    for (let j = i - period; j <= i; j += 1) {
+      const v = Number(series[j])
+      if (!Number.isFinite(v) || v <= 0) {
+        windowOk = false
+        break
+      }
     }
+    if (!windowOk) continue
     let sumGain = 0
     let sumLoss = 0
     for (let j = i - period + 1; j <= i; j += 1) {
-      const delta = arr[j] - arr[j - 1]
+      const cur = Number(series[j])
+      const prev = Number(series[j - 1])
+      const delta = cur - prev
       if (delta > 0) sumGain += delta
       else if (delta < 0) sumLoss += Math.abs(delta)
     }
     const avgGain = sumGain / period
     const avgLoss = sumLoss / period
     if (avgLoss === 0) {
-      rsi.push(100)
+      rsi[i] = 100
       continue
     }
     const rs = avgGain / avgLoss
-    rsi.push(100 - 100 / (1 + rs))
+    rsi[i] = 100 - 100 / (1 + rs)
   }
   return rsi
-}
-
-const classifyFundTheme = (name = '') => {
-  const n = String(name || '').toUpperCase()
-  if (n.includes('NASDAQ')) return '米国ハイテク株'
-  if (n.includes('S&P 500') || n.includes('S&P500')) return '米国大型株'
-  if (n.includes('ダウ') || n.includes('DOW')) return '米国主要株'
-  if (n.includes('TOPIX')) return '日本株（TOPIX）'
-  if (n.includes('日経２２５') || n.includes('日経225') || n.includes('NIKKEI')) return '日本株（日経平均）'
-  if (n.includes('JPX日経') || n.includes('JPX')) return '日本株（JPX指数）'
-  if (n.includes('Ｊリート') || n.includes('J-REIT') || n.includes('REIT')) return '不動産投資信託（REIT）'
-  if (n.includes('米国債') || n.includes('国債') || n.includes('社債') || n.includes('BOND')) return '債券'
-  if (n.includes('全世界') || n.includes('オール・カントリー') || n.includes('ACWI') || n.includes('KOKUSAI')) return '全世界株式'
-  if (n.includes('新興国') || n.includes('EMERGING')) return '新興国株式'
-  if (n.includes('金') || n.includes('GOLD')) return '金'
-  if (n.includes('銀') || n.includes('SILVER')) return '銀'
-  if (n.includes('プラチナ') || n.includes('PLATINUM')) return 'プラチナ'
-  if (n.includes('原油') || n.includes('CRUDE') || n.includes('WTI')) return '原油'
-  if (n.includes('半導体')) return '半導体関連株'
-  if (n.includes('高配当') || n.includes('DIVIDEND')) return '高配当株'
-  return '主要株価指数'
-}
-
-const buildGeneratedDescription = (symbol, fundName) => {
-  const name = String(fundName || '')
-  const upper = name.toUpperCase()
-  const theme = classifyFundTheme(name)
-  const isLeveraged = /レバレッジ|ブル2倍|ブル２倍|2倍|2X|LEVERAGED/.test(name) || /^(1570|1579|1568|2036)\.T$/.test(symbol)
-  const isInverse = /インバース|ベア|ダブルインバース|INVERSE/.test(name)
-  const isEtN = /ETN|NEXT NOTES/.test(upper)
-  const isHedged = /ヘッジ|Ｈ有|\(H\)|\(Ｈ\)|Hあり|H有/.test(name)
-
-  if (isLeveraged) {
-    return `${theme}の値動きに対して概ね2倍程度の値動きを目指すレバレッジ型の${isEtN ? '上場投資商品（ETN）' : 'ETF'}です。短期的には上昇局面で効果が出やすい一方、下落局面やボラティリティ上昇時の値動きには注意が必要です。`
-  }
-  if (isInverse) {
-    return `${theme}の逆方向の値動きを目指すインバース型ETFです。相場下落時のヘッジ用途で使われる一方、長期保有では乖離が生じる可能性があります。`
-  }
-  if (theme === '金' || theme === '銀' || theme === 'プラチナ' || theme === '原油') {
-    return `${theme}価格への連動を目指す${isEtN ? 'ETN' : 'ETF'}です。株式とは異なる値動き特性を持つため、分散投資やインフレ局面の補完として活用されることがあります。`
-  }
-  if (theme === '債券') {
-    return `${theme}指数に連動するETFです。${isHedged ? '為替ヘッジありの設計で、' : ''}株式ETFと比べて値動きが相対的に穏やかな傾向があり、ポートフォリオの安定化に用いられます。`
-  }
-  return `${theme}指数への連動を目指す${isEtN ? '上場投資商品（ETN）' : 'ETF'}です。${isHedged ? '為替ヘッジを活用し、為替変動の影響を抑える設計です。' : '市場全体の値動きを低コストで取り込みやすい設計です。'}`
-}
-
-const normalizeDescriptionTypography = (text = '') => {
-  const halfWidth = String(text || '')
-    // Convert full-width ASCII variants to half-width (e.g. ＴＯＰＩＸ -> TOPIX).
-    .replace(/[！-～]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0))
-    .replace(/\u3000/g, ' ')
-  return halfWidth
-    // Normalize TOPIX sector index notation (TOPIXー17 -> TOPIX-17).
-    .replace(/([A-Za-z])ー(?=\d)/g, '$1-')
-    .replace(/\s{2,}/g, ' ')
-    .trim()
-}
-
-const getFundDescription = (symbol, isin, fundName) => {
-  const symbolKey = String(symbol || '').toUpperCase()
-  const isinKey = String(isin || '').trim().toUpperCase()
-  if (isinKey && FUND_DESCRIPTIONS_BY_ISIN[isinKey]) {
-    return normalizeDescriptionTypography(FUND_DESCRIPTIONS_BY_ISIN[isinKey])
-  }
-  return normalizeDescriptionTypography(buildGeneratedDescription(symbolKey, fundName))
 }
 
 export default function FundDetailPage({ myWatchlist = [], toggleWatchlist }) {
@@ -203,6 +141,12 @@ export default function FundDetailPage({ myWatchlist = [], toggleWatchlist }) {
 
   const symbol = useMemo(() => String(id || '').trim().toUpperCase(), [id])
   const isWatchlisted = Array.isArray(myWatchlist) && myWatchlist.includes(symbol)
+
+  useDocumentTitle(
+    !loading && detail?.jpName && detail?.symbol
+      ? `${detail.jpName}（${detail.symbol}）｜ETF・信託報酬 | MoneyMart`
+      : '',
+  )
 
   useEffect(() => {
     window.scrollTo(0, 0)
@@ -239,14 +183,23 @@ export default function FundDetailPage({ myWatchlist = [], toggleWatchlist }) {
         cutoff.setFullYear(cutoff.getFullYear() - 1)
         const cutoffStr = cutoff.toISOString().slice(0, 10)
 
+        const dbSymVariants = fundSymbolLookupVariants(symbol)
         const [
           { data: latestRows, error: latestErr },
           { data: symbolRows, error: symbolErr },
+          { data: profileRows, error: profileErr },
           { data: historyRows, error: historyErr },
           { data: jpAumRows, error: jpAumErr },
         ] = await Promise.all([
           supabase.from('v_stock_latest').select('symbol,trade_date,open,high,low,close,volume').eq('symbol', symbol).limit(1),
-          supabase.from('stock_symbols').select('symbol,name,exchange,trust_fee,nisa_category').eq('symbol', symbol).limit(1),
+          supabase
+            .from('stock_symbols')
+            .select('symbol,name,exchange,trust_fee,nisa_category,aum,isin')
+            .in('symbol', dbSymVariants),
+          supabase
+            .from('stock_symbol_profiles')
+            .select('symbol,name_jp,name_en')
+            .in('symbol', dbSymVariants),
           supabase
             .from('stock_daily_prices')
             .select('symbol,trade_date,open,high,low,close,volume,source,fetched_at')
@@ -264,6 +217,7 @@ export default function FundDetailPage({ myWatchlist = [], toggleWatchlist }) {
         ])
         if (latestErr) throw latestErr
         if (symbolErr) throw symbolErr
+        if (profileErr) throw profileErr
         if (historyErr) throw historyErr
         if (jpAumErr) throw jpAumErr
 
@@ -273,15 +227,17 @@ export default function FundDetailPage({ myWatchlist = [], toggleWatchlist }) {
           setError('この銘柄の最新データがありません。')
           return
         }
-        const profile = (symbolRows || [])[0] || {}
+        const profile = pickStockMetaRow(symbolRows, symbol)
+        const profileRow = pickStockMetaRow(profileRows, symbol)
         const xlsxMeta = ETF_META_MAP.get(symbol)
-        const history = dedupeStockDailyPricesByTradeDate(historyRows || [])
-        const trustFeeValue = Number.isFinite(Number(profile.trust_fee)) ? Number(profile.trust_fee) : Number(xlsxMeta?.trustFee)
-        const normalizedNisaCategory = String(profile.nisa_category || xlsxMeta?.nisaCategory || '').trim() || '-'
+        // 複数 source 同一日は「直前終値との連続性」で1行に潰す（manual_close は別途最優先）。
+        const historyDedupeMode = 'continuity'
+        const history = dedupeStockDailyPricesByTradeDate(historyRows || [], { mode: historyDedupeMode })
+        const trustFeeValue = parseTrustFeePercent(profile.trust_fee) ?? parseTrustFeePercent(xlsxMeta?.trustFee)
+        const normalizedNisaCategory = resolveFundNisaCategory(symbol, profile.nisa_category, xlsxMeta?.nisaCategory)
         const adjustedClosesRaw = buildSplitAdjustedCloses(history, {
           skipSplitHeuristic: skipEodSplitHeuristicForSymbol(symbol),
         })
-        const closes = adjustedClosesRaw.filter((v) => Number.isFinite(v) && v > 0)
         const volumes = history.map((r) => Number(r.volume)).filter((v) => Number.isFinite(v) && v >= 0)
         const {
           close,
@@ -291,29 +247,23 @@ export default function FundDetailPage({ myWatchlist = [], toggleWatchlist }) {
           latestCloseNum,
         } = resolveSpotCloseAndSessionChange(history, adjustedClosesRaw, latest)
         const open = Number(latest.open || 0)
-        const oneYearBaseClose = findBaseCloseByCalendarOffset(history, { years: 1 }, adjustedClosesRaw)
-        const firstTradeDateRaw = history[0]?.trade_date
-        const latestTradeDateRaw = history[Math.max(0, history.length - 1)]?.trade_date
-        const firstTradeDate = firstTradeDateRaw ? new Date(firstTradeDateRaw) : null
-        const latestTradeDate = latestTradeDateRaw ? new Date(latestTradeDateRaw) : null
-        const historySpanDays = (
-          firstTradeDate
-          && latestTradeDate
-          && Number.isFinite(firstTradeDate.getTime())
-          && Number.isFinite(latestTradeDate.getTime())
-        )
-          ? Math.floor((latestTradeDate.getTime() - firstTradeDate.getTime()) / (1000 * 60 * 60 * 24))
-          : 0
-        const hasReliableOneYearHistory = closes.length >= 2 && historySpanDays >= 330
-        const return1y = hasReliableOneYearHistory && oneYearBaseClose != null && oneYearBaseClose > 0 ? ((close - oneYearBaseClose) / oneYearBaseClose) * 100 : null
-        const vol = calculateRealizedVolatility(closes)
+        const return1y = computeOneYearPriceReturnPct(history, adjustedClosesRaw, close)
+        const vol = calculateRealizedVolatilityFromAscHistory(history, adjustedClosesRaw)
         const sharpe = (Number.isFinite(return1y) && Number.isFinite(vol) && vol > 0) ? (return1y / vol) : null
         const avgVol30 = volumes.length > 0
           ? volumes.slice(-30).reduce((acc, cur) => acc + cur, 0) / Math.min(30, volumes.length)
           : Number(latest.volume || 0)
         const yearStartStr = `${new Date().getFullYear()}-01-01`
         const ytdFirstIdx = history.findIndex((r) => String(r?.trade_date || '') >= yearStartStr)
-        const ytdBaseClose = ytdFirstIdx >= 0 ? Number(adjustedClosesRaw[ytdFirstIdx] ?? history[ytdFirstIdx]?.close ?? 0) : null
+        let ytdBaseClose = null
+        if (ytdFirstIdx >= 0) {
+          const yAdj = Number(adjustedClosesRaw[ytdFirstIdx])
+          if (Number.isFinite(yAdj) && yAdj > 0) ytdBaseClose = yAdj
+          else {
+            const yRaw = Number(history[ytdFirstIdx]?.close)
+            if (Number.isFinite(yRaw) && yRaw > 0) ytdBaseClose = yRaw
+          }
+        }
         const returnYTD = (ytdBaseClose != null && ytdBaseClose > 0 && close > 0)
           ? ((close - ytdBaseClose) / ytdBaseClose) * 100
           : null
@@ -333,17 +283,27 @@ export default function FundDetailPage({ myWatchlist = [], toggleWatchlist }) {
             }
           } catch { /* ignore */ }
         }
+        const dbAumYen = Number(profile?.aum)
+        if ((!Number.isFinite(aumOkuYen) || aumOkuYen <= 0) && Number.isFinite(dbAumYen) && dbAumYen > 0) {
+          aumOkuYen = dbAumYen / 1e8
+        }
 
         const rsiValues = calculateRSI(adjustedClosesRaw)
         const chartData = chartDownsampleIndices(history.length, 70)
           .map((idx) => {
             const row = history[idx]
+            const adjV = Number(adjustedClosesRaw[idx])
+            const rawV = Number(row?.close)
+            const closePoint = (Number.isFinite(adjV) && adjV > 0)
+              ? adjV
+              : (Number.isFinite(rawV) && rawV > 0 ? rawV : null)
+            const rv = rsiValues[idx]
             return {
               date: formatMonthDay(row.trade_date),
               isoDate: String(row.trade_date || ''),
-              close: Number(adjustedClosesRaw[idx] || row.close || 0),
+              close: closePoint,
               volume: Number(row.volume || 0),
-              rsi: Number.isFinite(rsiValues[idx]) ? Number(rsiValues[idx].toFixed(1)) : null,
+              rsi: rv != null && Number.isFinite(rv) ? Number(rv.toFixed(1)) : null,
             }
           })
         if (
@@ -375,10 +335,12 @@ export default function FundDetailPage({ myWatchlist = [], toggleWatchlist }) {
           })
         }
 
+        const isinFallback = FUND_ISIN_BY_SYMBOL[symbol]
+        const isinResolved = String(profile?.isin || xlsxMeta?.isin || isinFallback || '').trim()
         const nextDetail = {
           symbol,
-          isin: xlsxMeta?.isin || '-',
-          jpName: normalizeFundDisplayName(xlsxMeta?.jpName || profile.name || symbol),
+          isin: isinResolved || '-',
+          jpName: resolveFundDisplayName(symbol, profile, xlsxMeta, profileRow),
           exchange: profile.exchange || '-',
           tradeDate: latest.trade_date || '',
           close,
@@ -539,13 +501,16 @@ export default function FundDetailPage({ myWatchlist = [], toggleWatchlist }) {
         <div className="grid grid-cols-2 gap-3 mb-5 md:grid-cols-3 lg:grid-cols-7">
           <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3">
             <p className="text-[11px] text-slate-500 font-bold">1年リターン</p>
-            <p className="text-lg font-black text-slate-900 dark:text-white">
-              {Number.isFinite(Number(detail.return1y))
-                ? fmtPct(detail.return1y)
-                : (Number.isFinite(Number(detail.returnYTD))
-                  ? `YTD ${detail.returnYTD >= 0 ? '+' : ''}${Number(detail.returnYTD).toFixed(1)}%`
-                  : '-')}
+            <p className="text-[10px] font-bold text-slate-400">{ONE_YEAR_RETURN_BASIS_TEXT}</p>
+            <p
+              className={`text-lg font-black ${hasOneYearPriceReturn(detail.return1y) ? 'text-slate-900 dark:text-white' : 'text-slate-400'}`}
+              title={hasOneYearPriceReturn(detail.return1y) ? ONE_YEAR_RETURN_BASIS_TEXT : ONE_YEAR_RETURN_MISSING_TEXT}
+            >
+              {formatOneYearPriceReturnPct(detail.return1y)}
             </p>
+            {hasOneYearPriceReturn(detail.return1y) ? null : (
+              <p className="text-[10px] font-bold leading-snug text-slate-500">{ONE_YEAR_RETURN_MISSING_TEXT}</p>
+            )}
           </div>
           <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3">
             <p className="text-[11px] text-slate-500 font-bold">変動性</p>
@@ -607,6 +572,11 @@ export default function FundDetailPage({ myWatchlist = [], toggleWatchlist }) {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
           <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4">
             <h3 className="text-sm font-black text-slate-900 dark:text-white mb-3">価格推移 ({chartTimeline})</h3>
+            {chartTimeline === '1Y' && !hasOneYearPriceReturn(detail.return1y) ? (
+              <div className="flex h-[240px] items-center justify-center px-4 text-center text-sm font-bold text-slate-400">
+                {ONE_YEAR_RETURN_MISSING_TEXT}
+              </div>
+            ) : (
             <div className="h-[240px]">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={visibleChartData}>
@@ -629,16 +599,17 @@ export default function FundDetailPage({ myWatchlist = [], toggleWatchlist }) {
                         <div className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs shadow-md dark:border-slate-600 dark:bg-slate-900">
                           <div className="font-bold text-slate-700 dark:text-slate-200">{ymd}</div>
                           <div className="text-slate-900 dark:text-slate-100">
-                            close: {Number.isFinite(Number(c)) ? `¥${Number(c).toLocaleString()}` : '-'}
+                            close: {Number.isFinite(Number(c)) ? `¥${Number(c).toLocaleString('ja-JP')}` : '-'}
                           </div>
                         </div>
                       )
                     }}
                   />
-                  <Area type="monotone" dataKey="close" stroke="#2563eb" strokeWidth={2.2} fill="url(#priceGradient)" />
+                  <Area type="monotone" dataKey="close" stroke="#2563eb" strokeWidth={2.2} fill="url(#priceGradient)" connectNulls={false} />
                 </AreaChart>
                 </ResponsiveContainer>
             </div>
+            )}
           </div>
 
           <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4">
@@ -655,7 +626,7 @@ export default function FundDetailPage({ myWatchlist = [], toggleWatchlist }) {
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                   <XAxis dataKey="date" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fontSize: 10 }} width={42} tickFormatter={(v) => v >= 10000 ? `${(v/10000).toFixed(0)}万` : v} />
-                  <Tooltip formatter={(v) => `${Math.round(Number(v) || 0).toLocaleString()}株`} />
+                  <Tooltip formatter={(v) => `${Math.round(Number(v) || 0).toLocaleString('ja-JP')}株`} />
                   <Bar dataKey="volume" fill="url(#volumeGradient)" radius={[2,2,0,0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -688,7 +659,7 @@ export default function FundDetailPage({ myWatchlist = [], toggleWatchlist }) {
                 <ReferenceArea y1={0} y2={30} fill="#22c55e" fillOpacity={0.08} />
                 <ReferenceLine y={70} stroke="#ef4444" strokeDasharray="3 3" />
                 <ReferenceLine y={30} stroke="#22c55e" strokeDasharray="3 3" />
-                <Area type="monotone" dataKey="rsi" stroke="#8b5cf6" strokeWidth={2} fill="url(#rsiGradient)" connectNulls />
+                <Area type="monotone" dataKey="rsi" stroke="#8b5cf6" strokeWidth={2} fill="url(#rsiGradient)" connectNulls={false} />
               </AreaChart>
             </ResponsiveContainer>
             </div>

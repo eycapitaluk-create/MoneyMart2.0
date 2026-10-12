@@ -1,7 +1,7 @@
 const DEFAULT_GEMINI_MODEL = 'gemini-2.0-flash'
 const GEMINI_FALLBACK_MODELS = ['gemini-1.5-flash', 'gemini-1.5-flash-latest']
-const DEFAULT_ANTHROPIC_MODEL = 'claude-3-5-haiku-20241022'
-const ANTHROPIC_FALLBACK_MODELS = ['claude-3-5-haiku-latest', 'claude-3-5-sonnet-latest', 'claude-sonnet-4-20250514']
+const DEFAULT_ANTHROPIC_MODEL = 'claude-haiku-4-5-20251001'
+const ANTHROPIC_FALLBACK_MODELS = ['claude-haiku-4-5', 'claude-sonnet-4-6']
 const TRANSLATION_CONCURRENCY = 3
 
 function sendJson(res, status, payload) {

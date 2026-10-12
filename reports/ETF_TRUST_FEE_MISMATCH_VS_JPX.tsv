@@ -1,0 +1,3 @@
+symbol	status	mm_fee	jpx_fee_ex_tax	jpx_fee_inc_est	delta_vs_ex	delta_vs_inc	jpx_within	jpx_raw	name_jpx	name_mm
+2558.T	mismatch	0.077	0.06	0.066	0.017	0.011	false	0.06%程度	ＭＡＸＩＳ米国株式（Ｓ＆Ｐ５００）上場投信 iNAV	2558.T
+2017.T	mismatch	0.16	0.15	0.165	0.01	-0.005	true	0.15%以内	iFreeETF JPXプライム150 iNAV	2017.T

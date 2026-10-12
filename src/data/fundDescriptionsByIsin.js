@@ -1,5 +1,5 @@
-// Auto-generated from: List_corrected_descriptions.xlsx
-// Generated at: 2026-03-25T11:21:59.615Z
+// Auto-generated from: List_corrected_descriptions (1).xlsx
+// Generated at: 2026-04-28T22:38:27.755737+00:00
 
 export const FUND_DESCRIPTIONS_BY_ISIN = {
   "JP3013190008": "日経300株価指数に連動し、日本の約300銘柄に投資するETF",
@@ -345,5 +345,5 @@ export const FUND_DESCRIPTIONS_BY_ISIN = {
   "JP3051210007": "超短期の円建て債券に投資するETF",
   "JP3051230005": "ステーブルコインやトークン関連ビジネスを手がける企業に投資するETF（日本を除く）",
   "JP3051240004": "日本の防衛関連企業に投資するETF",
-  "JP3051280000": "高配当かつキャッシュフロー面に着目した日本株50銘柄に投資するETF"
+  "JP3051280000": "高配当かつキャッシュフロー面に着目した日本株50銘柄に投資するETF",
 }

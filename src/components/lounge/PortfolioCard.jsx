@@ -23,10 +23,10 @@ const buildDonutGradient = (allocations = []) => {
  * @param {object} props
  * @param {object} props.portfolio - { id, name, allocations, return_1y, fee, risk, fund_count, follower_count, author_name?, updated_at }
  * @param {'small'|'large'} props.size - small for sidebar, large for feed
- * @param {string} props.currentUserId - 로그인 유저 ID
- * @param {boolean} props.isFollowed - 이미 参考 중인지
- * @param {function} props.onCopy - 복사 완료 콜백
- * @param {function} props.onFollowToggle - 팔로우 토글 콜백
+ * @param {string} props.currentUserId - ログイン中ユーザーの ID
+ * @param {boolean} props.isFollowed - すでにフォロー済みか
+ * @param {function} props.onCopy - ポートフォリオをコピーしたあとのコールバック
+ * @param {function} props.onFollowToggle - フォロー ON/OFF のコールバック
  */
 export default function PortfolioCard({
   portfolio,

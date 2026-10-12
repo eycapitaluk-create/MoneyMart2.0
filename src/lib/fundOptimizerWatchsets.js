@@ -21,22 +21,168 @@ const safeParse = (raw) => {
   }
 }
 
+/** iOS / 웹 혼재: 비중 키 이름·단위(퍼센트 vs 0~1) 정규화 */
+function pickFundWeightPct(fund) {
+  if (!fund || typeof fund !== 'object') return null
+  const tryScalar = (raw) => {
+    const n = Number(raw)
+    if (!Number.isFinite(n) || n < 0) return null
+    if (n > 1 || n === 0) return n
+    if (n > 0 && n < 1) return n * 100
+    return n
+  }
+
+  const pctLikeKeys = [
+    'weightPct', 'weight_pct', 'weightPercent', 'allocationPct', 'allocation_pct', 'allocationPercent',
+    'pct', 'percent', 'percentage', 'share', 'ratioPct', 'ratio_pct', 'targetPct', 'target_pct',
+  ]
+  for (const k of pctLikeKeys) {
+    if (fund[k] == null || fund[k] === '') continue
+    const n = Number(fund[k])
+    if (!Number.isFinite(n) || n < 0) continue
+    if (n > 1 || n === 0) return n
+    if (n > 0 && n < 1) return n * 100
+    return n
+  }
+
+  if (fund.weight != null && fund.weight !== '') return tryScalar(fund.weight)
+  if (fund.allocation != null && fund.allocation !== '') return tryScalar(fund.allocation)
+
+  return null
+}
+
+function mergeWeightsFromSummary(normalizedFunds, summary) {
+  if (!summary || typeof summary !== 'object') return normalizedFunds
+  const z = (f) => (!Number.isFinite(f.weightPct) || f.weightPct <= 0)
+
+  const sw = summary.weights ?? summary.weightings ?? summary.allocations ?? summary.targetWeights
+  if (Array.isArray(sw) && sw.length === normalizedFunds.length) {
+    const useRow = normalizedFunds.some(z)
+    if (!useRow) return normalizedFunds
+    return normalizedFunds.map((f, i) => {
+      if (!z(f)) return f
+      const w = Number(sw[i])
+      if (!Number.isFinite(w) || w < 0) return f
+      let pct = w
+      if (w > 0 && w < 1) pct = w * 100
+      return { ...f, weightPct: pct }
+    })
+  }
+
+  if (sw && typeof sw === 'object' && !Array.isArray(sw)) {
+    const useRow = normalizedFunds.some(z)
+    if (!useRow) return normalizedFunds
+    return normalizedFunds.map((f) => {
+      if (!z(f)) return f
+      const keys = [
+        f.id,
+        String(f.id || '').replace(/\.T$/i, ''),
+        String(f.id || '').toUpperCase(),
+      ].filter(Boolean)
+      let hit = null
+      for (const k of keys) {
+        if (sw[k] != null) {
+          hit = sw[k]
+          break
+        }
+        const ku = String(k).toUpperCase()
+        const found = Object.keys(sw).find((sk) => String(sk).toUpperCase() === ku)
+        if (found != null) {
+          hit = sw[found]
+          break
+        }
+      }
+      if (hit == null) return f
+      const w = Number(hit)
+      if (!Number.isFinite(w) || w < 0) return f
+      let pct = w
+      if (w > 0 && w < 1) pct = w * 100
+      return { ...f, weightPct: pct }
+    })
+  }
+
+  return normalizedFunds
+}
+
+function pickFirstFinite(...vals) {
+  for (const v of vals) {
+    const n = Number(v)
+    if (Number.isFinite(n)) return n
+  }
+  return null
+}
+
+/** summary.ret / risk / fee — 웹 저장 형식 + iOS·중첩 객체 변형 */
+function normalizeWatchsetSummary(summary) {
+  if (!summary || typeof summary !== 'object') return null
+
+  const perf = summary.performance || summary.metrics || summary.stats || summary.expected || {}
+
+  let ret = pickFirstFinite(
+    summary.ret,
+    summary.return,
+    summary.returnPct,
+    summary.expectedReturn,
+    summary.totalReturn,
+    perf.ret,
+    perf.return,
+    perf.expectedReturn,
+  )
+  let risk = pickFirstFinite(
+    summary.risk,
+    summary.sigma,
+    summary.volatility,
+    summary.vol,
+    summary.stddev,
+    perf.risk,
+    perf.sigma,
+    perf.volatility,
+  )
+  let fee = pickFirstFinite(
+    summary.fee,
+    summary.expenseRatio,
+    summary.cost,
+    summary.ter,
+    perf.fee,
+    perf.expenseRatio,
+  )
+
+  const scaleFractionToPercent = (v) => {
+    if (v == null || !Number.isFinite(v) || v === 0) return v
+    if (v > -1 && v < 1) return v * 100
+    return v
+  }
+
+  ret = scaleFractionToPercent(ret)
+  risk = scaleFractionToPercent(risk)
+
+  if (!Number.isFinite(ret) && !Number.isFinite(risk) && !Number.isFinite(fee)) return null
+  return {
+    ret: Number.isFinite(ret) ? ret : null,
+    risk: Number.isFinite(risk) ? risk : null,
+    fee: Number.isFinite(fee) ? fee : null,
+  }
+}
+
 const normalizeFunds = (funds = []) => (
   (Array.isArray(funds) ? funds : [])
     .map((fund) => {
       const id = String(fund?.id || fund?.symbol || '').trim().toUpperCase()
       if (!id) return null
+      const w = pickFundWeightPct(fund)
       return {
         id,
         name: String(fund?.name || '').trim() || id,
-        weightPct: Number.isFinite(Number(fund?.weightPct)) ? Number(fund.weightPct) : 0,
+        weightPct: w != null ? w : 0,
       }
     })
     .filter(Boolean)
 )
 
 export const normalizeFundOptimizerWatchset = (row = {}, fallbackSource = 'fund_page') => {
-  const funds = normalizeFunds(row?.funds)
+  const rawFunds = Array.isArray(row?.funds) ? row.funds : []
+  let funds = normalizeFunds(rawFunds)
+  funds = mergeWeightsFromSummary(funds, row?.summary)
   if (funds.length < 2) return null
   return {
     id: String(row?.id || `set-${Date.now()}`).trim(),
@@ -44,13 +190,7 @@ export const normalizeFundOptimizerWatchset = (row = {}, fallbackSource = 'fund_
     createdAt: String(row?.createdAt || row?.created_at || new Date().toISOString()),
     source: String(row?.source || fallbackSource || 'fund_page'),
     funds,
-    summary: row?.summary && typeof row.summary === 'object'
-      ? {
-        ret: Number.isFinite(Number(row.summary?.ret)) ? Number(row.summary.ret) : null,
-        risk: Number.isFinite(Number(row.summary?.risk)) ? Number(row.summary.risk) : null,
-        fee: Number.isFinite(Number(row.summary?.fee)) ? Number(row.summary.fee) : null,
-      }
-      : null,
+    summary: normalizeWatchsetSummary(row?.summary),
   }
 }
 
@@ -82,6 +222,17 @@ export const loadFundOptimizerWatchsets = () => {
 export const saveFundOptimizerWatchsets = (sets = []) => {
   if (typeof window === 'undefined') return
   window.localStorage.setItem(PRIMARY_STORAGE_KEY, JSON.stringify(sets))
+}
+
+/** ログアウト時: 別ユーザやゲストにローカルキャッシュを残さない */
+export const clearFundOptimizerWatchsetsLocal = () => {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.removeItem(PRIMARY_STORAGE_KEY)
+    LEGACY_STORAGE_KEYS.forEach((k) => window.localStorage.removeItem(k))
+  } catch {
+    // ignore
+  }
 }
 
 // ── Supabase 읽기 ─────────────────────────────────────────────────────────────

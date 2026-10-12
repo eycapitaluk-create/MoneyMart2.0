@@ -1,0 +1,481 @@
+symbol	status	mm_fee	jpx_fee_ex_tax	jpx_fee_inc_est	delta_vs_ex	delta_vs_inc	jpx_within	jpx_raw	name_jpx	name_mm
+1305.T	ok_ex_tax	0.06	0.06	0.066	0	-0.006	false	0.06%	iFreeETF TOPIX（年1回決算型） iNAV	1305.T
+1306.T	ok_inc_tax	0.0543	0.049	0.0539	0.0053	0.0004	false	0.049%（注10）	ＮＥＸＴ ＦＵＮＤＳ ＴＯＰＩＸ連動型上場投信 iNAV	TOPIX
+1308.T	ok_ex_tax	0.046	0.046	0.0506	0	-0.0046	false	0.046%（注10）	上場インデックスファンドTOPIX iNAV	1308.T
+1309.T	ok_ex_tax	0.53	0.53	0.583	0	-0.053	false	0.53%（税込）程度	NEXT FUNDS ChinaAMC・中国株式・上証50連動型上場投信	1309.T
+1311.T	ok_inc_tax	0.209	0.19	0.209	0.019	0	false	0.19%	ＮＥＸＴ ＦＵＮＤＳ ＴＯＰＩＸ Ｃｏｒｅ 30連動型上場投信 iNAV	1311.T
+1319.T	ok_inc_tax	0.5555	0.505	0.5555	0.0505	0	false	0.505%（注10）	ＮＥＸＴ ＦＵＮＤＳ 日経300株価指数連動型上場投信 iNAV	1319.T
+1320.T	ok_ex_tax	0.12	0.12	0.132	0	-0.012	false	0.12%	iFreeETF 日経225（年1回決算型） iNAV	1320.T
+1321.T	ok_inc_tax	0.09	0.0817	0.0899	0.0083	0.0001	false	0.0817%	ＮＥＸＴ ＦＵＮＤＳ 日経225連動型上場投信 iNAV	1321.T
+1322.T	ok_inc_tax	0.55	0.5	0.55	0.05	0	false	0.50%程度	上場インデックスファンド中国Ａ株（パンダ）E Fund CSI300 iNAV	1322.T
+1325.T	ok_inc_tax	1.045	0.95	1.045	0.095	0	false	0.95%	ＮＥＸＴ ＦＵＮＤＳ ブラジル株式指数・ボベスパ連動型上場投信	1325.T
+1326.T	mm_missing		0.4	0.44			false	0.4%程度	SPDR®ゴールド・シェア 受益証券(注2)	
+1328.T	ok_inc_tax	0.176	0.16	0.176	0.016	0	true	0.16%以内	ＮＥＸＴ ＦＵＮＤＳ 金価格連動型上場投信 先物型	1328.T
+1329.T	ok_inc_tax	0.05	0.045	0.0495	0.005	0.0005	true	0.045%以内	iシェアーズ・コア 日経225 ETF iNAV	1329.T
+1330.T	ok_inc_tax	0.081	0.074	0.0814	0.007	-0.0004	false	0.074%（注10）	上場インデックスファンド225 iNAV	1330.T
+133A.T	ok_inc_tax	0.107	0.0975	0.1073	0.0095	-0.0003	false	0.0975%程度	グローバルＸ 超短期米国債 ETF	133A.T
+1343.T	ok_inc_tax	0.1705	0.155	0.1705	0.0155	0	false	0.155%	ＮＥＸＴ ＦＵＮＤＳ 東証REIT指数連動型上場投信 iNAV	1343.T
+1345.T	ok_inc_tax	0.33	0.3	0.33	0.03	0	false	0.3%	上場インデックスファンドＪリート(東証ＲＥＩＴ指数)隔月分配型 iNAV	1345.T
+1346.T	ok_inc_tax	0.132	0.12	0.132	0.012	0	false	0.12%	ＭＡＸＩＳ 日経２２５上場投信 iNAV	1346.T
+1348.T	ok_inc_tax	0.066	0.06	0.066	0.006	0	false	0.06%	ＭＡＸＩＳ トピックス上場投信 iNAV	1348.T
+1349.T	mm_missing		0.18	0.198			false	0.18%	ABF汎アジア債券インデックス・ファンド(アジア国債・公債ETF)(注2)	
+1356.T	jpx_missing	0.88					false			TOPIX Bear -2x ETF
+1357.T	jpx_missing	0.88					false			NEXT FUNDS Nikkei 225 Double Inverse Index ETF
+1358.T	jpx_missing	0.88					false			Listed Index Fund Nikkei Leveraged Index
+1360.T	jpx_missing	0.88					false			Nikkei225 Bear -2x ETF
+1364.T	ok_inc_tax	0.05	0.045	0.0495	0.005	0.0005	true	0.045%以内	iシェアーズ JPX日経400 ETF iNAV	1364.T
+1365.T	jpx_missing	0.88					false			Daiwa ETF Japan Nikkei225 Leveraged Index
+1366.T	jpx_missing	0.88					false			Daiwa ETF Japan Nikkei225 Double Inverse Index
+1367.T	jpx_missing	0.88					false			Daiwa ETF Japan TOPIX Leveraged
+1368.T	jpx_missing	0.88					false			Daiwa ETF Japan TOPIX Double Inverse
+1369.T	ok_ex_tax	0.045	0.045	0.0495	0	-0.0045	false	0.045%	Ｏｎｅ ＥＴＦ 日経２２５ iNAV	1369.T
+1397.T	ok_ex_tax	0.14	0.14	0.154	0	-0.014	false	0.14%	ＳＭＤＡＭ 日経２２５上場投信 iNAV	1397.T
+1398.T	ok_inc_tax	0.242	0.22	0.242	0.022	0	false	0.22%	ＳＭＤＡＭ 東証ＲＥＩＴ指数上場投信 iNAV	1398.T
+1399.T	ok_inc_tax	0.385	0.35	0.385	0.035	0	false	0.35%	上場インデックスファンドMSCI日本株高配当低ボラティリティ iNAV	1399.T
+140A.T	jpx_missing	0.88					false			iFreeETF 10-Year U.S. Treasury Note Futures Invers
+1456.T	jpx_missing	0.88					false			Daiwa ETF Japan Nikkei225 Inverse Index
+1457.T	jpx_missing	0.88					false			Daiwa ETF Japan TOPIX Inverse
+1458.T	jpx_missing	0.88					false			Rakuten ETF-Nikkei 225 Leveraged Index
+1459.T	jpx_missing	0.88					false			Rakuten ETF-Nikkei 225 Double Inverse Index
+1466.T	jpx_missing	0.88					false			Daiwa ETF Japan JPX-Nikkei 400 Double Inverse
+1469.T	jpx_missing	0.88					false			JPX-Nikkei 400 Bear -2x Double Inverse ETF
+1472.T	jpx_missing	0.88					false			NEXT FUNDS JPX-Nikkei 400 Double Inverse Index Exc
+1473.T	ok_ex_tax	0.045	0.045	0.0495	0	-0.0045	false	0.045%	Ｏｎｅ ＥＴＦ トピックス iNAV	1473.T
+1474.T	ok_inc_tax	0.187	0.17	0.187	0.017	0	false	0.17%	Ｏｎｅ ＥＴＦ ＪＰＸ日経４００ iNAV	1474.T
+1475.T	ok_within_cap_ex	0.045	0.045	0.0495	0	-0.0045	true	0.045%以内	iシェアーズ・コア TOPIX ETF iNAV	1475.T
+1476.T	ok_inc_tax	0.165	0.15	0.165	0.015	0	false	0.15%	iシェアーズ・コア Ｊリート ETF iNAV	1476.T
+1477.T	ok_inc_tax	0.209	0.19	0.209	0.019	0	false	0.19%	iシェアーズ MSCI 日本株最小分散 ETF iNAV	1477.T
+1478.T	ok_inc_tax	0.209	0.19	0.209	0.019	0	false	0.19%	iシェアーズ MSCI ジャパン高配当利回り ETF iNAV	1478.T
+1479.T	ok_inc_tax	0.165	0.15	0.165	0.015	0	false	0.15%	iFreeETF MSCI日本株人材設備投資指数 iNAV	1479.T
+1480.T	ok_inc_tax	0.253	0.23	0.253	0.023	0	false	0.23%	ＮＥＸＴ ＦＵＮＤＳ 野村企業価値分配指数連動型上場投信 iNAV	1480.T
+1481.T	ok_inc_tax	0.165	0.15	0.165	0.015	0	false	0.15%	上場インデックスファンド日本経済貢献株 iNAV	1481.T
+1482.T	ok_inc_tax	0.154	0.14	0.154	0.014	0	false	0.14%	iシェアーズ・コア 米国債7-10年 ETF（為替ヘッジあり） iNAV	1482.T
+1483.T	ok_inc_tax	0.209	0.19	0.209	0.019	0	false	0.19%	iシェアーズ JPX/S&P 設備・人材投資 ETF iNAV	1483.T
+1484.T	ok_inc_tax	0.182	0.165	0.1815	0.017	0.0005	false	0.165%	Ｏｎｅ ＥＴＦ ＪＰＸ／Ｓ＆Ｐ 設備・人材投資指数 iNAV	1484.T
+1485.T	ok_inc_tax	0.242	0.22	0.242	0.022	0	false	0.22%	ＭＡＸＩＳ ＪＡＰＡＮ 設備・人材積極投資企業２００上場投信 iNAV	1485.T
+1486.T	ok_inc_tax	0.176	0.16	0.176	0.016	0	false	0.16%程度	上場インデックスファンド米国債券（為替ヘッジなし） iNAV	1486.T
+1487.T	ok_inc_tax	0.176	0.16	0.176	0.016	0	false	0.16%程度	上場インデックスファンド米国債券（為替ヘッジあり） iNAV	1487.T
+1488.T	ok_inc_tax	0.171	0.155	0.1705	0.016	0.0005	false	0.155%	iFreeETF 東証REIT指数 iNAV	1488.T
+1489.T	ok_inc_tax	0.308	0.28	0.308	0.028	0	false	0.28%	NEXT FUNDS 日経平均高配当株50指数連動型上場投信 iNAV	1489.T
+1490.T	ok_inc_tax	0.495	0.45	0.495	0.045	0	false	0.45%	上場インデックスファンドMSCI日本株高配当低ボラティリティ（βヘッジ） iNAV	Listed Index Fund MSCI Japan Equity High Dividend 
+1493.T	ok_within_cap_ex	0.2	0.5	0.55	-0.3	-0.35	true	0.5%以内	Ｏｎｅ ＥＴＦ ＪＰＸ日経中小型 iNAV	1493.T
+1494.T	ok_within_cap_ex	0.2	0.28	0.308	-0.08	-0.108	true	0.28%以内	Ｏｎｅ ＥＴＦ 高配当日本株 iNAV	1494.T
+1495.T	ok_inc_tax	0.715	0.65	0.715	0.065	0	false	0.65%程度	上場インデックスファンドアジアリート iNAV	1495.T
+1496.T	ok_inc_tax	0.308	0.28	0.308	0.028	0	false	0.28%	iシェアーズ 米ドル建て投資適格社債 ETF（為替ヘッジあり）	1496.T
+1497.T	ok_inc_tax	0.638	0.58	0.638	0.058	0	false	0.58%	iシェアーズ 米ドル建てハイイールド社債 ETF（為替ヘッジあり）	1497.T
+1498.T	ok_inc_tax	0.143	0.13	0.143	0.013	0	true	0.13%以内	Ｏｎｅ ＥＴＦ ＥＳＧ iNAV	1498.T
+1499.T	ok_within_cap_ex	0.15	0.4	0.44	-0.25	-0.29	true	0.40%以内	ＭＡＸＩＳ日本株高配当70マーケットニュートラル上場投信 iNAV	1499.T
+1540.T	ok_inc_tax	0.44	0.4	0.44	0.04	0	false	0.4%	純金上場信託（現物国内保管型）	1540.T
+1541.T	ok_inc_tax	0.55	0.5	0.55	0.05	0	false	0.5%	純プラチナ上場信託（現物国内保管型）	1541.T
+1542.T	ok_inc_tax	0.55	0.5	0.55	0.05	0	false	0.5%	純銀上場信託（現物国内保管型）	1542.T
+1543.T	ok_inc_tax	0.55	0.5	0.55	0.05	0	false	0.5%	純パラジウム上場信託（現物国内保管型）	1543.T
+1545.T	ok_inc_tax	0.22	0.2	0.22	0.02	0	true	0.20%以内	ＮＥＸＴ ＦＵＮＤＳ ＮＡＳＤＡＱ－１００®（為替ヘッジなし）連動型上場投信 iNAV	1545.T
+1546.T	ok_inc_tax	0.33	0.3	0.33	0.03	0	true	0.30%以内	ＮＥＸＴ ＦＵＮＤＳ ダウ・ジョーンズ工業株３０種平均株価（為替ヘッジなし）連動型上場投信 iNAV	1546.T
+1547.T	ok_inc_tax	0.165	0.15	0.165	0.015	0	false	0.15%程度	上場インデックスファンド米国株式（S&P500） iNAV	1547.T
+1550.T	ok_ex_tax	0.15	0.15	0.165	0	-0.015	false	0.15%程度	MAXIS 海外株式（MSCIコクサイ）上場投信	1550.T
+1551.T	ok_inc_tax	0.55	0.5	0.55	0.05	0	false	0.5%	東証スタンダードＴＯＰ２０ＥＴＦ iNAV	1551.T
+1553.T	jpx_missing	0.15					false			MAXIS S&P東海上場投信
+1554.T	ok_inc_tax	0.264	0.24	0.264	0.024	0	false	0.24%程度	上場インデックスファンド世界株式（MSCI ACWI）除く日本 iNAV	1554.T
+1555.T	ok_inc_tax	0.495	0.45	0.495	0.045	0	false	0.45%程度	上場インデックスファンド豪州リート（S&P/ASX200 A-REIT） iNAV	1555.T
+1557.T	mm_missing		0.0945	0.104			false	0.0945%	State Street® SPDR® S&P 500® ETF(注2)	
+1559.T	ok_inc_tax	0.605	0.55	0.605	0.055	0	false	0.55%程度	ＮＥＸＴ ＦＵＮＤＳ タイ株式ＳＥＴ５０指数連動型上場投信	1559.T
+1560.T	ok_inc_tax	0.605	0.55	0.605	0.055	0	false	0.55%程度	ＮＥＸＴ ＦＵＮＤＳ ＦＴＳＥブルサ・マレーシアＫＬＣＩ連動型上場投信	1560.T
+1563.T	ok_inc_tax	0.55	0.5	0.55	0.05	0	false	0.5%	東証グロース・コアＥＴＦ iNAV	1563.T
+1566.T	ok_inc_tax	0.495	0.45	0.495	0.045	0	false	0.45%程度	上場インデックスファンド新興国債券 iNAV	1566.T
+1568.T	jpx_missing	0.88					false			TOPIX Bull 2x ETF
+1569.T	jpx_missing	0.88					false			TOPIX Bear -1x ETF
+1570.T	jpx_missing	0.88					false			NEXT FUNDS Nikkei 225 Leveraged Index Exchange Tra
+1571.T	jpx_missing	0.88					false			NEXT FUNDS Nikkei 225 Inverse Index Exchange Trade
+1572.T	jpx_missing	0.2					false			1572.T
+1573.T	jpx_missing	0.88					false			China Bear -1x HSCEI ETF
+1577.T	ok_inc_tax	0.352	0.32	0.352	0.032	0	false	0.32%	NEXT FUNDS 野村日本株高配当70連動型上場投信 iNAV	1577.T
+1578.T	ok_inc_tax	0.248	0.225	0.2475	0.023	0.0005	false	0.225%	上場インデックスファンド日経225（ミニ） iNAV	1578.T
+1579.T	jpx_missing	0.88					false			Nikkei225 Bull 2x ETF
+1580.T	jpx_missing	0.88					false			Nikkei225 Bear -1x ETF
+1585.T	ok_inc_tax	0.198	0.18	0.198	0.018	0	false	0.18%	iFreeETF TOPIX Ex-Financials iNAV	1585.T
+1586.T	ok_inc_tax	0.097	0.088	0.0968	0.009	0.0002	false	0.088%	上場インデックスファンドTOPIX Ex-Financials iNAV	1586.T
+1591.T	ok_inc_tax	0.11	0.1	0.11	0.01	0	false	0.10%	ＮＥＸＴ ＦＵＮＤＳ ＪＰＸ日経インデックス４００連動型上場投信 iNAV	1591.T
+1592.T	ok_ex_tax	0.1	0.1	0.11	0	-0.01	false	0.1%	上場インデックスファンドJPX日経インデックス400 iNAV	1592.T
+1593.T	ok_ex_tax	0.08	0.078	0.0858	0.002	-0.0058	false	0.078%	ＭＡＸＩＳ ＪＰＸ日経インデックス４００上場投信 iNAV	1593.T
+1595.T	ok_inc_tax	0.16	0.145	0.1595	0.015	0.0005	false	0.145%	NZAM 上場投信 東証REIT指数 iNAV	1595.T
+1596.T	ok_inc_tax	0.121	0.11	0.121	0.011	0	false	0.11%	NZAM 上場投信 TOPIX Ex-Financials iNAV	1596.T
+1597.T	ok_inc_tax	0.16	0.145	0.1595	0.015	0.0005	false	0.145%	ＭＡＸＩＳ Ｊリート上場投信 iNAV	1597.T
+1599.T	ok_ex_tax	0.18	0.18	0.198	0	-0.018	false	0.18%	iFreeETF JPX日経400 iNAV	1599.T
+159A.T	ok_inc_tax	0.165	0.15	0.165	0.015	0	true	0.15%以内	ＮＥＸＴ ＦＵＮＤＳ ＪＰＸプライム１５０指数連動型上場投信 iNAV	159A.T
+1615.T	ok_inc_tax	0.209	0.19	0.209	0.019	0	false	0.19%	ＮＥＸＴ ＦＵＮＤＳ 東証銀行業株価指数連動型上場投信 iNAV	1615.T
+1617.T	ok_inc_tax	0.352	0.32	0.352	0.032	0	false	0.32%	ＮＥＸＴ ＦＵＮＤＳ 食品(ＴＯＰＩＸ－１７)上場投信 iNAV	1617.T
+1618.T	ok_inc_tax	0.352	0.32	0.352	0.032	0	false	0.32%	ＮＥＸＴ ＦＵＮＤＳ エネルギー資源(ＴＯＰＩＸ－１７)上場投信 iNAV	1618.T
+1619.T	ok_inc_tax	0.352	0.32	0.352	0.032	0	false	0.32%	ＮＥＸＴ ＦＵＮＤＳ 建設・資材(ＴＯＰＩＸ－１７)上場投信 iNAV	1619.T
+1620.T	ok_inc_tax	0.352	0.32	0.352	0.032	0	false	0.32%	ＮＥＸＴ ＦＵＮＤＳ 素材・化学(ＴＯＰＩＸ－１７)上場投信 iNAV	1620.T
+1621.T	ok_inc_tax	0.352	0.32	0.352	0.032	0	false	0.32%	ＮＥＸＴ ＦＵＮＤＳ 医薬品(ＴＯＰＩＸ－１７)上場投信 iNAV	1621.T
+1622.T	ok_inc_tax	0.352	0.32	0.352	0.032	0	false	0.32%	ＮＥＸＴ ＦＵＮＤＳ 自動車・輸送機(ＴＯＰＩＸ－１７)上場投信 iNAV	1622.T
+1623.T	ok_inc_tax	0.352	0.32	0.352	0.032	0	false	0.32%	ＮＥＸＴ ＦＵＮＤＳ 鉄鋼・非鉄(ＴＯＰＩＸ－１７)上場投信 iNAV	1623.T
+1624.T	ok_inc_tax	0.352	0.32	0.352	0.032	0	false	0.32%	ＮＥＸＴ ＦＵＮＤＳ 機械(ＴＯＰＩＸ－１７)上場投信 iNAV	1624.T
+1625.T	ok_inc_tax	0.352	0.32	0.352	0.032	0	false	0.32%	ＮＥＸＴ ＦＵＮＤＳ 電機・精密(ＴＯＰＩＸ－１７)上場投信 iNAV	1625.T
+1626.T	ok_inc_tax	0.352	0.32	0.352	0.032	0	false	0.32%	ＮＥＸＴ ＦＵＮＤＳ 情報通信・サービスその他(ＴＯＰＩＸ－１７)上場投信 iNAV	1626.T
+1627.T	ok_inc_tax	0.352	0.32	0.352	0.032	0	false	0.32%	ＮＥＸＴ ＦＵＮＤＳ 電力・ガス(ＴＯＰＩＸ－１７)上場投信 iNAV	1627.T
+1628.T	ok_inc_tax	0.352	0.32	0.352	0.032	0	false	0.32%	ＮＥＸＴ ＦＵＮＤＳ 運輸・物流(ＴＯＰＩＸ－１７)上場投信 iNAV	1628.T
+1629.T	ok_inc_tax	0.352	0.32	0.352	0.032	0	false	0.32%	ＮＥＸＴ ＦＵＮＤＳ 商社・卸売(ＴＯＰＩＸ－１７)上場投信 iNAV	1629.T
+162A.T	jpx_missing	0.25					false			AI Select Megatrend Japan Equity Net Return ETN
+1630.T	ok_inc_tax	0.352	0.32	0.352	0.032	0	false	0.32%	ＮＥＸＴ ＦＵＮＤＳ 小売(ＴＯＰＩＸ－１７)上場投信 iNAV	1630.T
+1631.T	ok_inc_tax	0.352	0.32	0.352	0.032	0	false	0.32%	ＮＥＸＴ ＦＵＮＤＳ 銀行(ＴＯＰＩＸ－１７)上場投信 iNAV	1631.T
+1632.T	ok_inc_tax	0.352	0.32	0.352	0.032	0	false	0.32%	ＮＥＸＴ ＦＵＮＤＳ 金融(除く銀行)(ＴＯＰＩＸ－１７)上場投信 iNAV	1632.T
+1633.T	ok_inc_tax	0.352	0.32	0.352	0.032	0	false	0.32%	ＮＥＸＴ ＦＵＮＤＳ 不動産(ＴＯＰＩＸ－１７)上場投信 iNAV	1633.T
+163A.T	jpx_missing	0.25					false			Semiconductor Focus Japan Equity Net Return ETN
+1651.T	ok_inc_tax	0.209	0.19	0.209	0.019	0	false	0.19%	iFreeETF TOPIX高配当40指数 iNAV	1651.T
+1652.T	ok_inc_tax	0.165	0.15	0.165	0.015	0	false	0.15%	iFreeETF MSCI日本株女性活躍指数（WIN） iNAV	1652.T
+1653.T	ok_inc_tax	0.165	0.15	0.165	0.015	0	false	0.15%	iFreeETF MSCIジャパンESGセレクト・リーダーズ指数 iNAV	1653.T
+1654.T	ok_inc_tax	0.165	0.15	0.165	0.015	0	false	0.15%	iFreeETF FTSE JPX Blossom Japan Index iNAV	1654.T
+1655.T	ok_inc_tax	0.07	0.06	0.066	0.01	0.004	false	0.06%程度	iシェアーズ S&P 500 米国株 ETF iNAV	1655.T
+1656.T	ok_inc_tax	0.154	0.14	0.154	0.014	0	false	0.14%	iシェアーズ・コア 米国債7-10年 ETF iNAV	1656.T
+1657.T	ok_within_cap_ex	0.12	0.19	0.209	-0.07	-0.089	true	0.19%以内	iシェアーズ・コア MSCI 先進国株（除く日本）ETF	1657.T
+1658.T	ok_within_cap_ex	0.12	0.23	0.253	-0.11	-0.133	true	0.23%以内	iシェアーズ・コア MSCI 新興国株 ETF	1658.T
+1659.T	ok_within_cap_ex	0.12	0.2	0.22	-0.08	-0.1	true	0.20%以内	iシェアーズ 米国リート ETF	1659.T
+1660.T	ok_inc_tax	0.16	0.145	0.1595	0.015	0.0005	false	0.145%	ＭＡＸＩＳ高利回りＪリート上場投信 iNAV	1660.T
+1671.T	ok_inc_tax	0.935	0.85	0.935	0.085	0	false	0.85%	WTI原油価格連動型上場投信 先物型	1671.T
+1672.T	mm_missing		0.39	0.429			false	0.39%	WisdomTree 金上場投資信託(注2)(注5)	
+1673.T	mm_missing		0.49	0.539			false	0.49%	WisdomTree 銀上場投資信託(注2)(注5)	
+1674.T	mm_missing		0.49	0.539			false	0.49%	WisdomTree 白金上場投資信託(注2)(注5)	
+1675.T	mm_missing		0.49	0.539			false	0.49%	WisdomTree パラジウム上場投資信託(注2)(注5)	
+1676.T	mm_missing		0.44	0.484			false	0.44%	WisdomTree 貴金属バスケット上場投資信託(注2)(注5)	
+1677.T	ok_inc_tax	0.275	0.25	0.275	0.025	0	false	0.25%程度	上場インデックスファンド海外債券（FTSE WGBI）毎月分配型 iNAV	1677.T
+1678.T	ok_inc_tax	1.045	0.95	1.045	0.095	0	false	0.95%	NEXT FUNDS インド株式指数・Nifty 50連動型上場投信 先物型	1678.T
+1679.T	ok_inc_tax	0.55	0.5	0.55	0.05	0	false	0.50%程度	Simple-X NYダウ・ジョーンズ・インデックス上場投信	1679.T
+1680.T	ok_inc_tax	0.264	0.24	0.264	0.024	0	false	0.24%程度	上場インデックスファンド海外先進国株式（MSCI-KOKUSAI） iNAV	1680.T
+1681.T	ok_inc_tax	0.264	0.24	0.264	0.024	0	false	0.24%程度	上場インデックスファンド海外新興国株式（MSCIエマージング） iNAV	1681.T
+1684.T	mm_missing		0.49	0.539			false	0.49%	WisdomTree ブロード上場投資信託(注2)(注5) OTCスワップ型 先物型	
+1685.T	mm_missing		0.49	0.539			false	0.49%	WisdomTree エネルギー上場投資信託(注2)(注5) OTCスワップ型 先物型	
+1686.T	mm_missing		0.49	0.539			false	0.49%	WisdomTree 産業用金属上場投資信託(注2)(注5) OTCスワップ型 先物型	
+1687.T	mm_missing		0.49	0.539			false	0.49%	WisdomTree 農産物上場投資信託(注2)(注5) OTCスワップ型 先物型	
+1688.T	mm_missing		0.49	0.539			false	0.49%	WisdomTree 穀物上場投資信託(注2)(注5) OTCスワップ型 先物型	
+1689.T	mm_missing		0.49	0.539			false	0.49%	WisdomTree 天然ガス上場投資信託(注2)(注5) OTCスワップ型 先物型	
+1690.T	mm_missing		0.49	0.539			false	0.49%	WisdomTree WTI 原油上場投資信託(注2)(注5) OTCスワップ型 先物型	
+1691.T	mm_missing		0.49	0.539			false	0.49%	WisdomTree ガソリン上場投資信託(注2)(注5) OTCスワップ型 先物型	
+1692.T	mm_missing		0.49	0.539			false	0.49%	WisdomTree アルミニウム上場投資信託(注2)(注5) OTCスワップ型 先物型	
+1693.T	mm_missing		0.49	0.539			false	0.49%	WisdomTree 銅上場投資信託(注2)(注5) OTCスワップ型 先物型	
+1694.T	mm_missing		0.49	0.539			false	0.49%	WisdomTree ニッケル上場投資信託(注2)(注5) OTCスワップ型 先物型	
+1695.T	mm_missing		0.49	0.539			false	0.49%	WisdomTree 小麦上場投資信託(注2)(注5) OTCスワップ型 先物型	
+1696.T	mm_missing		0.49	0.539			false	0.49%	WisdomTree とうもろこし上場投資信託(注2)(注5) OTCスワップ型 先物型	
+1697.T	mm_missing		0.49	0.539			false	0.49%	WisdomTree 大豆上場投資信託(注2)(注5) OTCスワップ型 先物型	
+1698.T	ok_inc_tax	0.308	0.28	0.308	0.028	0	false	0.28%	上場インデックスファンド日本高配当（東証配当フォーカス100） iNAV	1698.T
+1699.T	ok_inc_tax	0.55	0.5	0.55	0.05	0	false	0.5%	NEXT FUNDS NOMURA原油インデックス連動型上場投信 先物型	1699.T
+170A.T	ok_within_cap_ex	0.2	0.45	0.495	-0.25	-0.295	true	0.45%以内	ＳＭＴ ＥＴＦ日本好配当株アクティブ iNAV アクティブ運用型	170A.T
+178A.T	ok_within_cap_ex	0.2	0.375	0.4125	-0.175	-0.2125	true	0.375%以内	グローバルＸ 革新的優良企業 ETF	Global X Innovative Bluechip Top 10+ ETF
+179A.T	ok_inc_tax	0.105	0.095	0.1045	0.01	0.0005	true	0.095%以内	グローバルＸ 超長期米国債 ETF（為替ヘッジあり） iNAV	179A.T
+180A.T	ok_inc_tax	0.105	0.095	0.1045	0.01	0.0005	true	0.095%以内	グローバルＸ 超長期米国債 ETF iNAV	180A.T
+181A.T	ok_inc_tax	0.132	0.12	0.132	0.012	0	true	0.12%以内	ＭＡＸＩＳ米国国債１-３年上場投信（為替ヘッジなし） iNAV	181A.T
+182A.T	ok_inc_tax	0.132	0.12	0.132	0.012	0	true	0.12%以内	ＭＡＸＩＳ米国国債２０年超上場投信（為替ヘッジなし） iNAV	182A.T
+183A.T	ok_inc_tax	0.132	0.12	0.132	0.012	0	true	0.12%以内	ＭＡＸＩＳ米国国債２０年超上場投信（為替ヘッジあり） iNAV	183A.T
+188A.T	ok_within_cap_ex	0.325	0.375	0.4125	-0.05	-0.0875	true	0.375%以内	グローバルＸ インド・トップ10+ ETF	188A.T
+200A.T	ok_inc_tax	0.165	0.15	0.165	0.015	0	true	0.15%以内	ＮＥＸＴ ＦＵＮＤＳ 日経半導体株指数連動型上場投信 iNAV	200A.T
+2011.T	ok_inc_tax	0.583	0.53	0.583	0.053	0	false	0.53%	ＳＭＤＡＭ Ａｃｔｉｖｅ ＥＴＦ 日本高配当株式 iNAV アクティブ運用型	2011.T
+2012.T	ok_inc_tax	0.154	0.14	0.154	0.014	0	false	0.14%	iシェアーズ 米国債0-3ヶ月 ETF iNAV	2012.T
+2013.T	ok_inc_tax	0.12	0.11	0.121	0.01	-0.001	false	0.11%程度	iシェアーズ 米国高配当株 ETF	2013.T
+2014.T	ok_inc_tax	0.12	0.11	0.121	0.01	-0.001	false	0.11%程度	iシェアーズ 米国連続増配株 ETF	2014.T
+2015.T	ok_inc_tax	0.11	0.1	0.11	0.01	0	true	0.10%以内	iFreeETF 米国国債7-10年（為替ヘッジなし） iNAV アクティブ運用型	2015.T
+2016.T	ok_inc_tax	0.11	0.1	0.11	0.01	0	true	0.10%以内	iFreeETF 米国国債7-10年（為替ヘッジあり） iNAV アクティブ運用型	2016.T
+2017.T	mismatch	0.16	0.15	0.165	0.01	-0.005	true	0.15%以内	iFreeETF JPXプライム150 iNAV	2017.T
+2018.T	ok_within_cap_ex	0.325	0.375	0.4125	-0.05	-0.0875	true	0.375%以内	グローバルＸ US REIT・トップ20 ETF	2018.T
+2019.T	ok_inc_tax	0.281	0.255	0.2805	0.026	0.0005	false	0.255%程度	グローバルＸ 米国優先証券 ETF（隔月分配型）	2019.T
+201A.T	ok_inc_tax	0.385	0.35	0.385	0.035	0	false	0.35%程度	iシェアーズ Nifty 50 インド株 ETF 先物型	iShares Nifty 50 ETF
+2031.T	jpx_missing	0.88					false			NEXT NOTES HSI Leveraged ETN
+2032.T	jpx_missing	0.25					false			NEXT NOTES HSI Short ETN
+2033.T	jpx_missing	0.25					false			NEXT NOTES KOSPI200 Leverage ETN
+2034.T	jpx_missing	0.88					false			NEXT NOTES F-KOSPI200 Inverse ETN
+2036.T	jpx_missing	0.88					false			NEXT NOTES Nikkei-TOCOM Leveraged Gold ETN
+2037.T	jpx_missing	0.88					false			NEXT NOTES Nikkei-TOCOM Inverse Gold ETN
+2038.T	jpx_missing	0.88					false			NEXT NOTES Nikkei-TOCOM Leveraged Crude Oil ETN
+2039.T	jpx_missing	0.88					false			NEXT NOTES Dubai Crude Oil Futures Bear ETN
+2040.T	jpx_missing	0.88					false			NEXT NOTES DJIA PR JPY-Monthly Hedged Leveraged
+2041.T	jpx_missing	0.88					false			NEXT NOTES DJIA TR JPY-Monthly Hedged Inverse
+2042.T	jpx_missing	0.25					false			NEXT NOTES Tokyo Stock Exchange Mothers Index ETN
+2043.T	jpx_missing	0.25					false			NEXT NOTES STOXX ASEAN-Five Select Dividend 50
+2044.T	jpx_missing	0.25					false			NEXT NOTES S&amp;P 500 Dividend Aristocrats Net To
+2045.T	jpx_missing	0.155					false			NEXT NOTES S&amp;P Singapore REIT Net Total Return
+2046.T	jpx_missing	0.88					false			NEXT NOTES Nifty PR 2x Leverage Index ETN
+2047.T	jpx_missing	0.88					false			NEXT NOTES Nifty Total Returns
+2048.T	jpx_missing	0.25					false			NEXT NOTES Nomura Japan Equity High Dividend 70,Ne
+2050.T	jpx_missing	0.25					false			NEXT NOTES Niche Top Mid Small Cap Japan Equity, N
+2065.T	jpx_missing	0.25					false			NEXT NOTES S&amp;P/JPX Dividend Aristocrats Index 
+2066.T	jpx_missing	0.155					false			NEXT NOTES Tokyo Stock Exchange REIT Net Total Ret
+2067.T	jpx_missing	0.25					false			NEXT NOTES AI Companies 70,Net Total Return ETN
+2068.T	jpx_missing	0.25					false			NEXT NOTES Japan Equity High Beta Select 30,Net To
+2069.T	jpx_missing	0.25					false			NEXT NOTES Japan Equity Low Beta Select 50,Net Tot
+2070.T	jpx_missing	0.25					false			Smart ESG 30 Empowering Women Net Return ETN
+2071.T	jpx_missing	0.25					false			Smart ESG 30 Net Return ETN
+2072.T	jpx_missing	0.25					false			Market Share Leaders Net Return ETN
+2073.T	jpx_missing	0.25					false			Smart ESG 30 Low Carbon Risk Net Return ETN
+2080.T	ok_inc_tax	0.99	0.9	0.99	0.09	0	false	0.90%	ＰＢＲ１倍割れ解消推進ＥＴＦ iNAV アクティブ運用型	2080.T
+2081.T	ok_inc_tax	0.99	0.9	0.99	0.09	0	false	0.90%	政策保有解消推進ＥＴＦ iNAV アクティブ運用型	2081.T
+2082.T	ok_inc_tax	0.99	0.9	0.99	0.09	0	false	0.90%	投資家経営者一心同体ＥＴＦ iNAV アクティブ運用型	2082.T
+2083.T	ok_inc_tax	0.688	0.625	0.6875	0.063	0.0005	false	0.625%	ＮＥＸＴ ＦＵＮＤＳ 日本成長株アクティブ上場投信 iNAV アクティブ運用型	2083.T
+2084.T	ok_inc_tax	0.522	0.475	0.5225	0.047	-0.0005	false	0.475%	ＮＥＸＴ ＦＵＮＤＳ 日本高配当株アクティブ上場投信 iNAV アクティブ運用型	2084.T
+2085.T	ok_inc_tax	0.413	0.375	0.4125	0.038	0.0005	false	0.375%	ＭＡＸＩＳ高配当日本株アクティブ上場投信 iNAV アクティブ運用型	2085.T
+2086.T	ok_inc_tax	0.077	0.07	0.077	0.007	0	true	0.07%以内	NZAM 上場投信 S＆P500（為替ヘッジあり） iNAV	2086.T
+2087.T	ok_within_cap_ex	0.2	0.2	0.22	0	-0.02	true	0.20%以内	NZAM 上場投信 NASDAQ100（為替ヘッジあり） iNAV	2087.T
+2088.T	ok_within_cap_ex	0.2	0.25	0.275	-0.05	-0.075	true	0.25%以内	NZAM 上場投信 NYダウ30（為替ヘッジあり） iNAV	2088.T
+2089.T	ok_inc_tax	0.2	0.18	0.198	0.02	0.002	true	0.18%以内	NZAM 上場投信 DAX（為替ヘッジあり） iNAV	2089.T
+2090.T	ok_inc_tax	0.143	0.13	0.143	0.013	0	true	0.13%以内	NZAM 上場投信 米国国債7-10年（為替ヘッジあり） iNAV	2090.T
+2091.T	ok_inc_tax	0.121	0.11	0.121	0.011	0	true	0.11%以内	NZAM 上場投信 ドイツ国債7-10年（為替ヘッジあり） iNAV	2091.T
+2092.T	ok_inc_tax	0.121	0.11	0.121	0.011	0	true	0.11%以内	NZAM 上場投信 フランス国債7-10年（為替ヘッジあり） iNAV	2092.T
+2093.T	ok_inc_tax	0.066	0.06	0.066	0.006	0	false	0.06%	上場Tracers 米国債0-2年ラダー（為替ヘッジなし） iNAV アクティブ運用型	2093.T
+2094.T	jpx_missing	0.2					false			2094.T
+2095.T	ok_within_cap_ex	0.2	0.275	0.3025	-0.075	-0.1025	true	0.275%以内	グローバルＸ S&P500配当貴族 ETF（為替ヘッジあり）	2095.T
+2096.T	ok_inc_tax	0.303	0.275	0.3025	0.028	0.0005	true	0.275%以内	グローバルＸ オフィス・J-REIT ETF iNAV	2096.T
+2097.T	ok_within_cap_ex	0.2	0.275	0.3025	-0.075	-0.1025	true	0.275%以内	グローバルＸ レジデンシャル・J-REIT ETF iNAV	2097.T
+2098.T	ok_within_cap_ex	0.2	0.275	0.3025	-0.075	-0.1025	true	0.275%以内	グローバルＸ ホテル＆リテール・J-REIT ETF iNAV	2098.T
+210A.T	ok_inc_tax	0.16	0.145	0.1595	0.015	0.0005	false	0.145%	iFreeETF 日経高利回りREIT指数 iNAV	210A.T
+213A.T	ok_inc_tax	0.165	0.15	0.165	0.015	0	true	0.15%以内	上場インデックスファンド日経半導体株 iNAV	213A.T
+221A.T	ok_inc_tax	0.15	0.14	0.154	0.01	-0.004	true	0.14%以内	ＭＡＸＩＳ日経半導体株上場投信 iNAV	221A.T
+2235.T	ok_within_cap_ex	0.2	0.25	0.275	-0.05	-0.075	true	0.25%以内	上場インデックスファンド米国株式（ダウ平均）為替ヘッジなし iNAV	2235.T
+2236.T	ok_within_cap_ex	0.2	0.275	0.3025	-0.075	-0.1025	true	0.275%以内	グローバルＸ S&P500配当貴族ETF	2236.T
+2237.T	jpx_missing	0.88					false			iFreeETF S&amp;P500 Leveraged
+2238.T	jpx_missing	0.88					false			iFreeETF S&amp;P500 Inverse
+2239.T	jpx_missing	0.88					false			Nikko Asset Management Co.,Ltd. - Listed Index Fun
+223A.T	ok_inc_tax	0.775	0.705	0.7755	0.07	-0.0005	false	0.705%程度	グローバルＸ AI＆ビッグデータ ETF	223A.T
+2240.T	jpx_missing	0.88					false			Nikko Asset Management Co.,Ltd. - Listed Index Fun
+2241.T	ok_within_cap_ex	0.15	0.2	0.22	-0.05	-0.07	true	0.20%以内	ＭＡＸＩＳ ＮＹダウ上場投信 iNAV	2241.T
+2242.T	ok_within_cap_ex	0.15	0.2	0.22	-0.05	-0.07	true	0.20%以内	ＭＡＸＩＳ ＮＹダウ上場投信（為替ヘッジあり） iNAV	2242.T
+2243.T	ok_within_cap_ex	0.325	0.375	0.4125	-0.05	-0.0875	true	0.375%以内	グローバルＸ 半導体 ETF	2243.T
+2244.T	ok_within_cap_ex	0.325	0.375	0.4125	-0.05	-0.0875	true	0.375%以内	グローバルＸ US テック・トップ20 ETF	2244.T
+2245.T	ok_inc_tax	0.11	0.1	0.11	0.01	0	true	0.1%以内	ＮＥＸＴ ＦＵＮＤＳ ブルームバーグ・ドイツ国債（7-10年）インデックス（為替ヘッジあり）連動型上場投信 iNAV	2245.T
+2246.T	jpx_missing	0.22					false			2246.T
+2247.T	ok_inc_tax	0.077	0.07	0.077	0.007	0	true	0.07%以内	iFreeETF S&P500（為替ヘッジなし） iNAV	2247.T
+2248.T	ok_inc_tax	0.077	0.07	0.077	0.007	0	true	0.07%以内	iFreeETF S&P500（為替ヘッジあり） iNAV	2248.T
+2249.T	jpx_missing	0.88					false			Daiwa Asset Management Co., Ltd.- iFreeETF S&amp;P
+224A.T	ok_inc_tax	0.786	0.715	0.7865	0.071	-0.0005	false	0.715%程度	グローバルＸ ウラニウムビジネス ETF	224A.T
+2250.T	ok_inc_tax	0.088	0.08	0.088	0.008	0	true	0.08%以内	iシェアーズ MSCI ジャパン気候変動アクション ETF iNAV	2250.T
+2251.T	jpx_missing	0.88					false			Nomura Asset Management Co.,Ltd.-Next Funds JPX JG
+2252.T	ok_within_cap_ex	0.2	0.375	0.4125	-0.175	-0.2125	true	0.375%以内	グローバルＸ Morningstar 米国中小型 Moat ETF	2252.T
+2253.T	ok_inc_tax	0.522	0.475	0.5225	0.047	-0.0005	false	0.475%程度	グローバルＸ スーパーディビィデンド-US ETF	2253.T
+2254.T	ok_inc_tax	0.775	0.705	0.7755	0.07	-0.0005	false	0.705%程度	グローバルＸ チャイナEV＆バッテリー ETF iNAV	2254.T
+2255.T	ok_inc_tax	0.154	0.14	0.154	0.014	0	false	0.14%	iシェアーズ 米国債20年超 ETF iNAV	2255.T
+2256.T	ok_inc_tax	0.088	0.08	0.088	0.008	0	false	0.08%程度	iシェアーズ 米国総合債券 ETF	2256.T
+2257.T	ok_inc_tax	0.099	0.09	0.099	0.009	0	false	0.09%程度	iシェアーズ 米ドル建て投資適格社債 ETF	2257.T
+2258.T	ok_inc_tax	0.209	0.19	0.209	0.019	0	false	0.19%程度	iシェアーズ 米ドル建てハイイールド社債 ETF	2258.T
+2259.T	ok_inc_tax	0.11	0.1	0.11	0.01	0	false	0.10%	iシェアーズ フランス国債7-10年 ETF（為替ヘッジあり） iNAV	2259.T
+233A.T	ok_within_cap_ex	0.16	0.35	0.385	-0.19	-0.225	true	0.35%以内	iFreeETF インドNifty50	iFreeETF India Nifty50
+234A.T	ok_within_cap_ex	0.2	0.275	0.3025	-0.075	-0.1025	true	0.275%以内	グローバルＸ MSCI キャッシュフローキング-日本株式 ETF iNAV	234A.T
+235A.T	ok_within_cap_ex	0.2	0.275	0.3025	-0.075	-0.1025	true	0.275%以内	グローバルＸ 高配当30-日本株式 ETF iNAV	235A.T
+236A.T	ok_inc_tax	0.066	0.06	0.066	0.006	0	false	0.06%	iシェアーズ 日本国債7-10年 ETF iNAV	236A.T
+237A.T	ok_inc_tax	0.154	0.14	0.154	0.014	0	false	0.14%	iシェアーズ 米国債25年超 ロングデュレーション ETF iNAV	237A.T
+238A.T	ok_inc_tax	0.154	0.14	0.154	0.014	0	false	0.14%	iシェアーズ 米国債25年超 ロングデュレーション ETF（為替ヘッジあり） iNAV	238A.T
+2510.T	ok_inc_tax	0.077	0.07	0.077	0.007	0	false	0.07%	ＮＥＸＴ ＦＵＮＤＳ 国内債券・ＮＯＭＵＲＡ‐ＢＰＩ総合連動型上場投信	2510.T
+2511.T	ok_inc_tax	0.132	0.12	0.132	0.012	0	true	0.12%以内	ＮＥＸＴ ＦＵＮＤＳ 外国債券・FTSE世界国債インデックス（除く日本・為替ヘッジなし）連動型上場投信	2511.T
+2512.T	ok_inc_tax	0.132	0.12	0.132	0.012	0	true	0.12%以内	ＮＥＸＴ ＦＵＮＤＳ 外国債券・FTSE世界国債インデックス（除く日本・為替ヘッジあり）連動型上場投信	2512.T
+2513.T	ok_inc_tax	0.187	0.17	0.187	0.017	0	true	0.17%以内	ＮＥＸＴ ＦＵＮＤＳ 外国株式・ＭＳＣＩ‐ＫＯＫＵＳＡＩ指数（為替ヘッジなし）連動型上場投信	2513.T
+2514.T	ok_inc_tax	0.187	0.17	0.187	0.017	0	true	0.17%以内	ＮＥＸＴ ＦＵＮＤＳ 外国株式・ＭＳＣＩ‐ＫＯＫＵＳＡＩ指数（為替ヘッジあり）連動型上場投信	2514.T
+2515.T	ok_inc_tax	0.187	0.17	0.187	0.017	0	true	0.17%以内	ＮＥＸＴ ＦＵＮＤＳ 外国ＲＥＩＴ・Ｓ＆Ｐ先進国ＲＥＩＴ指数（除く日本・為替ヘッジなし）連動型上場投信	2515.T
+2516.T	ok_inc_tax	0.55	0.5	0.55	0.05	0	false	0.50%	東証グロース２５０ETF iNAV	2516.T
+2517.T	ok_inc_tax	0.16	0.145	0.1595	0.015	0.0005	false	0.145%	ＭＡＸＩＳ Ｊリート・コア上場投信 iNAV	2517.T
+2518.T	ok_inc_tax	0.165	0.15	0.165	0.015	0	false	0.15%	ＮＥＸＴ ＦＵＮＤＳ ＭＳＣＩ日本株女性活躍指数（セレクト）連動型上場投信 iNAV	2518.T
+2519.T	ok_inc_tax	0.209	0.19	0.209	0.019	0	true	0.19%以内	ＮＥＸＴ ＦＵＮＤＳ新興国債券・J.P.モルガン・エマージング・マーケット・ボンド・インデックス・プラス（為替ヘッジなし）連動型上場投信	2519.T
+2520.T	ok_inc_tax	0.209	0.19	0.209	0.019	0	true	0.19%以内	ＮＥＸＴ ＦＵＮＤＳ新興国株式・MSCIエマージング・マーケット・インデックス（為替ヘッジなし）連動型上場投信	2520.T
+2521.T	ok_inc_tax	0.165	0.15	0.165	0.015	0	false	0.15%程度	上場インデックスファンド米国株式（S&P500）為替ヘッジあり iNAV	2521.T
+2522.T	ok_within_cap_ex	0.12	0.48	0.528	-0.36	-0.408	true	0.48%以内	iシェアーズ オートメーション ＆ ロボット ETF	2522.T
+2523.T	ok_inc_tax	0.119	0.108	0.1188	0.011	0.0002	false	0.108%	ＭＡＸＩＳトピックス（除く金融）上場投信 iNAV	2523.T
+2524.T	ok_inc_tax	0.061	0.055	0.0605	0.006	0.0005	false	0.055%	NZAM 上場投信 TOPIX iNAV	2524.T
+2525.T	ok_inc_tax	0.099	0.09	0.099	0.009	0	false	0.09%	NZAM 上場投信 日経225 iNAV	2525.T
+2526.T	ok_inc_tax	0.127	0.115	0.1265	0.012	0.0005	false	0.115%	NZAM 上場投信 JPX日経400 iNAV	2526.T
+2527.T	ok_inc_tax	0.16	0.145	0.1595	0.015	0.0005	false	0.145%	NZAM 上場投信 東証REIT Core指数 iNAV	2527.T
+2528.T	ok_inc_tax	0.22	0.2	0.22	0.02	0	false	0.2%	iFreeETF 東証REIT Core指数 iNAV	2528.T
+2529.T	ok_inc_tax	0.308	0.28	0.308	0.028	0	false	0.28%	ＮＥＸＴ ＦＵＮＤＳ 野村株主還元70連動型上場投信 iNAV	2529.T
+2530.T	ok_inc_tax	0.418	0.38	0.418	0.038	0	false	0.38%程度	ＭＡＸＩＳ ＨｕａＡｎ中国株式（上海１８０Ａ株）上場投信	2530.T
+2552.T	ok_inc_tax	0.27	0.245	0.2695	0.025	0.0005	false	0.245%	上場インデックスファンドＪリート（東証ＲＥＩＴ指数）隔月分配型（ミニ） iNAV	2552.T
+2553.T	ok_inc_tax	0.484	0.44	0.484	0.044	0	false	0.44%程度	Ｏｎｅ ＥＴＦ 南方 中国Ａ株 ＣＳＩ５００ iNAV	2553.T
+2554.T	ok_within_cap_ex	0.22	0.27	0.297	-0.05	-0.077	true	0.27%以内	ＮＥＸＴ ＦＵＮＤＳ ブルームバーグ米国投資適格社債（1-10年）インデックス（為替ヘッジあり）連動型上場投信	2554.T
+2555.T	ok_inc_tax	0.27	0.245	0.2695	0.025	0.0005	false	0.245%	東証ＲＥＩＴ ＥＴＦ iNAV	2555.T
+2556.T	ok_inc_tax	0.171	0.155	0.1705	0.016	0.0005	false	0.155%	Ｏｎｅ ＥＴＦ 東証ＲＥＩＴ指数 iNAV	2556.T
+2557.T	ok_inc_tax	0.081	0.074	0.0814	0.007	-0.0004	false	0.074%	ＳＭＤＡＭ トピックス上場投信 iNAV	2557.T
+2558.T	mismatch	0.077	0.06	0.066	0.017	0.011	false	0.06%程度	ＭＡＸＩＳ米国株式（Ｓ＆Ｐ５００）上場投信 iNAV	2558.T
+2559.T	ok_ex_tax	0.077	0.078	0.0858	-0.001	-0.0088	false	0.078%程度	ＭＡＸＩＳ全世界株式（オール・カントリー）上場投信	2559.T
+2560.T	ok_inc_tax	0.138	0.125	0.1375	0.013	0.0005	false	0.125%	ＭＡＸＩＳカーボン・エフィシェント日本株上場投信 iNAV	2560.T
+2561.T	ok_inc_tax	0.066	0.06	0.066	0.006	0	false	0.06%	iシェアーズ・コア 日本国債 ETF iNAV	2561.T
+2562.T	ok_within_cap_ex	0.2	0.25	0.275	-0.05	-0.075	true	0.25%以内	上場インデックスファンド米国株式（ダウ平均）為替ヘッジあり iNAV	2562.T
+2563.T	ok_inc_tax	0.077	0.07	0.077	0.007	0	false	0.07%程度	iシェアーズ S&P 500 米国株 ETF（為替ヘッジあり） iNAV	2563.T
+2564.T	ok_inc_tax	0.429	0.39	0.429	0.039	0	false	0.39%	グローバルＸ MSCIスーパーディビィデンド-日本株式 ETF iNAV	2564.T
+2565.T	ok_inc_tax	0.303	0.275	0.3025	0.028	0.0005	false	0.275%	グローバルＸ ロジスティクス・J-REIT ETF iNAV	2565.T
+2566.T	ok_inc_tax	0.165	0.15	0.165	0.015	0	false	0.15%	上場インデックスファンド日経ESGリート iNAV	2566.T
+2567.T	ok_inc_tax	0.132	0.12	0.132	0.012	0	false	0.12%	NZAM 上場投信 S＆P／JPXカーボン・エフィシェント指数 iNAV	2567.T
+2568.T	ok_within_cap_ex	0.2	0.25	0.275	-0.05	-0.075	true	0.25%以内	上場インデックスファンド米国株式（NASDAQ100）為替ヘッジなし iNAV	2568.T
+2569.T	ok_within_cap_ex	0.2	0.25	0.275	-0.05	-0.075	true	0.25%以内	上場インデックスファンド米国株式（NASDAQ100）為替ヘッジあり iNAV	2569.T
+257A.T	ok_within_cap_ex	0.2	0.7	0.77	-0.5	-0.57	true	0.7%以内	ＳＭＴ ＥＴＦ日本株厳選投資アクティブ iNAV アクティブ運用型	257A.T
+258A.T	ok_within_cap_ex	0.2	0.55	0.605	-0.35	-0.405	true	0.55%以内	ＳＭＴ ＥＴＦ国内リート厳選投資アクティブ iNAV アクティブ運用型(特化型)	258A.T
+2620.T	ok_inc_tax	0.154	0.14	0.154	0.014	0	false	0.14%	iシェアーズ 米国債1-3年 ETF iNAV	2620.T
+2621.T	ok_inc_tax	0.15	0.14	0.154	0.01	-0.004	false	0.14%	iシェアーズ 米国債20年超 ETF（為替ヘッジあり） iNAV	2621.T
+2622.T	ok_inc_tax	0.495	0.45	0.495	0.045	0	false	0.45%	iシェアーズ 米ドル建て新興国債券 ETF（為替ヘッジあり）	2622.T
+2623.T	ok_inc_tax	0.308	0.28	0.308	0.028	0	false	0.28%	iシェアーズ ユーロ建て投資適格社債 ETF（為替ヘッジあり）	2623.T
+2624.T	ok_inc_tax	0.132	0.12	0.132	0.012	0	false	0.12%	iFreeETF 日経225（年4回決算型） iNAV	2624.T
+2625.T	ok_inc_tax	0.066	0.06	0.066	0.006	0	false	0.06%	iFreeETF TOPIX（年4回決算型） iNAV	2625.T
+2626.T	ok_inc_tax	0.649	0.59	0.649	0.059	0	false	0.59%	グローバルＸ デジタル・イノベーション-日本株式 ETF iNAV	2626.T
+2627.T	ok_inc_tax	0.649	0.59	0.649	0.059	0	false	0.59%	グローバルＸ eコマース-日本株式 ETF iNAV	2627.T
+2628.T	ok_inc_tax	0.817	0.743	0.8173	0.074	-0.0003	false	0.743%（税込）程度	iFreeETF 中国科創板50（STAR50） iNAV	2628.T
+2629.T	ok_within_cap_ex	0.16	0.71	0.781	-0.55	-0.621	true	0.71%以内	iFreeETF 中国グレーターベイエリア・イノベーション100（GBA100） iNAV	2629.T
+2630.T	ok_inc_tax	0.077	0.07	0.077	0.007	0	false	0.07%程度	ＭＡＸＩＳ米国株式（Ｓ＆Ｐ５００）上場投信（為替ヘッジあり） iNAV	2630.T
+2631.T	ok_inc_tax	0.22	0.2	0.22	0.02	0	false	0.20%程度	ＭＡＸＩＳナスダック１００上場投信 iNAV	2631.T
+2632.T	ok_inc_tax	0.22	0.2	0.22	0.02	0	false	0.20%程度	ＭＡＸＩＳナスダック１００上場投信（為替ヘッジあり） iNAV	2632.T
+2633.T	ok_inc_tax	0.066	0.06	0.066	0.006	0	false	0.06%	ＮＥＸＴ ＦＵＮＤＳ Ｓ＆Ｐ 500 指数（為替ヘッジなし）連動型上場投信 iNAV	2633.T
+2634.T	ok_inc_tax	0.077	0.07	0.077	0.007	0	false	0.07%	ＮＥＸＴ ＦＵＮＤＳ Ｓ＆Ｐ 500 指数（為替ヘッジあり）連動型上場投信 iNAV	2634.T
+2636.T	ok_within_cap_ex	0.2	0.275	0.3025	-0.075	-0.1025	true	0.275%以内	グローバルＸ MSCI ガバナンス・クオリティ-日本株式 ETF iNAV	2636.T
+2637.T	ok_within_cap_ex	0.325	0.59	0.649	-0.265	-0.324	true	0.59%以内	グローバルＸ クリーンテック-日本株式 ETF iNAV	2637.T
+2638.T	ok_within_cap_ex	0.2	0.59	0.649	-0.39	-0.449	true	0.59%以内	グローバルＸ ロボティクス＆AI-日本株式 ETF iNAV	2638.T
+2639.T	ok_within_cap_ex	0.2	0.59	0.649	-0.39	-0.449	true	0.59%以内	グローバルＸ バイオ＆メドテック-日本株式 ETF iNAV	2639.T
+2640.T	ok_within_cap_ex	0.2	0.59	0.649	-0.39	-0.449	true	0.59%以内	グローバルＸ ゲーム＆アニメ-日本株式 ETF iNAV	2640.T
+2641.T	ok_within_cap_ex	0.2	0.275	0.3025	-0.075	-0.1025	true	0.275%以内	グローバルＸ グローバルリーダーズ-日本株式 ETF iNAV	2641.T
+2642.T	ok_inc_tax	0.127	0.115	0.1265	0.012	0.0005	false	0.115%	SMT ETF カーボン・エフィシェント日本株 iNAV	2642.T
+2643.T	ok_inc_tax	0.132	0.12	0.132	0.012	0	true	0.12%以内	NEXT FUNDS MSCIジャパンカントリー指数（セレクト）連動型上場投信(注6) iNAV	2643.T
+2644.T	ok_within_cap_ex	0.385	0.59	0.649	-0.205	-0.264	true	0.59%以内	グローバルＸ 半導体関連-日本株式 ETF iNAV	2644.T
+2645.T	ok_within_cap_ex	0.2	0.59	0.649	-0.39	-0.449	true	0.59%以内	グローバルＸ レジャー＆エンターテインメント-日本株式 ETF iNAV	2645.T
+2646.T	ok_within_cap_ex	0.2	0.59	0.649	-0.39	-0.449	true	0.59%以内	グローバルＸ メタルビジネス-日本株式 ETF iNAV	2646.T
+2647.T	ok_inc_tax	0.143	0.13	0.143	0.013	0	true	0.13%以内	ＮＥＸＴ ＦＵＮＤＳ ブルームバーグ米国国債（7-10年）インデックス（為替ヘッジなし）連動型上場投信 iNAV	2647.T
+2648.T	ok_inc_tax	0.143	0.13	0.143	0.013	0	true	0.13%以内	ＮＥＸＴ ＦＵＮＤＳ ブルームバーグ米国国債（7-10年）インデックス（為替ヘッジあり）連動型上場投信 iNAV	2648.T
+2649.T	ok_within_cap_ex	0.12	0.125	0.1375	-0.005	-0.0175	true	0.125%以内	iシェアーズ 米国政府系機関ジニーメイMBS ETF（為替ヘッジあり） iNAV	2649.T
+273A.T	ok_inc_tax	0.193	0.175	0.1925	0.018	0.0005	false	0.175%	ＳＢＩ サウジアラビア株式上場投信 iNAV	SBI Saudi Arabia Equity Exchange Traded Fund
+282A.T	ok_inc_tax	0.11	0.1	0.11	0.01	0	true	0.10%以内	グローバルＸ 半導体・トップ10-日本株式 ETF iNAV	GX JP Semiconductor Top 10 ETF
+2836.T	ok_within_cap_ex	0.325	0.59	0.649	-0.265	-0.324	true	0.59%以内	グローバルＸ フィンテック-日本株式 ETF iNAV	2836.T
+2837.T	ok_within_cap_ex	0.2	0.275	0.3025	-0.075	-0.1025	true	0.275%以内	グローバルＸ 中小型リーダーズ-日本株式 ETF iNAV	2837.T
+2838.T	ok_inc_tax	0.132	0.12	0.132	0.012	0	true	0.12%以内	ＭＡＸＩＳ米国国債７-１０年上場投信（為替ヘッジなし） iNAV	2838.T
+2839.T	ok_inc_tax	0.132	0.12	0.132	0.012	0	true	0.12%以内	ＭＡＸＩＳ米国国債７-１０年上場投信（為替ヘッジあり） iNAV	2839.T
+283A.T	ok_within_cap_ex	0.2	0.275	0.3025	-0.075	-0.1025	true	0.275%以内	グローバルＸ US テック・配当貴族 ETF iNAV	283A.T
+2840.T	ok_inc_tax	0.11	0.1	0.11	0.01	0	true	0.1%以内	iFreeETF NASDAQ100（為替ヘッジなし） iNAV	2840.T
+2841.T	ok_inc_tax	0.11	0.1	0.11	0.01	0	true	0.1%以内	iFreeETF NASDAQ100（為替ヘッジあり） iNAV	2841.T
+2842.T	jpx_missing	0.88					false			iFreeETF NASDAQ100 Inverse
+2843.T	ok_inc_tax	0.121	0.11	0.121	0.011	0	true	0.11%以内	上場インデックスファンド豪州国債（為替ヘッジあり） iNAV	2843.T
+2844.T	ok_inc_tax	0.121	0.11	0.121	0.011	0	true	0.11%以内	上場インデックスファンド豪州国債（為替ヘッジなし） iNAV	2844.T
+2845.T	ok_inc_tax	0.22	0.2	0.22	0.02	0	true	0.20%以内	ＮＥＸＴ ＦＵＮＤＳ ＮＡＳＤＡＱ－１００®（為替ヘッジあり）連動型上場投信 iNAV	2845.T
+2846.T	ok_within_cap_ex	0.22	0.3	0.33	-0.08	-0.11	true	0.30%以内	ＮＥＸＴ ＦＵＮＤＳ ダウ・ジョーンズ工業株３０種平均株価（為替ヘッジあり）連動型上場投信 iNAV	2846.T
+2847.T	ok_within_cap_ex	0.2	0.59	0.649	-0.39	-0.449	true	0.59%以内	グローバルＸ 新成長インフラ-日本株式 ETF iNAV	2847.T
+2848.T	ok_inc_tax	0.088	0.08	0.088	0.008	0	true	0.08%以内	グローバルＸ MSCI 気候変動対応-日本株式 ETF iNAV	2848.T
+2849.T	ok_within_cap_ex	0.2	0.275	0.3025	-0.075	-0.1025	true	0.275%以内	グローバルＸ Morningstar 高配当 ESG-日本株式 ETF iNAV	2849.T
+2851.T	ok_inc_tax	0.12	0.11	0.121	0.01	-0.001	true	0.11%以内	iシェアーズ MSCI ジャパンSRI ETF(注6) iNAV	2851.T
+2852.T	ok_within_cap_ex	0.12	0.15	0.165	-0.03	-0.045	true	0.15%以内	iシェアーズ グリーンＪリート ETF iNAV	2852.T
+2853.T	ok_within_cap_ex	0.12	0.12	0.132	0	-0.012	true	0.12%以内	iシェアーズ 気候リスク調整世界国債 ETF（除く日本・為替ヘッジあり） iNAV	2853.T
+2854.T	ok_inc_tax	0.303	0.275	0.3025	0.028	0.0005	true	0.275%以内	グローバルＸ テック・トップ20-日本株式 ETF iNAV	2854.T
+2855.T	ok_inc_tax	0.209	0.19	0.209	0.019	0	true	0.19%以内	グローバルＸ グリーン・J-REIT ETF iNAV	2855.T
+2856.T	ok_inc_tax	0.154	0.14	0.154	0.014	0	false	0.14%	iシェアーズ 米国債3-7年 ETF（為替ヘッジあり） iNAV	2856.T
+2857.T	ok_ex_tax	0.12	0.12	0.132	0	-0.012	false	0.12%	i シェアーズ ドイツ国債 ETF（為替ヘッジあり） iNAV	2857.T
+2858.T	ok_within_cap_ex	0.2	0.275	0.3025	-0.075	-0.1025	true	0.275%以内	グローバルＸ 日経225 カバード・コール ETF（プレミアム再投資型） iNAV	2858.T
+2859.T	ok_inc_tax	0.198	0.18	0.198	0.018	0	true	0.18%以内	ＮＥＸＴ ＦＵＮＤＳ ユーロ・ストックス 50 指数（為替ヘッジあり）連動型上場投信 iNAV	2859.T
+2860.T	ok_inc_tax	0.198	0.18	0.198	0.018	0	true	0.18%以内	ＮＥＸＴ ＦＵＮＤＳ ドイツ株式・ＤＡＸ（為替ヘッジあり）連動型上場投信 iNAV	2860.T
+2861.T	ok_inc_tax	0.121	0.11	0.121	0.011	0	true	0.11%以内	上場インデックスファンドフランス国債（為替ヘッジなし） iNAV	2861.T
+2862.T	ok_inc_tax	0.121	0.11	0.121	0.011	0	true	0.11%以内	上場インデックスファンドフランス国債（為替ヘッジあり） iNAV	2862.T
+2864.T	ok_within_cap_ex	0.325	0.375	0.4125	-0.05	-0.0875	true	0.375%以内	グローバルＸ ロジスティクス・REIT ETF	2864.T
+2865.T	ok_inc_tax	0.688	0.625	0.6875	0.063	0.0005	false	0.625%程度	グローバルＸ NASDAQ100・カバード・コール ETF	2865.T
+2866.T	ok_inc_tax	0.281	0.255	0.2805	0.026	0.0005	false	0.255%程度	グローバルＸ 米国優先証券 ETF	2866.T
+2867.T	ok_within_cap_ex	0.325	0.64	0.704	-0.315	-0.379	true	0.64%以内	グローバルＸ 自動運転＆EV ETF	2867.T
+2868.T	ok_inc_tax	0.699	0.635	0.6985	0.064	0.0005	false	0.635%程度	グローバルＸ S&P500・カバード・コール ETF	2868.T
+2869.T	jpx_missing	0.88					false			iFreeETF NASDAQ100 Leveraged
+2870.T	jpx_missing	0.88					false			iFreeETF NASDAQ100 Double Inverse
+294A.T	ok_inc_tax	0.132	0.12	0.132	0.012	0	true	0.12%以内	ＮＥＸＴ ＦＵＮＤＳ ＭＳＣＩジャパン気候変動指数（セレクト）連動型上場投信 iNAV	294A.T
+295A.T	ok_within_cap_ex	0.2	0.29	0.319	-0.09	-0.119	true	0.29%以内	Ｏｎｅ ＥＴＦ ＦＴＳＥ・サウジアラビア・インデックス	295A.T
+313A.T	ok_inc_tax	0.44	0.4	0.44	0.04	0	false	0.40%	iシェアーズ S&P 500 トップ 20 ETF iNAV	313A.T
+314A.T	ok_inc_tax	0.22	0.2	0.22	0.02	0	false	0.20%	iシェアーズ ゴールド ETF iNAV	314A.T
+315A.T	ok_inc_tax	0.2	0.185	0.2035	0.015	-0.0035	true	0.185%以内	グローバルＸ 銀行 高配当-日本株式 ETF iNAV	315A.T
+316A.T	ok_within_cap_ex	0.16	0.55	0.605	-0.39	-0.445	true	0.55%以内	iFreeETF FANG+ iNAV	316A.T
+318A.T	mm_missing		0.89	0.979			true	0.89%以内	ＶＩＸ短期先物指数ＥＴＦ 先物型	
+328A.T	ok_within_cap_ex	0.2	0.275	0.3025	-0.075	-0.1025	true	0.275%以内	グローバルＸ プライシングパワー・リーダーズ-日本株式 ETF iNAV	328A.T
+346A.T	ok_within_cap_ex	0.22	0.32	0.352	-0.1	-0.132	true	0.32%以内	ＮＥＸＴ ＦＵＮＤＳ Ｓ＆Ｐ 500 半導体・半導体製造装置35％キャップ指数連動型上場投信 iNAV	NEXT FUNDS S&P 500 Semiconductors & Semiconductor Equipment 35% Capped Index ETF
+348A.T	ok_inc_tax	0.132	0.12	0.132	0.012	0	true	0.12%以内	ＭＡＸＩＳ読売３３３日本株上場投信 iNAV	MAXIS Yomiuri333 Japan Stock ETF
+349A.T	ok_inc_tax	0.583	0.53	0.583	0.053	0	false	0.53%	ＳＭＤＡＭ Ａｃｔｉｖｅ ＥＴＦ 日本グロース株式 iNAV アクティブ運用型	SMDAM Active ETF Japan Growth Equity
+354A.T	ok_within_cap_ex	0.16	0.25	0.275	-0.09	-0.115	true	0.25%以内	iFreeETF ブルームバーグ日本株高配当50指数 iNAV	iFreeETF Bloomberg Japan High Dividend 50 Index
+356A.T	ok_inc_tax	0.2	0.18	0.198	0.02	0.002	true	0.18%以内	グローバルＸ S&P500 キャッシュフロー・トップ100 ETF iNAV	GX S&P 500 CF Top 100 ETF
+360A.T	ok_ex_tax	0.2	0.2	0.22	0	-0.02	false	0.20%	東証ＲＥＩＴ Ｃｏｒｅ ＥＴＦ iNAV	TSE REIT Core ETF
+363A.T	ok_within_cap_ex	0.16	0.18	0.198	-0.02	-0.038	true	0.18%以内	iFreeETF 英国FTSE100 iNAV	iFreeETF FTSE100
+364A.T	ok_inc_tax	0.116	0.105	0.1155	0.011	0.0005	true	0.105%以内	ＮＥＸＴ ＦＵＮＤＳ Ｓ＆Ｐ 500 配当貴族指数連動型上場投信 iNAV	364A.T
+376A.T	ok_inc_tax	0.143	0.13	0.143	0.013	0	true	0.13%以内	ＮＥＸＴ ＦＵＮＤＳ ブルームバーグ米国国債（7-10年）インデックス（75％為替ヘッジあり）連動型上場投信 iNAV	376A.T
+379A.T	mm_missing		0.1	0.11			true	0.10%以内	グローバルＸ S&P500 ETF（ダイナミック・プロテクション） iNAV	
+380A.T	ok_within_cap_ex	0.325	0.375	0.4125	-0.05	-0.0875	true	0.375%以内	グローバルＸ チャイナテック ETF iNAV	380A.T
+381A.T	ok_inc_tax	0.11	0.1	0.11	0.01	0	true	0.10%以内	iFreeETF 米国国債3-5年（為替ヘッジなし） iNAV アクティブ運用型	381A.T
+382A.T	ok_inc_tax	0.11	0.1	0.11	0.01	0	true	0.10%以内	iFreeETF 米国国債3-5年（為替ヘッジあり） iNAV アクティブ運用型	382A.T
+383A.T	ok_within_cap_ex	0.15	0.2	0.22	-0.05	-0.07	true	0.20%以内	ＭＡＸＩＳ Ｓ＆Ｐ５００均等ウェイト上場投信 iNAV	383A.T
+392A.T	ok_inc_tax	0.44	0.4	0.44	0.04	0	false	0.40%程度	iシェアーズ NASDAQ トップ 30 ETF iNAV	392A.T
+394A.T	ok_within_cap_ex	0.2	0.9	0.99	-0.7	-0.79	true	0.90%以内	業界改革厳選ＥＴＦテレビ業界 iNAV アクティブ運用型(特化型)	394A.T
+395A.T	ok_within_cap_ex	0.2	0.9	0.99	-0.7	-0.79	true	0.90%以内	業界改革厳選ＥＴＦ地銀 iNAV アクティブ運用型(特化型)	395A.T
+396A.T	ok_within_cap_ex	0.2	0.9	0.99	-0.7	-0.79	true	0.90%以内	業界改革厳選ＥＴＦ ＲＥＩＴイベント・ドリブン iNAV アクティブ運用型(特化型)	396A.T
+399A.T	mm_missing		0.15	0.165			true	0.15%以内	上場インデックスファンド日経平均高配当株50 iNAV	
+404A.T	ok_within_cap_ex	0.325	0.375	0.4125	-0.05	-0.0875	true	0.375%以内	グローバルＸ チャイナテック・トップ10 ETF iNAV	404A.T
+408A.T	ok_inc_tax	0.847	0.77	0.847	0.077	0	false	0.77%程度	iシェアーズ AI グローバル・イノベーション アクティブ ETF iNAV アクティブ運用型(特化型)	408A.T
+412A.T	ok_inc_tax	0.817	0.743	0.8173	0.074	-0.0003	false	0.743%（税込）程度	ＮＥＸＴ ＦＵＮＤＳ ＴＩＰ ＦａｃｔＳｅｔ 台湾イノベイティブ・テクノロジー50 指数連動型上場投信 iNAV	412A.T
+413A.T	ok_inc_tax	0.793	0.721	0.7931	0.072	-0.0001	false	0.721%（税込）程度	iFreeETF キャセイ台湾テックリーダー指数 iNAV	413A.T
+424A.T	ok_inc_tax	0.195	0.1775	0.1953	0.0175	-0.0003	false	0.1775%程度	グローバルＸ ゴールド ETF（為替ヘッジあり） iNAV	424A.T
+425A.T	ok_inc_tax	0.195	0.1775	0.1953	0.0175	-0.0003	false	0.1775%程度	グローバルＸ ゴールド ETF iNAV	425A.T
+426A.T	ok_inc_tax	0.2	0.186	0.2046	0.014	-0.0046	false	0.186%程度	ニッセイＥＴＦ Ｓ＆Ｐ５００イコール・ウェイト（為替ヘッジなし） iNAV	426A.T
+435A.T	ok_within_cap_ex	0.16	0.375	0.4125	-0.215	-0.2525	true	0.375%以内	iFreeETF 日本株配当ローテーション戦略 iNAV アクティブ運用型	435A.T
+443A.T	ok_inc_tax	0.171	0.155	0.1705	0.016	0.0005	false	0.155%	iFreeETF 東証REIT指数（2・5・8・11月決算型） iNAV	443A.T
+447A.T	ok_inc_tax	0.187	0.17	0.187	0.017	0	false	0.17%程度	ステート・ストリート・スパイダー ゴールド ETF（為替ヘッジなし） iNAV	447A.T
+448A.T	ok_inc_tax	0.187	0.17	0.187	0.017	0	false	0.17%程度	ステート・ストリート・スパイダー ゴールド ETF（為替ヘッジあり） iNAV	448A.T
+449A.T	ok_within_cap_ex	0.03	0.0275	0.0303	0.0025	-0.0003	true	0.0275%以内	ステート・ストリート・スパイダー S&P500® ETF（為替ヘッジなし） iNAV	449A.T
+450A.T	ok_within_cap_ex	0.03	0.0275	0.0303	0.0025	-0.0003	true	0.0275%以内	ステート・ストリート・スパイダー S&P500® ETF（為替ヘッジあり） iNAV	State Street SPDR S&P 500 ETF JPY Hedged
+451A.T	ok_inc_tax	0.117	0.106	0.1166	0.011	0.0004	false	0.106%程度	ステート・ストリート・スパイダー S&P500®高配当株 ETF iNAV	451A.T
+452A.T	ok_inc_tax	0.495	0.45	0.495	0.045	0	false	0.45%	iシェアーズ S&P 500 プレミアムインカム ETF iNAV	iShares S&P 500 Premium Income ETF
+453A.T	ok_inc_tax	0.605	0.55	0.605	0.055	0	false	0.55%	iシェアーズ 米国債20年超 プレミアムインカム ETF iNAV	453A.T
+459A.T	ok_within_cap_ex	0.2	0.2	0.22	0	-0.02	true	0.20%以内	野村高利回りＪリート指数ＥＴＦ iNAV	459A.T
+461A.T	ok_within_cap_ex	0.15	0.28	0.308	-0.13	-0.158	true	0.28%以内	ＭＡＸＩＳ日本株高配当ＳＭＡＲＴ５０上場投信 iNAV	461A.T
+465A.T	ok_inc_tax	0.303	0.275	0.3025	0.028	0.0005	true	0.275%以内	グローバルＸ 日経平均株主還元40-日本株式 ETF iNAV	465A.T
+466A.T	ok_inc_tax	0.578	0.525	0.5775	0.053	0.0005	false	0.525%程度	グローバルＸ 防衛テック ETF	466A.T
+467A.T	ok_inc_tax	0.182	0.165	0.1815	0.017	0.0005	false	0.165%程度	グローバルＸ 米ドル建て投資適格社債 ETF（為替ヘッジあり） アクティブ運用型(特化型)	467A.T
+468A.T	ok_inc_tax	0.182	0.165	0.1815	0.017	0.0005	false	0.165%程度	グローバルＸ 米ドル建て投資適格社債 ETF アクティブ運用型(特化型)	468A.T
+473A.T	ok_inc_tax	0.132	0.12	0.132	0.012	0	false	0.12%	ニッセイＥＴＦ 日経２２５インデックス iNAV	473A.T
+486A.T	ok_inc_tax	0.22	0.198	0.2178	0.022	0.0022	false	0.198%（税込）程度	ＮＥＸＴ ＦＵＮＤＳ ユーロ・ストックス50指数（為替ヘッジなし）連動型上場投信 iNAV	486A.T
+487A.T	ok_inc_tax	0.22	0.198	0.2178	0.022	0.0022	false	0.198%（税込）程度	ＮＥＸＴ ＦＵＮＤＳ ドイツ株式・ＤＡＸ（為替ヘッジなし）連動型上場投信 iNAV	487A.T
+488A.T	ok_within_cap_ex	0.12	0.3	0.33	-0.18	-0.21	true	0.30%以内	iシェアーズ 円高フォーカス ETF iNAV	488A.T
+489A.T	ok_within_cap_ex	0.2	0.2	0.22	0	-0.02	true	0.20%以内	東証ＲＥＩＴ物流フォーカスＥＴＦ iNAV	489A.T
+491A.T	ok_inc_tax	0.099	0.09	0.099	0.009	0	true	0.09%以内	iシェアーズ S&P 500 除く金融 ETF（為替ヘッジあり） iNAV	iShares S&P 500 Ex-Financials JPY Hedged ETF
+492A.T	ok_inc_tax	0.105	0.095	0.1045	0.01	0.0005	true	0.095%以内	Ｏｎｅ ＥＴＦ 日本国債 高クーポン（平均残存１０年未満） iNAV アクティブ運用型	492A.T
+493A.T	ok_inc_tax	0.083	0.075	0.0825	0.008	0.0005	true	0.075%以内	Ｏｎｅ ＥＴＦ 日本国債 １－３年 iNAV アクティブ運用型	493A.T
+494A.T	ok_inc_tax	0.083	0.075	0.0825	0.008	0.0005	true	0.075%以内	Ｏｎｅ ＥＴＦ 日本国債 ３－７年 iNAV アクティブ運用型	494A.T
+495A.T	ok_inc_tax	0.083	0.075	0.0825	0.008	0.0005	true	0.075%以内	Ｏｎｅ ＥＴＦ 日本国債 ７－１０年 iNAV アクティブ運用型	495A.T
+496A.T	ok_inc_tax	0.083	0.075	0.0825	0.008	0.0005	true	0.075%以内	Ｏｎｅ ＥＴＦ 日本国債 １７－２０年 iNAV アクティブ運用型	496A.T
+502A.T	ok_inc_tax	0.099	0.09	0.099	0.009	0	true	0.09%以内	グローバルＸ 超短期円建て債券 ETF アクティブ運用型	502A.T
+512A.T	ok_within_cap_ex	0.325	0.64	0.704	-0.315	-0.379	true	0.64%以内	グローバルＸ ステーブルコイン＆トークンビジネス ETF（除く日本）	512A.T
+513A.T	ok_within_cap_ex	0.325	0.59	0.649	-0.265	-0.324	true	0.59%以内	グローバルＸ 防衛テック-日本株式 ETF iNAV	513A.T
+515A.T	mm_missing		0.165	0.1815			false	0.165%程度	iシェアーズ 高格付け日本円社債 ETF アクティブ運用型	
+516A.T	mm_missing		0.14	0.154			true	0.14%以内	iFreeETF 米ドル・ブル（1倍） iNAV	
+517A.T	mm_missing		0.14	0.154			true	0.14%以内	iFreeETF 米ドル・ベア（1倍） iNAV	
+518A.T	ok_inc_tax	0.303	0.275	0.3025	0.028	0.0005	false	0.275%（税込）程度	ＮＥＸＴ ＦＵＮＤＳ ＦＴＳＥ日本株高配当キャッシュフロー50指数連動型上場投信 iNAV	518A.T
+521A.T	mm_missing		0.75	0.825			true	0.75%以内	iFreeETF FANG+ゴールド iNAV 先物型	
+526A.T	mm_missing		0.5	0.55			true	0.50%以内	ＪＰＸスタートアップ急成長１００ＥＴＦ iNAV	
+530A.T	mm_missing		0.145	0.1595			true	0.145%以内	NZAM 上場投信 東証REIT指数（2・5・8・11月決算型） iNAV	
+531A.T	mm_missing		0.15	0.165			true	0.15%以内	NZAM 上場投信 日経平均高配当株50 iNAV	
+532A.T	mm_missing		0.15	0.165			true	0.15%以内	NZAM 上場投信 TOPIX高配当40 iNAV	
+533A.T	mm_missing		0.06	0.066			true	0.06%以内	NZAM 上場投信 S&P500（為替ヘッジなし） iNAV	
+534A.T	mm_missing		0.1	0.11			true	0.10%以内	NZAM 上場投信 NASDAQ100（為替ヘッジなし） iNAV	
+535A.T	mm_missing		0.18	0.198			true	0.18%以内	NZAM 上場投信 DAX（為替ヘッジなし） iNAV	
+536A.T	mm_missing		0.15	0.165			true	0.15%以内	NZAM 上場投信 先進国株式（MSCI-KOKUSAI）（為替ヘッジなし） iNAV	
+537A.T	mm_missing		0.078	0.0858			true	0.078%以内	NZAM 上場投信 全世界株式（MSCI ACWI）（為替ヘッジなし） iNAV	
+538A.T	mm_missing		0.12	0.132			true	0.12%以内	NZAM 上場投信 米国国債7-10年（為替ヘッジなし） iNAV	
+539A.T	mm_missing		0.12	0.132			true	0.12%以内	NZAM 上場投信 海外債券（FTSE WGBI除く日本）（為替ヘッジなし） iNAV	
+540A.T	mm_missing		0.15	0.165			true	0.15%以内	上場インデックスファンド日経銀行株トップ10 iNAV	
+541A.T	mm_missing		0.28	0.308			true	0.28%以内	Ｏｎｅ ＥＴＦ ＴＯＰＩＸ高配当株グロース指数 iNAV	
+552A.T	mm_missing		0.475	0.5225			true	0.475%以内	ＭＡＸＩＳ米国ＡＩインフラ株上場投信 iNAV	
+563A.T	mm_missing		0.275	0.3025			false	0.275%程度	グローバルＸ NASDAQ100・デイリー・カバード・コール ETF	
+564A.T	mm_missing		0.375	0.4125			true	0.375%以内	グローバルＸ S&P先進国キャッシュフロー・トップ100 ETF	
+566A.T	mm_missing		0.25	0.275			true	0.25%以内	iFreeETF ブルームバーグ日本株（除く金融）高配当50指数 iNAV	
+568A.T	mm_missing		0.45	0.495			false	0.45%程度	iシェアーズ シルバー ETF iNAV	
+569A.T	mm_missing		0.45	0.495			false	0.45%程度	iシェアーズ プラチナ ETF iNAV	
+570A.T	mm_missing		0.07	0.077			false	0.07%	iシェアーズ 日本国債0-1年 ETF iNAV	
+571A.T	mm_missing		0.07	0.077			false	0.07%	iシェアーズ 日本国債1-3年 ETF iNAV	
+572A.T	mm_missing		0.07	0.077			false	0.07%	iシェアーズ 日本国債3-7年 ETF iNAV	
+573A.T	mm_missing		0.07	0.077			false	0.07%	iシェアーズ 日本国債20年超 ETF iNAV	
+576A.T	mm_missing		0.7775	0.8553			false	0.7775%（税込）程度	グローバルＸ チャイナテック・カバード・コール ETF iNAV アクティブ運用型(デリバティブ)	
+577A.T	mm_missing		0.5175	0.5693			false	0.5175%（税込）程度	グローバルＸ シルバー ETF iNAV	
+578A.T	mm_missing		0.5175	0.5693			false	0.5175%（税込）程度	グローバルＸ シルバー ETF（為替ヘッジあり） iNAV	
+579A.T	mm_missing		0.6775	0.7453			false	0.6775%（税込）程度	グローバルＸ 銀ビジネス ETF	
+580A.T	mm_missing		0.6775	0.7453			false	0.6775%（税込）程度	グローバルＸ 銅ビジネス ETF	
+585A.T	ok_inc_tax	0.99	0.9	0.99	0.09	0	true	0.90%以内	日本バリュー・ボトムアップ株式投資戦略アクティブＥＴＦ iNAV アクティブ運用型	585A.T
+586A.T	ok_inc_tax	0.385	0.35	0.385	0.035	0	true	0.35%以内	ＮＥＸＴ ＦＵＮＤＳ 日経エンタメ・コンテンツ株指数連動型上場投信 iNAV	586A.T
+587A.T	mm_missing		0.18	0.198			false	0.18%（税込）	インベスコQQQトラスト シリーズ1(注2) iNAV	
+600A.T	ok_ex_tax	0.432	0.432	0.4752	0	-0.0432	false	0.432%（税込）程度	ニッセイＥＴＦ ラッセル２０００ iNAV	600A.T
+605A.T	ok_inc_tax	0.522	0.475	0.5225	0.047	-0.0005	true	0.475%以内	ＮＥＸＴ ＦＵＮＤＳ 日本株政策フォーカス上場投信 iNAV アクティブ運用型	605A.T
+608A.T	ok_inc_tax	0.145	0.132	0.1452	0.013	-0.0002	true	0.132%以内	上場インデックスファンド東証ＲＥＩＴ高利回り30 iNAV	608A.T
+609A.T	mm_missing		0.649	0.7139			true	0.649%（税込）以内	グローバルＸ 総合商社＆資源ビジネス-日本株式 ETF iNAV	
+610A.T	mm_missing		0.704	0.7744			true	0.704%（税込）以内	グローバルＸ 宇宙テック・トップ10 ETF（除く日本）	
+611A.T	mm_missing		0.095	0.1045			true	0.095%以内	Ｏｎｅ ＥＴＦ 日本国債 ２７－３０年 iNAV アクティブ運用型	
+613A.T	mm_missing		0.14	0.154			true	0.14%以内	iFreeETF ドイツ0-3カ月短期国債 iNAV	
+626A.T	mm_missing		0.18	0.198			true	0.18%以内	iFreeETF ゴールドプラスインカム iNAV 先物型	
+630A.T	mm_missing		0.06	0.066			false	0.06%	ニッセイＥＴＦ ＴＯＰＩＸ（年４回決算型） iNAV	
+632A.T	mm_missing		0.04	0.044			true	0.04%以内	グローバルＸ 日経225 ETF iNAV	
+633A.T	mm_missing		0.4775	0.5252			false	0.4775%（税込）程度	グローバルＸ 韓国半導体・トップ10 ETF iNAV	
+635A.T	mm_missing		0.095	0.1045			true	0.095%以内	SMBC Prime 日本短期債券ETF（毎月決算型） iNAV アクティブ運用型	
+636A.T	mm_missing		0.095	0.1045			true	0.095%以内	SMBC Prime 日本短期債券ETF（年１回決算型） iNAV アクティブ運用型	
+639A.T	mm_missing		0.55	0.605			true	0.55%以内	ＮＥＸＴ ＦＵＮＤＳ Ｓｏｌａｃｔｉｖｅグローバル・メモリ指数連動型上場投信 iNAV	

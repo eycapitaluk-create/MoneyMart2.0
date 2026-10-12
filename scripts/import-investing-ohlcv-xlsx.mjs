@@ -10,6 +10,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { createClient } from '@supabase/supabase-js'
 import XLSX from 'xlsx'
+import { normalizeStockSymbolForDb } from '../src/lib/stockSymbolNormalize.js'
 
 const loadEnv = async () => {
   for (const f of ['.env.local', '.env']) {
@@ -104,7 +105,7 @@ const run = async () => {
   }
 
   const source = flags.source || 'marketstack'
-  const symbol = (symbolArg || symbolFromPath(xlsxPath) || '').trim()
+  const symbol = normalizeStockSymbolForDb(symbolArg || symbolFromPath(xlsxPath) || '')
   if (!symbol) {
     console.error('シンボルを引数で渡すか、ファイル名に 1306T 形式を含めてください')
     process.exit(1)

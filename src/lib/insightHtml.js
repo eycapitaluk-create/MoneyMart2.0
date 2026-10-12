@@ -41,17 +41,22 @@ export function looksLikeInsightHtml(s) {
 
 export function sanitizeInsightBodyHtml(dirty) {
   installSanitizeHooks()
-  return DOMPurify.sanitize(String(dirty || ''), {
-    ALLOWED_TAGS: [
-      'p', 'br', 'strong', 'b', 'em', 'i', 'u', 'ol', 'ul', 'li', 'span', 'h2', 'h3', 'h4', 'a', 'div', 'blockquote',
-      'img', 'hr',
-    ],
-    ALLOWED_ATTR: ['class', 'href', 'target', 'rel', 'src', 'alt', 'width', 'height', 'loading', 'decoding'],
-    ALLOW_DATA_ATTR: false,
-    // 先頭1文字だけ許可するデフォルト正規表現だと `/path/to` の2文字目以降で落ちるケースを防ぐ
-    ALLOWED_URI_REGEXP:
-      /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|matrix):[^\s#]*|\/(?!\/)#?[^\s#?]*(?:\?[^\s#]*)?(?:#[^\s#]*)?|[^a-z#?]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
-  })
+  try {
+    return DOMPurify.sanitize(String(dirty || ''), {
+      ALLOWED_TAGS: [
+        'p', 'br', 'strong', 'b', 'em', 'i', 'u', 'ol', 'ul', 'li', 'span', 'h2', 'h3', 'h4', 'a', 'div', 'blockquote',
+        'img', 'hr',
+      ],
+      ALLOWED_ATTR: ['class', 'href', 'target', 'rel', 'src', 'alt', 'width', 'height', 'loading', 'decoding'],
+      ALLOW_DATA_ATTR: false,
+      // 先頭1文字だけ許可するデフォルト正規表現だと `/path/to` の2文字目以降で落ちるケースを防ぐ
+      ALLOWED_URI_REGEXP:
+        /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|matrix):[^\s#]*|\/(?!\/)#?[^\s#?]*(?:\?[^\s#]*)?(?:#[^\s#]*)?|[^a-z#?]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
+    })
+  } catch (e) {
+    console.warn('[insightHtml] sanitize failed:', e?.message || e)
+    return ''
+  }
 }
 
 export function plainTextFromInsightHtml(s) {

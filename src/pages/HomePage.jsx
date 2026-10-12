@@ -1,14 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation, Link } from 'react-router-dom'
 import {
-  ArrowRight, BarChart2, Sparkles,
+  ArrowRight, BarChart2, Sparkles, Briefcase,
   Landmark, Home, Wallet, Layers3,
   TrendingUp, Calculator, X,
   PiggyBank, Newspaper,
   Plus, Bell, Shield, CalendarDays, LayoutGrid, RefreshCw, Percent, User,
   LineChart as LucideLineChart,
   Check,
-  PieChart,
 } from 'lucide-react'
 import {
   ResponsiveContainer,
@@ -19,9 +18,11 @@ import {
   CartesianGrid,
   Tooltip,
 } from 'recharts'
-import AdBanner from '../components/AdBanner'
+import LazyHomeBottomA8Ad from '../components/LazyHomeBottomA8Ad'
 import { supabase } from '../lib/supabase'
-import { normalizeFundDisplayName } from '../lib/fundDisplayUtils'
+import { resolveFundDisplayName } from '../lib/fundDisplayUtils'
+import { formatTrustFeePercent, parseTrustFeePercent } from '../lib/trustFee'
+import HomeHeroBrandFilm from '../components/home/HomeHeroBrandFilm'
 import { ETF_LIST_FROM_XLSX } from '../data/etfListFromXlsx'
 import {
   AI_THEME_SYMBOL_SET,
@@ -30,18 +31,37 @@ import {
   HIGH_DIVIDEND_ISIN_SET,
 } from '../data/etfThemeFlags'
 import { looksLikeHighDividendFromText } from '../lib/fundSubcategoryHeuristics'
-import { findBaseCloseByCalendarOffset } from '../lib/calendarDateUtils'
+import { findBaseCloseByCalendarOffset, computeOneYearPriceReturnPct, hasOneYearPriceReturn } from '../lib/calendarDateUtils'
 import { buildSplitAdjustedCloses, resolveSpotCloseAndSessionChange, skipEodSplitHeuristicForSymbol } from '../lib/fundAdjustedCloses'
 import { dedupeStockDailyPricesByTradeDate } from '../lib/stockDailyHistory'
 import { trackAnalyticsEvent } from '../lib/analytics'
-import { MM_SIMULATION_PAST_PERFORMANCE_JA } from '../lib/moneymartSimulationDisclaimer'
 import { fetchMyReferralCode } from '../lib/referralApi'
 import { ReferralShareMenu } from '../components/ReferralShareMenu'
-import HomeOptimizer3DShowcase from '../components/funds/HomeOptimizer3DShowcase'
+import { getReferralCopyUrl } from '../lib/referralShare'
+import MyPageDemoShowcase from '../components/mypage/MyPageDemoShowcase'
+import GuestAssetDiagnosisModal from '../components/home/GuestAssetDiagnosisModal'
+import HomeMobileSignupCta from '../components/home/HomeMobileSignupCta'
+import PortfolioRelatedPanel from '../components/news/PortfolioRelatedPanel'
+import { usePortfolioExposureProfile } from '../hooks/usePortfolioExposureProfile'
+import { fetchAiNewsData } from '../lib/aiNewsClient'
+import CampaignHomeBanner from '../components/campaign/CampaignHomeBanner'
+import CampaignCp2026HomePopup from '../components/campaign/CampaignCp2026HomePopup'
 import { REFERRAL_INVITE_UI_ENABLED } from '../lib/referralUiFlags'
+import { hasPremiumEntitlement, isPaidFromUserProfileRow } from '../lib/membership'
+import {
+  formatCourtesyGiftUntilJa,
+  PREMIUM_COURTESY_GIFT_BADGE,
+} from '../lib/premiumCourtesyGrant'
 import { signedReturnTextClassStrong } from '../lib/marketDirectionColors'
+import { APP_STORE_BADGE_JA_PATH, APP_STORE_IOS_URL } from '../constants/appStore'
 /** FundPage の MAX_SYMBOLS_FOR_HISTORY と揃える。小さいと低流動性銘柄が 1Y 未算出のままになり Top5 から欠落する */
 const HOME_FUND_HISTORY_FETCH_LIMIT = 999
+/** stock_symbols はホームに出る銘柄キーのみ取得（全件 limit スキャンを避ける） */
+const HOME_SYMBOL_META_BATCH = 120
+/** 日足は銘柄ごとクエリ（limit 挙動が明確）。同時実行数でレイテンシを抑える */
+const HOME_HISTORY_FETCH_CONCURRENCY = 48
+/** ホーム Top5 各ランキングから除外（歴史が浅い・テーマ先行などで順位が不安定な銘柄） */
+const HOME_TOP5_EXCLUDED_SYMBOLS = new Set(['413A.T'])
 
 const HOME_MARKET_FLASH = [
   { symbol: '1306.T', headline: '国内株（TOPIX）', sub: '連動型ETF', country: 'JP' },
@@ -50,9 +70,6 @@ const HOME_MARKET_FLASH = [
 ]
 
 /** ホーム「マイページ見た目の例」資産カードのみ。実ユーザーデータではありません。 */
-const HOME_MYPAGE_PREVIEW_DEMO_TOTAL_YEN = 12_450_000
-const HOME_MYPAGE_PREVIEW_DEMO_DELTA_YEN = 128_000
-
 const formatFlashPrice = (p) => {
   if (p == null || !Number.isFinite(Number(p))) return '—'
   const n = Number(p)
@@ -60,7 +77,17 @@ const formatFlashPrice = (p) => {
   return n.toLocaleString('ja-JP', { maximumFractionDigits: 2 })
 }
 
-const ETF_META_MAP = new Map(ETF_LIST_FROM_XLSX.map((item) => [item.symbol, item]))
+/** DB の `aum`（円）を億円に換算した値を FundDetail と同様に兆／億で表示 */
+const formatHomeAumFromOku = (aumOkuYen) => {
+  const v = Number(aumOkuYen)
+  if (!Number.isFinite(v) || v <= 0) return null
+  if (v >= 10000) return `${(v / 10000).toFixed(2)}兆円`
+  return `${v.toLocaleString('ja-JP', { maximumFractionDigits: 1 })}億円`
+}
+
+const ETF_META_MAP = new Map(
+  ETF_LIST_FROM_XLSX.map((item) => [String(item.symbol || '').trim().toUpperCase(), item]),
+)
 const HOME_ETF_SYMBOLS = ETF_LIST_FROM_XLSX.map((item) => item.symbol).filter(Boolean)
 
 const normalizeClassifierText = (value = '') => String(value || '').normalize('NFKC').toUpperCase()
@@ -78,6 +105,12 @@ const detectCategory = (name = '') => {
   if (n.includes('債券') || n.includes('BOND')) return '債券'
   if (n.includes('REIT') || n.includes('リート')) return 'REIT'
   return 'その他'
+}
+
+/** 上場コード先頭の数値（例: 1475.T → 1475）。低コストで信託報酬が同率のとき、アプリの並びに合わせて降順タイブレークする */
+const homeFundLeadingNumericCode = (symbol) => {
+  const m = String(symbol || '').trim().match(/^(\d+)/)
+  return m ? Number(m[1]) : null
 }
 
 const calculateRealizedVolatility = (closes = []) => {
@@ -101,42 +134,19 @@ const RANK_BADGE_CLASSES = [
   'bg-violet-500 text-white',
 ]
 
-const RiskModal = ({ isOpen, onClose, onNavigate, loginRedirectTo = '/tools' }) => {
-  if (!isOpen) return null
-  const handleLogin = () => {
-    onClose()
-    onNavigate('/login', { state: { from: loginRedirectTo } })
-  }
-  return (
-    <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm animate-fadeIn">
-      <div className="bg-white dark:bg-slate-900 rounded-[2rem] p-8 w-full max-w-sm shadow-2xl relative">
-        <button onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"><X size={24} /></button>
-        <h3 className="text-xl font-black text-slate-900 dark:text-white mb-6 flex items-center gap-2">
-          <Sparkles className="text-orange-500" /> 無料AI診断
-        </h3>
-        <p className="text-slate-600 dark:text-slate-400 text-sm mb-6">
-          リスク許容度に基づいたポートフォリオ診断をご提供します。ログインして診断を開始してください。
-        </p>
-        <button
-          onClick={handleLogin}
-          className="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-xl shadow-lg transition"
-        >
-          ログインして診断
-        </button>
-      </div>
-    </div>
-  )
-}
-
 export default function HomePage({
-  openRiskModal,
+  openRiskModal: openRiskModalProp,
   session,
+  authReady = true,
   userProfile = null,
   alertSummary = { insuranceExpiringSoon: 0, pointExpiringSoonCount: 0, budgetOver80Pct: false },
+  showUiMessage = null,
 }) {
   const navigate = useNavigate()
+  const location = useLocation()
   const hookSimulatorRef = useRef(null)
-  const [isRiskModalOpen, setIsRiskModalOpen] = useState(false)
+  const [isGuestDiagOpen, setIsGuestDiagOpen] = useState(false)
+  const [showMobileStickyCta, setShowMobileStickyCta] = useState(false)
   const [fundRanking, setFundRanking] = useState([])
   const [activeTop5Group, setActiveTop5Group] = useState(0)
   const [investType, setInvestType] = useState('nisa')
@@ -148,6 +158,25 @@ export default function HomePage({
   const [referralCode, setReferralCode] = useState(null)
   const [referralCopied, setReferralCopied] = useState(false)
   const [referralShareHint, setReferralShareHint] = useState('')
+  const { profile: homeExposureProfile, loading: homeExposureLoading } = usePortfolioExposureProfile(session?.user?.id)
+  const [homeRelatedNews, setHomeRelatedNews] = useState([])
+
+  useEffect(() => {
+    if (!session?.user?.id) {
+      setHomeRelatedNews([])
+      return undefined
+    }
+    let cancelled = false
+    ;(async () => {
+      try {
+        const { rows } = await fetchAiNewsData()
+        if (!cancelled) setHomeRelatedNews(Array.isArray(rows) ? rows.slice(0, 30) : [])
+      } catch {
+        if (!cancelled) setHomeRelatedNews([])
+      }
+    })()
+    return () => { cancelled = true }
+  }, [session?.user?.id])
 
   const homeAlertCount =
     Number(alertSummary?.insuranceExpiringSoon || 0)
@@ -162,6 +191,19 @@ export default function HomePage({
     mo.observe(el, { attributes: true, attributeFilter: ['class'] })
     return () => mo.disconnect()
   }, [])
+
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(location.search || '')
+      if (params.get('verified') !== '1') return
+      showUiMessage?.('メール確認が完了しました。', 'info')
+      params.delete('verified')
+      const search = params.toString()
+      navigate({ pathname: '/', search: search ? `?${search}` : '' }, { replace: true })
+    } catch {
+      // ignore
+    }
+  }, [location.search, navigate, showUiMessage])
 
   const greetingJa = useMemo(() => {
     const h = new Date().getHours()
@@ -183,6 +225,20 @@ export default function HomePage({
     return `${normalizedDisplayName}さん`
   }, [session, userProfile?.displayName])
 
+  /** 課金／無料お試し中は LP 型ヒーロー・デモを抑え、ダッシュボード寄りのホームにする */
+  const prefersPremiumHomeLayout = useMemo(() => {
+    if (!session?.user || !userProfile) return false
+    if (isPaidFromUserProfileRow(userProfile)) return true
+    return hasPremiumEntitlement({
+      planTier:
+        userProfile.plan_tier
+        || userProfile.membership_tier
+        || userProfile.subscription_tier
+        || userProfile.plan,
+      premiumTrialEndsAt: userProfile.premium_trial_ends_at,
+    })
+  }, [session?.user, userProfile])
+
   const trackAndNavigate = (to, meta = {}) => {
     trackAnalyticsEvent('home_navigation_click', {
       destination: to,
@@ -190,6 +246,39 @@ export default function HomePage({
     })
     navigate(to)
   }
+
+  const diagnosisSignupPath = '/mypage?tab=wealth&onboard=diagnosis'
+
+  const openGuestDiagnosis = (source = 'home') => {
+    if (session?.user) {
+      trackAndNavigate('/mypage?tab=wealth', { source: `${source}_logged_in` })
+      return
+    }
+    trackAnalyticsEvent('guest_diag_open_request', { source })
+    setIsGuestDiagOpen(true)
+  }
+
+  const goDiagnosisSignup = () => {
+    setIsGuestDiagOpen(false)
+    trackAnalyticsEvent('home_navigation_click', {
+      destination: '/signup',
+      source: 'guest_diag_signup',
+    })
+    navigate('/signup', { state: { from: diagnosisSignupPath, intent: 'diagnosis' } })
+  }
+
+  useEffect(() => {
+    if (session?.user || prefersPremiumHomeLayout) {
+      setShowMobileStickyCta(false)
+      return undefined
+    }
+    const onScroll = () => {
+      setShowMobileStickyCta(window.scrollY > 300)
+    }
+    onScroll()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [session?.user, prefersPremiumHomeLayout])
 
   const referralInviteUrl = useMemo(() => {
     if (!referralCode || typeof window === 'undefined') return ''
@@ -199,7 +288,7 @@ export default function HomePage({
   const copyReferralLink = async () => {
     if (!referralInviteUrl) return
     try {
-      await navigator.clipboard.writeText(referralInviteUrl)
+      await navigator.clipboard.writeText(getReferralCopyUrl(referralInviteUrl))
       setReferralCopied(true)
       setReferralShareHint('')
       window.setTimeout(() => setReferralCopied(false), 2000)
@@ -268,29 +357,46 @@ export default function HomePage({
           return
         }
 
-        const latestRows = []
+        const latestChunks = []
         for (let i = 0; i < HOME_ETF_SYMBOLS.length; i += 80) {
-          const batch = HOME_ETF_SYMBOLS.slice(i, i + 80)
-          const { data, error } = await supabase
-            .from('v_stock_latest')
-            .select('symbol,open,close,volume')
-            .in('symbol', batch)
-
-          if (error) throw error
-          latestRows.push(...(data || []))
+          latestChunks.push(HOME_ETF_SYMBOLS.slice(i, i + 80))
+        }
+        const latestResults = await Promise.all(
+          latestChunks.map((batch) =>
+            supabase.from('v_stock_latest').select('symbol,open,close,volume').in('symbol', batch)),
+        )
+        const latestRows = []
+        for (const res of latestResults) {
+          if (res.error) throw res.error
+          latestRows.push(...(res.data || []))
         }
 
-        const { data: symbolRows, error: symbolError } = await supabase
-          .from('stock_symbols')
-          .select('symbol,name,trust_fee')
-          .limit(5000)
-        if (symbolError) throw symbolError
-
-        const symbolMap = new Map((symbolRows || []).map((row) => [row.symbol, row]))
         const latestMap = new Map(
           (latestRows || [])
-            .filter((row) => row?.symbol && ETF_META_MAP.has(row.symbol))
-            .map((row) => [row.symbol, row])
+            .map((row) => {
+              const sym = String(row?.symbol || '').trim().toUpperCase()
+              if (!sym || !ETF_META_MAP.has(sym)) return null
+              return [sym, { ...row, symbol: sym }]
+            })
+            .filter(Boolean),
+        )
+
+        const symbolKeyList = [...latestMap.keys()]
+        const symbolChunks = []
+        for (let i = 0; i < symbolKeyList.length; i += HOME_SYMBOL_META_BATCH) {
+          symbolChunks.push(symbolKeyList.slice(i, i + HOME_SYMBOL_META_BATCH))
+        }
+        const symbolResults = await Promise.all(
+          symbolChunks.map((chunk) =>
+            supabase.from('stock_symbols').select('symbol,name,trust_fee,aum').in('symbol', chunk)),
+        )
+        const symbolRowsAcc = []
+        for (const res of symbolResults) {
+          if (res.error) throw res.error
+          symbolRowsAcc.push(...(res.data || []))
+        }
+        const symbolMap = new Map(
+          symbolRowsAcc.map((row) => [String(row.symbol || '').trim().toUpperCase(), row]),
         )
 
         const symbolsForHistory = [...latestMap.values()]
@@ -304,39 +410,43 @@ export default function HomePage({
         const historyBySymbol = new Map()
 
         const fetchHistoryBySymbol = async (symbol) => {
+          const symKey = String(symbol || '').trim().toUpperCase()
           const { data, error } = await supabase
             .from('stock_daily_prices')
             .select('symbol,trade_date,close,volume,source,fetched_at')
-            .eq('symbol', symbol)
+            .eq('symbol', symKey)
             .gte('trade_date', cutoffStr)
             .order('trade_date', { ascending: true })
             .limit(800)
-
           if (error) throw error
-          return dedupeStockDailyPricesByTradeDate(data || [])
+          return [symKey, dedupeStockDailyPricesByTradeDate(data || [], { mode: 'continuity' })]
         }
 
-        for (let i = 0; i < symbolsForHistory.length; i += 10) {
-          const batch = symbolsForHistory.slice(i, i + 10)
-          const results = await Promise.all(batch.map((symbol) => fetchHistoryBySymbol(symbol)))
-          results.forEach((rows, idx) => {
-            historyBySymbol.set(batch[idx], rows)
+        const hc = HOME_HISTORY_FETCH_CONCURRENCY
+        for (let i = 0; i < symbolsForHistory.length; i += hc) {
+          if (cancelled) return
+          const batch = symbolsForHistory.slice(i, i + hc)
+          const pairs = await Promise.all(batch.map((sym) => fetchHistoryBySymbol(sym)))
+          pairs.forEach(([symKey, rows]) => {
+            historyBySymbol.set(symKey, rows)
           })
         }
+        if (cancelled) return
 
         const rankingRows = [...latestMap.keys()].map((symbol) => {
-          const latest = latestMap.get(symbol) || {}
-          const meta = symbolMap.get(symbol) || {}
-          const xlsxMeta = ETF_META_MAP.get(symbol)
-          const history = historyBySymbol.get(symbol) || []
+          const symKey = String(symbol || '').trim().toUpperCase()
+          const latest = latestMap.get(symKey) || {}
+          const meta = symbolMap.get(symKey) || {}
+          const xlsxMeta = ETF_META_MAP.get(symKey)
+          const history = historyBySymbol.get(symKey) || []
           const adjustedClosesRaw = buildSplitAdjustedCloses(history, {
-            skipSplitHeuristic: skipEodSplitHeuristicForSymbol(symbol),
+            skipSplitHeuristic: skipEodSplitHeuristicForSymbol(symKey),
           })
           const closes = adjustedClosesRaw.filter((value) => Number.isFinite(value) && value > 0)
-          const { close, sessionDod } = resolveSpotCloseAndSessionChange(history, adjustedClosesRaw, latest)
+          const { close } = resolveSpotCloseAndSessionChange(history, adjustedClosesRaw, latest)
           const volumes = history.map((row) => Number(row.volume)).filter((value) => Number.isFinite(value) && value >= 0)
           const historyCount = closes.length
-          const oneYearBaseClose = findBaseCloseByCalendarOffset(history, { years: 1 }, adjustedClosesRaw)
+          const oneMonthBaseClose = findBaseCloseByCalendarOffset(history, { months: 1 }, adjustedClosesRaw)
           const firstTradeDateRaw = history[0]?.trade_date
           const latestTradeDateRaw = history[Math.max(0, history.length - 1)]?.trade_date
           const firstTradeDate = firstTradeDateRaw ? new Date(firstTradeDateRaw) : null
@@ -349,34 +459,36 @@ export default function HomePage({
           )
             ? Math.floor((latestTradeDate.getTime() - firstTradeDate.getTime()) / (1000 * 60 * 60 * 24))
             : 0
-          const hasReliableOneYearHistory = historyCount >= 2 && historySpanDays >= 330
-          const ret1y = hasReliableOneYearHistory && oneYearBaseClose != null && oneYearBaseClose > 0 && close > 0
-            ? ((close - oneYearBaseClose) / oneYearBaseClose) * 100
+          const hasReliableOneMonthHistory = historyCount >= 2 && historySpanDays >= 14
+          const ret1y = computeOneYearPriceReturnPct(history, adjustedClosesRaw, close)
+          const ret1m = hasReliableOneMonthHistory && oneMonthBaseClose != null && oneMonthBaseClose > 0 && close > 0
+            ? ((close - oneMonthBaseClose) / oneMonthBaseClose) * 100
             : null
           const avgVolume = volumes.length > 0
             ? volumes.slice(-30).reduce((sum, value) => sum + value, 0) / Math.min(30, volumes.length)
             : Math.max(0, Number(latest.volume || 0))
-          const ret1d = Number.isFinite(sessionDod.changePct) ? sessionDod.changePct : 0
-          const clickScore = Math.max(0, avgVolume * (1 + (Math.max(ret1d, 0) / 100)))
-          const trustFeeValue = Number.isFinite(Number(meta.trust_fee)) ? Number(meta.trust_fee) : Number(xlsxMeta?.trustFee)
-          const displayName = normalizeFundDisplayName(xlsxMeta?.jpName || meta.name || symbol)
+          const trustFeeValue = parseTrustFeePercent(meta.trust_fee) ?? parseTrustFeePercent(xlsxMeta?.trustFee)
+          const displayName = resolveFundDisplayName(symKey, meta, xlsxMeta, null)
+          const dbAumYen = Number(meta?.aum)
+          const aumOkuYen = Number.isFinite(dbAumYen) && dbAumYen > 0 ? dbAumYen / 1e8 : null
 
           const isinCode = String(xlsxMeta?.isin || '').trim().toUpperCase()
           return {
-            id: symbol,
+            id: symKey,
             name: displayName,
             category: detectCategory(displayName),
-            isAiTheme: AI_THEME_SYMBOL_SET.has(symbol) || AI_THEME_ISIN_SET.has(isinCode) || isAiThemeFundName(displayName),
-            isHighDividend: HIGH_DIVIDEND_SYMBOL_SET.has(symbol) || HIGH_DIVIDEND_ISIN_SET.has(isinCode) || isHighDividendFundName(displayName),
+            isAiTheme: AI_THEME_SYMBOL_SET.has(symKey) || AI_THEME_ISIN_SET.has(isinCode) || isAiThemeFundName(displayName),
+            isHighDividend: HIGH_DIVIDEND_SYMBOL_SET.has(symKey) || HIGH_DIVIDEND_ISIN_SET.has(isinCode) || isHighDividendFundName(displayName),
             trustFee: Number.isFinite(trustFeeValue) ? trustFeeValue : null,
             ret1y,
-            clickScore,
+            ret1m,
             avgVolume,
+            aumOkuYen,
           }
         })
 
         if (!cancelled) {
-          setFundRanking(rankingRows)
+          setFundRanking(rankingRows.filter((row) => !HOME_TOP5_EXCLUDED_SYMBOLS.has(String(row?.id || '').trim().toUpperCase())))
         }
       } catch (error) {
         console.error('Failed to load home fund ranking:', error)
@@ -418,33 +530,34 @@ export default function HomePage({
     }
   }, [investMonthly, investRate, investYears, investType])
 
-  const cashOnlyValue = investProjection.principal
-  const potentialGap = Math.max(0, investProjection.projectedTotal - cashOnlyValue)
-  const investReturnPct = cashOnlyValue > 0 ? (potentialGap / cashOnlyValue) * 100 : 0
   const cashVsInvestSeries = useMemo(() => {
     const years = Math.max(1, Number(investYears) || 1)
     const monthlyYen = Math.max(0, Number(investMonthly) || 0) * 10000
-    const annualRate = Math.max(0, Number(investRate) || 0) / 100
-    const monthlyRate = annualRate / 12
+    const annualRatePct = Math.max(0, Number(investRate) || 0)
+    const monthlyRate = annualRatePct / 100 / 12
+    const assumedTaxRate = 0.2
+    const annualContribution = monthlyYen * 12
     const rows = [{ year: 0, cash: 0, invest: 0, gap: 0 }]
-    let cash = 0
-    let invest = 0
-    for (let year = 1; year <= years; year += 1) {
-      for (let month = 0; month < 12; month += 1) {
-        cash += monthlyYen
-        invest += monthlyYen
-        if (monthlyRate > 0) invest *= (1 + monthlyRate)
+    for (let y = 1; y <= years; y += 1) {
+      const months = y * 12
+      const cash = Math.round(monthlyYen * months)
+      let invest = monthlyRate > 0
+        ? monthlyYen * ((Math.pow(1 + monthlyRate, months) - 1) / monthlyRate)
+        : cash
+      invest = Math.floor(invest)
+      if (investType === 'ideco') {
+        invest += Math.floor(annualContribution * assumedTaxRate * y)
       }
-      rows.push({
-        year,
-        cash: Math.round(cash),
-        invest: Math.round(invest),
-        gap: Math.max(0, Math.round(invest - cash)),
-      })
+      const gap = Math.max(0, invest - cash)
+      rows.push({ year: y, cash, invest, gap })
     }
     return rows
-  }, [investYears, investMonthly, investRate])
-  const finalGapPoint = cashVsInvestSeries[cashVsInvestSeries.length - 1] || { gap: potentialGap }
+  }, [investYears, investMonthly, investRate, investType])
+
+  const cashOnlyValue = investProjection.principal
+  const investDisplayedTotal = investProjection.projectedTotal
+  const displayGap = Math.max(0, investDisplayedTotal - cashOnlyValue)
+  const investReturnPct = cashOnlyValue > 0 ? (displayGap / cashOnlyValue) * 100 : 0
   const refinanceExample = useMemo(() => {
     const principalYen = 35000000
     const years = 25
@@ -476,42 +589,80 @@ export default function HomePage({
     ? (refinanceExample.monthlyDiff / refinanceExample.monthlyCurrent) * 100
     : 0
 
-  /** /funds 一覧と同じく「1年リターンが算出できる銘柄」のみ Top5 に出す */
+  /** Top5 の共通プール：1Y または 1M のどちらかでリターンを算出できる銘柄 */
   const fundRankingOnFundPage = useMemo(
-    () => fundRanking.filter((f) => f?.ret1y != null && Number.isFinite(Number(f.ret1y))),
-    [fundRanking]
+    () => fundRanking.filter((f) => (
+      (f?.ret1y != null && Number.isFinite(Number(f.ret1y)))
+      || (f?.ret1m != null && Number.isFinite(Number(f.ret1m)))
+    )),
+    [fundRanking],
   )
 
-  const mostClickedTop5 = useMemo(() => (
-    [...fundRankingOnFundPage]
-      .sort((a, b) => Number(b.clickScore || 0) - Number(a.clickScore || 0))
+  /** 「注目度」に見えるが実質出来高×日上昇だったため、純資産（aum）順とし「出来高 Top5」と差別化 */
+  const largestAumTop5 = useMemo(() => {
+    const withAum = fundRanking.filter((f) => Number.isFinite(Number(f.aumOkuYen)) && Number(f.aumOkuYen) > 0)
+    const pool = withAum.length >= 3 ? withAum : fundRanking
+    return [...pool]
+      .sort((a, b) => {
+        const aa = Number(a.aumOkuYen)
+        const bb = Number(b.aumOkuYen)
+        const aOk = Number.isFinite(aa) && aa > 0
+        const bOk = Number.isFinite(bb) && bb > 0
+        if (aOk && bOk && bb !== aa) return bb - aa
+        return Number(b.avgVolume || 0) - Number(a.avgVolume || 0)
+      })
       .slice(0, 5)
-  ), [fundRankingOnFundPage])
+  }, [fundRanking])
   const bestPerformingTop5 = useMemo(() => (
     [...fundRankingOnFundPage]
-      .sort((a, b) => Number(b.ret1y || -999) - Number(a.ret1y || -999))
+      .sort((a, b) => {
+        const am = Number(a.ret1m)
+        const bm = Number(b.ret1m)
+        const aM = Number.isFinite(am)
+        const bM = Number.isFinite(bm)
+        if (aM && bM && bm !== am) return bm - am
+        if (aM !== bM) return (bM ? 1 : 0) - (aM ? 1 : 0)
+        const aRet = hasOneYearPriceReturn(a.ret1y) ? Number(a.ret1y) : -999
+        const bRet = hasOneYearPriceReturn(b.ret1y) ? Number(b.ret1y) : -999
+        return bRet - aRet
+      })
       .slice(0, 5)
   ), [fundRankingOnFundPage])
   const lowFeeTop5 = useMemo(() => (
     [...fundRankingOnFundPage]
-      .filter((fund) => Number.isFinite(Number(fund.trustFee)))
-      .sort((a, b) => Number(a.trustFee) - Number(b.trustFee))
+      .filter((fund) => parseTrustFeePercent(fund.trustFee) != null)
+      .sort((a, b) => {
+        const df = Number(a.trustFee) - Number(b.trustFee)
+        if (df !== 0) return df
+        const ca = homeFundLeadingNumericCode(a.id)
+        const cb = homeFundLeadingNumericCode(b.id)
+        if (ca != null && cb != null && cb !== ca) return cb - ca
+        if (ca != null && cb == null) return -1
+        if (ca == null && cb != null) return 1
+        return String(a.id || '').localeCompare(String(b.id || ''), 'ja')
+      })
       .slice(0, 5)
   ), [fundRankingOnFundPage])
   const volumeTop5 = useMemo(() => (
-    [...fundRankingOnFundPage]
+    [...fundRanking]
       .filter((fund) => Number(fund.avgVolume || 0) > 0)
       .sort((a, b) => Number(b.avgVolume || 0) - Number(a.avgVolume || 0))
       .slice(0, 5)
-  ), [fundRankingOnFundPage])
+  ), [fundRanking])
   const aiThemeTop5 = useMemo(() => (
     [...fundRankingOnFundPage]
       .filter((fund) => fund.isAiTheme)
       .sort((a, b) => {
-        const aRet = Number.isFinite(Number(a.ret1y)) ? Number(a.ret1y) : -999
-        const bRet = Number.isFinite(Number(b.ret1y)) ? Number(b.ret1y) : -999
+        const am = Number(a.ret1m)
+        const bm = Number(b.ret1m)
+        const aM = Number.isFinite(am)
+        const bM = Number.isFinite(bm)
+        if (aM && bM && bm !== am) return bm - am
+        if (aM !== bM) return (bM ? 1 : 0) - (aM ? 1 : 0)
+        const aRet = hasOneYearPriceReturn(a.ret1y) ? Number(a.ret1y) : -999
+        const bRet = hasOneYearPriceReturn(b.ret1y) ? Number(b.ret1y) : -999
         if (bRet !== aRet) return bRet - aRet
-        return Number(b.clickScore || 0) - Number(a.clickScore || 0)
+        return Number(b.avgVolume || 0) - Number(a.avgVolume || 0)
       })
       .slice(0, 5)
   ), [fundRankingOnFundPage])
@@ -519,10 +670,16 @@ export default function HomePage({
     [...fundRankingOnFundPage]
       .filter((fund) => fund.isHighDividend)
       .sort((a, b) => {
-        const aRet = Number.isFinite(Number(a.ret1y)) ? Number(a.ret1y) : -999
-        const bRet = Number.isFinite(Number(b.ret1y)) ? Number(b.ret1y) : -999
+        const am = Number(a.ret1m)
+        const bm = Number(b.ret1m)
+        const aM = Number.isFinite(am)
+        const bM = Number.isFinite(bm)
+        if (aM && bM && bm !== am) return bm - am
+        if (aM !== bM) return (bM ? 1 : 0) - (aM ? 1 : 0)
+        const aRet = hasOneYearPriceReturn(a.ret1y) ? Number(a.ret1y) : -999
+        const bRet = hasOneYearPriceReturn(b.ret1y) ? Number(b.ret1y) : -999
         if (bRet !== aRet) return bRet - aRet
-        return Number(b.clickScore || 0) - Number(a.clickScore || 0)
+        return Number(b.avgVolume || 0) - Number(a.avgVolume || 0)
       })
       .slice(0, 5)
   ), [fundRankingOnFundPage])
@@ -530,26 +687,36 @@ export default function HomePage({
     const sections = [
       {
         id: 'interest',
-        title: '注目度 Top 5',
+        title: '規模（純資産）Top 5',
         tone: 'slate',
         accent: 'hover:border-blue-300',
         source: 'home_top_interest',
-        list: mostClickedTop5,
+        list: largestAumTop5,
         empty: 'データがありません',
-        metric: (fund) => `関心指標 ${Math.round(Number(fund.clickScore || 0)).toLocaleString()}`,
+        metric: (fund) => {
+          const label = formatHomeAumFromOku(fund.aumOkuYen)
+          if (label) return `純資産 ${label}`
+          return `平均出来高 ${Math.round(Number(fund.avgVolume || 0) / 1000).toLocaleString('ja-JP')}K（純資産未取得）`
+        },
         metricClass: 'text-slate-500 dark:text-slate-400',
       },
       {
         id: 'performance',
-        title: '高パフォーマンス商品 Top 5',
+        title: 'モメンタム Top 5（直近1か月）',
         tone: 'emerald',
         accent: 'hover:border-emerald-300',
         source: 'home_top_performance',
         list: bestPerformingTop5,
         empty: 'データがありません',
-        metric: (fund) => `1Y ${Number(fund.ret1y) > 0 ? '+' : ''}${Number(fund.ret1y).toFixed(1)}%`,
+        metric: (fund) => {
+          const m = Number(fund.ret1m)
+          if (Number.isFinite(m)) return `1M ${m >= 0 ? '+' : ''}${m.toFixed(1)}%`
+          if (!hasOneYearPriceReturn(fund.ret1y)) return '--'
+          const y = Number(fund.ret1y)
+          return `1Y ${y > 0 ? '+' : ''}${y.toFixed(1)}%`
+        },
         metricClass: (fund) => {
-          const r = Number(fund.ret1y)
+          const r = Number.isFinite(Number(fund.ret1m)) ? Number(fund.ret1m) : Number(fund.ret1y)
           if (!Number.isFinite(r)) return 'text-slate-500 dark:text-slate-400'
           return signedReturnTextClassStrong(r)
         },
@@ -562,7 +729,7 @@ export default function HomePage({
         source: 'home_top_low_fee',
         list: lowFeeTop5,
         empty: '手数料データがありません',
-        metric: (fund) => `信託報酬 ${Number(fund.trustFee).toFixed(2)}%`,
+        metric: (fund) => `信託報酬 ${formatTrustFeePercent(fund.trustFee)}`,
         metricClass: 'text-indigo-600 dark:text-indigo-300',
       },
       {
@@ -573,7 +740,7 @@ export default function HomePage({
         source: 'home_top_volume',
         list: volumeTop5,
         empty: '出来高データがありません',
-        metric: (fund) => `平均出来高 ${Math.round(Number(fund.avgVolume || 0) / 1000).toLocaleString()}K`,
+        metric: (fund) => `平均出来高 ${Math.round(Number(fund.avgVolume || 0) / 1000).toLocaleString('ja-JP')}K（株・約30日）`,
         metricClass: 'text-orange-600 dark:text-orange-300',
       },
       {
@@ -584,14 +751,18 @@ export default function HomePage({
         source: 'home_top_ai_theme',
         list: aiThemeTop5,
         empty: 'AIテーマデータがありません',
-        metric: (fund) => Number.isFinite(Number(fund.ret1y))
-          ? `1Y ${Number(fund.ret1y) > 0 ? '+' : ''}${Number(fund.ret1y).toFixed(1)}%`
-          : `関心指標 ${Math.round(Number(fund.clickScore || 0)).toLocaleString()}`,
-        metricClass: (fund) => (
-          Number.isFinite(Number(fund.ret1y))
-            ? signedReturnTextClassStrong(Number(fund.ret1y))
+        metric: (fund) => {
+          const m = Number(fund.ret1m)
+          if (Number.isFinite(m)) return `1M ${m >= 0 ? '+' : ''}${m.toFixed(1)}%`
+          if (hasOneYearPriceReturn(fund.ret1y)) return `1Y ${Number(fund.ret1y) > 0 ? '+' : ''}${Number(fund.ret1y).toFixed(1)}%`
+          return '--'
+        },
+        metricClass: (fund) => {
+          const r = Number.isFinite(Number(fund.ret1m)) ? Number(fund.ret1m) : Number(fund.ret1y)
+          return Number.isFinite(r)
+            ? signedReturnTextClassStrong(r)
             : 'text-orange-600 dark:text-orange-300'
-        ),
+        },
       },
       {
         id: 'high-dividend',
@@ -601,11 +772,14 @@ export default function HomePage({
         source: 'home_top_high_dividend',
         list: highDividendTop5,
         empty: '高配当データがありません',
-        metric: (fund) => Number.isFinite(Number(fund.ret1y))
-          ? `1Y ${Number(fund.ret1y) > 0 ? '+' : ''}${Number(fund.ret1y).toFixed(1)}%`
-          : `関心指標 ${Math.round(Number(fund.clickScore || 0)).toLocaleString()}`,
+        metric: (fund) => {
+          const m = Number(fund.ret1m)
+          if (Number.isFinite(m)) return `1M ${m >= 0 ? '+' : ''}${m.toFixed(1)}%`
+          if (hasOneYearPriceReturn(fund.ret1y)) return `1Y ${Number(fund.ret1y) > 0 ? '+' : ''}${Number(fund.ret1y).toFixed(1)}%`
+          return '--'
+        },
         metricClass: (fund) => {
-          const r = Number(fund.ret1y)
+          const r = Number.isFinite(Number(fund.ret1m)) ? Number(fund.ret1m) : Number(fund.ret1y)
           if (!Number.isFinite(r)) return 'text-slate-500 dark:text-slate-400'
           return signedReturnTextClassStrong(r)
         },
@@ -614,7 +788,7 @@ export default function HomePage({
     const pages = []
     for (let i = 0; i < sections.length; i += 2) pages.push(sections.slice(i, i + 2))
     return pages
-  }, [aiThemeTop5, bestPerformingTop5, highDividendTop5, lowFeeTop5, mostClickedTop5, volumeTop5])
+  }, [aiThemeTop5, bestPerformingTop5, highDividendTop5, largestAumTop5, lowFeeTop5, volumeTop5])
 
   useEffect(() => {
     if (top5SectionPages.length <= 1) return undefined
@@ -629,11 +803,11 @@ export default function HomePage({
       trackAndNavigate('/tools', { source: 'home_step_diagnose' })
       return
     }
-    if (typeof openRiskModal === 'function') {
-      openRiskModal()
-    } else {
-      setIsRiskModalOpen(true)
+    if (typeof openRiskModalProp === 'function') {
+      openRiskModalProp()
+      return
     }
+    openGuestDiagnosis('home_step_diagnose')
   }
 
   const moneySupportFeatures = [
@@ -641,8 +815,8 @@ export default function HomePage({
       id: 'feature-1',
       icon: Wallet,
       accent: 'from-rose-100 to-rose-50 dark:from-rose-900/40 dark:to-rose-900/10 text-rose-600 dark:text-rose-300',
-      title: '会員登録後すぐに、無料で使いはじめられます',
-      desc: '会員登録後、すぐに家計・資産の見える化を開始できます。毎日の確認もワンタップで完結。',
+      title: '登録すればすぐ、無料で使いはじめられます',
+      desc: '登録後すぐ、家計・資産の見える化がスタート。毎日の確認もワンタップで完結します。',
       cta: 'まずは家計管理を始める',
       link: '/mypage?tab=wealth',
     },
@@ -650,8 +824,8 @@ export default function HomePage({
       id: 'feature-2',
       icon: Layers3,
       accent: 'from-amber-100 to-amber-50 dark:from-amber-900/40 dark:to-amber-900/10 text-amber-700 dark:text-amber-300',
-      title: '資産全体を、ひとつの画面で把握する',
-      desc: '投資・家計・ローンをひとつの画面に集約。バラバラになりがちな情報を、整理して確認できます。',
+      title: '資産全体を、ひとつの画面で把握できます',
+      desc: '投資・家計・ローンをひとつの画面に集約。散らばりがちな情報を、すっきり整理できます。',
       cta: '資産運用タブを見る',
       link: '/mypage?tab=wealth',
     },
@@ -660,19 +834,24 @@ export default function HomePage({
       icon: Sparkles,
       accent: 'from-sky-100 to-sky-50 dark:from-sky-900/40 dark:to-sky-900/10 text-sky-600 dark:text-sky-300',
       title: '1分で、今月の状況を確認できます',
-      desc: '推移チャートとインサイトで、今月の資産変化とチェックポイントをすばやく把握できます。',
+      desc: '推移チャートとインサイトで、今月の資産変化をすばやく把握。チェックポイントも一目でわかります。',
       cta: '分析レポートを確認',
       link: '/mypage?tab=wealth',
     },
   ]
 
   return (
-    <div className="pb-24 animate-fadeIn font-sans bg-[#F8FAFC] dark:bg-slate-950">
+    <div className={`animate-fadeIn font-sans bg-[#F8FAFC] dark:bg-slate-950 ${!session?.user && showMobileStickyCta ? 'pb-32' : 'pb-24'} md:pb-24`}>
       <style>{`
         @keyframes mmPhoneFloat {
           0% { transform: translateY(0px) rotate(9deg); }
           50% { transform: translateY(-8px) rotate(9deg); }
           100% { transform: translateY(0px) rotate(9deg); }
+        }
+        @keyframes mmPhoneFloatLg {
+          0% { transform: translate(12px, 56px) rotate(8deg); }
+          50% { transform: translate(12px, 48px) rotate(8deg); }
+          100% { transform: translate(12px, 56px) rotate(8deg); }
         }
         @keyframes mmTop5FadeSlide {
           0% { opacity: 0; transform: translateY(10px) scale(0.985); }
@@ -697,31 +876,153 @@ export default function HomePage({
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[min(95%,48rem)] h-[75%] bg-orange-100/35 dark:bg-orange-950/25 blur-[74px] rounded-full" />
         </div>
 
-        <div
-          className={`max-w-7xl mx-auto relative z-10 grid grid-cols-1 gap-8 md:gap-10 lg:grid-cols-[1.12fr_1fr] lg:gap-x-5 lg:gap-y-10 lg:items-start ${
+        <div className="max-w-7xl mx-auto relative z-10">
+          <CampaignHomeBanner userEmail={session?.user?.email} />
+          {prefersPremiumHomeLayout ? (
+            <div className="px-3 sm:px-4 md:px-5 lg:px-8 pt-1 pb-4 space-y-6">
+              <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-5">
+                <div className="min-w-0 flex-1 max-w-3xl">
+                  {userProfile?.courtesyPremiumGiftActive ? (
+                    <div className="rounded-2xl border-2 border-amber-300/90 dark:border-amber-600 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/50 dark:to-orange-950/40 px-4 py-3 shadow-md shadow-amber-500/10">
+                      <p className="text-sm sm:text-base font-black text-amber-900 dark:text-amber-100">
+                        {PREMIUM_COURTESY_GIFT_BADGE}
+                      </p>
+                      <p className="mt-1 text-xs sm:text-sm text-amber-800/90 dark:text-amber-200/90 leading-relaxed">
+                        ご利用ありがとうございます。
+                        {formatCourtesyGiftUntilJa(userProfile?.premiumUntil) ? (
+                          <>
+                            {' '}
+                            <span className="font-bold">
+                              {formatCourtesyGiftUntilJa(userProfile?.premiumUntil)}
+                            </span>
+                            まで Premium 機能をお使いいただけます。
+                          </>
+                        ) : (
+                          ' Premium 機能をお使いいただけます。'
+                        )}
+                      </p>
+                    </div>
+                  ) : (
+                    <span className="inline-flex items-center rounded-full bg-gradient-to-r from-amber-500 to-orange-500 px-3 py-1 text-white font-black text-xs shadow-md">
+                      プレミアム会員
+                    </span>
+                  )}
+                  <h1 className="mt-4 font-black tracking-tight text-slate-900 dark:text-white text-[1.65rem] sm:text-3xl md:text-[2.05rem] leading-snug">
+                    {greetingJa}、{appHomeDisplayName}
+                  </h1>
+                  <p className="mt-3 text-sm md:text-base text-slate-600 dark:text-slate-400 leading-relaxed">
+                    いつもご利用ありがとうございます。マーケットやランキングはこのまま下へ。資産・保有の入力と詳細はマイページで確認できます。
+                  </p>
+                  <div className="mt-5 flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => trackAndNavigate('/mypage?tab=wealth', { source: 'home_premium_hero_mypage' })}
+                      className="px-6 py-3 bg-orange-500 text-white hover:bg-orange-600 rounded-full font-black text-sm md:text-base shadow-[0_12px_26px_rgba(249,115,22,0.35)] inline-flex items-center gap-1.5 min-h-[46px]"
+                    >
+                      マイページへ
+                      <ArrowRight size={17} strokeWidth={2.5} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => trackAndNavigate('/market', { source: 'home_premium_hero_market' })}
+                      className="px-5 py-3 rounded-full font-black text-sm border-2 border-slate-300 dark:border-slate-600 text-slate-800 dark:text-slate-100 hover:bg-white/80 dark:hover:bg-slate-800/80 min-h-[46px]"
+                    >
+                      マーケット
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => trackAndNavigate('/funds', { source: 'home_premium_hero_funds' })}
+                      className="px-5 py-3 rounded-full font-black text-sm border-2 border-slate-300 dark:border-slate-600 text-slate-800 dark:text-slate-100 hover:bg-white/80 dark:hover:bg-slate-800/80 min-h-[46px]"
+                    >
+                      ファンド一覧
+                    </button>
+                  </div>
+                  <div className="mt-4 flex flex-wrap items-center gap-3">
+                    <a
+                      href={APP_STORE_IOS_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex shrink-0 items-center rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-950"
+                    >
+                      <img
+                        src={APP_STORE_BADGE_JA_PATH}
+                        alt="App Storeからダウンロード"
+                        width={140}
+                        height={42}
+                        className="h-[38px] w-auto sm:h-11"
+                        loading="lazy"
+                        decoding="async"
+                      />
+                    </a>
+                  </div>
+                </div>
+              </div>
+              {REFERRAL_INVITE_UI_ENABLED && session?.user && referralCode ? (
+                <div
+                  id="home-invite-friends"
+                  className="w-full max-w-lg lg:max-w-none mx-auto lg:mx-0 rounded-2xl border-2 border-orange-300 dark:border-orange-700 bg-white/90 dark:bg-slate-900/80 px-4 py-3 shadow-md shadow-orange-500/10"
+                >
+                  <p className="text-xs font-black text-orange-600 dark:text-orange-400 mb-1">友だち招待</p>
+                  <p className="text-sm font-black text-slate-900 dark:text-white mb-1">招待リンクをコピー・共有</p>
+                  <p className="text-xs text-slate-600 dark:text-slate-400 mb-2 leading-relaxed">
+                    友だちがこのURLから<span className="font-bold text-orange-600 dark:text-orange-400">無料登録</span>すると、あなたの紹介として記録されます。
+                  </p>
+                  <div className="flex flex-col lg:flex-row lg:items-stretch lg:gap-4">
+                    <code className="block flex-1 min-w-0 text-[11px] font-mono break-all text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 rounded-lg px-2 py-1.5 mb-2 lg:mb-0 border border-slate-200 dark:border-slate-700 lg:self-center">
+                      {referralInviteUrl}
+                    </code>
+                    <div className="flex flex-col sm:flex-row gap-2 shrink-0 lg:w-[min(100%,380px)]">
+                      <button
+                        type="button"
+                        onClick={() => void copyReferralLink()}
+                        className="flex-1 min-h-10 px-3 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-black"
+                      >
+                        {referralCopied ? 'コピーしました' : 'リンクをコピー'}
+                      </button>
+                      <ReferralShareMenu
+                        inviteUrl={referralInviteUrl}
+                        onShareMethod={(method) => trackAnalyticsEvent('home_referral_share', { method })}
+                        onNotify={(msg) => {
+                          setReferralShareHint(msg)
+                          window.setTimeout(() => setReferralShareHint(''), 2500)
+                        }}
+                      />
+                    </div>
+                  </div>
+                  {referralShareHint ? (
+                    <p className="mt-2 text-xs font-bold text-emerald-600 dark:text-emerald-400">{referralShareHint}</p>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <div
+              className={`grid grid-cols-1 gap-8 md:gap-10 lg:grid-cols-[1.12fr_1fr] lg:gap-x-10 xl:gap-x-12 lg:gap-y-10 lg:items-start ${
             REFERRAL_INVITE_UI_ENABLED && session?.user && referralCode
-              ? "[grid-template-areas:'hero-text'_'hero-refer'_'hero-phone'] lg:[grid-template-areas:'hero-text_hero-phone'_'hero-refer_hero-refer']"
-              : "[grid-template-areas:'hero-text'_'hero-phone'] lg:[grid-template-areas:'hero-text_hero-phone']"
+              ? "[grid-template-areas:'hero-text'_'hero-film'_'hero-refer'_'hero-phone'] lg:[grid-template-areas:'hero-text_hero-phone'_'hero-refer_hero-refer'_'hero-film_hero-film']"
+              : "[grid-template-areas:'hero-text'_'hero-film'_'hero-phone'] lg:[grid-template-areas:'hero-text_hero-phone'_'hero-film_hero-film']"
           }`}
-        >
+            >
           <div className="[grid-area:hero-text] text-left flex flex-col items-start min-w-0 w-full px-3 sm:px-4 md:px-5 lg:pl-6 lg:pr-2 xl:pl-8">
             <div className="mb-4 md:mb-6">
               <p className="inline-flex items-center rounded-full bg-gradient-to-r from-orange-500 to-orange-400 px-4 py-2 text-white font-black text-base md:text-lg shadow-[0_8px_18px_rgba(249,115,22,0.35)]">
-                金融の始まりは、ここから。
+                金融の第一歩は、ここから。
               </p>
             </div>
 
             <h1 className="font-black tracking-tight mb-3 md:mb-4 max-w-xl lg:max-w-2xl min-w-0">
-              {/* bg-clip-text は WebKit で字形の上が欠けることがあるため、グラデに近いソリッド色で分割 */}
               <div className="w-full min-w-0">
                 <span className="inline-block max-w-full whitespace-nowrap text-[clamp(1.02rem,calc(2.2vw_+_0.78rem),2.9rem)] sm:text-[2.2rem] md:text-[2.55rem] lg:text-[2.9rem] leading-normal sm:leading-snug py-0.5">
-                  <span className="text-orange-600 dark:text-orange-400">金融の選択を、</span>
-                  <span className="text-orange-500 dark:text-orange-300">もっと</span>
-                  <span className="text-red-600 dark:text-red-400">スマートに。</span>
+                  <span className="text-orange-600 dark:text-orange-400">ポートフォリオの</span>
+                  <span className="text-orange-500 dark:text-orange-300">偏りを、</span>
+                  <span className="text-red-600 dark:text-red-400">見える化する。</span>
                 </span>
               </div>
-              <span className="block mt-1 sm:mt-1.5 text-slate-900 dark:text-slate-100 text-[1.62rem] min-[400px]:text-[1.75rem] sm:text-[2.2rem] md:text-[2.55rem] lg:text-[2.9rem] leading-[1.12] sm:leading-[1.08] text-balance">
-                必要なものは、ここに<span className="text-red-500 dark:text-red-400">揃う</span>。
+              <span className="block mt-1 sm:mt-1.5 text-slate-900 dark:text-slate-100 text-[1.62rem] min-[400px]:text-[1.75rem] sm:text-[2.2rem] md:text-[2.55rem] lg:text-[2.9rem] leading-[1.22] sm:leading-[1.18] break-keep">
+                <span className="block">まずはETFを2本、並べて比べる</span>
+                <span className="block">
+                  新NISA・配当を<span className="text-red-500 dark:text-red-400">ひとつの画面で</span>。
+                </span>
               </span>
             </h1>
 
@@ -735,42 +1036,98 @@ export default function HomePage({
                 <span className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-orange-100 dark:bg-orange-950/70 text-orange-600 dark:text-orange-400 ring-1 ring-orange-300/80 dark:ring-orange-700/60">
                   <Check size={14} strokeWidth={3} className="text-orange-600 dark:text-orange-400" />
                 </span>
-                <span>中立な比較（<span className="text-orange-600 dark:text-orange-400">提携なし</span>）</span>
+                <span>同じ指数のETFを<span className="text-orange-600 dark:text-orange-400">2本比較</span>（例: TOPIXの1306と1475）</span>
               </li>
               <li className="flex items-start gap-3 text-base md:text-lg text-slate-800 dark:text-slate-200 font-bold leading-snug">
                 <span className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-orange-100 dark:bg-orange-950/70 text-orange-600 dark:text-orange-400 ring-1 ring-orange-300/80 dark:ring-orange-700/60">
                   <Check size={14} strokeWidth={3} className="text-orange-600 dark:text-orange-400" />
                 </span>
-                <span>登録するだけで、<span className="text-orange-600 dark:text-orange-400">すぐ使える</span></span>
+                <span>口座・銀行<span className="text-orange-600 dark:text-orange-400">連携不要</span>・無料マイページ</span>
               </li>
               <li className="flex items-start gap-3 text-base md:text-lg text-slate-800 dark:text-slate-200 font-bold leading-snug">
                 <span className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-orange-100 dark:bg-orange-950/70 text-orange-600 dark:text-orange-400 ring-1 ring-orange-300/80 dark:ring-orange-700/60">
                   <Check size={14} strokeWidth={3} className="text-orange-600 dark:text-orange-400" />
                 </span>
-                <span>主要サービスをまとめて<span className="text-orange-600 dark:text-orange-400">比較</span></span>
+                <span><span className="text-orange-600 dark:text-orange-400">3つの質問</span>で資産の中心・リスク・期間を整理</span>
+              </li>
+              <li className="flex items-start gap-3 text-base md:text-lg text-slate-800 dark:text-slate-200 font-bold leading-snug">
+                <span className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-orange-100 dark:bg-orange-950/70 text-orange-600 dark:text-orange-400 ring-1 ring-orange-300/80 dark:ring-orange-700/60">
+                  <Check size={14} strokeWidth={3} className="text-orange-600 dark:text-orange-400" />
+                </span>
+                <span>新NISA枠と<span className="text-orange-600 dark:text-orange-400">配当の見通し</span>を同じ流れで整理</span>
+              </li>
+              <li className="flex items-start gap-3 text-base md:text-lg text-slate-800 dark:text-slate-200 font-bold leading-snug">
+                <span className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-orange-100 dark:bg-orange-950/70 text-orange-600 dark:text-orange-400 ring-1 ring-orange-300/80 dark:ring-orange-700/60">
+                  <Check size={14} strokeWidth={3} className="text-orange-600 dark:text-orange-400" />
+                </span>
+                <span><span className="text-orange-600 dark:text-orange-400">提携なし</span>の中立比較・市場分析</span>
               </li>
             </ul>
+            <p className="mb-5 max-w-lg text-xs md:text-sm leading-relaxed text-slate-500 dark:text-slate-400">
+              将来の運用成果を保証するものではありません。
+              <Link to="/legal/methodology" className="ml-1 font-bold text-orange-600 dark:text-orange-400 underline underline-offset-2">編集・データ方針</Link>
+            </p>
 
             <div className="flex flex-col w-full sm:w-auto justify-start gap-3">
+              <div className="flex flex-row flex-wrap items-center gap-x-4 gap-y-2">
+                <button
+                  type="button"
+                  onClick={() => (
+                    session?.user
+                      ? trackAndNavigate('/mypage?tab=wealth', { source: 'home_hero_mypage' })
+                      : openGuestDiagnosis('home_hero')
+                  )}
+                  className="px-7 py-3.5 sm:py-4 bg-orange-500 text-white hover:bg-orange-600 rounded-full font-black text-base md:text-lg transition shadow-[0_12px_26px_rgba(249,115,22,0.35)] inline-flex items-center justify-center gap-1.5 min-h-[48px] shrink-0"
+                >
+                  {session?.user ? 'マイページを開く' : '30秒で資産診断をはじめる'}
+                  <ArrowRight size={18} strokeWidth={2.5} />
+                </button>
+                <a
+                  href={APP_STORE_IOS_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex shrink-0 items-center rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-950"
+                >
+                  <img
+                    src={APP_STORE_BADGE_JA_PATH}
+                    alt="App Storeからダウンロード"
+                    width={140}
+                    height={42}
+                    className="h-[38px] w-auto sm:h-11"
+                    loading="eager"
+                    decoding="async"
+                  />
+                </a>
+              </div>
               <button
                 type="button"
-                onClick={() => (session?.user ? trackAndNavigate('/mypage?tab=wealth', { source: 'home_hero_mypage' }) : trackAndNavigate('/signup', { source: 'home_hero_signup' }))}
-                className="px-7 py-3.5 sm:py-4 bg-orange-500 text-white hover:bg-orange-600 rounded-full font-black text-base md:text-lg transition shadow-[0_12px_26px_rgba(249,115,22,0.35)] inline-flex items-center justify-center gap-1.5 min-h-[48px] w-full sm:w-auto"
-              >
-                {session?.user ? 'マイページへ' : '無料登録'}
-                <ArrowRight size={18} strokeWidth={2.5} />
-              </button>
-              <button
-                type="button"
-                onClick={() => (
-                  session?.user
-                    ? trackAndNavigate('/mypage?tab=wealth', { source: 'home_hero_today_finance_data' })
-                    : trackAndNavigate('/signup', { source: 'home_hero_today_finance_data_signup' })
-                )}
+                onClick={() => {
+                  if (session?.user) {
+                    trackAndNavigate('/mypage?tab=wealth', { source: 'home_hero_today_finance_data' })
+                    return
+                  }
+                  trackAnalyticsEvent('home_navigation_click', {
+                    destination: '/signup',
+                    source: 'home_hero_signup_secondary',
+                  })
+                  navigate('/signup', { state: { from: diagnosisSignupPath, intent: 'diagnosis' } })
+                }}
                 className="text-left text-sm font-bold text-slate-600 dark:text-slate-400 underline-offset-4 hover:underline py-0.5"
               >
-                今日の金融データを見る ↓
+                {session?.user ? '資産タブを開く' : '登録だけ先に進む（無料）'}
               </button>
+              {!session?.user ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    trackAnalyticsEvent('home_hero_scroll_mypage_demo', { source: 'home_hero' })
+                    document.getElementById('home-mypage-preview')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                  }}
+                  className="text-left text-sm font-bold text-slate-500 dark:text-slate-500 underline-offset-4 hover:underline py-0.5"
+                >
+                  マイページの使い方を見る ↓
+                </button>
+              ) : null}
               {REFERRAL_INVITE_UI_ENABLED && !session?.user ? (
                 <p className="text-sm text-slate-600 dark:text-slate-400 max-w-lg leading-relaxed">
                   無料登録後は、友だち招待リンクでシェアできます。
@@ -817,16 +1174,21 @@ export default function HomePage({
             </div>
           ) : null}
 
-          <div className="[grid-area:hero-phone] relative flex justify-center lg:justify-center lg:pl-0 lg:pr-2 xl:pl-1 xl:pr-4">
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <section className="[grid-area:hero-film] min-w-0 w-full px-3 sm:px-4 md:px-5 lg:px-6 lg:col-span-2" aria-label="ブランドフィルム">
+            <div className="mx-auto w-full max-w-4xl min-w-0">
+              <HomeHeroBrandFilm />
+            </div>
+          </section>
+
+          <div className="[grid-area:hero-phone] relative flex justify-center lg:justify-end lg:items-start lg:pl-4 lg:pr-2 xl:pl-6 xl:pr-4 pt-2 lg:pt-16 xl:pt-20">
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none lg:translate-y-14">
               <div className="w-64 h-60 md:w-72 md:h-64 bg-orange-200/45 dark:bg-orange-900/35 blur-3xl rounded-full" style={{ animation: 'mmPhoneGlowPulse 3.8s ease-in-out infinite' }} />
               <div className="absolute w-80 h-80 md:w-[22rem] md:h-[22rem] rounded-full bg-orange-300/30 dark:bg-orange-800/25 blur-[78px]" style={{ animation: 'mmPhoneGlowPulse 4.6s ease-in-out infinite 120ms' }} />
               <div className="absolute w-[320px] h-[320px] md:w-[370px] md:h-[370px] rounded-full border border-white/45 dark:border-orange-400/20 shadow-[0_0_95px_rgba(255,255,255,0.45),0_0_120px_rgba(251,146,60,0.28)] dark:shadow-[0_0_80px_rgba(251,146,60,0.15),0_0_100px_rgba(15,23,42,0.5)]" style={{ animation: 'mmPhoneGlowPulse 5.2s ease-in-out infinite 240ms' }} />
             </div>
             {/* コンパクト「アプリ」シェル：中身はスクロールで全機能へジャンプ可能 */}
             <div
-              className="relative z-[1] w-[min(100%,312px)] sm:w-[min(100%,334px)] h-[min(500px,76vh)] max-h-[min(500px,76vh)] flex flex-col rounded-[1.65rem] overflow-hidden shadow-[0_26px_60px_rgba(0,0,0,0.35),0_0_60px_rgba(251,146,60,0.36)] dark:shadow-[0_26px_60px_rgba(0,0,0,0.65),0_0_48px_rgba(251,146,60,0.22)] border border-white/35 dark:border-slate-600/40 ring-2 ring-orange-200/45 dark:ring-orange-900/50 bg-[#0f0a08] lg:-translate-x-1 xl:-translate-x-2"
-              style={{ animation: 'mmPhoneFloat 5.2s ease-in-out infinite' }}
+              className="relative z-[1] w-[min(100%,312px)] sm:w-[min(100%,334px)] h-[min(500px,76vh)] max-h-[min(500px,76vh)] flex flex-col rounded-[1.65rem] overflow-hidden shadow-[0_26px_60px_rgba(0,0,0,0.35),0_0_60px_rgba(251,146,60,0.36)] dark:shadow-[0_26px_60px_rgba(0,0,0,0.65),0_0_48px_rgba(251,146,60,0.22)] border border-white/35 dark:border-slate-600/40 ring-2 ring-orange-200/45 dark:ring-orange-900/50 bg-[#0f0a08] max-lg:[animation:mmPhoneFloat_5.2s_ease-in-out_infinite] lg:[animation:mmPhoneFloatLg_5.2s_ease-in-out_infinite]"
             >
               <div className="shrink-0 h-3 flex items-end justify-center pb-0.5 bg-[#0f0a08]">
                 <div className="w-11 h-[3px] rounded-full bg-slate-600" />
@@ -982,192 +1344,94 @@ export default function HomePage({
               </div>
             </div>
           </div>
+            </div>
+          )}
         </div>
       </section>
 
-      {/* 登録前の離脱防止：マイページ相当機能のイメージ（資産カードのみ見本金額あり・実データではない） */}
-      <section className="max-w-7xl mx-auto px-4 mt-8 mb-8" aria-labelledby="home-mypage-preview-heading">
-        <div className="rounded-[1.75rem] border border-orange-200/80 dark:border-orange-900/40 bg-gradient-to-br from-orange-50/90 via-white to-amber-50/50 dark:from-slate-900 dark:via-slate-900 dark:to-orange-950/30 p-5 md:p-7 shadow-sm">
-          <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-5 mb-6">
-            <div className="max-w-2xl">
-              <p className="text-[11px] font-black tracking-[0.2em] text-orange-600 dark:text-orange-400">登録前にイメージ</p>
-              <h2 id="home-mypage-preview-heading" className="mt-2 text-xl md:text-2xl font-black text-slate-900 dark:text-white leading-snug">
-                無料登録すると、資産・配当の整理とファンド配分の検討をこのアプリひとつで始められます
-              </h2>
-              <p className="mt-2 text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
-                読み込み中ではなく、<strong className="text-slate-800 dark:text-slate-200">完成した画面の見た目の例</strong>です。下の金額は<strong className="text-slate-800 dark:text-slate-200">デモ用の見本</strong>で、登録後は保有・口座から<strong className="text-slate-800 dark:text-slate-200">あなたの実数</strong>が集計されます。
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => trackAndNavigate(session?.user ? '/mypage?tab=wealth' : '/signup', { source: 'home_mypage_preview_cta' })}
-              className="shrink-0 inline-flex items-center justify-center gap-2 rounded-full bg-orange-500 hover:bg-orange-600 text-white text-sm font-black px-6 py-3 shadow-md shadow-orange-500/25"
+      {session?.user ? (
+        <section className="max-w-7xl mx-auto px-4 mt-6">
+          <PortfolioRelatedPanel
+            exposureProfile={homeExposureProfile}
+            loading={homeExposureLoading}
+            newsRows={homeRelatedNews}
+            compact
+          />
+          <div className="mt-2 flex justify-end">
+            <Link
+              to="/mypage?tab=related"
+              className="text-xs font-black text-orange-600 dark:text-orange-400 underline underline-offset-2"
             >
-              {session?.user ? 'マイページを開く' : '無料登録で試す'}
-              <ArrowRight size={18} />
-            </button>
+              マイページで詳しく見る →
+            </Link>
           </div>
+        </section>
+      ) : null}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 sm:[grid-template-columns:minmax(0,1fr)_minmax(0,1fr)] gap-4 items-stretch">
-            <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 p-5 sm:p-5 shadow-sm min-w-0 w-full h-full flex flex-col">
-              <div className="flex items-center gap-2 mb-3 shrink-0">
-                <div className="h-9 w-9 rounded-xl bg-slate-900 dark:bg-orange-500 flex items-center justify-center">
-                  <Wallet size={18} className="text-white" />
-                </div>
-                <div>
-                  <p className="text-xs font-black text-orange-600 dark:text-orange-400">マイページ</p>
-                  <p className="text-sm font-black text-slate-900 dark:text-white">資産のダッシュボード</p>
-                </div>
-              </div>
-              <div className="rounded-xl bg-slate-50 dark:bg-slate-900/90 border border-slate-200/90 dark:border-slate-700 px-3.5 py-3 sm:px-4 flex-1 flex flex-col min-h-0">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400">総資産</p>
-                  <span className="text-[9px] font-black text-orange-600 dark:text-orange-400 bg-orange-100 dark:bg-orange-950/80 border border-orange-200/80 dark:border-orange-800 rounded-md px-2 py-0.5 shrink-0">デモ</span>
-                </div>
-                <p className="mt-2 text-2xl font-black text-slate-800 dark:text-slate-100 tabular-nums tracking-tight">
-                  ¥{HOME_MYPAGE_PREVIEW_DEMO_TOTAL_YEN.toLocaleString('ja-JP')}
-                </p>
-                <p className="mt-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">
-                  先月比 +¥{HOME_MYPAGE_PREVIEW_DEMO_DELTA_YEN.toLocaleString('ja-JP')} (+1.0%) ※例示
-                </p>
-                <p className="mt-1 text-[10px] font-bold text-slate-400 leading-snug">登録後は、保有銘柄・口座から実数で集計されます</p>
-                <div className="mt-3 flex items-end justify-between gap-1 h-12 px-0.5">
-                  {[12, 18, 14, 22, 16, 20, 15].map((h, i) => (
-                    <div
-                      key={`demo-bar-${i}`}
-                      className="flex-1 rounded-t-md bg-gradient-to-t from-orange-200 to-orange-400/90 dark:from-orange-900/60 dark:to-orange-600/50"
-                      style={{ height: `${h}px` }}
-                    />
-                  ))}
-                </div>
-                <p className="mt-1.5 text-[9px] font-bold text-slate-400 text-center">直近の推移（デモ・棒は比率のみ・実数ではありません）</p>
-                <div className="flex-1 min-h-2" aria-hidden />
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 p-5 sm:p-5 shadow-sm min-w-0 w-full h-full flex flex-col">
-              <div className="flex items-center gap-2 mb-3 shrink-0">
-                <div className="h-9 w-9 rounded-xl bg-rose-100 dark:bg-rose-950/60 flex items-center justify-center">
-                  <CalendarDays size={18} className="text-rose-600 dark:text-rose-400" />
-                </div>
-                <div>
-                  <p className="text-xs font-black text-rose-600 dark:text-rose-400">配当カレンダー</p>
-                  <p className="text-sm font-black text-slate-900 dark:text-white">受取予定リスト</p>
-                </div>
-              </div>
-              <div className="rounded-xl border border-slate-200 dark:border-slate-700 flex-1 flex flex-col min-h-0 overflow-hidden bg-white dark:bg-slate-950">
-                <div className="divide-y divide-slate-100 dark:divide-slate-800 shrink-0">
-                  {[
-                    { mo: '3月', t: '登録した銘柄', s: '予定日・金額は自動表示' },
-                    { mo: '5月', t: '国内株式・ETF など', s: '年次・四半期で整理' },
-                    { mo: '—', t: 'ウォッチ銘柄も一覧化', s: '見落としにくい構成' },
-                  ].map((row) => (
-                    <div key={row.t} className="flex items-stretch gap-2 px-3 py-2 bg-white dark:bg-slate-950">
-                      <div className="w-9 shrink-0 rounded-lg bg-rose-100 dark:bg-rose-950/50 flex items-center justify-center">
-                        <span className="text-[10px] font-black text-rose-700 dark:text-rose-300">{row.mo}</span>
-                      </div>
-                      <div className="min-w-0 py-0.5">
-                        <p className="text-[11px] font-black text-slate-800 dark:text-slate-100 leading-tight">{row.t}</p>
-                        <p className="text-[10px] font-bold text-slate-400 mt-0.5">{row.s}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <div className="flex-1 min-h-0 bg-white dark:bg-slate-950" aria-hidden />
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 p-5 sm:p-5 shadow-sm min-w-0 w-full h-full flex flex-col">
-              <div className="flex items-center gap-2 mb-3 shrink-0">
-                <div className="h-9 w-9 rounded-xl bg-sky-100 dark:bg-sky-950/50 flex items-center justify-center">
-                  <BarChart2 size={18} className="text-sky-600 dark:text-sky-400" />
-                </div>
-                <div>
-                  <p className="text-xs font-black text-sky-600 dark:text-sky-400">ファンドオプティマイザー</p>
-                  <p className="text-sm font-black text-slate-900 dark:text-white">配分を変えてリスク・リターンを試す</p>
-                </div>
-              </div>
-              <div className="flex flex-col flex-1 min-h-0 gap-2">
-                <div className="flex items-center justify-between gap-2 px-0.5 shrink-0">
-                  <span className="text-[10px] font-black text-slate-500 dark:text-slate-400 min-w-0">ファンド一覧の3D最適化UI（見本）</span>
-                  <span className="text-[9px] font-black text-sky-700 dark:text-sky-400 bg-sky-100 dark:bg-sky-950/80 border border-sky-200/80 dark:border-sky-800 rounded-md px-2 py-0.5 shrink-0">
-                    デモ
-                  </span>
-                </div>
-                <div className="flex-1 min-h-0 w-full flex flex-col">
-                  <HomeOptimizer3DShowcase />
-                </div>
-                <p className="text-[9px] font-bold text-slate-400 px-0.5 shrink-0">勧誘・保証ではありません。見本の数値は実データではありません。</p>
-                <button
-                  type="button"
-                  onClick={() => trackAndNavigate('/funds', { source: 'home_mypage_preview_optimizer' })}
-                  className="w-full min-h-9 rounded-xl bg-sky-500 hover:bg-sky-600 text-white text-[11px] font-black py-2 transition shrink-0"
-                >
-                  ファンド一覧でオプティマイザーを試す
-                </button>
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 p-5 sm:p-5 shadow-sm min-w-0 w-full h-full flex flex-col">
-              <div className="flex items-center gap-2 mb-3 shrink-0">
-                <div className="h-9 w-9 rounded-xl bg-violet-100 dark:bg-violet-950/50 flex items-center justify-center">
-                  <PieChart size={18} className="text-violet-600 dark:text-violet-400" />
-                </div>
-                <div>
-                  <p className="text-xs font-black text-violet-600 dark:text-violet-400">ローン・負債</p>
-                  <p className="text-sm font-black text-slate-900 dark:text-white">返済の見える化</p>
-                </div>
-              </div>
-              <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-violet-50/40 dark:bg-violet-950/15 px-3.5 py-3 sm:px-4 flex-1 flex flex-col min-h-0">
-                <div className="flex items-center justify-between text-[10px] font-black text-slate-500 dark:text-slate-400 mb-2 shrink-0">
-                  <span>借入の内訳（見た目の例）</span>
-                  <span className="text-violet-700 dark:text-violet-400">デモ</span>
-                </div>
-                <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 leading-snug mb-3 shrink-0">
-                  住宅・カードなどを分けて整理し、返済日や残高メモを一覧できます（実数は登録後）。
-                </p>
-                <div className="flex-1 flex flex-col justify-center min-h-0">
-                  <div className="space-y-2.5">
-                    {[
-                      { lab: '住宅・ローン', tone: 'bg-violet-500 dark:bg-violet-500', w: 'w-[55%]' },
-                      { lab: 'カード・リボ', tone: 'bg-amber-400 dark:bg-amber-500', w: 'w-[25%]' },
-                      { lab: 'その他', tone: 'bg-rose-400 dark:bg-rose-500', w: 'w-[20%]' },
-                    ].map((row) => (
-                      <div key={row.lab}>
-                        <div className="flex items-center justify-between text-[10px] font-black text-slate-600 dark:text-slate-300 mb-1">
-                          <span>{row.lab}</span>
-                          <span className="text-slate-400">比率は例示</span>
-                        </div>
-                        <div className="h-2 rounded-full bg-slate-200/90 dark:bg-slate-800 overflow-hidden">
-                          <div className={`h-full rounded-full ${row.tone} ${row.w}`} aria-hidden />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <p className="mt-2.5 text-[9px] font-bold text-slate-400 shrink-0">内訳バーはイメージです。情報は投資助言ではありません。</p>
-                <button
-                  type="button"
-                  onClick={() => trackAndNavigate(session?.user ? '/mypage' : '/signup', { source: 'home_mypage_preview_debt' })}
-                  className="mt-3 w-full min-h-9 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-[11px] font-black py-2 transition shrink-0"
-                >
-                  {session?.user ? 'マイページで借入を整理' : '無料登録して借入を記録'}
-                </button>
-              </div>
-            </div>
-          </div>
+      <section className="max-w-7xl mx-auto px-4 mt-6" aria-label="MoneyMartについて">
+        <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-5 py-5 md:px-8 md:py-6 shadow-sm">
+          <h2 className="text-xl md:text-2xl font-black text-slate-900 dark:text-white leading-snug">
+            独立した立場から、金融の力をすべての人へ。
+          </h2>
+          <p className="mt-2 max-w-3xl text-sm md:text-base text-slate-600 dark:text-slate-400 leading-relaxed">
+            MoneyMartは、資本提携に左右されない独立系の金融プラットフォームです。英国の投資業界で18年以上の実務経験を持つ創業チームの専門性を生かし、誰もが公平に比較し、自分で判断するための情報とツールを届けます。
+          </p>
+          <Link
+            to="/about#founding-team"
+            className="mt-4 inline-flex items-center gap-1.5 text-sm font-black text-orange-600 dark:text-orange-400 underline-offset-4 hover:underline"
+          >
+            MoneyMartについて
+            <ArrowRight size={16} aria-hidden />
+          </Link>
         </div>
       </section>
 
-      {/* 2. はじめての使い方 */}
+      <section className="max-w-7xl mx-auto px-4 mt-6">
+        <button
+          type="button"
+          onClick={() => trackAndNavigate('/careers', { source: 'home_careers_banner' })}
+          className="group w-full text-left rounded-3xl border-2 border-slate-900 dark:border-orange-400/70 bg-slate-900 dark:bg-slate-900 px-5 py-4 md:px-7 md:py-5 shadow-lg shadow-slate-900/15 hover:border-orange-400 transition flex flex-col md:flex-row md:items-center gap-4"
+        >
+          <span className="inline-flex items-center gap-1.5 self-start rounded-full bg-orange-500 px-3 py-1 text-[11px] font-black text-white shrink-0">
+            <Briefcase size={13} aria-hidden />
+            採用中
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-base md:text-lg font-black text-white leading-snug">
+              法人営業・事業開発メンバーを募集しています
+            </span>
+            <span className="mt-1 block text-xs md:text-sm font-medium text-slate-300">
+              銀行・証券・IFA向け。日本国内（リモート可）・募集期間 2026年9月27日〜10月27日
+            </span>
+          </span>
+          <span className="inline-flex items-center gap-1.5 self-start md:self-center rounded-full bg-white text-slate-900 px-4 py-2 text-sm font-black shrink-0 group-hover:bg-orange-500 group-hover:text-white transition">
+            募集要項を見る
+            <ArrowRight size={16} aria-hidden />
+          </span>
+        </button>
+      </section>
+
+      {!prefersPremiumHomeLayout ? (
+        <MyPageDemoShowcase
+          session={session}
+          variant="home"
+          id="home-mypage-preview"
+          className="max-w-7xl mx-auto px-4 mt-8 mb-8"
+          onGuestPrimaryClick={() => openGuestDiagnosis('home_mypage_demo')}
+        />
+      ) : null}
+
+      {/* 2. はじめての使い方 & サービスカテゴリ（プレミアム会員には非表示） */}
+      {!prefersPremiumHomeLayout ? (
+      <>
       <section className="max-w-7xl mx-auto px-4 mt-6 mb-6">
         <div className="rounded-[1.75rem] border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm p-4 md:p-5">
           <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3 mb-4">
             <div>
               <p className="text-[11px] font-black tracking-[0.18em] text-orange-500">HOW TO USE MONEYMART</p>
-              <h2 className="mt-1.5 text-xl md:text-2xl font-black text-slate-900 dark:text-white">投資が初めての方も、3ステップで使いこなせる設計です。</h2>
+              <h2 className="mt-1.5 text-xl md:text-2xl font-black text-slate-900 dark:text-white">投資が初めての方でも、3ステップで使いはじめられます。</h2>
               <p className="mt-1.5 text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
-                比較・確認・管理を、ひとつの流れで。金融に慣れていない方でも、自分のペースで資産情報と向き合えます。
+                金融が初めての方でも、自分のペースで資産と向き合えます。
               </p>
             </div>
             <button
@@ -1186,7 +1450,7 @@ export default function HomePage({
                 id: 'compare',
                 step: '01',
                 title: '01 まず、比較する',
-                desc: 'ファンド・株式・ローンの条件や違いを横断的に確認。情報収集の手間を、大幅に減らします。',
+                desc: 'ファンド・株式・ローンの条件を一覧で比較。情報収集の手間を、大幅に省きます。',
                 cta: 'ファンドを比較する',
                 action: () => trackAndNavigate('/funds', { source: 'home_step_compare' }),
                 icon: Layers3,
@@ -1197,8 +1461,8 @@ export default function HomePage({
                 id: 'diagnose',
                 step: '02',
                 title: '02 次に、数字で確認する',
-                desc: 'AI診断やシミュレーターで、ご自身の状況に合わせた数字を確認。「なんとなく」の判断から、根拠ある確認へ。',
-                cta: '会員登録して、AI診断をはじめる',
+                desc: 'AIシミュレーターで、自分に合った数字を確認。「なんとなく」の判断から、根拠のある選択へ。',
+                cta: '30秒で診断をはじめる',
                 action: handleRiskClick,
                 icon: Sparkles,
                 accent: 'from-amber-100 to-orange-100 dark:from-amber-900/30 dark:to-orange-900/20',
@@ -1208,8 +1472,8 @@ export default function HomePage({
                 id: 'manage',
                 step: '03',
                 title: '03 そして、継続して管理する',
-                desc: 'マイページで資産・配当・負債を一元管理。「今の全体像」を把握することが、長期的な資産形成の第一歩です。',
-                cta: 'マイページで管理をはじめる',
+                desc: 'マイページで資産・配当・ローンをまとめて管理。全体像を把握することが、資産づくりの第一歩です。',
+                cta: 'マイページを開く',
                 action: () => trackAndNavigate('/mypage', { source: 'home_step_manage' }),
                 icon: Wallet,
                 accent: 'from-slate-100 to-orange-100 dark:from-slate-800 dark:to-orange-900/20',
@@ -1251,21 +1515,24 @@ export default function HomePage({
       <section className="max-w-7xl mx-auto px-4 mt-8 mb-8">
         <div className="mb-4">
           <h2 className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white">MoneyMart</h2>
-          <p className="text-slate-500 dark:text-slate-400 text-sm font-medium mt-1">投資判断を、もっと簡単に。</p>
+          <p className="text-slate-500 dark:text-slate-400 text-sm font-medium mt-1">投資の判断を、もっとシンプルに。</p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
           <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 shadow-sm flex flex-col">
             <div className="h-28 rounded-xl bg-gradient-to-br from-orange-100 to-amber-100 dark:from-orange-900/30 dark:to-amber-900/20 border border-orange-200/70 dark:border-orange-800/50 flex items-center justify-center">
               <Landmark size={46} className="text-orange-500 dark:text-orange-400" />
             </div>
-            <p className="mt-3 min-h-[64px] text-2xl font-black text-slate-900 dark:text-white leading-tight tracking-wide">ETF・インデックスファンド</p>
-            <p className="mt-2 mb-5 min-h-[48px] text-sm text-slate-500 dark:text-slate-400 leading-relaxed">信託報酬・リターン・リスクを一覧で確認。低コストで分散投資を検討したい方の情報収集をサポートします。</p>
+            <div className="mt-3 min-h-[64px] text-2xl font-black text-slate-900 dark:text-white leading-tight tracking-wide">
+              <span className="block">ETF /</span>
+              <span className="block">インデックスファンド</span>
+            </div>
+            <p className="mt-2 mb-5 min-h-[48px] text-sm text-slate-500 dark:text-slate-400 leading-relaxed">信託報酬・リターン・リスクを一覧で比較。低コストで分散投資を始めたい方をサポートします。</p>
             <button
               type="button"
               onClick={() => trackAndNavigate('/funds', { source: 'home_category_funds' })}
               className="mt-auto w-full rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-sm font-black py-2.5"
             >
-              ETF・インデックスファンドを比較する
+              ETF・インデックスファンドを比較
             </button>
           </div>
           <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 shadow-sm flex flex-col">
@@ -1273,13 +1540,13 @@ export default function HomePage({
               <TrendingUp size={46} className="text-orange-500 dark:text-orange-400" />
             </div>
             <p className="mt-3 min-h-[64px] text-2xl font-black text-slate-900 dark:text-white leading-tight tracking-wide">個別株式</p>
-            <p className="mt-2 mb-5 min-h-[48px] text-sm text-slate-500 dark:text-slate-400 leading-relaxed">国内外の主要銘柄を横断比較。株価推移・各種指標を一画面で確認できます。</p>
+            <p className="mt-2 mb-5 min-h-[48px] text-sm text-slate-500 dark:text-slate-400 leading-relaxed">国内・国外の主要銘柄を一画面で比較。株価の推移や指標を、まとめてチェックできます。</p>
             <button
               type="button"
               onClick={() => trackAndNavigate('/stocks', { source: 'home_category_stocks' })}
               className="mt-auto w-full rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-sm font-black py-2.5"
             >
-              個別株式を比較する
+              個別株式を比較
             </button>
           </div>
           <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 shadow-sm flex flex-col">
@@ -1287,13 +1554,13 @@ export default function HomePage({
               <BarChart2 size={46} className="text-orange-500 dark:text-orange-400" />
             </div>
             <p className="mt-3 min-h-[64px] text-2xl font-black text-slate-900 dark:text-white leading-tight tracking-wide">マーケット概況</p>
-            <p className="mt-2 mb-5 min-h-[48px] text-sm text-slate-500 dark:text-slate-400 leading-relaxed">日経・米国など主要指数の動向を、日次更新データで確認。市場全体の流れを把握するための情報を提供します。</p>
+            <p className="mt-2 mb-5 min-h-[48px] text-sm text-slate-500 dark:text-slate-400 leading-relaxed">日経・米国など主要指数の最新動向を毎日更新。市場の流れを、いつでも把握できます。</p>
             <button
               type="button"
               onClick={() => trackAndNavigate('/market', { source: 'home_category_market' })}
               className="mt-auto w-full rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-sm font-black py-2.5"
             >
-              マーケット概況を確認する
+              マーケット概況を確認
             </button>
           </div>
           <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 shadow-sm flex flex-col">
@@ -1301,17 +1568,19 @@ export default function HomePage({
               <Newspaper size={46} className="text-orange-500 dark:text-orange-400" />
             </div>
             <p className="mt-3 min-h-[64px] text-2xl font-black text-slate-900 dark:text-white leading-tight tracking-wide">AIニュース</p>
-            <p className="mt-2 mb-5 min-h-[48px] text-sm text-slate-500 dark:text-slate-400 leading-relaxed">AIが整理した市場関連ニュースを朝・夕にまとめて確認。多忙な方でも、相場の流れを見逃しにくくなります。</p>
+            <p className="mt-2 mb-5 min-h-[48px] text-sm text-slate-500 dark:text-slate-400 leading-relaxed">AIが厳選した市場ニュースを朝・夕の2回お届け。忙しい方でも、相場の流れを見逃しません。</p>
             <button
               type="button"
               onClick={() => trackAndNavigate('/news', { source: 'home_category_news' })}
               className="mt-auto w-full rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-sm font-black py-2.5"
             >
-              AIニュースを確認する
+              AIニュースをチェック
             </button>
           </div>
         </div>
       </section>
+      </>
+      ) : null}
 
       {/* 3. ホームデータTop5 */}
       <section ref={hookSimulatorRef} className="max-w-7xl mx-auto px-4 mb-10">
@@ -1320,7 +1589,7 @@ export default function HomePage({
             <div>
               <p className="text-[11px] font-black text-blue-500">ホーム主要データ</p>
               <h2 className="text-xl md:text-2xl font-black text-slate-900 dark:text-white">Top 5 インサイト</h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">閲覧傾向・リターン・低コスト・AIテーマ・高配当など、複数の切り口でファンドデータを確認できます。</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">純資産・直近1か月リターン・信託報酬・平均出来高など、切り口ごとに並べ替えています（オフライン時は前回取得データ）。</p>
             </div>
             <button
               type="button"
@@ -1371,7 +1640,7 @@ export default function HomePage({
                               {idx + 1}
                             </span>
                             <div className="min-w-0 flex-1">
-                              <p className="text-[13px] md:text-[14px] font-bold tracking-[-0.01em] text-slate-700 dark:text-slate-200 line-clamp-1">
+                              <p className="text-[13px] md:text-[14px] font-bold tracking-[-0.01em] text-slate-700 dark:text-slate-200 line-clamp-2 md:line-clamp-1 [overflow-wrap:anywhere]">
                                 {fund.name}
                               </p>
                               <p className={`mt-1 text-[12px] md:text-[13px] font-semibold ${typeof section.metricClass === 'function' ? section.metricClass(fund) : section.metricClass}`}>
@@ -1392,15 +1661,16 @@ export default function HomePage({
         </div>
       </section>
 
-      {/* 広告バナー */}
-      <div className="max-w-6xl mx-auto px-4 mb-8">
-        <AdBanner variant="horizontal" />
+      {/* A8 728×90（Top 5 インサイト直下・ビューポート付近で読込） */}
+      <div className="max-w-7xl mx-auto px-4 mb-8">
+        <LazyHomeBottomA8Ad />
       </div>
 
-      {/* 3. マネーサポートの特徴 */}
+      {/* MoneyMartの3つの特徴 — プレミアム会員には非表示 */}
+      {!prefersPremiumHomeLayout ? (
       <section className="max-w-7xl mx-auto px-4 mb-14">
         <div className="text-center mb-6">
-          <h2 className="text-2xl font-black text-slate-900 dark:text-white">マネーサポートの3つの特徴</h2>
+          <h2 className="text-2xl font-black text-slate-900 dark:text-white">MoneyMartの3つの特徴</h2>
           <div className="w-20 h-1 bg-red-500 rounded-full mx-auto mt-3" />
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -1424,6 +1694,7 @@ export default function HomePage({
           )})}
         </div>
       </section>
+      ) : null}
 
       {/* 6. 롤링 광고 섹션 (Phase 1 비노출) */}
 
@@ -1433,30 +1704,30 @@ export default function HomePage({
           <div className="bg-gradient-to-br from-indigo-50 to-white dark:from-indigo-900/20 dark:to-slate-900 p-8 rounded-[2.5rem] border border-indigo-100 dark:border-indigo-900/50 relative overflow-hidden">
             <div className="relative z-10">
               <span className="bg-indigo-600 text-white text-[10px] font-bold px-2 py-1 rounded mb-3 inline-block">住宅ローン</span>
-              <h3 className="text-2xl font-black text-slate-900 dark:text-white mb-2">金利の差が、長期では大きな差になります</h3>
+              <h3 className="text-2xl font-black text-slate-900 dark:text-white mb-2">金利のわずかな差が、長期では大きな差を生みます</h3>
               <p className="text-slate-500 dark:text-slate-400 text-sm font-medium mb-4">
-                例: 残高 ¥{refinanceExample.principalYen.toLocaleString()} / 返済期間 {refinanceExample.years}年
+                例: 残高 ¥{refinanceExample.principalYen.toLocaleString('ja-JP')} / 返済期間 {refinanceExample.years}年
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="bg-white dark:bg-slate-800 px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700">
                   <p className="text-[10px] text-slate-400 font-bold">現在金利 {refinanceExample.currentApr}%</p>
-                  <p className="text-lg font-black text-slate-900 dark:text-white">月 ¥{refinanceExample.monthlyCurrent.toLocaleString()}</p>
+                  <p className="text-lg font-black text-slate-900 dark:text-white">月 ¥{refinanceExample.monthlyCurrent.toLocaleString('ja-JP')}</p>
                 </div>
                 <div className="bg-white dark:bg-slate-800 px-4 py-3 rounded-xl border border-indigo-200 dark:border-indigo-800">
                   <p className="text-[10px] text-slate-400 font-bold">借り換え後 {refinanceExample.refiApr}%</p>
-                  <p className="text-lg font-black text-indigo-600 dark:text-indigo-300">月 ¥{refinanceExample.monthlyRefi.toLocaleString()}</p>
+                  <p className="text-lg font-black text-indigo-600 dark:text-indigo-300">月 ¥{refinanceExample.monthlyRefi.toLocaleString('ja-JP')}</p>
                 </div>
               </div>
               <p className="mt-4 text-sm font-black text-indigo-700 dark:text-indigo-300">
-                月あたり -¥{refinanceExample.monthlyDiff.toLocaleString()} / 利息削減見込み ¥{refinanceExample.totalInterestSaving.toLocaleString()}
+                月々 -¥{refinanceExample.monthlyDiff.toLocaleString('ja-JP')} / 利息削減の見込み額 ¥{refinanceExample.totalInterestSaving.toLocaleString('ja-JP')}
               </p>
               <div className="mt-4 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-white/80 dark:bg-slate-800/60 p-3">
-                <p className="text-[11px] font-black text-indigo-700 dark:text-indigo-300 mb-2">月返済の比較（見える化）</p>
+                <p className="text-[11px] font-black text-indigo-700 dark:text-indigo-300 mb-2">月返済の比較</p>
                 <div className="space-y-2">
                   <div>
                     <div className="flex items-center justify-between text-[10px] font-bold text-slate-500 dark:text-slate-300 mb-1">
                       <span>現在</span>
-                      <span>¥{refinanceExample.monthlyCurrent.toLocaleString()}</span>
+                      <span>¥{refinanceExample.monthlyCurrent.toLocaleString('ja-JP')}</span>
                     </div>
                     <div className="h-2 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
                       <div className="h-full bg-slate-700 dark:bg-slate-400 rounded-full" style={{ width: '100%' }} />
@@ -1465,7 +1736,7 @@ export default function HomePage({
                   <div>
                     <div className="flex items-center justify-between text-[10px] font-bold text-indigo-600 dark:text-indigo-300 mb-1">
                       <span>借り換え後</span>
-                      <span>¥{refinanceExample.monthlyRefi.toLocaleString()}</span>
+                      <span>¥{refinanceExample.monthlyRefi.toLocaleString('ja-JP')}</span>
                     </div>
                     <div className="h-2 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
                       <div
@@ -1477,12 +1748,12 @@ export default function HomePage({
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-2">
                   <div className="rounded-lg bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-100 dark:border-indigo-900/50 px-2.5 py-2">
-                    <p className="text-[10px] text-indigo-500 dark:text-indigo-300 font-bold">月返済 削減率</p>
+                    <p className="text-[10px] text-indigo-500 dark:text-indigo-300 font-bold">月返済の削減率</p>
                     <p className="text-sm font-black text-indigo-700 dark:text-indigo-200">-{refinanceMonthlyReductionPct.toFixed(1)}%</p>
                   </div>
                   <div className="rounded-lg bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-100 dark:border-emerald-900/50 px-2.5 py-2">
                     <p className="text-[10px] text-emerald-500 dark:text-emerald-300 font-bold">年間削減額（目安）</p>
-                    <p className="text-sm font-black text-emerald-700 dark:text-emerald-200">¥{Math.round(refinanceExample.monthlyDiff * 12).toLocaleString()}</p>
+                    <p className="text-sm font-black text-emerald-700 dark:text-emerald-200">¥{Math.round(refinanceExample.monthlyDiff * 12).toLocaleString('ja-JP')}</p>
                   </div>
                 </div>
               </div>
@@ -1491,9 +1762,11 @@ export default function HomePage({
                 onClick={() => navigate('/mypage?tab=debt')}
                 className="mt-4 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-black"
               >
-                会員登録して、詳細シミュレーションを確認する
+                無料登録で、詳細シミュレーションへ
               </button>
-              <p className="mt-3 text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed relative z-10">{MM_SIMULATION_PAST_PERFORMANCE_JA}</p>
+              <p className="mt-3 text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed relative z-10">
+                ※ 本ツールはシミュレーション目的であり、将来の運用成果を保証するものではありません。
+              </p>
             </div>
             <Home size={120} className="absolute -right-4 -bottom-4 text-indigo-100 dark:text-indigo-900/30" />
           </div>
@@ -1501,31 +1774,30 @@ export default function HomePage({
           <div className="bg-gradient-to-br from-emerald-50 to-white dark:from-emerald-900/20 dark:to-slate-900 p-8 rounded-[2.5rem] border border-emerald-100 dark:border-emerald-900/50 relative overflow-hidden">
             <div className="relative z-10">
               <span className="bg-emerald-500 text-white text-[10px] font-bold px-2 py-1 rounded mb-3 inline-block">比較でわかる</span>
-              <h3 className="text-2xl font-black text-slate-900 dark:text-white mb-2">預金で保有した場合と、運用した場合の差</h3>
+              <h3 className="text-2xl font-black text-slate-900 dark:text-white mb-2">預金のまま置いた場合と、運用した場合の差</h3>
               <p className="text-slate-500 dark:text-slate-400 text-sm font-medium mb-5">
-                毎月同じ金額を積み立てても、預金のみと運用では将来の金額に差が生じます。あくまでシミュレーションとしてご参照ください。
+                毎月同じ金額を積み立てても、預金と運用では将来の差が広がります。シミュレーションとしてご活用ください。
               </p>
               <div className="mb-4 rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50/70 dark:bg-emerald-900/20 px-3 py-2">
                 <p className="text-[11px] font-black text-emerald-700 dark:text-emerald-300">
                   想定条件: 年利 {Number(investRate) || 0}% / 期間 {Number(investYears) || 0}年
                 </p>
                 <p className="text-[10px] text-emerald-600 dark:text-emerald-400 opacity-90 mt-0.5">
-                  ※ 想定年利はシミュレーション目的の参考値です。実際の運用成果を保証・示唆するものではありません。
+                  ※ 想定年利および表示される計算結果はシミュレーション目的の参考値であり、実際の運用成果を保証・示唆するものではありません。
                 </p>
-                <p className="text-[10px] text-emerald-600 dark:text-emerald-400 opacity-90 mt-1">{MM_SIMULATION_PAST_PERFORMANCE_JA}</p>
                 <p className="text-[11px] font-bold text-emerald-800 dark:text-emerald-200 mt-1">
-                  リターン比較: 現金 +0.0% vs 資産運用 +{investReturnPct.toFixed(1)}%
+                  リターン比較: 預金 +0.0% vs 運用 +{investReturnPct.toFixed(1)}%
                 </p>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="bg-white dark:bg-slate-800 px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700">
-                  <p className="text-[10px] text-slate-400 font-bold">現金(普通預金)で保有</p>
-                  <p className="text-lg font-black text-slate-800 dark:text-slate-100">¥{cashOnlyValue.toLocaleString()}</p>
-                  <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">実質リターン +0.0%</p>
+                  <p className="text-[10px] text-slate-400 font-bold">普通預金のまま保有</p>
+                  <p className="text-lg font-black text-slate-800 dark:text-slate-100">¥{cashOnlyValue.toLocaleString('ja-JP')}</p>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">預金 +0.0%</p>
                 </div>
                 <div className="bg-white dark:bg-slate-800 px-4 py-3 rounded-xl border border-emerald-200 dark:border-emerald-800">
                   <p className="text-[10px] text-slate-400 font-bold">運用した場合(想定)</p>
-                <p className="text-lg font-black text-emerald-600 dark:text-emerald-300">¥{investProjection.projectedTotal.toLocaleString()}</p>
+                  <p className="text-lg font-black text-emerald-600 dark:text-emerald-300">¥{investDisplayedTotal.toLocaleString('ja-JP')}</p>
                   <p className="text-[10px] text-emerald-600 dark:text-emerald-300 mt-1">想定リターン +{investReturnPct.toFixed(1)}%</p>
                 </div>
               </div>
@@ -1533,7 +1805,7 @@ export default function HomePage({
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-[11px] font-black text-emerald-700 dark:text-emerald-300">時間経過で広がる差</p>
                   <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400">
-                    {Number(investYears) || 0}年後 差額 +¥{Math.round(finalGapPoint.gap || 0).toLocaleString()}
+                    {Number(investYears) || 0}年後 差額 +¥{displayGap.toLocaleString('ja-JP')}
                   </p>
                 </div>
                 <div className="h-44">
@@ -1559,30 +1831,30 @@ export default function HomePage({
                       <Tooltip
                         labelFormatter={(label) => `${label}年目`}
                         formatter={(value, key) => {
-                          const label = key === 'invest' ? '資産運用(想定)' : '現金保有'
-                          return [`¥${Math.round(Number(value || 0)).toLocaleString()}`, label]
+                          const label = key === 'invest' ? '運用(想定)' : '預金'
+                          return [`¥${Math.round(Number(value || 0)).toLocaleString('ja-JP')}`, label]
                         }}
                       />
-                      <Line type="monotone" dataKey="cash" name="現金保有" stroke={chartUiDark ? '#e2e8f0' : '#0f172a'} strokeWidth={2.2} dot={false} />
-                      <Line type="monotone" dataKey="invest" name="資産運用(想定)" stroke="#10b981" strokeWidth={2.8} dot={false} />
+                      <Line type="monotone" dataKey="cash" name="預金" stroke={chartUiDark ? '#e2e8f0' : '#0f172a'} strokeWidth={2.2} dot={false} />
+                      <Line type="monotone" dataKey="invest" name="運用(想定)" stroke="#10b981" strokeWidth={2.8} dot={false} />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
               </div>
               {investType === 'ideco' && (
                 <p className="mt-3 text-[11px] font-bold text-emerald-700 dark:text-emerald-300">
-                  iDeCo簡易反映: 所得控除メリット +¥{investProjection.taxBenefit.toLocaleString()}（税率20%仮定）
+                  iDeCo簡易反映: 所得控除メリット +¥{investProjection.taxBenefit.toLocaleString('ja-JP')}（税率20%仮定）
                 </p>
               )}
               <p className="mt-4 text-sm font-black text-emerald-700 dark:text-emerald-300">
-                差額見込み: +¥{potentialGap.toLocaleString()}
+                差額見込み: +¥{displayGap.toLocaleString('ja-JP')}
               </p>
               <button
                 type="button"
                 onClick={() => navigate('/funds')}
                 className="mt-4 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-black"
               >
-                ファンドの情報を比較・確認する
+                ファンドを比較する
               </button>
             </div>
             <PiggyBank size={120} className="absolute -right-4 -bottom-4 text-emerald-100 dark:text-emerald-900/30" />
@@ -1590,16 +1862,17 @@ export default function HomePage({
         </div>
       </section>
 
-      {/* 広告バナー */}
-      <div className="max-w-7xl mx-auto px-4 mb-12">
-        <AdBanner variant="horizontal" />
-      </div>
-
-      <RiskModal
-        isOpen={isRiskModalOpen}
-        onClose={() => setIsRiskModalOpen(false)}
-        onNavigate={(to, options) => navigate(to, options || {})}
-        loginRedirectTo="/tools"
+      <GuestAssetDiagnosisModal
+        isOpen={isGuestDiagOpen}
+        onClose={() => setIsGuestDiagOpen(false)}
+        onSignup={goDiagnosisSignup}
+        source="home_guest_diag"
+      />
+      <CampaignCp2026HomePopup userEmail={session?.user?.email} authReady={authReady} />
+      <HomeMobileSignupCta
+        visible={showMobileStickyCta}
+        isLoggedIn={Boolean(session?.user)}
+        onStartDiagnosis={() => openGuestDiagnosis('home_mobile_sticky')}
       />
     </div>
   )

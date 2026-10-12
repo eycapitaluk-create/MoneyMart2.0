@@ -49,7 +49,7 @@ export default function MarketMajorNewsTicker({ slides = [] }) {
 
   if (normalized.length === 0) {
     return (
-      <div className="rounded-lg border border-neutral-800 bg-[#0a0a0a] px-4 py-8 text-sm font-semibold text-neutral-500 min-h-[160px] flex items-center justify-center">
+      <div className="rounded-lg border border-neutral-800 bg-[#0a0a0a] px-4 py-5 text-xs font-semibold text-neutral-500 min-h-[100px] flex items-center justify-center">
         表示するテキストがありません
       </div>
     )
@@ -57,24 +57,24 @@ export default function MarketMajorNewsTicker({ slides = [] }) {
 
   if (reducedMotion) {
     return (
-      <div className="space-y-10 rounded-lg border border-neutral-800 bg-[#0a0a0a] px-4 py-6 md:px-7 md:py-8">
+      <div className="space-y-6 rounded-lg border border-neutral-800 bg-[#0a0a0a] px-3 py-4 md:px-5 md:py-5">
         {normalized.map((slide) => (
-          <section key={slide.id} className="border-b border-neutral-800 pb-8 last:border-0 last:pb-0">
-            <p className={`text-[10px] md:text-[11px] font-semibold tracking-[0.22em] uppercase ${ACCENT} mb-3`}>
+          <section key={slide.id} className="border-b border-neutral-800 pb-5 last:border-0 last:pb-0">
+            <p className={`text-[9px] md:text-[10px] font-semibold tracking-[0.18em] uppercase ${ACCENT} mb-2`}>
               Market brief
             </p>
             {slide.headline ? (
-              <h4 className="text-xl md:text-2xl font-bold text-neutral-50 tracking-tight leading-tight mb-5 border-b border-neutral-700 pb-3">
+              <h4 className="text-base md:text-lg font-bold text-neutral-50 tracking-tight leading-snug mb-3 border-b border-neutral-700 pb-2">
                 {slide.headline}
               </h4>
             ) : null}
-            <ul className="space-y-3.5 list-none">
+            <ul className="space-y-2 list-none">
               {slide.lines.map((line, i) => (
                 <li
                   key={`${slide.id}-${i}-${line.slice(0, 20)}`}
-                  className="flex gap-3 text-left text-base md:text-lg leading-relaxed text-neutral-200 font-normal"
+                  className="flex gap-2.5 text-left text-sm md:text-[15px] leading-relaxed text-neutral-200 font-normal"
                 >
-                  <span className={`shrink-0 w-1 self-stretch min-h-[1.25em] ${ACCENT_BG} rounded-[1px] opacity-90 mt-1.5`} aria-hidden />
+                  <span className={`shrink-0 w-0.5 self-stretch min-h-[1.1em] ${ACCENT_BG} rounded-[1px] opacity-90 mt-1`} aria-hidden />
                   <span>{line}</span>
                 </li>
               ))}
@@ -89,23 +89,23 @@ export default function MarketMajorNewsTicker({ slides = [] }) {
 
   return (
     <div
-      className={`relative overflow-hidden rounded-lg border border-neutral-800 bg-[#0a0a0a] shadow-lg min-h-[240px] md:min-h-[280px] pl-1`}
+      className="relative overflow-hidden rounded-lg border border-neutral-800 bg-[#0a0a0a] shadow-md pl-0.5"
       aria-live="polite"
       aria-atomic="true"
     >
-      <div className={`pointer-events-none absolute left-0 top-0 bottom-0 w-1 ${ACCENT_BG} z-[1]`} aria-hidden />
-      <div className={`pointer-events-none absolute inset-x-0 top-0 h-0.5 ${ACCENT_BG} opacity-90`} aria-hidden />
+      <div className={`pointer-events-none absolute left-0 top-0 bottom-0 w-0.5 ${ACCENT_BG} z-[1]`} aria-hidden />
+      <div className={`pointer-events-none absolute inset-x-0 top-0 h-px ${ACCENT_BG} opacity-90`} aria-hidden />
 
       {normalized.length > 1 ? (
-        <div className="absolute top-3 right-3 md:top-4 md:right-4 z-10 flex items-center gap-1.5">
+        <div className="absolute top-2 right-2 md:top-2.5 md:right-2.5 z-10 flex items-center gap-1">
           {normalized.map((s, i) => (
             <button
               key={s.id}
               type="button"
               aria-label={`${i + 1} / ${normalized.length}: ${s.headline || 'パネル'}`}
               aria-current={i === idx ? 'true' : undefined}
-              className={`h-2 w-2.5 md:h-2.5 md:w-3 rounded-[1px] transition-colors ${
-                i === idx ? `${ACCENT_BG} shadow-[0_0_12px_rgba(255,121,0,0.45)]` : 'bg-neutral-700 hover:bg-neutral-600'
+              className={`h-1.5 w-2 md:h-2 md:w-2.5 rounded-[1px] transition-colors ${
+                i === idx ? `${ACCENT_BG} shadow-[0_0_8px_rgba(255,121,0,0.4)]` : 'bg-neutral-700 hover:bg-neutral-600'
               }`}
               onClick={() => setIdx(i)}
             />
@@ -113,23 +113,23 @@ export default function MarketMajorNewsTicker({ slides = [] }) {
         </div>
       ) : null}
 
-      <div key={active.id} className="pl-4 pr-4 py-6 md:pl-8 md:pr-8 md:py-9 animate-market-major-slide">
-        <p className={`text-[10px] md:text-[11px] font-semibold tracking-[0.24em] uppercase ${ACCENT} mb-3 pr-14 md:pr-20`}>
+      <div key={active.id} className="pl-3 pr-3 py-4 md:pl-5 md:pr-5 md:py-5 animate-market-major-slide">
+        <p className={`text-[9px] md:text-[10px] font-semibold tracking-[0.18em] uppercase ${ACCENT} mb-2 pr-12 md:pr-16`}>
           Market brief
         </p>
         {active.headline ? (
-          <h4 className="text-2xl md:text-4xl font-bold text-neutral-50 tracking-tight leading-[1.15] pr-14 md:pr-20 border-b border-neutral-700/90 pb-4 mb-5 md:mb-6">
+          <h4 className="text-lg md:text-xl font-bold text-neutral-50 tracking-tight leading-snug pr-12 md:pr-16 border-b border-neutral-700/90 pb-2.5 mb-3 md:mb-3.5">
             {active.headline}
           </h4>
         ) : null}
-        <ul className={`space-y-3.5 md:space-y-4 list-none ${!active.headline ? 'pt-1' : ''}`}>
+        <ul className={`space-y-2 md:space-y-2.5 list-none ${!active.headline ? 'pt-0.5' : ''}`}>
           {active.lines.map((line, i) => (
             <li
               key={`${active.id}-L${i}-${line.slice(0, 12)}`}
-              className="flex gap-3 md:gap-4 text-left text-base md:text-xl leading-relaxed md:leading-[1.55] text-neutral-200 font-normal"
+              className="flex gap-2.5 md:gap-3 text-left text-sm md:text-[15px] leading-relaxed text-neutral-200 font-normal"
             >
               <span
-                className={`shrink-0 w-1 self-stretch min-h-[1.25em] ${ACCENT_BG} rounded-[1px] opacity-90 mt-1 md:mt-1.5`}
+                className={`shrink-0 w-0.5 self-stretch min-h-[1.1em] ${ACCENT_BG} rounded-[1px] opacity-90 mt-0.5 md:mt-1`}
                 aria-hidden
               />
               <span className="font-sans">{line}</span>

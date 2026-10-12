@@ -1,0 +1,756 @@
+region	symbol	name_ja	name_en	sector_app	sector_db	industry
+JP	1605.T	INPEX	INPEX Corporation	エネルギー	エネルギー	石油・ガス探査開発
+JP	5020.T	ENEOSホールディングス	ENEOS Holdings	エネルギー	エネルギー	石油精製
+JP	2432.T	DeNA	DeNA Co.	コミュニケーション	コミュニケーション	情報・通信業
+JP	3659.T	ネクソン	Nexon Co.	コミュニケーション	コミュニケーション	情報・通信業
+JP	4324.T	電通グループ	Dentsu Group	コミュニケーション	コミュニケーション	広告・PR
+JP	4689.T	LINEヤフー	LY Corporation	コミュニケーション	コミュニケーション	情報・通信業
+JP	4751.T	サイバーエージェント	CyberAgent Inc.	コミュニケーション	コミュニケーション	情報・通信業
+JP	7974.T	任天堂	Nintendo Co.	コミュニケーション	コミュニケーション	その他製品
+JP	9432.T	日本電信電話（NTT）	NTT	コミュニケーション	コミュニケーション	通信サービス
+JP	9433.T	KDDI	KDDI Corporation	コミュニケーション	コミュニケーション	通信サービス
+JP	9434.T	ソフトバンク	SoftBank Corp.	コミュニケーション	コミュニケーション	情報・通信業
+JP	9602.T	東宝	Toho Co.	コミュニケーション	コミュニケーション	サービス業
+JP	9766.T	コナミグループ	Konami Group	コミュニケーション	コミュニケーション	その他製品
+JP	9984.T	ソフトバンクグループ	SoftBank Group	コミュニケーション	コミュニケーション	持株会社
+JP	3436.T	SUMCO	SUMCO Corporation	テクノロジー	テクノロジー	半導体・電子部品
+JP	4704.T	トレンドマイクロ	Trend Micro	テクノロジー	テクノロジー	セキュリティソフトウェア
+JP	4901.T	富士フイルムホールディングス	FUJIFILM Holdings	テクノロジー	テクノロジー	写真・化学品
+JP	5214.T	日本電気硝子	Nippon Electric Glass	テクノロジー	テクノロジー	ガラス・土石製品
+JP	6146.T	ディスコ	Disco Corporation	テクノロジー	テクノロジー	精密切削工具
+JP	6532.T	ベイカレント	BayCurrent	テクノロジー	テクノロジー	サービス業
+JP	6594.T	日本電産（ニデック）	Nidec Corporation	テクノロジー	テクノロジー	モーター・精密部品
+JP	6645.T	オムロン	OMRON Corporation	テクノロジー	テクノロジー	電気機器
+JP	6701.T	NEC	NEC Corporation	テクノロジー	テクノロジー	通信機器・ITソリューション
+JP	6702.T	富士通	Fujitsu Limited	テクノロジー	テクノロジー	ITサービス・システム
+JP	6723.T	ルネサスエレクトロニクス	Renesas Electronics	テクノロジー	テクノロジー	半導体・電子部品
+JP	6724.T	セイコーエプソン	Seiko Epson	テクノロジー	テクノロジー	電気機器
+JP	6762.T	TDK	TDK Corporation	テクノロジー	テクノロジー	電子部品
+JP	6770.T	アルプスアルパイン	Alps Alpine	テクノロジー	テクノロジー	電気機器
+JP	6841.T	横河電機	Yokogawa Electric	テクノロジー	テクノロジー	電気機器
+JP	6857.T	アドバンテスト	Advantest Corporation	テクノロジー	テクノロジー	半導体製造装置・検査装置
+JP	6861.T	キーエンス	Keyence Corporation	テクノロジー	テクノロジー	電子部品
+JP	6920.T	レーザーテック	Lasertec Corporation	テクノロジー	テクノロジー	半導体・電子部品
+JP	6952.T	カシオ計算機	Casio Computer	テクノロジー	テクノロジー	電気機器
+JP	6971.T	京セラ	Kyocera Corporation	テクノロジー	テクノロジー	電気機器
+JP	6981.T	村田製作所	Murata Manufacturing	テクノロジー	テクノロジー	電子部品
+JP	7735.T	SCREEN Holdings	SCREEN Holdings	テクノロジー	テクノロジー	半導体・電子部品
+JP	7751.T	キヤノン	Canon Inc.	テクノロジー	テクノロジー	カメラ・プリンター
+JP	7762.T	シチズン時計	Citizen Watch	テクノロジー	テクノロジー	精密機器
+JP	8035.T	東京エレクトロン	Tokyo Electron	テクノロジー	テクノロジー	半導体製造装置
+JP	2413.T	エムスリー	M3	ヘルスケア	ヘルスケア	医療情報サービス
+JP	4151.T	協和キリン	Kyowa Kirin Co.	ヘルスケア	ヘルスケア	医薬品
+JP	4502.T	武田薬品工業	Takeda Pharmaceutical	ヘルスケア	ヘルスケア	医薬品
+JP	4503.T	アステラス製薬	Astellas Pharma	ヘルスケア	ヘルスケア	医薬品
+JP	4507.T	塩野義製薬	Shionogi & Co.	ヘルスケア	ヘルスケア	医薬品
+JP	4519.T	中外製薬	Chugai Pharmaceutical	ヘルスケア	ヘルスケア	医薬品
+JP	4523.T	エーザイ	Eisai Co.	ヘルスケア	ヘルスケア	医薬品
+JP	4543.T	テルモ	Terumo Corporation	ヘルスケア	ヘルスケア	医療機器
+JP	4568.T	第一三共	Daiichi Sankyo	ヘルスケア	ヘルスケア	医薬品
+JP	4578.T	大塚ホールディングス	Otsuka Holdings	ヘルスケア	ヘルスケア	医薬品
+JP	7733.T	オリンパス	Olympus Corporation	ヘルスケア	ヘルスケア	医療機器・光学機器
+JP	7741.T	HOYA	Hoya Corporation	ヘルスケア	ヘルスケア	眼鏡レンズ・精密光学
+JP	1808.T	長谷工コーポレーション	Haseko Corporation	一般消費財	一般消費財	建設業
+JP	1928.T	積水ハウス	Sekisui House	一般消費財	一般消費財	建設業
+JP	3086.T	Jフロントリテイリング	J. Front Retailing	一般消費財	一般消費財	小売業
+JP	3092.T	ZOZO	ZOZO Inc.	一般消費財	一般消費財	小売業
+JP	3099.T	三越伊勢丹ホールディングス	Isetan Mitsukoshi Holdings	一般消費財	一般消費財	小売業
+JP	4661.T	オリエンタルランド	Oriental Land Co.	一般消費財	一般消費財	テーマパーク・レジャー
+JP	4755.T	楽天グループ	Rakuten Group	一般消費財	一般消費財	情報・通信業
+JP	5101.T	横浜ゴム	Yokohama Rubber	一般消費財	一般消費財	ゴム製品
+JP	5108.T	ブリヂストン	Bridgestone Corporation	一般消費財	一般消費財	タイヤ・ゴム製品
+JP	5802.T	住友電気工業	Sumitomo Electric Industries	一般消費財	一般消費財	電線・ケーブル
+JP	6752.T	パナソニックホールディングス	Panasonic Holdings	一般消費財	一般消費財	電気機器
+JP	6753.T	シャープ	Sharp Corporation	一般消費財	一般消費財	電気機器
+JP	6758.T	ソニーグループ	Sony Group	一般消費財	一般消費財	家電・消費電子機器
+JP	6902.T	デンソー	DENSO Corporation	一般消費財	一般消費財	自動車部品・電装
+JP	7201.T	日産自動車	Nissan Motor	一般消費財	一般消費財	自動車
+JP	7202.T	いすゞ自動車	Isuzu Motors	一般消費財	一般消費財	トラック・バス
+JP	7203.T	トヨタ自動車	Toyota Motor	一般消費財	一般消費財	自動車メーカー
+JP	7211.T	三菱自動車工業	Mitsubishi Motors	一般消費財	一般消費財	輸送用機器
+JP	7261.T	マツダ	Mazda Motor	一般消費財	一般消費財	自動車
+JP	7267.T	本田技研工業	Honda Motor	一般消費財	一般消費財	二輪・四輪自動車
+JP	7269.T	スズキ	Suzuki Motor	一般消費財	一般消費財	輸送用機器
+JP	7270.T	SUBARU	Subaru Corporation	一般消費財	一般消費財	自動車
+JP	7272.T	ヤマハ発動機	Yamaha Motor	一般消費財	一般消費財	輸送用機器
+JP	7309.T	シマノ	Shimano Inc.	一般消費財	一般消費財	輸送用機器
+JP	7731.T	ニコン	Nikon Corporation	一般消費財	一般消費財	精密機器
+JP	7832.T	バンダイナムコホールディングス	Bandai Namco Holdings	一般消費財	一般消費財	その他製品
+JP	8233.T	高島屋	Takashimaya Co.	一般消費財	一般消費財	小売業
+JP	9983.T	ファーストリテイリング	Fast Retailing	一般消費財	一般消費財	ファストファッション小売
+JP	6178.T	日本郵政	Japan Post Holdings	金融	金融	その他金融業
+JP	7186.T	横浜フィナンシャルグループ	Yokohama Financial Group	金融	金融	銀行業
+JP	8304.T	あおぞら銀行	Aozora Bank	金融	金融	銀行業
+JP	8306.T	三菱UFJフィナンシャル・グループ	MUFG	金融	金融	銀行
+JP	8308.T	りそなホールディングス	Resona Holdings	金融	金融	銀行
+JP	8309.T	三井住友トラスト・ホールディングス	Sumitomo Mitsui Trust Holdings	金融	金融	銀行業
+JP	8316.T	三井住友フィナンシャルグループ	Sumitomo Mitsui Financial Group	金融	金融	銀行
+JP	8411.T	みずほフィナンシャルグループ	Mizuho Financial Group	金融	金融	銀行
+JP	8591.T	オリックス	ORIX Corporation	金融	金融	リース・金融
+JP	8601.T	大和証券グループ本社	Daiwa Securities Group	金融	金融	証券・商品先物取引業
+JP	8604.T	野村ホールディングス	Nomura Holdings	金融	金融	証券
+JP	8630.T	SOMPOホールディングス	Sompo Holdings	金融	金融	保険業
+JP	8725.T	MS&ADインシュアランスグループホールディングス	MS&AD Insurance Group	金融	金融	損害保険
+JP	8750.T	第一生命ホールディングス	Dai-ichi Life Holdings	金融	金融	保険業
+JP	8766.T	東京海上ホールディングス	Tokio Marine Holdings	金融	金融	損害保険
+JP	1721.T	コムシスホールディングス	Comsis Holdings	資本財・産業	資本財・産業	建設業
+JP	1801.T	大成建設	Taisei Corporation	資本財・産業	資本財・産業	建設業
+JP	1802.T	大林組	Obayashi Corporation	資本財・産業	資本財・産業	建設業
+JP	1803.T	清水建設	Shimizu Corporation	資本財・産業	資本財・産業	建設業
+JP	1812.T	鹿島建設	Kajima Corporation	資本財・産業	資本財・産業	建設業
+JP	1963.T	日揮ホールディングス	JGC Holdings	資本財・産業	資本財・産業	建設業
+JP	2768.T	双日	Sojitz Corporation	資本財・産業	資本財・産業	卸売業
+JP	3105.T	日清紡ホールディングス	Nisshinbo Holdings	資本財・産業	資本財・産業	繊維製品
+JP	5201.T	AGC	AGC Inc.	資本財・産業	資本財・産業	ガラス・土石製品
+JP	5202.T	日本板硝子	Nippon Sheet Glass	資本財・産業	資本財・産業	ガラス・土石製品
+JP	5332.T	TOTO	TOTO Ltd.	資本財・産業	資本財・産業	ガラス・土石製品
+JP	5333.T	日本碍子	NGK Insulators	資本財・産業	資本財・産業	ガラス・土石製品
+JP	5631.T	日本製鋼所	Japan Steel Works	資本財・産業	資本財・産業	機械
+JP	5801.T	古河電気工業	Furukawa Electric	資本財・産業	資本財・産業	非鉄金属
+JP	5803.T	フジクラ	Fujikura Ltd.	資本財・産業	資本財・産業	非鉄金属
+JP	6098.T	リクルートホールディングス	Recruit Holdings	資本財・産業	資本財・産業	人材サービス
+JP	6113.T	アマダ	Amada Co.	資本財・産業	資本財・産業	機械
+JP	6273.T	SMC	SMC Corporation	資本財・産業	資本財・産業	空圧・油圧機器
+JP	6301.T	小松製作所	Komatsu Ltd.	資本財・産業	資本財・産業	建設機械
+JP	6302.T	住友重機械工業	Sumitomo Heavy Industries	資本財・産業	資本財・産業	機械
+JP	6305.T	日立建機	Hitachi Construction Machinery	資本財・産業	資本財・産業	機械
+JP	6326.T	クボタ	Kubota Corporation	資本財・産業	資本財・産業	農業機械
+JP	6361.T	荏原製作所	Ebara Corporation	資本財・産業	資本財・産業	機械
+JP	6367.T	ダイキン工業	Daikin Industries	資本財・産業	資本財・産業	空調機器
+JP	6471.T	日本精工	NSK Ltd.	資本財・産業	資本財・産業	軸受
+JP	6472.T	NTN	NTN Corporation	資本財・産業	資本財・産業	機械
+JP	6479.T	ミネベアミツミ	MinebeaMitsumi	資本財・産業	資本財・産業	機械
+JP	6501.T	日立製作所	Hitachi Ltd.	資本財・産業	資本財・産業	電気機器・インフラ
+JP	6503.T	三菱電機	Mitsubishi Electric	資本財・産業	資本財・産業	変圧器・電気機器
+JP	6504.T	富士電機	Fuji Electric	資本財・産業	資本財・産業	電気機器
+JP	6506.T	安川電機	Yaskawa Electric	資本財・産業	資本財・産業	モーター・産業機器
+JP	6674.T	GSユアサ	GS Yuasa Corporation	資本財・産業	資本財・産業	電気機器
+JP	6954.T	ファナック	Fanuc Corporation	資本財・産業	資本財・産業	FAシステム・ロボット
+JP	7003.T	三井E&S	Mitsui E&S Co.	資本財・産業	資本財・産業	輸送用機器
+JP	7004.T	日立造船	Hitachi Zosen	資本財・産業	資本財・産業	機械
+JP	7011.T	三菱重工業	Mitsubishi Heavy Industries	資本財・産業	資本財・産業	重工業・エネルギー機器
+JP	7012.T	川崎重工業	Kawasaki Heavy Industries	資本財・産業	資本財・産業	造船・防衛
+JP	7013.T	IHI	IHI Corporation	資本財・産業	資本財・産業	機械
+JP	7911.T	凸版印刷（TOPPAN）	Toppan Holdings	資本財・産業	資本財・産業	その他製品
+JP	7912.T	大日本印刷	Dai Nippon Printing	資本財・産業	資本財・産業	その他製品
+JP	7914.T	共同印刷	Dai Nippon Printing	資本財・産業	資本財・産業	その他製品
+JP	8001.T	伊藤忠商事	Itochu Corporation	資本財・産業	資本財・産業	総合商社
+JP	8002.T	丸紅	Marubeni Corporation	資本財・産業	資本財・産業	卸売業
+JP	8015.T	豊田通商	Toyota Tsusho	資本財・産業	資本財・産業	総合商社
+JP	8031.T	三井物産	Mitsui & Co.	資本財・産業	資本財・産業	総合商社
+JP	8051.T	山善	Yamazen Corporation	資本財・産業	資本財・産業	専門商社
+JP	8053.T	住友商事	Sumitomo Corporation	資本財・産業	資本財・産業	総合商社
+JP	8058.T	三菱商事	Mitsubishi Corporation	資本財・産業	資本財・産業	総合商社
+JP	9001.T	東武鉄道	Tobu Railway	資本財・産業	資本財・産業	陸運業
+JP	9005.T	東急	Tokyu Corporation	資本財・産業	資本財・産業	鉄道・バス
+JP	9007.T	小田急電鉄	Odakyu Electric Railway	資本財・産業	資本財・産業	陸運業
+JP	9008.T	京王電鉄	Keio Corporation	資本財・産業	資本財・産業	陸運業
+JP	9009.T	京成電鉄	Keisei Electric Railway	資本財・産業	資本財・産業	陸運業
+JP	9020.T	東日本旅客鉄道（JR東日本）	East Japan Railway	資本財・産業	資本財・産業	鉄道
+JP	9021.T	西日本旅客鉄道（JR西日本）	West Japan Railway	資本財・産業	資本財・産業	鉄道
+JP	9022.T	東海旅客鉄道（JR東海）	Central Japan Railway	資本財・産業	資本財・産業	鉄道
+JP	9064.T	ヤマトホールディングス	Yamato Holdings	資本財・産業	資本財・産業	陸運業
+JP	9101.T	日本郵船	Nippon Yusen	資本財・産業	資本財・産業	海運
+JP	9104.T	商船三井	Mitsui O.S.K. Lines	資本財・産業	資本財・産業	海運
+JP	9107.T	川崎汽船	Kawasaki Kisen Kaisha	資本財・産業	資本財・産業	海運業
+JP	9201.T	日本航空	Japan Airlines	資本財・産業	資本財・産業	航空
+JP	9202.T	ANAホールディングス	ANA Holdings	資本財・産業	資本財・産業	航空
+JP	9301.T	三菱倉庫	Mitsubishi Logistics	資本財・産業	資本財・産業	倉庫・運輸関連業
+JP	9735.T	セコム	Secom Co.	資本財・産業	資本財・産業	警備・セキュリティサービス
+JP	1332.T	ニッスイ	Nissui Corporation	生活必需品	生活必需品	水産・農林業
+JP	2002.T	日清製粉グループ本社	Nisshin Seifun Group	生活必需品	生活必需品	食料品
+JP	2269.T	明治ホールディングス	Meiji Holdings	生活必需品	生活必需品	食料品
+JP	2282.T	日本ハム	NH Foods	生活必需品	生活必需品	食料品
+JP	2501.T	サッポロホールディングス	Sapporo Holdings	生活必需品	生活必需品	食料品
+JP	2502.T	アサヒグループホールディングス	Asahi Group Holdings	生活必需品	生活必需品	飲料
+JP	2503.T	キリンホールディングス	Kirin Holdings	生活必需品	生活必需品	飲料
+JP	2531.T	宝ホールディングス	Takara Holdings	生活必需品	生活必需品	食料品
+JP	2801.T	キッコーマン	Kikkoman Corporation	生活必需品	生活必需品	食料品
+JP	2802.T	味の素	Ajinomoto Co.	生活必需品	生活必需品	食品・調味料
+JP	2871.T	ニチレイ	Nichirei Corporation	生活必需品	生活必需品	食料品
+JP	2914.T	日本たばこ産業	Japan Tobacco Inc.	生活必需品	生活必需品	食料品
+JP	3382.T	セブン&アイ・ホールディングス	Seven & i Holdings	生活必需品	生活必需品	スーパーマーケット
+JP	4452.T	花王	Kao Corporation	生活必需品	生活必需品	家庭用洗剤・化学品
+JP	4911.T	資生堂	Shiseido Company	生活必需品	生活必需品	化粧品・日用品
+JP	8267.T	イオン	Aeon Co.	生活必需品	生活必需品	スーパーマーケット
+JP	3101.T	東洋紡	Toyobo Co.	素材	素材	繊維製品
+JP	3103.T	ユニチカ	Unitika	素材	素材	繊維製品
+JP	3401.T	帝人	Teijin Limited	素材	素材	繊維製品
+JP	3402.T	東レ	Toray Industries	素材	素材	繊維製品
+JP	3407.T	旭化成	Asahi Kasei Corporation	素材	素材	合成繊維・化学
+JP	4004.T	レゾナック・ホールディングス	Resonac Holdings	素材	素材	化学
+JP	4005.T	住友化学	Sumitomo Chemical	素材	素材	化学
+JP	4021.T	日産化学	Nissan Chemical	素材	素材	化学
+JP	4042.T	東ソー	Tosoh Corporation	素材	素材	化学
+JP	4043.T	トクヤマ	Tokuyama Corporation	素材	素材	化学
+JP	4061.T	デンカ	Denka Company	素材	素材	化学
+JP	4063.T	信越化学工業	Shin-Etsu Chemical	素材	素材	特殊化学品
+JP	4188.T	三菱ケミカルグループ	Mitsubishi Chemical Group	素材	素材	化学
+JP	4208.T	UBE	UBE Corporation	素材	素材	化学
+JP	4631.T	DIC	DIC Corporation	素材	素材	化学
+JP	5232.T	住友大阪セメント	Sumitomo Osaka Cement	素材	素材	ガラス・土石製品
+JP	5233.T	太平洋セメント	Taiheiyo Cement	素材	素材	ガラス・土石製品
+JP	5301.T	東海カーボン	Tokai Carbon	素材	素材	ガラス・土石製品
+JP	5401.T	日本製鉄	Nippon Steel Corporation	素材	素材	鉄鋼
+JP	5406.T	神戸製鋼所	Kobe Steel	素材	素材	鉄鋼
+JP	5411.T	JFEホールディングス	JFE Holdings	素材	素材	鉄鋼
+JP	5541.T	大平洋金属	Pacific Metals	素材	素材	鉄鋼
+JP	5703.T	日本軽金属ホールディングス	UACJ Corporation	素材	素材	非鉄金属
+JP	5706.T	三井金属鉱業	Mitsui Mining & Smelting	素材	素材	非鉄金属
+JP	5707.T	東邦亜鉛	Toho Zinc	素材	素材	非鉄金属
+JP	5711.T	三菱マテリアル	Mitsubishi Materials	素材	素材	非鉄金属
+JP	5713.T	住友金属鉱山	Sumitomo Metal Mining	素材	素材	非鉄金属
+JP	5714.T	DOWAホールディングス	DOWA Holdings	素材	素材	非鉄金属
+JP	6988.T	日東電工	Nitto Denko	素材	素材	化学
+JP	9501.T	東京電力ホールディングス	Tokyo Electric Power	電力・ガス	電力・ガス	電気・ガス業
+JP	9502.T	中部電力	Chubu Electric Power	電力・ガス	電力・ガス	電力
+JP	9503.T	関西電力	Kansai Electric Power	電力・ガス	電力・ガス	電力
+JP	9531.T	東京ガス	Tokyo Gas	電力・ガス	電力・ガス	ガス
+JP	9532.T	大阪ガス	Osaka Gas	電力・ガス	電力・ガス	ガス
+JP	1925.T	大和ハウス工業	Daiwa House Industry	不動産	不動産	建設業
+JP	3289.T	東急不動産ホールディングス	Tokyu Fudosan Holdings	不動産	不動産	不動産業
+JP	8801.T	三井不動産	Mitsui Fudosan	不動産	不動産	不動産
+JP	8802.T	三菱地所	Mitsubishi Estate	不動産	不動産	不動産
+JP	8830.T	住友不動産	Sumitomo Realty & Development	不動産	不動産	不動産業
+US	APA	APAコーポレーション	APA Corporation	エネルギー	エネルギー	APA Corp
+US	BKR	ベーカー・ヒューズ	Baker Hughes	エネルギー	エネルギー	Baker Hughes Co
+US	CNX	CNXリソーシズ	CNX Resources	エネルギー	エネルギー	CNX Resources
+US	COP	コノコフィリップス	ConocoPhillips	エネルギー	エネルギー	ConocoPhillips
+US	CTRA	コテラ・エナジー	Coterra Energy	エネルギー	エネルギー	Coterra Energy
+US	CVX	シェブロン	Chevron Corporation	エネルギー	エネルギー	Chevron Corp
+US	DVN	デボン・エナジー	Devon Energy	エネルギー	エネルギー	Devon Energy Corp
+US	EOG	EOGリソーシズ	EOG Resources	エネルギー	エネルギー	EOG Resources Inc
+US	EQT	EQTコーポレーション	EQT Corporation	エネルギー	エネルギー	EQT Corp
+US	EXE			エネルギー	エネルギー	Expand Energy Corp
+US	FANG	ダイアモンドバック・エナジー	Diamondback Energy	エネルギー	エネルギー	Diamondback Energy Inc
+US	HAL	ハリバートン	Halliburton	エネルギー	エネルギー	Halliburton Co
+US	KMI	キンダー・モルガン	Kinder Morgan	エネルギー	エネルギー	Kinder Morgan Inc
+US	MPC	マラソン・ペトロリアム	Marathon Petroleum	エネルギー	エネルギー	Marathon Petroleum Corp
+US	OKE	ワンオーク	ONEOK	エネルギー	エネルギー	ONEOK Inc
+US	OXY	オクシデンタル・ペトロリアム	Occidental Petroleum	エネルギー	エネルギー	Occidental Petroleum Corp
+US	PSX	フィリップス66	Phillips 66	エネルギー	エネルギー	Phillips 66
+US	SLB	シュルンベルジェ（SLB）	SLB	エネルギー	エネルギー	SLB Ltd
+US	TPL			エネルギー	エネルギー	Texas Pacific Land Corp
+US	TRGP	タルガ・リソーシズ	Targa Resources	エネルギー	エネルギー	Targa Resources Corp
+US	VLO	バレロ・エナジー	Valero Energy	エネルギー	エネルギー	Valero Energy Corp
+US	WMB	ウィリアムズ・カンパニーズ	Williams Companies	エネルギー	エネルギー	Williams Cos Inc/The
+US	XOM	エクソンモービル	ExxonMobil	エネルギー	エネルギー	Exxon Mobil Corp
+US	CHTR	チャーター・コミュニケーションズ	Charter Communications	コミュニケーション	コミュニケーション	Charter Communications Inc
+US	CMCSA	コムキャスト	Comcast Corporation	コミュニケーション	コミュニケーション	Comcast Corp
+US	DIS	ウォルト・ディズニー	Walt Disney	コミュニケーション	コミュニケーション	Walt Disney Co/The
+US	EA	エレクトロニック・アーツ	Electronic Arts	コミュニケーション	コミュニケーション	Electronic Arts Inc
+US	FOX	フォックス・コーポレーション	Fox Corporation	コミュニケーション	コミュニケーション	Fox Corp
+US	FOXA	フォックス・コーポレーション（クラスA）	Fox Corporation (Class A)	コミュニケーション	コミュニケーション	Fox Corp
+US	GOOG	アルファベット（クラスC）	Alphabet (Class C)	コミュニケーション	コミュニケーション	Alphabet Inc
+US	GOOGL	アルファベット（クラスA）	Alphabet (Class A)	コミュニケーション	コミュニケーション	Alphabet Inc
+US	LYV	ライブ・ネーション・エンターテインメント	Live Nation Entertainment	コミュニケーション	コミュニケーション	Live Nation Entertainment Inc
+US	META	メタ・プラットフォームズ	Meta Platforms	コミュニケーション	コミュニケーション	Meta Platforms Inc
+US	MTCH	マッチ・グループ	Match Group	コミュニケーション	コミュニケーション	Match Group
+US	NFLX	ネットフリックス	Netflix	コミュニケーション	コミュニケーション	Netflix Inc
+US	NWS	ニューズ・コーポレーション	News Corporation	コミュニケーション	コミュニケーション	News Corp
+US	NWSA	ニューズ・コーポレーション（クラスA）	News Corporation (Class A)	コミュニケーション	コミュニケーション	News Corp
+US	OMC	オムニコム・グループ	Omnicom Group	コミュニケーション	コミュニケーション	Omnicom Group Inc
+US	PSKY			コミュニケーション	コミュニケーション	Paramount Skydance Corp
+US	SATS			コミュニケーション	コミュニケーション	EchoStar Corp
+US	SIRI	シリウスXM	Sirius XM	コミュニケーション	コミュニケーション	Sirius XM
+US	T	AT&T	AT&T	コミュニケーション	コミュニケーション	AT&T Inc
+US	TKO			コミュニケーション	コミュニケーション	TKO Group Holdings Inc
+US	TMUS	T-モバイルUS	T-Mobile US	コミュニケーション	コミュニケーション	T-Mobile US Inc
+US	TTD	トレード・デスク	Trade Desk	コミュニケーション	コミュニケーション	Trade Desk Inc/The
+US	TTWO	テイク・ツー・インタラクティブ	Take-Two Interactive	コミュニケーション	コミュニケーション	Take-Two Interactive Software
+US	VZ	ベライゾン・コミュニケーションズ	Verizon Communications	コミュニケーション	コミュニケーション	Verizon Communications Inc
+US	WBD	ワーナー・ブラザース・ディスカバリー	Warner Bros. Discovery	コミュニケーション	コミュニケーション	Warner Bros Discovery Inc
+US	AAPL	アップル	Apple Inc.	テクノロジー	テクノロジー	Apple Inc
+US	ACN	アクセンチュア	Accenture	テクノロジー	テクノロジー	Accenture PLC
+US	ADBE	アドビ	Adobe Inc.	テクノロジー	テクノロジー	Adobe Inc
+US	ADI	アナログ・デバイセズ	Analog Devices	テクノロジー	テクノロジー	Analog Devices Inc
+US	ADSK	オートデスク	Autodesk	テクノロジー	テクノロジー	Autodesk Inc
+US	AKAM	アカマイ・テクノロジーズ	Akamai Technologies	テクノロジー	テクノロジー	Akamai Technologies Inc
+US	AMAT	アプライド・マテリアルズ	Applied Materials	テクノロジー	テクノロジー	Applied Materials Inc
+US	AMD	アドバンスト・マイクロ・デバイセズ	AMD	テクノロジー	テクノロジー	Advanced Micro Devices Inc
+US	ANET	アリスタ・ネットワークス	Arista Networks	テクノロジー	テクノロジー	Arista Networks Inc
+US	APH	アンフェノール	Amphenol Corporation	テクノロジー	テクノロジー	Amphenol Corp
+US	APP			テクノロジー	テクノロジー	AppLovin Corp
+US	ASML	ASML	ASML Holding	テクノロジー	テクノロジー	ASML Holding
+US	AVGO	ブロードコム	Broadcom Inc.	テクノロジー	テクノロジー	Broadcom Inc
+US	CDNS	ケイデンス・デザイン・システムズ	Cadence Design Systems	テクノロジー	テクノロジー	Cadence Design Systems Inc
+US	CDW	CDWコーポレーション	CDW Corporation	テクノロジー	テクノロジー	CDW Corp/DE
+US	CIEN			テクノロジー	テクノロジー	Ciena Corp
+US	COHR			テクノロジー	テクノロジー	Coherent Corp
+US	CRM	セールスフォース	Salesforce	テクノロジー	テクノロジー	Salesforce Inc
+US	CRWD	クラウドストライク	CrowdStrike	テクノロジー	テクノロジー	Crowdstrike Holdings Inc
+US	CSCO	シスコシステムズ	Cisco Systems	テクノロジー	テクノロジー	Cisco Systems Inc
+US	CTSH	コグニザント・テクノロジー・ソリューションズ	Cognizant Technology Solutions	テクノロジー	テクノロジー	Cognizant Technology Solutions
+US	DDOG	データドッグ	Datadog	テクノロジー	テクノロジー	Datadog Inc
+US	DELL			テクノロジー	テクノロジー	Dell Technologies Inc
+US	ENPH	エンフェーズ・エナジー	Enphase Energy	テクノロジー	テクノロジー	Enphase Energy
+US	EPAM	EPAMシステムズ	EPAM Systems	テクノロジー	テクノロジー	EPAM Systems Inc
+US	FFIV	F5	F5 Inc.	テクノロジー	テクノロジー	F5 Inc
+US	FICO	フェア・アイザック（FICO）	Fair Isaac Corporation	テクノロジー	テクノロジー	Fair Isaac Corp
+US	FSLR	ファースト・ソーラー	First Solar	テクノロジー	テクノロジー	First Solar Inc
+US	FTNT	フォーティネット	Fortinet	テクノロジー	テクノロジー	Fortinet Inc
+US	GDDY			テクノロジー	テクノロジー	GoDaddy Inc
+US	GEN	ジェン・デジタル	Gen Digital	テクノロジー	テクノロジー	Gen Digital Inc
+US	GFS	グローバルファウンドリーズ	GlobalFoundries	テクノロジー	テクノロジー	GlobalFoundries
+US	GLW	コーニング	Corning	テクノロジー	テクノロジー	Corning Inc
+US	HPE	ヒューレット・パッカード・エンタープライズ	Hewlett Packard Enterprise	テクノロジー	テクノロジー	Hewlett Packard Enterprise Co
+US	HPQ	HP	HP Inc.	テクノロジー	テクノロジー	HP Inc
+US	IBM	IBM	IBM	テクノロジー	テクノロジー	International Business Machine
+US	INTC	インテル	Intel Corporation	テクノロジー	テクノロジー	Intel Corp
+US	INTU	インテュイット	Intuit	テクノロジー	テクノロジー	Intuit Inc
+US	IT	ガートナー	Gartner	テクノロジー	テクノロジー	Gartner Inc
+US	JBL	ジェイブル	Jabil	テクノロジー	テクノロジー	Jabil Inc
+US	KEYS	キーサイト・テクノロジーズ	Keysight Technologies	テクノロジー	テクノロジー	Keysight Technologies Inc
+US	KLAC	KLAコーポレーション	KLA Corporation	テクノロジー	テクノロジー	KLA Corp
+US	LITE			テクノロジー	テクノロジー	Lumentum Holdings Inc
+US	LRCX	ラム・リサーチ	Lam Research	テクノロジー	テクノロジー	Lam Research Corp
+US	MCHP	マイクロチップ・テクノロジー	Microchip Technology	テクノロジー	テクノロジー	Microchip Technology Inc
+US	MDB	モンゴDB	MongoDB	テクノロジー	テクノロジー	MongoDB
+US	MPWR	モノリシック・パワー・システムズ	Monolithic Power Systems	テクノロジー	テクノロジー	Monolithic Power Systems Inc
+US	MRVL	マーベル・テクノロジー	Marvell Technology	テクノロジー	テクノロジー	Marvell Technology
+US	MSFT	マイクロソフト	Microsoft	テクノロジー	テクノロジー	Microsoft Corp
+US	MSI	モトローラ・ソリューションズ	Motorola Solutions	テクノロジー	テクノロジー	Motorola Solutions Inc
+US	MU	マイクロン・テクノロジー	Micron Technology	テクノロジー	テクノロジー	Micron Technology Inc
+US	NOW	サービスナウ	ServiceNow	テクノロジー	テクノロジー	ServiceNow Inc
+US	NTAP	ネットアップ	NetApp	テクノロジー	テクノロジー	NetApp Inc
+US	NVDA	エヌビディア	NVIDIA	テクノロジー	テクノロジー	NVIDIA Corp
+US	NXPI	NXPセミコンダクターズ	NXP Semiconductors	テクノロジー	テクノロジー	NXP Semiconductors NV
+US	OKTA	オクタ	Okta	テクノロジー	テクノロジー	Okta
+US	ON	ON・セミコンダクター	ON Semiconductor	テクノロジー	テクノロジー	ON Semiconductor Corp
+US	ORCL	オラクル	Oracle Corporation	テクノロジー	テクノロジー	Oracle Corp
+US	PANW	パロアルト・ネットワークス	Palo Alto Networks	テクノロジー	テクノロジー	Palo Alto Networks Inc
+US	PLTR			テクノロジー	テクノロジー	Palantir Technologies Inc
+US	PTC	PTC	PTC Inc.	テクノロジー	テクノロジー	PTC Inc
+US	Q			テクノロジー	テクノロジー	Qnity Electronics Inc
+US	QCOM	クアルコム	Qualcomm	テクノロジー	テクノロジー	QUALCOMM Inc
+US	QRVO	コルボ	Qorvo	テクノロジー	テクノロジー	Qorvo
+US	ROP	ローパー・テクノロジーズ	Roper Technologies	テクノロジー	テクノロジー	Roper Technologies Inc
+US	SMCI	スーパー・マイクロ・コンピューター	Super Micro Computer	テクノロジー	テクノロジー	Super Micro Computer Inc
+US	SNDK			テクノロジー	テクノロジー	Sandisk Corp/DE
+US	SNPS	シノプシス	Synopsys	テクノロジー	テクノロジー	Synopsys Inc
+US	STX	シーゲート・テクノロジー	Seagate Technology	テクノロジー	テクノロジー	Seagate Technology Holdings PL
+US	SWKS	スカイワークス・ソリューションズ	Skyworks Solutions	テクノロジー	テクノロジー	Skyworks Solutions Inc
+US	TDY	テレダイン・テクノロジーズ	Teledyne Technologies	テクノロジー	テクノロジー	Teledyne Technologies Inc
+US	TEAM	アトラシアン	Atlassian	テクノロジー	テクノロジー	Atlassian
+US	TEL	TEコネクティビティ	TE Connectivity	テクノロジー	テクノロジー	TE Connectivity PLC
+US	TER	テラダイン	Teradyne	テクノロジー	テクノロジー	Teradyne Inc
+US	TRMB	トリンブル	Trimble	テクノロジー	テクノロジー	Trimble Inc
+US	TXN	テキサス・インスツルメンツ	Texas Instruments	テクノロジー	テクノロジー	Texas Instruments Inc
+US	TYL	タイラー・テクノロジーズ	Tyler Technologies	テクノロジー	テクノロジー	Tyler Technologies Inc
+US	VRSN	ベリサイン	VeriSign	テクノロジー	テクノロジー	VeriSign Inc
+US	WDAY	ワークデイ	Workday	テクノロジー	テクノロジー	Workday Inc
+US	WDC	ウエスタン・デジタル	Western Digital	テクノロジー	テクノロジー	Western Digital Corp
+US	ZBRA	ゼブラ・テクノロジーズ	Zebra Technologies	テクノロジー	テクノロジー	Zebra Technologies Corp
+US	ZS	ジースケーラー	Zscaler	テクノロジー	テクノロジー	Zscaler
+US	A	アジレント・テクノロジーズ	Agilent Technologies	ヘルスケア	ヘルスケア	Agilent Technologies Inc
+US	ABBV	アッヴィ	AbbVie Inc.	ヘルスケア	ヘルスケア	AbbVie Inc
+US	ABT	アボット・ラボラトリーズ	Abbott Laboratories	ヘルスケア	ヘルスケア	Abbott Laboratories
+US	ALGN	アライン・テクノロジー	Align Technology	ヘルスケア	ヘルスケア	Align Technology Inc
+US	ALNY	アルナイラム・ファーマシューティカルズ	Alnylam Pharmaceuticals	ヘルスケア	ヘルスケア	Alnylam Pharmaceuticals
+US	AMGN	アムジェン	Amgen Inc.	ヘルスケア	ヘルスケア	Amgen Inc
+US	AZN	アストラゼネカ	AstraZeneca	ヘルスケア	ヘルスケア	AstraZeneca
+US	BAX	バクスター・インターナショナル	Baxter International	ヘルスケア	ヘルスケア	Baxter International Inc
+US	BDX	ベクトン・ディッキンソン	Becton Dickinson	ヘルスケア	ヘルスケア	Becton Dickinson & Co
+US	BIIB	バイオジェン	Biogen	ヘルスケア	ヘルスケア	Biogen Inc
+US	BIO	バイオ・ラッド・ラボラトリーズ	Bio-Rad Laboratories	ヘルスケア	ヘルスケア	Bio-Rad Laboratories
+US	BMY	ブリストル・マイヤーズ スクイブ	Bristol-Myers Squibb	ヘルスケア	ヘルスケア	Bristol-Myers Squibb Co
+US	BSX	ボストン・サイエンティフィック	Boston Scientific	ヘルスケア	ヘルスケア	Boston Scientific Corp
+US	CAH	カーディナル・ヘルス	Cardinal Health	ヘルスケア	ヘルスケア	Cardinal Health Inc
+US	CI	シグナ・グループ	Cigna Group	ヘルスケア	ヘルスケア	Cigna Group/The
+US	CNC	センテーン	Centene Corporation	ヘルスケア	ヘルスケア	Centene Corp
+US	COO	クーパー・カンパニーズ	Cooper Companies	ヘルスケア	ヘルスケア	Cooper Cos Inc/The
+US	COR	コアマーク・ホールディング	Cencora	ヘルスケア	ヘルスケア	Cencora Inc
+US	CRL	チャールズ・リバー・ラボラトリーズ	Charles River Laboratories	ヘルスケア	ヘルスケア	Charles River Laboratories Int
+US	CVS	CVSヘルス	CVS Health	ヘルスケア	ヘルスケア	CVS Health Corp
+US	DGX	クエスト・ダイアグノスティクス	Quest Diagnostics	ヘルスケア	ヘルスケア	Quest Diagnostics Inc
+US	DHR	ダナハー	Danaher Corporation	ヘルスケア	ヘルスケア	Danaher Corp
+US	DVA	ダビータ	DaVita	ヘルスケア	ヘルスケア	DaVita Inc
+US	DXCM	デックスコム	Dexcom	ヘルスケア	ヘルスケア	Dexcom Inc
+US	ELV	エレバンス・ヘルス	Elevance Health	ヘルスケア	ヘルスケア	Elevance Health Inc
+US	EW	エドワーズ・ライフサイエンシーズ	Edwards Lifesciences	ヘルスケア	ヘルスケア	Edwards Lifesciences Corp
+US	GEHC	GEヘルスケア	GE HealthCare	ヘルスケア	ヘルスケア	GE HealthCare Technologies Inc
+US	GILD	ギリアド・サイエンシズ	Gilead Sciences	ヘルスケア	ヘルスケア	Gilead Sciences Inc
+US	HCA	HCAヘルスケア	HCA Healthcare	ヘルスケア	ヘルスケア	HCA Healthcare Inc
+US	HOLX	ホロジック	Hologic	ヘルスケア	ヘルスケア	Hologic
+US	HSIC	ヘンリー・シャイン	Henry Schein	ヘルスケア	ヘルスケア	Henry Schein Inc
+US	HUM	ヒューマナ	Humana	ヘルスケア	ヘルスケア	Humana Inc
+US	IDXX	アイデックス・ラボラトリーズ	IDEXX Laboratories	ヘルスケア	ヘルスケア	IDEXX Laboratories Inc
+US	ILMN	イルミナ	Illumina	ヘルスケア	ヘルスケア	Illumina
+US	INCY	インサイト	Incyte Corporation	ヘルスケア	ヘルスケア	Incyte Corp
+US	IQV	IQVIA	IQVIA Holdings	ヘルスケア	ヘルスケア	IQVIA Holdings Inc
+US	ISRG	インテュイティブ・サージカル	Intuitive Surgical	ヘルスケア	ヘルスケア	Intuitive Surgical Inc
+US	JNJ	ジョンソン・エンド・ジョンソン	Johnson & Johnson	ヘルスケア	ヘルスケア	Johnson & Johnson
+US	LH	ラボコープ	Labcorp	ヘルスケア	ヘルスケア	Labcorp Holdings Inc
+US	LLY	イーライ・リリー	Eli Lilly	ヘルスケア	ヘルスケア	Eli Lilly & Co
+US	MCK	マッケソン	McKesson Corporation	ヘルスケア	ヘルスケア	McKesson Corp
+US	MDT	メドトロニック	Medtronic	ヘルスケア	ヘルスケア	Medtronic PLC
+US	MOH	モリーナ・ヘルスケア	Molina Healthcare	ヘルスケア	ヘルスケア	Molina Healthcare
+US	MRK	メルク	Merck & Co.	ヘルスケア	ヘルスケア	Merck & Co Inc
+US	MRNA	モデルナ	Moderna	ヘルスケア	ヘルスケア	Moderna Inc
+US	MTD	メトラー・トレド・インターナショナル	Mettler-Toledo International	ヘルスケア	ヘルスケア	Mettler-Toledo International I
+US	PFE	ファイザー	Pfizer	ヘルスケア	ヘルスケア	Pfizer Inc
+US	PODD	インスレット	Insulet Corporation	ヘルスケア	ヘルスケア	Insulet Corp
+US	REGN	リジェネロン・ファーマシューティカルズ	Regeneron Pharmaceuticals	ヘルスケア	ヘルスケア	Regeneron Pharmaceuticals Inc
+US	RMD	レスメド	ResMed	ヘルスケア	ヘルスケア	ResMed Inc
+US	RVTY	リバティ	Revvity	ヘルスケア	ヘルスケア	Revvity Inc
+US	SOLV	ソルベイ	Solventum	ヘルスケア	ヘルスケア	Solventum Corp
+US	STE	ステリス	Steris	ヘルスケア	ヘルスケア	STERIS PLC
+US	SYK	ストライカー	Stryker	ヘルスケア	ヘルスケア	Stryker Corp
+US	TECH	バイオ・テクネ	Bio-Techne	ヘルスケア	ヘルスケア	Bio-Techne Corp
+US	TFX	テレフレックス	Teleflex	ヘルスケア	ヘルスケア	Teleflex
+US	TMO	サーモ・フィッシャー・サイエンティフィック	Thermo Fisher Scientific	ヘルスケア	ヘルスケア	Thermo Fisher Scientific Inc
+US	UHS	ユニバーサル・ヘルス・サービシズ	Universal Health Services	ヘルスケア	ヘルスケア	Universal Health Services Inc
+US	UNH	ユナイテッドヘルス・グループ	UnitedHealth Group	ヘルスケア	ヘルスケア	UnitedHealth Group Inc
+US	VEEV			ヘルスケア	ヘルスケア	Veeva Systems Inc
+US	VRTX	バーテックス・ファーマシューティカルズ	Vertex Pharmaceuticals	ヘルスケア	ヘルスケア	Vertex Pharmaceuticals Inc
+US	VTRS	ビアトリス	Viatris	ヘルスケア	ヘルスケア	Viatris Inc
+US	WAT	ウォーターズ・コーポレーション	Waters Corporation	ヘルスケア	ヘルスケア	Waters Corp
+US	WST	ウェスト・ファーマシューティカル・サービシズ	West Pharmaceutical Services	ヘルスケア	ヘルスケア	West Pharmaceutical Services I
+US	ZBH	ジンマー・バイオメット・ホールディングス	Zimmer Biomet Holdings	ヘルスケア	ヘルスケア	Zimmer Biomet Holdings Inc
+US	ZTS	ゾエティス	Zoetis	ヘルスケア	ヘルスケア	Zoetis Inc
+US	ABNB	エアビーアンドビー	Airbnb	一般消費財	一般消費財	Airbnb Inc
+US	AMZN	アマゾン・ドット・コム	Amazon.com	一般消費財	一般消費財	Amazon.com Inc
+US	APTV	アプティブ	Aptiv	一般消費財	一般消費財	Aptiv PLC
+US	AZO	オートゾーン	AutoZone	一般消費財	一般消費財	AutoZone Inc
+US	BBY	ベスト・バイ	Best Buy	一般消費財	一般消費財	Best Buy Co Inc
+US	BKNG	ブッキング・ホールディングス	Booking Holdings	一般消費財	一般消費財	Booking Holdings Inc
+US	BWA	ボーグワーナー	BorgWarner	一般消費財	一般消費財	BorgWarner
+US	CCL	カーニバル	Carnival Corporation	一般消費財	一般消費財	Carnival Corp Ltd
+US	CMG	チポトレ・メキシカン・グリル	Chipotle Mexican Grill	一般消費財	一般消費財	Chipotle Mexican Grill Inc
+US	CVNA			一般消費財	一般消費財	Carvana Co
+US	CZR	シーザーズ・エンターテインメント	Caesars Entertainment	一般消費財	一般消費財	Caesars Entertainment
+US	DASH	ドアダッシュ	DoorDash	一般消費財	一般消費財	DoorDash Inc
+US	DECK	デッカーズ・アウトドア	Deckers Outdoor	一般消費財	一般消費財	Deckers Outdoor Corp
+US	DHI	D.R.ホートン	D.R. Horton	一般消費財	一般消費財	DR Horton Inc
+US	DPZ	ドミノ・ピザ	Domino's Pizza	一般消費財	一般消費財	Domino's Pizza Inc
+US	DRI	ダーデン・レストランツ	Darden Restaurants	一般消費財	一般消費財	Darden Restaurants Inc
+US	EBAY	イーベイ	eBay	一般消費財	一般消費財	eBay Inc
+US	ETSY	エッツィ	Etsy	一般消費財	一般消費財	Etsy
+US	EXPE	エクスペディア・グループ	Expedia Group	一般消費財	一般消費財	Expedia Group Inc
+US	F	フォード・モーター	Ford Motor	一般消費財	一般消費財	Ford Motor Co
+US	GM	ゼネラル・モーターズ	General Motors	一般消費財	一般消費財	General Motors Co
+US	GPC	ジェニュイン・パーツ	Genuine Parts	一般消費財	一般消費財	Genuine Parts Co
+US	GRMN	ガーミン	Garmin	一般消費財	一般消費財	Garmin Ltd
+US	HAS	ハズブロ	Hasbro	一般消費財	一般消費財	Hasbro Inc
+US	HD	ホーム・デポ	Home Depot	一般消費財	一般消費財	Home Depot Inc/The
+US	HLT	ヒルトン・ワールドワイド・ホールディングス	Hilton Worldwide	一般消費財	一般消費財	Hilton Worldwide Holdings Inc
+US	JD	JDドットコム（京東商城）	JD.com	一般消費財	一般消費財	JD.com
+US	KMX	カーマックス	CarMax	一般消費財	一般消費財	CarMax
+US	LCID	ルーシッド・グループ	Lucid Group	一般消費財	一般消費財	Lucid Group
+US	LEN	レナー	Lennar Corporation	一般消費財	一般消費財	Lennar Corp
+US	LKQ	LKQコーポレーション	LKQ Corporation	一般消費財	一般消費財	LKQ Corporation
+US	LOW	ロウズ・カンパニーズ	Lowe's Companies	一般消費財	一般消費財	Lowe's Cos Inc
+US	LULU	ルルレモン・アスレティカ	Lululemon Athletica	一般消費財	一般消費財	Lululemon Athletica Inc
+US	LVS	ラスベガス・サンズ	Las Vegas Sands	一般消費財	一般消費財	Las Vegas Sands Corp
+US	MAR	マリオット・インターナショナル	Marriott International	一般消費財	一般消費財	Marriott International Inc/MD
+US	MCD	マクドナルド	McDonald's	一般消費財	一般消費財	McDonald's Corp
+US	MELI	メルカドリブレ	MercadoLibre	一般消費財	一般消費財	MercadoLibre
+US	MGM	MGMリゾーツ・インターナショナル	MGM Resorts International	一般消費財	一般消費財	MGM Resorts International
+US	MHK	モホーク・インダストリーズ	Mohawk Industries	一般消費財	一般消費財	Mohawk Industries
+US	NCLH	ノルウェージャン・クルーズ・ライン・ホールディングス	Norwegian Cruise Line Holdings	一般消費財	一般消費財	Norwegian Cruise Line Holdings
+US	NKE	ナイキ	Nike	一般消費財	一般消費財	NIKE Inc
+US	NVR	NVR	NVR Inc.	一般消費財	一般消費財	NVR Inc
+US	ORLY	オライリー・オートモーティブ	O'Reilly Automotive	一般消費財	一般消費財	O'Reilly Automotive Inc
+US	PDD	ピンドゥオドゥオ	PDD Holdings	一般消費財	一般消費財	PDD Holdings
+US	PHM	PulteGroup	PulteGroup	一般消費財	一般消費財	PulteGroup Inc
+US	POOL	プール・コーポレーション	Pool Corporation	一般消費財	一般消費財	Pool Corp
+US	RCL	ロイヤル・カリビアン・グループ	Royal Caribbean Group	一般消費財	一般消費財	Royal Caribbean Cruises Ltd
+US	RL	ラルフ・ローレン	Ralph Lauren	一般消費財	一般消費財	Ralph Lauren Corp
+US	ROST	ロス・ストアーズ	Ross Stores	一般消費財	一般消費財	Ross Stores Inc
+US	SBUX	スターバックス	Starbucks	一般消費財	一般消費財	Starbucks Corp
+US	TJX	TJXカンパニーズ	TJX Companies	一般消費財	一般消費財	TJX Cos Inc/The
+US	TPR	タペストリー	Tapestry	一般消費財	一般消費財	Tapestry Inc
+US	TSCO	トラクター・サプライ	Tractor Supply	一般消費財	一般消費財	Tractor Supply Co
+US	TSLA	テスラ	Tesla	一般消費財	一般消費財	Tesla Inc
+US	ULTA	ウルタ・ビューティー	Ulta Beauty	一般消費財	一般消費財	Ulta Beauty Inc
+US	WSM			一般消費財	一般消費財	Williams-Sonoma Inc
+US	WYNN	ウィン・リゾーツ	Wynn Resorts	一般消費財	一般消費財	Wynn Resorts Ltd
+US	YUM	ヤム・ブランズ	Yum! Brands	一般消費財	一般消費財	Yum! Brands Inc
+US	ACGL	アーチ・キャピタル・グループ	Arch Capital Group	金融	金融	Arch Capital Group Ltd
+US	AFL	アフラック	Aflac Inc.	金融	金融	Aflac Inc
+US	AIG	アメリカン・インターナショナル・グループ	AIG	金融	金融	American International Group I
+US	AIZ	アシュアラント	Assurant Inc.	金融	金融	Assurant Inc
+US	AJG	アーサー・J・ギャラガー	Arthur J. Gallagher	金融	金融	Arthur J Gallagher & Co
+US	ALL	オールステート	Allstate Corporation	金融	金融	Allstate Corp/The
+US	AMP	アメリプライズ・ファイナンシャル	Ameriprise Financial	金融	金融	Ameriprise Financial Inc
+US	AON	エーオン	Aon	金融	金融	Aon PLC
+US	APO			金融	金融	Apollo Global Management Inc
+US	ARES			金融	金融	Ares Management Corp
+US	AXP	アメリカン・エキスプレス	American Express	金融	金融	American Express Co
+US	BAC	バンク・オブ・アメリカ	Bank of America	金融	金融	Bank of America Corp
+US	BEN	フランクリン・リソーシズ	Franklin Resources	金融	金融	Franklin Resources Inc
+US	BK			金融	金融	Bank of New York Mellon Corp/T
+US	BLK	ブラックロック	BlackRock	金融	金融	Blackrock Inc
+US	BRK.B	バークシャー・ハサウェイ	Berkshire Hathaway	金融	金融	Berkshire Hathaway Inc
+US	BRO	ブラウン・アンド・ブラウン	Brown & Brown	金融	金融	Brown & Brown Inc
+US	BX	ブラックストーン	Blackstone	金融	金融	Blackstone Inc
+US	C	シティグループ	Citigroup	金融	金融	Citigroup Inc
+US	CB	チャブ	Chubb	金融	金融	Chubb Ltd
+US	CBOE	シカゴ・オプション取引所・グループ	Cboe Global Markets	金融	金融	Cboe Global Markets Inc
+US	CFG	シチズンズ・ファイナンシャル・グループ	Citizens Financial Group	金融	金融	Citizens Financial Group Inc
+US	CINF	シンシナティ・ファイナンシャル	Cincinnati Financial	金融	金融	Cincinnati Financial Corp
+US	CME	CMEグループ	CME Group	金融	金融	CME Group Inc
+US	COF	キャピタル・ワン・ファイナンシャル	Capital One Financial	金融	金融	Capital One Financial Corp
+US	COIN			金融	金融	Coinbase Global Inc
+US	CPAY	コーポレートペイ	Corpay	金融	金融	Corpay Inc
+US	EG	エベレスト・グループ	Everest Group	金融	金融	Everest Group Ltd
+US	ERIE			金融	金融	Erie Indemnity Co
+US	FDS	ファクトセット・リサーチ・システムズ	FactSet Research Systems	金融	金融	FactSet Research Systems Inc
+US	FIS	フィデリティ・ナショナル・インフォメーション・サービシズ	FIS	金融	金融	Fidelity National Information
+US	FISV			金融	金融	Fiserv Inc
+US	FITB	フィフス・サード・バンコープ	Fifth Third Bancorp	金融	金融	Fifth Third Bancorp
+US	GL			金融	金融	Globe Life Inc
+US	GPN			金融	金融	Global Payments Inc
+US	GS	ゴールドマン・サックス	Goldman Sachs	金融	金融	Goldman Sachs Group Inc/The
+US	HBAN	ハンティントン・バンクシェアーズ	Huntington Bancshares	金融	金融	Huntington Bancshares Inc/OH
+US	HIG	ハートフォード・ファイナンシャル・サービシズ	Hartford Financial Services	金融	金融	Hartford Insurance Group Inc/T
+US	HOOD			金融	金融	Robinhood Markets Inc
+US	IBKR			金融	金融	Interactive Brokers Group Inc
+US	ICE	インターコンチネンタル取引所	Intercontinental Exchange	金融	金融	Intercontinental Exchange Inc
+US	IVZ	インベスコ	Invesco	金融	金融	Invesco Ltd
+US	JKHY	ジャック・ヘンリー・アンド・アソシエーツ	Jack Henry & Associates	金融	金融	Jack Henry & Associates Inc
+US	JPM	JPモルガン・チェース	JPMorgan Chase	金融	金融	JPMorgan Chase & Co
+US	KEY	キーコープ	KeyCorp	金融	金融	KeyCorp
+US	KKR			金融	金融	KKR & Co Inc
+US	L	ローウズ・カンパニーズ（コングロマリット）	Loews Corporation	金融	金融	Loews Corp
+US	LNC	リンカーン・ナショナル	Lincoln National	金融	金融	Lincoln National
+US	MA	マスターカード	Mastercard	金融	金融	Mastercard Inc
+US	MCO	ムーディーズ	Moody's Corporation	金融	金融	Moody's Corp
+US	MET	メットライフ	MetLife	金融	金融	MetLife Inc
+US	MKTX	マーケットアクセス・ホールディングス	MarketAxess Holdings	金融	金融	MarketAxess
+US	MMC	マーシュ・マクレナン	Marsh McLennan	金融	金融	Marsh & McLennan
+US	MRSH			金融	金融	Marsh & McLennan Cos Inc
+US	MS	モルガン・スタンレー	Morgan Stanley	金融	金融	Morgan Stanley
+US	MSCI	MSCIインク	MSCI Inc.	金融	金融	MSCI Inc
+US	MTB	M&Tバンク	M&T Bank	金融	金融	M&T Bank Corp
+US	NDAQ	ナスダック	Nasdaq Inc.	金融	金融	Nasdaq Inc
+US	NTRS	ノーザン・トラスト	Northern Trust	金融	金融	Northern Trust Corp
+US	PFG	プリンシパル・ファイナンシャル・グループ	Principal Financial Group	金融	金融	Principal Financial Group Inc
+US	PGR	プログレッシブ	Progressive Corporation	金融	金融	Progressive Corp/The
+US	PNC	PNCファイナンシャル・サービシズ	PNC Financial Services	金融	金融	PNC Financial Services Group I
+US	PRU	プルデンシャル・ファイナンシャル	Prudential Financial	金融	金融	Prudential Financial Inc
+US	PYPL	ペイパル・ホールディングス	PayPal Holdings	金融	金融	PayPal Holdings Inc
+US	RF	リージョンズ・ファイナンシャル	Regions Financial	金融	金融	Regions Financial Corp
+US	RJF	レイモンド・ジェームズ・ファイナンシャル	Raymond James Financial	金融	金融	Raymond James Financial Inc
+US	SCHW	チャールズ・シュワブ	Charles Schwab	金融	金融	Charles Schwab Corp/The
+US	SPGI	S&Pグローバル	S&P Global	金融	金融	S&P Global Inc
+US	STT	ステート・ストリート	State Street	金融	金融	State Street Corp
+US	SYF	シンクロニー・ファイナンシャル	Synchrony Financial	金融	金融	Synchrony Financial
+US	TFC	トゥルイスト・ファイナンシャル	Truist Financial	金融	金融	Truist Financial Corp
+US	TROW	T.ロウ・プライス	T. Rowe Price	金融	金融	T Rowe Price Group Inc
+US	TRV	トラベラーズ・カンパニーズ	Travelers Companies	金融	金融	Travelers Cos Inc/The
+US	USB	USバンコープ	US Bancorp	金融	金融	US Bancorp
+US	V	ビザ	Visa	金融	金融	Visa Inc
+US	WFC	ウェルズ・ファーゴ	Wells Fargo	金融	金融	Wells Fargo & Co
+US	WRB	W.R.バークレー	W. R. Berkley	金融	金融	W R Berkley Corp
+US	WTW	ウィリス・タワーズワトソン	Willis Towers Watson	金融	金融	Willis Towers Watson PLC
+US	XYZ			金融	金融	Block Inc
+US	ADP	オートマティック・データ・プロセッシング	ADP	資本財・産業	資本財・産業	Automatic Data Processing Inc
+US	ALLE	アレガン	Allegion	資本財・産業	資本財・産業	Allegion plc
+US	AME	AMETEK	AMETEK Inc.	資本財・産業	資本財・産業	AMETEK Inc
+US	AOS	A・O・スミス	A.O. Smith	資本財・産業	資本財・産業	A O Smith Corp
+US	AXON	アクソン・エンタープライズ	Axon Enterprise	資本財・産業	資本財・産業	Axon Enterprise Inc
+US	BA	ボーイング	Boeing	資本財・産業	資本財・産業	Boeing Co/The
+US	BLDR	ビルダーズ・ファーストソース	Builders FirstSource	資本財・産業	資本財・産業	Builders FirstSource Inc
+US	BR	ブロードリッジ・フィナンシャル・ソリューションズ	Broadridge Financial Solutions	資本財・産業	資本財・産業	Broadridge Financial Solutions
+US	CARR	キャリア・グローバル	Carrier Global	資本財・産業	資本財・産業	Carrier Global Corp
+US	CAT	キャタピラー	Caterpillar	資本財・産業	資本財・産業	Caterpillar Inc
+US	CHRW			資本財・産業	資本財・産業	CH Robinson Worldwide Inc
+US	CMI	カミンズ	Cummins	資本財・産業	資本財・産業	Cummins Inc
+US	CPRT	コパート	Copart	資本財・産業	資本財・産業	Copart Inc
+US	CSX	CSXコーポレーション	CSX Corporation	資本財・産業	資本財・産業	CSX Corp
+US	CTAS	シンタス	Cintas Corporation	資本財・産業	資本財・産業	Cintas Corp
+US	DAL	デルタ航空	Delta Air Lines	資本財・産業	資本財・産業	Delta Air Lines Inc
+US	DAY	デイフォース（セリジーHCM）	Dayforce (Ceridian HCM)	資本財・産業	資本財・産業	Dayforce
+US	DE	ジョン・ディア（ディア・アンド・カンパニー）	Deere & Company	資本財・産業	資本財・産業	Deere & Co
+US	DOV	ドーバー	Dover Corporation	資本財・産業	資本財・産業	Dover Corp
+US	EFX	エクイファックス	Equifax	資本財・産業	資本財・産業	Equifax Inc
+US	EME			資本財・産業	資本財・産業	EMCOR Group Inc
+US	EMR	エマソン・エレクトリック	Emerson Electric	資本財・産業	資本財・産業	Emerson Electric Co
+US	ETN	イートン	Eaton Corporation	資本財・産業	資本財・産業	Eaton Corp PLC
+US	EXPD	エクスペダイターズ・インターナショナル	Expeditors International	資本財・産業	資本財・産業	Expeditors International of Wa
+US	FAST	ファスナル	Fastenal	資本財・産業	資本財・産業	Fastenal Co
+US	FDX	フェデックス	FedEx	資本財・産業	資本財・産業	FedEx Corp
+US	FIX			資本財・産業	資本財・産業	Comfort Systems USA Inc
+US	FTV	フォーティブ	Fortive	資本財・産業	資本財・産業	Fortive Corp
+US	GD	ゼネラル・ダイナミクス	General Dynamics	資本財・産業	資本財・産業	General Dynamics Corp
+US	GE	GEエアロスペース	GE Aerospace	資本財・産業	資本財・産業	General Electric Co
+US	GEV	ジーイー・ヴァーノヴァ	GE Vernova LLC	資本財・産業	資本財・産業	GE Vernova Inc
+US	GNRC	ジェネラック・ホールディングス	Generac Holdings	資本財・産業	資本財・産業	Generac Holdings Inc
+US	GWW	W.W.グレインジャー	W.W. Grainger	資本財・産業	資本財・産業	WW Grainger Inc
+US	HII	ハンティントン・インガルス・インダストリーズ	Huntington Ingalls Industries	資本財・産業	資本財・産業	Huntington Ingalls Industries
+US	HON	ハネウェル・インターナショナル	Honeywell International	資本財・産業	資本財・産業	Honeywell International Inc
+US	HUBB	ハベル	Hubbell	資本財・産業	資本財・産業	Hubbell Inc
+US	HWM	ハウメット・エアロスペース	Howmet Aerospace	資本財・産業	資本財・産業	Howmet Aerospace Inc
+US	IEX	アイデックス・コーポレーション	IDEX Corporation	資本財・産業	資本財・産業	IDEX Corp
+US	IR	インガーソル・ランド	Ingersoll Rand	資本財・産業	資本財・産業	Ingersoll Rand Inc
+US	ITW	イリノイ・ツール・ワークス	Illinois Tool Works	資本財・産業	資本財・産業	Illinois Tool Works Inc
+US	J	ジェイコブズ・ソリューションズ	Jacobs Solutions	資本財・産業	資本財・産業	Jacobs Solutions Inc
+US	JBHT	J.B.ハント・トランスポート	J.B. Hunt Transport Services	資本財・産業	資本財・産業	JB Hunt Transport Services Inc
+US	JCI	ジョンソン・コントロールズ	Johnson Controls	資本財・産業	資本財・産業	Johnson Controls International
+US	LDOS	ライドス・ホールディングス	Leidos Holdings	資本財・産業	資本財・産業	Leidos Holdings Inc
+US	LHX	L3ハリス・テクノロジーズ	L3Harris Technologies	資本財・産業	資本財・産業	L3Harris Technologies Inc
+US	LII			資本財・産業	資本財・産業	Lennox International Inc
+US	LMT	ロッキード・マーティン	Lockheed Martin	資本財・産業	資本財・産業	Lockheed Martin Corp
+US	LUV	サウスウエスト航空	Southwest Airlines	資本財・産業	資本財・産業	Southwest Airlines Co
+US	MAS	マスコ	Masco Corporation	資本財・産業	資本財・産業	Masco Corp
+US	MMM	スリーエム	3M	資本財・産業	資本財・産業	3M Co
+US	NDSN	ノードソン	Nordson Corporation	資本財・産業	資本財・産業	Nordson Corp
+US	NOC	ノースロップ・グラマン	Northrop Grumman	資本財・産業	資本財・産業	Northrop Grumman Corp
+US	NSC	ノーフォーク・サザン	Norfolk Southern	資本財・産業	資本財・産業	Norfolk Southern Corp
+US	ODFL	オールド・ドミニオン・フレイト・ライン	Old Dominion Freight Line	資本財・産業	資本財・産業	Old Dominion Freight Line Inc
+US	OTIS	オーチス・ワールドワイド	Otis Worldwide	資本財・産業	資本財・産業	Otis Worldwide Corp
+US	PAYC	ペイコム・ソフトウェア	Paycom Software	資本財・産業	資本財・産業	Paycom Software
+US	PAYX	ペイチェックス	Paychex	資本財・産業	資本財・産業	Paychex Inc
+US	PCAR	パッカー	PACCAR	資本財・産業	資本財・産業	PACCAR Inc
+US	PH	パーカー・ハネフィン	Parker-Hannifin	資本財・産業	資本財・産業	Parker-Hannifin Corp
+US	PNR	ペンテア	Pentair	資本財・産業	資本財・産業	Pentair PLC
+US	PWR	クワンタ・サービシズ	Quanta Services	資本財・産業	資本財・産業	Quanta Services Inc
+US	ROK	ロックウェル・オートメーション	Rockwell Automation	資本財・産業	資本財・産業	Rockwell Automation Inc
+US	ROL	ロールインズ	Rollins	資本財・産業	資本財・産業	Rollins Inc
+US	RSG	リパブリック・サービシズ	Republic Services	資本財・産業	資本財・産業	Republic Services Inc
+US	RTX	RTXコーポレーション（旧レイセオン）	RTX Corporation	資本財・産業	資本財・産業	RTX Corp
+US	SNA	スナップオン	Snap-on	資本財・産業	資本財・産業	Snap-on Inc
+US	SWK	スタンレー・ブラック＆デッカー	Stanley Black & Decker	資本財・産業	資本財・産業	Stanley Black & Decker Inc
+US	TDG	トランスダイジェスト	TransDigm Group	資本財・産業	資本財・産業	TransDigm Group Inc
+US	TT	トレーン・テクノロジーズ	Trane Technologies	資本財・産業	資本財・産業	Trane Technologies PLC
+US	TXT			資本財・産業	資本財・産業	Textron Inc
+US	UAL	ユナイテッド航空ホールディングス	United Airlines Holdings	資本財・産業	資本財・産業	United Airlines Holdings Inc
+US	UBER			資本財・産業	資本財・産業	Uber Technologies Inc
+US	UNP	ユニオン・パシフィック	Union Pacific	資本財・産業	資本財・産業	Union Pacific Corp
+US	UPS	ユナイテッド・パーセル・サービス	United Parcel Service	資本財・産業	資本財・産業	United Parcel Service Inc
+US	URI	ユナイテッド・レンタルズ	United Rentals	資本財・産業	資本財・産業	United Rentals Inc
+US	VLTO	ベオリア	Veralto	資本財・産業	資本財・産業	Veralto Corp
+US	VRSK	バーリスク・アナリティクス	Verisk Analytics	資本財・産業	資本財・産業	Verisk Analytics Inc
+US	VRT		Vertiv Holdings Co.	資本財・産業	資本財・産業	Vertiv Holdings Co
+US	WAB	ウェスティングハウス・エア・ブレーク・テクノロジーズ	Wabtec Corporation	資本財・産業	資本財・産業	Westinghouse Air Brake Technol
+US	WM	ウェイスト・マネジメント	Waste Management	資本財・産業	資本財・産業	Waste Management Inc
+US	XYL	ザイレム	Xylem	資本財・産業	資本財・産業	Xylem Inc/NY
+US	ADM	アーチャー・ダニエルズ・ミッドランド	Archer-Daniels-Midland	生活必需品	生活必需品	Archer-Daniels-Midland Co
+US	BF-B	ブラウン・フォーマン	Brown-Forman	生活必需品	生活必需品	Brown-Forman Corp
+US	BG	ブンゲ	Bunge Global	生活必需品	生活必需品	Bunge Global SA
+US	CAG	コナグラ・ブランズ	Conagra Brands	生活必需品	生活必需品	Conagra Brands Inc
+US	CASY			生活必需品	生活必需品	Casey's General Stores Inc
+US	CHD	チャーチ・アンド・ドワイト	Church & Dwight	生活必需品	生活必需品	Church & Dwight Co Inc
+US	CL	コルゲート・パルモリーブ	Colgate-Palmolive	生活必需品	生活必需品	Colgate-Palmolive Co
+US	CLX	クロロックス	Clorox	生活必需品	生活必需品	Clorox Co/The
+US	COST	コストコ・ホールセール	Costco Wholesale	生活必需品	生活必需品	Costco Wholesale Corp
+US	CPB	キャンベル・スープ	Campbell Soup	生活必需品	生活必需品	Campbell's Company/The
+US	DG	ダラー・ゼネラル	Dollar General	生活必需品	生活必需品	Dollar General Corp
+US	DLTR	ダラー・ツリー	Dollar Tree	生活必需品	生活必需品	Dollar Tree Inc
+US	EL	エスティ ローダー	Estée Lauder	生活必需品	生活必需品	Estee Lauder Cos Inc/The
+US	GIS	ゼネラル・ミルズ	General Mills	生活必需品	生活必需品	General Mills Inc
+US	HRL	ホーメル・フーズ	Hormel Foods	生活必需品	生活必需品	Hormel Foods Corp
+US	HSY	ハーシー	Hershey	生活必需品	生活必需品	Hershey Co/The
+US	KDP	キューリグ・ドクターペッパー	Keurig Dr Pepper	生活必需品	生活必需品	Keurig Dr Pepper Inc
+US	KHC	クラフト・ハインツ	Kraft Heinz	生活必需品	生活必需品	Kraft Heinz Co/The
+US	KMB	キンバリー・クラーク	Kimberly-Clark	生活必需品	生活必需品	Kimberly-Clark Corp
+US	KO	コカ・コーラ	Coca-Cola	生活必需品	生活必需品	Coca-Cola Co/The
+US	KR	クローガー	Kroger	生活必需品	生活必需品	Kroger Co/The
+US	KVUE	ケビュー（元J&Jコンシューマー）	Kenvue	生活必需品	生活必需品	Kenvue Inc
+US	LW	ランバート・サンドバーグ	Lamb Weston Holdings	生活必需品	生活必需品	Lamb Weston
+US	MDLZ	モンデリーズ・インターナショナル	Mondelez International	生活必需品	生活必需品	Mondelez International Inc
+US	MKC	マコーミック	McCormick & Company	生活必需品	生活必需品	McCormick & Co Inc/MD
+US	MNST	モンスター・ビバレッジ	Monster Beverage	生活必需品	生活必需品	Monster Beverage Corp
+US	MO	アルトリア・グループ	Altria Group	生活必需品	生活必需品	Altria Group Inc
+US	PEP	ペプシコ	PepsiCo	生活必需品	生活必需品	PepsiCo Inc
+US	PG	プロクター・アンド・ギャンブル	Procter & Gamble	生活必需品	生活必需品	Procter & Gamble Co/The
+US	PM	フィリップ・モリス・インターナショナル	Philip Morris International	生活必需品	生活必需品	Philip Morris International In
+US	SJM	J.M.スマッカー	J.M. Smucker	生活必需品	生活必需品	J M Smucker Co/The
+US	STZ	コンステレーション・ブランズ	Constellation Brands	生活必需品	生活必需品	Constellation Brands Inc
+US	SYY	シスコ（食品卸）	Sysco Corporation	生活必需品	生活必需品	Sysco Corp
+US	TAP	モルソン・クアーズ・ビバレッジ	Molson Coors Beverage	生活必需品	生活必需品	Molson Coors Beverage Co
+US	TGT	ターゲット	Target Corporation	生活必需品	生活必需品	Target Corp
+US	TSN	タイソン・フーズ	Tyson Foods	生活必需品	生活必需品	Tyson Foods Inc
+US	WMT	ウォルマート	Walmart	生活必需品	生活必需品	Walmart Inc
+US	ALB	アルベマール	Albemarle Corporation	素材	素材	Albemarle Corp
+US	AMCR	アムコア	Amcor	素材	素材	Amcor PLC
+US	APD	エア・プロダクツ・アンド・ケミカルズ	Air Products & Chemicals	素材	素材	Air Products and Chemicals Inc
+US	AVY	エイブリー・デニソン	Avery Dennison	素材	素材	Avery Dennison Corp
+US	BALL	ボール・コーポレーション	Ball Corporation	素材	素材	Ball Corp
+US	CE	セラニーズ	Celanese Corporation	素材	素材	Celanese
+US	CF	CFインダストリーズ	CF Industries	素材	素材	CF Industries Holdings Inc
+US	CRH			素材	素材	CRH PLC
+US	CTVA	コルテバ・アグリサイエンス	Corteva	素材	素材	Corteva Inc
+US	DD	デュポン・ド・ヌムール	DuPont de Nemours	素材	素材	DuPont de Nemours Inc
+US	DOW	ダウ	Dow Inc.	素材	素材	Dow Inc
+US	ECL	エコラボ	Ecolab	素材	素材	Ecolab Inc
+US	EMN	イーストマン・ケミカル	Eastman Chemical	素材	素材	Eastman Chemical
+US	FCX	フリーポート・マクモラン	Freeport-McMoRan	素材	素材	Freeport-McMoRan Inc
+US	IFF	インターナショナル・フレーバーズ＆フレグランス	International Flavors & Fragrances	素材	素材	International Flavors & Fragra
+US	IP	インターナショナル・ペーパー	International Paper	素材	素材	International Paper Co
+US	LIN	リンデ	Linde	素材	素材	Linde PLC
+US	LYB	ライオンデルバゼル・インダストリーズ	LyondellBasell Industries	素材	素材	LyondellBasell Industries NV
+US	MLM	マーティン・マリエッタ・マテリアルズ	Martin Marietta Materials	素材	素材	Martin Marietta Materials Inc
+US	MOS	モザイク	Mosaic Company	素材	素材	Mosaic Co/The
+US	NEM	ニューモント	Newmont Corporation	素材	素材	Newmont Corp
+US	NUE	ニューコア	Nucor Corporation	素材	素材	Nucor Corp
+US	PKG	パッケージング・コーポレーション・オブ・アメリカ	Packaging Corporation of America	素材	素材	Packaging Corp of America
+US	PPG	PPGインダストリーズ	PPG Industries	素材	素材	PPG Industries Inc
+US	SHW	シャーウィン・ウィリアムズ	Sherwin-Williams	素材	素材	Sherwin-Williams Co/The
+US	STLD	スティール・ダイナミクス	Steel Dynamics	素材	素材	Steel Dynamics Inc
+US	SW	スマーフィット・ウェストロック	Smurfit WestRock	素材	素材	Smurfit Westrock PLC
+US	VMC	バルカン・マテリアルズ	Vulcan Materials	素材	素材	Vulcan Materials Co
+US	AEE	アメレン	Ameren Corporation	電力・ガス	電力・ガス	Ameren Corp
+US	AEP	アメリカン・エレクトリック・パワー	American Electric Power	電力・ガス	電力・ガス	American Electric Power Co Inc
+US	AES	AESコーポレーション	AES Corporation	電力・ガス	電力・ガス	AES Corp/The
+US	ATO	アトモス・エナジー	Atmos Energy	電力・ガス	電力・ガス	Atmos Energy Corp
+US	AWK	アメリカン・ウォーター・ワークス	American Water Works	電力・ガス	電力・ガス	American Water Works Co Inc
+US	CEG	コンステレーション・エナジー	Constellation Energy	電力・ガス	電力・ガス	Constellation Energy Corp
+US	CMS	CMSエナジー	CMS Energy	電力・ガス	電力・ガス	CMS Energy Corp
+US	CNP			電力・ガス	電力・ガス	CenterPoint Energy Inc
+US	D	ドミニオン・エナジー	Dominion Energy	電力・ガス	電力・ガス	Dominion Energy Inc
+US	DTE	DTEエナジー	DTE Energy	電力・ガス	電力・ガス	DTE Energy Co
+US	DUK	デューク・エナジー	Duke Energy	電力・ガス	電力・ガス	Duke Energy Corp
+US	ED	コンソリデーテッド・エジソン	Consolidated Edison	電力・ガス	電力・ガス	Consolidated Edison Inc
+US	EIX	エジソン・インターナショナル	Edison International	電力・ガス	電力・ガス	Edison International
+US	ES	エバーソース・エナジー	Eversource Energy	電力・ガス	電力・ガス	Eversource Energy
+US	ETR	エンタージー	Entergy Corporation	電力・ガス	電力・ガス	Entergy Corp
+US	EVRG	エバージー	Evergy	電力・ガス	電力・ガス	Evergy Inc
+US	EXC	エクセロン	Exelon Corporation	電力・ガス	電力・ガス	Exelon Corp
+US	FE	ファーストエナジー	FirstEnergy	電力・ガス	電力・ガス	FirstEnergy Corp
+US	LNT	アライアント・エナジー	Alliant Energy	電力・ガス	電力・ガス	Alliant Energy Corp
+US	NEE	ネクステラ・エナジー	NextEra Energy	電力・ガス	電力・ガス	NextEra Energy Inc
+US	NI	ニソース	NiSource	電力・ガス	電力・ガス	NiSource Inc
+US	NRG	NRGエナジー	NRG Energy	電力・ガス	電力・ガス	NRG Energy Inc
+US	PCG	PG&Eコーポレーション	PG&E Corporation	電力・ガス	電力・ガス	PG&E Corp
+US	PEG	パブリック・サービス・エンタープライズ・グループ	Public Service Enterprise Group	電力・ガス	電力・ガス	Public Service Enterprise Grou
+US	PNW	ピナクル・ウエスト・キャピタル	Pinnacle West Capital	電力・ガス	電力・ガス	Pinnacle West Capital Corp
+US	PPL	PPLコーポレーション	PPL Corporation	電力・ガス	電力・ガス	PPL Corp
+US	SO	サザン・カンパニー	Southern Company	電力・ガス	電力・ガス	Southern Co/The
+US	SRE	センプラ	Sempra	電力・ガス	電力・ガス	Sempra
+US	VST	ビストラ	Vistra	電力・ガス	電力・ガス	Vistra Corp
+US	WEC	WECエナジー・グループ	WEC Energy Group	電力・ガス	電力・ガス	WEC Energy Group Inc
+US	XEL	エクセル・エナジー	Xcel Energy	電力・ガス	電力・ガス	Xcel Energy Inc
+US	AMT	アメリカン・タワー	American Tower	不動産	不動産	American Tower Corp
+US	ARE	アレクサンドリア・リアル・エステート	Alexandria Real Estate Equities	不動産	不動産	Alexandria Real Estate Equitie
+US	AVB	アバロンベイ・コミュニティーズ	AvalonBay Communities	不動産	不動産	AvalonBay Communities Inc
+US	BXP			不動産	不動産	BXP Inc
+US	CBRE	CBREグループ	CBRE Group	不動産	不動産	CBRE Group Inc
+US	CCI	クラウン・キャッスル	Crown Castle	不動産	不動産	Crown Castle Inc
+US	CPT	カムデン・プロパティ・トラスト	Camden Property Trust	不動産	不動産	Camden Property Trust
+US	CSGP	コスター・グループ	CoStar Group	不動産	不動産	CoStar Group Inc
+US	DLR	デジタル・リアルティ・トラスト	Digital Realty Trust	不動産	不動産	Digital Realty Trust Inc
+US	DOC	ドクターズ・リアルティ・トラスト	Healthpeak Properties	不動産	不動産	Healthpeak Properties Inc
+US	EQIX	エクイニクス	Equinix	不動産	不動産	Equinix Inc
+US	EQR	エクイティ・レジデンシャル	Equity Residential	不動産	不動産	Equity Residential
+US	ESS	エセックス・プロパティ・トラスト	Essex Property Trust	不動産	不動産	Essex Property Trust Inc
+US	EXR	エクストラ・スペース・ストレージ	Extra Space Storage	不動産	不動産	Extra Space Storage Inc
+US	FRT	フェデラル・リアルティ・インベストメント・トラスト	Federal Realty Investment Trust	不動産	不動産	Federal Realty Investment Trus
+US	HST	ホスト・ホテルズ&リゾーツ	Host Hotels & Resorts	不動産	不動産	Host Hotels & Resorts Inc
+US	INVH	インビテーション・ホームズ	Invitation Homes	不動産	不動産	Invitation Homes Inc
+US	IRM	アイアン・マウンテン	Iron Mountain	不動産	不動産	Iron Mountain Inc
+US	KIM	キムコ・リアルティ	Kimco Realty	不動産	不動産	Kimco Realty Corp
+US	MAA	ミッド・アメリカ・アパートメント・コミュニティーズ	Mid-America Apartment Communities	不動産	不動産	Mid-America Apartment Communit
+US	O	リアルティ・インカム	Realty Income	不動産	不動産	Realty Income Corp
+US	PLD	プロロジス	Prologis	不動産	不動産	Prologis Inc
+US	PSA	パブリック・ストレージ	Public Storage	不動産	不動産	Public Storage
+US	REG	レゲンシー・センターズ	Regency Centers	不動産	不動産	Regency Centers Corp
+US	SBAC	SBAコミュニケーションズ	SBA Communications	不動産	不動産	SBA Communications Corp
+US	SPG	サイモン・プロパティ・グループ	Simon Property Group	不動産	不動産	Simon Property Group Inc
+US	UDR	UDRリアルティ	UDR	不動産	不動産	UDR Inc
+US	VICI	VICIプロパティーズ	VICI Properties	不動産	不動産	VICI Properties Inc
+US	VNO	ボルナド・リアルティ・トラスト	Vornado Realty Trust	不動産	不動産	Vornado Realty Trust
+US	VTR	ベンタス	Ventas	不動産	不動産	Ventas Inc
+US	WELL	ウェルタワー	Welltower	不動産	不動産	Welltower Inc
+US	WY	ウェアーハウザー	Weyerhaeuser	不動産	不動産	Weyerhaeuser Co

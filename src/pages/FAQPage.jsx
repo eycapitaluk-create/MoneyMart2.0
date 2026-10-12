@@ -5,6 +5,8 @@ import {
   Shield, CreditCard, FileText, Send,
   ArrowRight
 } from 'lucide-react'
+import { PAYJP_CARD_BRANDS_FAQ, PAYJP_ELEVEN_YEN_FAQ } from '../constants/payjpBillingFaq'
+import { GOOGLE_LOGIN_FAQ } from '../constants/authFaq'
 
 const FAQ_DATA = {
   general: {
@@ -12,7 +14,7 @@ const FAQ_DATA = {
     icon: HelpCircle,
     items: [
       { q: 'MoneyMartはどのようなサービスですか？', a: 'MoneyMartは、中立的な立場で金融商品（投資信託、クレジットカード、住宅ローンなど）を比較・シミュレーションできるプラットフォームです。AIは情報整理・可視化を補助しますが、特定商品の提案は行いません。' },
-      { q: '利用料はかかりますか？', a: '基本的な機能（商品比較、ポートフォリオ管理、AI診断の簡易版）はすべて無料でご利用いただけます。より高度な分析機能やリアルタイム株価などを利用したい場合は、有料の「MoneyMart Prime」プランへの登録が必要です。' },
+      { q: '利用料はかかりますか？', a: '基本的な機能（商品比較、ポートフォリオ管理、AI診断の簡易版）は無料でご利用いただけます。より詳しい分析、通知、保存機能などを利用したい場合は、有料の「MoneyMart Premium」プランをご確認ください。' },
       { q: '証券口座の開設はできますか？', a: 'MoneyMart自体は証券会社ではないため、直接口座開設はできませんが、提携先の証券会社（SBI証券、楽天証券など）の開設ページへスムーズにご案内しています。' },
     ],
   },
@@ -20,18 +22,36 @@ const FAQ_DATA = {
     title: 'アカウント・セキュリティ',
     icon: Shield,
     items: [
-      { q: '個人情報の取り扱いは安全ですか？', a: 'はい。お客様のデータは金融機関レベルの暗号化技術（SSL/TLS）を用いて保護されています。また、資産データは閲覧専用（Read-only）で連携されるため、MoneyMartから資金が移動されることは絶対にありません。' },
-      { q: '2段階認証は設定できますか？', a: 'はい、設定をおすすめしています。マイページの「設定」＞「セキュリティ」から、SMSまたは認証アプリによる2段階認証を設定可能です。' },
+      { q: '個人情報の取り扱いは安全ですか？', a: '通信はSSL/TLSで暗号化し、必要なアクセス管理を行っています。連携データの取り扱いはサービス仕様に従い、資金移動や売買操作をMoneyMart上で行うものではありません。' },
+      GOOGLE_LOGIN_FAQ,
+      { q: '2段階認証は設定できますか？', a: 'はい、設定できます。マイページの「設定」＞「セキュリティ」から、SMSまたは認証アプリによる2段階認証を設定可能です。' },
       { q: '退会したいのですが、データはどうなりますか？', a: '退会手続き完了後、お客様の個人情報および資産データは当社のサーバーから完全に削除されます。復元はできませんのでご注意ください。' },
     ],
   },
   prime: {
-    title: '有料プラン (Prime)',
+    title: '有料プラン (Premium)',
     icon: CreditCard,
     items: [
-      { q: '無料期間中に解約した場合、料金は発生しますか？', a: 'いいえ。30日間の無料体験期間中に解約された場合、料金は一切発生しません。安心してお試しください。' },
-      { q: '支払い方法を教えてください。', a: '各種クレジットカード（Visa, Mastercard, JCB, Amex, Diners）および、キャリア決済（d払い, auかんたん決済, ソフトバンクまとめて支払い）に対応しています。' },
-      { q: '領収書の発行は可能ですか？', a: 'はい。マイページの「支払い履歴」からPDF形式の領収書をダウンロードいただけます。' },
+      {
+        q: '無料期間中に解約した場合、料金は発生しますか？',
+        a: '現在のPremium無料体験期間中に解約された場合、無料期間後の継続利用料金は発生しません。適用条件や無料期間の終了日は、申込チャネル（App Store／ウェブの決済画面）の表示を必ずご確認ください。',
+      },
+      {
+        q: '支払い方法を教えてください。',
+        a:
+          'ご利用の環境により異なります。ウェブブラウザからのお申し込みでは、決済代行「PAY.JP」を利用したクレジットカード決済です。iOSアプリでは App Store の自動更新サブスクリプションによるお支払いとなり、請求・解約・返金条件などは Apple の規約に従います。',
+      },
+      {
+        q: '解約や自動更新の管理はどこからできますか？',
+        a: 'iOS アプリで App Store 経由にお申し込みの場合は、Apple ID の「サブスクリプション」または App Store アカウントから確認・変更・解約できます（自動更新の課金は Apple の規約に準じます）。ウェブで PAY.JP をご利用の場合は、お申し込み時の画面または決済完了後の案内に従ってください。',
+      },
+      {
+        q: '領収書の発行は可能ですか？',
+        a:
+          'iOS アプリでご契約の場合は、Apple の設定または App Store の購入履歴からご確認ください。ウェブで PAY.JP 経由にお支払いの場合は、決済完了メールやカード会社のご利用明細等でご確認いただけます。',
+      },
+      PAYJP_CARD_BRANDS_FAQ,
+      PAYJP_ELEVEN_YEN_FAQ,
     ],
   },
   nisa: {
@@ -39,7 +59,7 @@ const FAQ_DATA = {
     icon: FileText,
     items: [
       { q: '新NISAには対応していますか？', a: 'はい、完全対応しています。「つみたて投資枠」と「成長投資枠」それぞれのシミュレーションや、非課税枠の残り管理機能も提供しています。' },
-      { q: '表示される株価はリアルタイムですか？', a: '無料プランでは15分〜20分遅延の株価が表示されます。MoneyMart Prime会員の方は、リアルタイム株価をご利用いただけます。' },
+      { q: '表示される株価はリアルタイムですか？', a: '取得可能な最新データを表示します。データ提供元や市場により遅延・欠損・更新タイミングの差が生じる場合があります。' },
       { q: 'AIの分析結果は、必ず儲かりますか？', a: 'いいえ。MoneyMartのAI分析は過去データに基づく参考情報であり、将来の運用成果を保証するものではありません。投資の最終判断はご自身で行ってください。' },
     ],
   },
@@ -106,6 +126,7 @@ export default function FAQPage() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 font-sans pb-20">
       <Helmet>
+        <title>よくある質問 | MoneyMart</title>
         <script type="application/ld+json">{JSON.stringify(faqStructuredData)}</script>
       </Helmet>
       {/* 1. Hero Search Section */}
@@ -193,7 +214,7 @@ export default function FAQPage() {
                     <div className="h-px w-full bg-slate-100 dark:bg-slate-800 mb-4" />
                     <div className="flex gap-3">
                       <span className="font-black text-orange-500 text-xl shrink-0">A.</span>
-                      <p className="text-slate-600 dark:text-slate-400 leading-relaxed text-sm md:text-base">
+                      <p className="text-slate-600 dark:text-slate-400 leading-relaxed text-sm md:text-base whitespace-pre-line">
                         {item.a}
                       </p>
                     </div>

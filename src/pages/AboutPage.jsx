@@ -1,139 +1,369 @@
+import { useEffect } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { Helmet } from 'react-helmet-async'
 import {
-  Building2, Target, CheckCircle2, ChevronRight
+  Building2,
+  Target,
+  CheckCircle2,
+  Shield,
+  Sparkles,
+  PieChart,
+  CreditCard,
+  BarChart3,
+  Globe,
+  Heart,
+  Scale,
+  Calendar,
+  Mail,
+  Briefcase,
+  Lock,
 } from 'lucide-react'
+import {
+  COMPANY_NAME_JA_EN,
+  COMPANY_NAME_WITH_SERVICE,
+  COMPANY_REPRESENTATIVE,
+  COMPANY_ADDRESS,
+  COMPANY_SUPPORT_EMAIL,
+} from '../constants/companyLegal'
+
+const SUPPORT_MAILTO = `mailto:${COMPANY_SUPPORT_EMAIL}`
+
+const TEAM = [
+  {
+    initial: 'K',
+    name: 'ケリー・ナム',
+    nameEn: 'Kelly Nam',
+    title: '最高戦略責任者（CSO）',
+    bio: 'ロンドンのヘッジファンドや資産運用会社を含む、グローバル金融機関で18年の経験を持ち、国際市場とクロスボーダー金融戦略に深い専門知識を有しています。グローバルなベストプラクティスと日本のニーズを橋渡しする、利用者に合わせた情報整理を担当しています。',
+  },
+  {
+    initial: 'J',
+    name: 'ジャスティン・ナム',
+    nameEn: 'Justin Nam',
+    title: '最高技術責任者・最高マーケティング責任者（CTO / CMO）',
+    bio: 'ジャガー・ランドローバー本社にて14カ国のマーケットオペレーションを統括し、損益最適化・販売戦略・サプライチェーン改革を推進。New Jaguarチームでは次世代モビリティの革新プロジェクトをリード。ロンドン大学バークベック校マーケティング修士。',
+  },
+  {
+    initial: 'E',
+    name: 'エレン',
+    nameEn: 'Ellen',
+    title: 'ビジネス戦略・日本市場スペシャリスト',
+    bio: '韓国と日本で20年以上、コンテンツ・ゲーム・IT分野の戦略企画とグローバルパートナーシップを推進。ネイティブレベルの日本語と両国のビジネス文化への理解を活かし、サービスの日本展開を支援しています。',
+  },
+]
+
+const SOLUTIONS = [
+  { icon: PieChart, title: '投資信託・ETF', desc: 'ファンド一覧と実績データを並べて比較できます。' },
+  { icon: CreditCard, title: 'クレジットカード', desc: 'ライフスタイルや利用額に合わせてカードを探せます。' },
+  { icon: Shield, title: '保険', desc: 'カテゴリ別に保険商品の情報を比較できます。' },
+  { icon: BarChart3, title: 'ポートフォリオツール', desc: '保有の整理・シミュレーション・追跡に使えます。' },
+  { icon: Sparkles, title: 'AI分析', desc: '入力情報に基づく参考情報の整理を補助します。' },
+  { icon: Building2, title: '銀行商品', desc: '預金・ローンなど銀行商品の比較情報を提供します。' },
+]
+
+const PROFILE_ROWS = [
+  { label: '会社名', value: COMPANY_NAME_WITH_SERVICE },
+  { label: '代表者', value: COMPANY_REPRESENTATIVE },
+  { label: '設立', value: '2025年 12月' },
+  { label: '資本金', value: '105万円' },
+  { label: '所在地', value: COMPANY_ADDRESS },
+  { label: '事業内容', value: 'データモニタリングシステムおよび分析ツールの提供、情報分析サービス、リスク管理支援ソリューションの開発・運営' },
+  { label: '主要取引銀行', value: '三井住友銀行' },
+  { label: 'お問い合わせ', value: COMPANY_SUPPORT_EMAIL },
+]
 
 export default function AboutPage() {
+  const navigate = useNavigate()
+  const { hash } = useLocation()
+
+  useEffect(() => {
+    if (hash === '#about-careers') {
+      navigate('/careers', { replace: true })
+      return undefined
+    }
+    if (!hash) return undefined
+    const id = hash.replace(/^#/, '')
+    // App と Layout がパス変更時に先頭へ戻すため、その後にアンカーへ合わせる
+    const timer = window.setTimeout(() => {
+      document.getElementById(id)?.scrollIntoView({ behavior: 'auto', block: 'start' })
+    }, 0)
+    return () => window.clearTimeout(timer)
+  }, [hash, navigate])
+
   return (
     <div className="min-h-screen bg-white dark:bg-slate-950 font-sans text-slate-800 dark:text-slate-200 pb-20">
-      {/* 1. Hero Section */}
-      <section className="relative h-[500px] flex items-center justify-center bg-slate-50 dark:bg-slate-900 overflow-hidden">
-        <div className="absolute inset-0 z-0 opacity-10 bg-[url('https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?q=80&w=2070&auto=format&fit=crop')] bg-cover bg-center" />
-        <div className="absolute inset-0 bg-gradient-to-b from-transparent to-white dark:to-slate-950 z-0" />
-        <div className="relative z-10 text-center max-w-4xl px-6 animate-fadeIn">
-          <span className="inline-block py-1 px-3 border border-slate-300 dark:border-slate-600 rounded-full text-xs font-bold text-slate-500 dark:text-slate-400 mb-6 bg-white dark:bg-slate-800 uppercase tracking-widest">
-            Our Vision
-          </span>
-          <h1 className="text-4xl md:text-5xl font-black text-slate-900 dark:text-white mb-6 leading-tight">
-            金融情報の不透明性をなくし、<br />
-            <span className="text-orange-600 dark:text-orange-400">誰もが主役になれる</span>金融社会へ。
+      <Helmet>
+        <title>運営会社 | MoneyMart</title>
+        <meta
+          name="description"
+          content="マネーラボ株式会社（MoneyLab Inc.）が運営する独立系の金融プラットフォーム MoneyMart。資本提携に左右されない立場で、公平な比較と金融ツールへのアクセスを届けます。"
+        />
+      </Helmet>
+
+      <section className="relative overflow-hidden bg-slate-900 text-white">
+        <div className="absolute inset-0 opacity-[0.07] bg-[radial-gradient(circle_at_1px_1px,#fff_1px,transparent_0)] bg-[size:28px_28px]" />
+        <div className="relative max-w-5xl mx-auto px-6 py-20 md:py-24 text-center">
+          <div className="flex flex-wrap justify-center gap-2 mb-6">
+            <span className="inline-flex items-center gap-1.5 py-1 px-3 rounded-full text-[11px] font-bold bg-blue-500/20 text-blue-100 border border-blue-400/30">
+              <Shield size={12} /> 独立系
+            </span>
+            <span className="inline-flex items-center gap-1.5 py-1 px-3 rounded-full text-[11px] font-bold bg-orange-500/20 text-orange-100 border border-orange-400/30">
+              <Sparkles size={12} /> AI搭載
+            </span>
+          </div>
+          <h1 className="text-3xl md:text-5xl font-black leading-tight mb-5">
+            日本のための
+            <span className="text-orange-400">公平な金融</span>
+            プラットフォーム
           </h1>
-          <p className="text-lg text-slate-600 dark:text-slate-400 font-medium leading-loose max-w-2xl mx-auto">
-            MoneyMartは、<span className="font-bold text-slate-700 dark:text-slate-300">独立系</span>・AIを活用し、中立・公正な立場で金融商品を比較できる<br />
-            日本発のAI金融プラットフォームです。
+          <p className="text-base md:text-lg text-slate-300 leading-relaxed max-w-2xl mx-auto">
+            {COMPANY_NAME_JA_EN}は、独立系の金融比較・資産管理プラットフォーム「MoneyMart」を運営しています。
+            資本提携に左右されない独立した立場から、利用者が金融商品を公平に比較し、自分で考え、納得して選べる情報とツールを届けます。
+          </p>
+          <div className="mt-8 flex flex-wrap justify-center gap-3 text-xs font-bold text-slate-400">
+            <span className="inline-flex items-center gap-1.5"><Lock size={13} /> 通信の暗号化</span>
+            <span className="inline-flex items-center gap-1.5"><Globe size={13} /> 東京拠点</span>
+          </div>
+          <nav className="mt-10 flex flex-wrap justify-center gap-2 text-xs font-bold">
+            {[
+              ['#about-mission', 'ミッション'],
+              ['#founding-team', '創業チーム'],
+              ['#about-company', '会社概要'],
+              ['#about-team', 'チーム'],
+              ['#about-contact', 'お問い合わせ'],
+            ].map(([href, label]) => (
+              <a key={href} href={href} className="px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 transition">
+                {label}
+              </a>
+            ))}
+            <button
+              type="button"
+              onClick={() => navigate('/careers')}
+              className="px-3 py-1.5 rounded-full bg-orange-500 text-white hover:bg-orange-600 transition"
+            >
+              採用
+            </button>
+          </nav>
+        </div>
+      </section>
+
+      <section className="bg-orange-50 dark:bg-slate-900 py-16 px-6">
+        <div className="max-w-3xl mx-auto text-center">
+          <h2 className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white mb-4">なぜ独立性が重要なのか</h2>
+          <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
+            金融商品を選ぶとき、利用者にとって大切なのは、自分の目的に合っているかを確かめられることです。MoneyMartは、金融機関と資本提携を持たない独立系として、比較に必要な情報を中立に並べることを大切にしています。
+          </p>
+          <p className="mt-4 text-slate-600 dark:text-slate-400 leading-relaxed">
+            リターンの対象期間、費用の範囲、投資対象など、数字の前提までわかる表示を重視します。利用者が根拠を確認し、自分の目的や状況に照らして判断できることが、公平な比較の出発点です。
           </p>
         </div>
       </section>
 
-      {/* 2. Mission & Values */}
-      <section className="py-24 px-6 max-w-6xl mx-auto">
-        <div className="text-center mb-16">
-          <h2 className="text-3xl font-black text-slate-900 dark:text-white mb-4">私たちの使命と価値観</h2>
-          <div className="w-12 h-1 bg-orange-500 mx-auto rounded-full" />
-        </div>
-        <div className="grid md:grid-cols-2 gap-12 items-center mb-24">
-          <div className="bg-slate-50 dark:bg-slate-800/50 p-10 rounded-[2rem] relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-orange-100 dark:bg-orange-900/20 rounded-full -mr-10 -mt-10 blur-2xl" />
-            <h3 className="text-2xl font-black text-slate-900 dark:text-white mb-6 flex items-center gap-3">
-              <Target className="text-orange-500" /> Mission
-            </h3>
-            <p className="text-lg font-bold text-slate-700 dark:text-slate-300 mb-6 leading-relaxed">
-              「金融アドバイスの民主化」
-            </p>
-            <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
-              一部の富裕層だけのものであった「質の高い金融アドバイス」を、<span className="font-semibold text-slate-700 dark:text-slate-300">AI</span>の力ですべての人に届けます。金融機関と資本提携を持たない<span className="font-semibold text-slate-700 dark:text-slate-300">独立系</span>として、情報の非対称性を解消し、誰もが納得して資産形成できる世界を作ります。
-            </p>
-          </div>
-          <div className="space-y-6">
-            {[
-              { title: '独立系 (Independent)', desc: '金融機関との資本提携を持たず、完全に中立な立場で比較情報を提供します。' },
-              { title: '中立・公正 (Fairness)', desc: '金融機関の手数料に左右されず、比較に必要な情報を公平に表示します。' },
-              { title: 'AI駆動', desc: 'AIを活用し、個人の状況に合わせた分析情報を誰もが利用できるようにします。' },
-              { title: '透明性 (Transparency)', desc: 'コストやリスクを隠さず、全ての情報をオープンにします。' },
-              { title: 'ユーザーファースト', desc: 'すべての意思決定において、ユーザーの利益を最優先します。' },
-            ].map((item, i) => (
-              <div key={i} className="flex gap-4 p-4 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/50 transition border border-transparent hover:border-slate-100 dark:hover:border-slate-700">
-                <div className="w-10 h-10 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full flex items-center justify-center shrink-0 text-orange-500 shadow-sm">
-                  <CheckCircle2 size={20} />
-                </div>
-                <div>
-                  <h4 className="font-bold text-slate-900 dark:text-white text-lg mb-1">{item.title}</h4>
-                  <p className="text-slate-500 dark:text-slate-400 text-sm leading-relaxed">{item.desc}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* 3. CEO Message */}
-      <section className="bg-slate-50 dark:bg-slate-900/50 py-24 px-6">
-        <div className="max-w-5xl mx-auto">
-          <div className="flex flex-col md:flex-row gap-12 items-center bg-white dark:bg-slate-900 rounded-[2.5rem] p-8 md:p-12 shadow-xl shadow-slate-200/50 dark:shadow-slate-900/50 border border-slate-100 dark:border-slate-800">
-            <div className="md:w-1/3 text-center">
-              <div className="w-48 h-48 mx-auto bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden mb-6 relative">
-                <div className="absolute inset-0 flex items-center justify-center bg-slate-800 text-white text-4xl font-black">KN</div>
-              </div>
-              <h3 className="text-xl font-black text-slate-900 dark:text-white">Kelly Nam</h3>
-              <p className="text-orange-600 dark:text-orange-400 text-xs font-bold uppercase tracking-widest mt-1">Founder & CEO</p>
-            </div>
-            <div className="md:w-2/3 relative">
-              <div className="text-6xl text-slate-200 dark:text-slate-700 absolute -top-8 -left-4 font-serif">"</div>
-              <h3 className="text-2xl font-bold text-slate-900 dark:text-white mb-6 leading-snug">
-                テクノロジーと金融の融合で、<br />日本の資産運用を変革する。
-              </h3>
-              <div className="space-y-4 text-slate-600 dark:text-slate-400 leading-relaxed text-justify">
-                <p>創業以来、私たちは「わかりにくい金融を、もっとシンプルに」という想いで走り続けてきました。</p>
-                <p>グローバル金融機関での経験と最新の<strong>AI</strong>テクノロジーを掛け合わせることで、これまで専門家しかアクセスできなかった高度な分析を、スマートフォンの画面一つで提供できるようにしました。<strong>独立系</strong>として、金融機関の利害に左右されない公正な比較情報を届けています。</p>
-                <p>MoneyMartは単なる比較サイトではありません。あなたの人生に寄り添う、最も信頼できる金融パートナーを目指しています。</p>
-              </div>
-              <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                <span className="font-serif italic text-slate-400">MoneyLab Ltd.</span>
-                <span className="font-serif italic text-2xl text-slate-800 dark:text-slate-200 font-bold">Kelly Nam</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* 4. Company Profile */}
-      <section className="py-24 px-6 max-w-4xl mx-auto">
+      <section id="about-mission" className="py-20 px-6 max-w-6xl mx-auto scroll-mt-20">
         <div className="text-center mb-12">
+          <p className="text-xs font-bold tracking-wide text-orange-600 mb-2">私たちのミッション</p>
+          <h2 className="text-3xl font-black text-slate-900 dark:text-white mb-4">金融の力を、すべての人へ</h2>
+          <p className="text-slate-600 dark:text-slate-400 max-w-2xl mx-auto leading-relaxed">
+            資産規模や投資経験に関わらず、金融情報とツールにアクセスし、自ら考え、判断できる社会を目指します。専門的な知識を日常の言葉で伝え、利用者の自立した資産形成を支えます。
+          </p>
+        </div>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
+          {[
+            { icon: Shield, title: '独立性', desc: '資本提携に左右されない立場で、利用者のための比較・確認の場をつくります。' },
+            { icon: Scale, title: '公平性', desc: '資産規模や経験に関わらず、判断に必要な情報をわかりやすく届けます。' },
+            { icon: Heart, title: 'エンパワーメント', desc: '利用者が自ら考え、納得して選ぶための知識とツールを提供します。' },
+            { icon: Globe, title: 'ユニバーサルアクセス', desc: '金融リテラシーと投資ツールへの障壁を下げ、誰もが使いやすい環境を目指します。' },
+          ].map((item) => (
+            <div key={item.title} className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 p-6">
+              <item.icon className="text-orange-500 mb-3" size={22} />
+              <h3 className="font-black text-slate-900 dark:text-white mb-2">{item.title}</h3>
+              <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">{item.desc}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="bg-slate-900 text-white py-16 px-6">
+        <div className="max-w-3xl mx-auto text-center">
+          <p className="text-xs font-bold tracking-wide text-orange-400 mb-2">私たちのビジョン</p>
+          <h2 className="text-2xl md:text-3xl font-black mb-4 leading-snug">
+            富や人脈に関係なく、誰もがプロ級の金融ツールにアクセスできる日本を目指します。
+          </h2>
+          <p className="text-slate-300 leading-relaxed">
+            ユーザーファーストのAI搭載プラットフォームとして、多様な金融商品の比較と資産の整理をわかりやすくし、一人ひとりが自分の未来を考えるための選択肢を広げていきます。
+          </p>
+        </div>
+      </section>
+
+      <section id="founding-team" className="py-20 px-6 max-w-3xl mx-auto scroll-mt-24">
+        <div className="text-center mb-8">
+          <p className="text-xs font-bold tracking-wide text-orange-600 mb-2">創業チーム</p>
+          <h2 className="text-3xl font-black text-slate-900 dark:text-white mb-4">投資の専門性を、より多くの人へ</h2>
+        </div>
+        <div className="space-y-4 text-slate-600 dark:text-slate-400 leading-relaxed">
+          <p>
+            MoneyMartの創業チームには、英国の投資業界で18年以上、ファンド調査、資産配分、ポートフォリオ構築などに携わってきた実務経験があります。
+          </p>
+          <p>
+            Caliburn Capital Partnersでのヘッジファンド調査・定量分析、Rathbone Brothersでの資産配分モデリング・ファンド調査、Fidelity Internationalでのポートフォリオ構築・ファクターモデリング、Aegonでのファンド調査・資産配分・マクロ調査。こうした経験を背景に、MoneyMartは投資の実務で用いられる比較・検証の視点を、個人投資家にもわかりやすい情報とツールに生かしていきます。
+          </p>
+          <p>
+            専門性を一部の人だけのものにせず、誰もが自分で判断するための手がかりにする。この姿勢が、MoneyMartの独立性と公平性、そして金融ツールへのアクセスを広げるというビジョンを支えています。
+          </p>
+        </div>
+        <h3 className="mt-10 mb-4 text-lg font-black text-slate-900 dark:text-white">投資業界での主な経歴</h3>
+        <ol className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 divide-y divide-slate-200 dark:divide-slate-800">
+          {[
+            ['2008年6月〜2012年6月', 'Caliburn Capital Partners LLP', 'Analyst'],
+            ['2012年7月〜2014年2月', 'Newton Investment Management', 'Analyst'],
+            ['2014年3月〜2015年5月', 'Rathbone Brothers Plc', 'Analyst'],
+            ['2015年6月〜2022年3月', 'Fidelity International', 'Senior Manager'],
+            ['2022年4月〜2023年8月', 'Aegon', 'Senior Investment Analyst'],
+          ].map(([period, org, role]) => (
+            <li key={period} className="px-4 py-4 sm:px-5 grid grid-cols-1 sm:grid-cols-[11.5rem_minmax(0,1fr)_auto] gap-1 sm:gap-4 sm:items-baseline">
+              <p className="text-xs font-bold text-slate-500 dark:text-slate-400">{period}</p>
+              <p className="font-bold text-slate-900 dark:text-slate-100 break-words">{org}</p>
+              <p className="text-sm font-bold text-orange-600 dark:text-orange-400">{role}</p>
+            </li>
+          ))}
+        </ol>
+      </section>
+
+      <section className="py-20 px-6 max-w-6xl mx-auto">
+        <div className="text-center mb-10">
+          <p className="text-xs font-bold tracking-wide text-orange-600 mb-2">ソリューション</p>
+          <h2 className="text-3xl font-black text-slate-900 dark:text-white mb-3">あらゆる金融ニーズを、ひとつの場所で</h2>
+          <p className="text-slate-600 dark:text-slate-400">個人向け金融商品を横断して比較・整理できる、中立的なデジタル金融プラットフォームです。</p>
+        </div>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {SOLUTIONS.map((item) => (
+            <div key={item.title} className="rounded-2xl border border-slate-200 dark:border-slate-800 p-5 bg-white dark:bg-slate-900">
+              <item.icon className="text-orange-500 mb-3" size={22} />
+              <h3 className="font-bold text-slate-900 dark:text-white mb-1">{item.title}</h3>
+              <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">{item.desc}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="bg-slate-50 dark:bg-slate-900/50 py-16 px-6">
+        <div className="max-w-3xl mx-auto">
+          <div className="text-center mb-10">
+            <h2 className="text-3xl font-black text-slate-900 dark:text-white mb-2">会社の歩み</h2>
+            <p className="text-slate-500 dark:text-slate-400 text-sm">日本の投資家のための独立系プラットフォームとして、東京でスタートしました。</p>
+          </div>
+          <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 md:p-8">
+            <div className="flex items-center gap-2 text-orange-600 font-bold text-sm mb-2">
+              <Calendar size={16} /> 2025
+            </div>
+            <h3 className="text-xl font-black text-slate-900 dark:text-white mb-2">東京で創業</h3>
+            <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
+              {COMPANY_NAME_JA_EN}は、日本の投資家のための独立系金融プラットフォームを創るというビジョンのもと、東京で設立されました。
+              サービスブランドは MoneyMart です。
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section id="about-team" className="py-20 px-6 max-w-6xl mx-auto scroll-mt-20">
+        <div className="text-center mb-12">
+          <h2 className="text-3xl font-black text-slate-900 dark:text-white mb-2">チーム紹介</h2>
+          <p className="text-slate-500 dark:text-slate-400">金融、テクノロジー、日本市場の実務を担うリーダーシップ</p>
+        </div>
+        <div className="grid md:grid-cols-3 gap-5">
+          {TEAM.map((member) => (
+            <div key={member.name} className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6">
+              <div className="w-14 h-14 rounded-full bg-orange-500 text-white font-black text-xl flex items-center justify-center mb-4">
+                {member.initial}
+              </div>
+              <h3 className="font-black text-slate-900 dark:text-white">{member.name}</h3>
+              <p className="text-xs text-slate-400 mb-1">{member.nameEn}</p>
+              <p className="text-sm font-bold text-orange-600 dark:text-orange-400 mb-3">{member.title}</p>
+              <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">{member.bio}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section id="about-company" className="py-20 px-6 max-w-4xl mx-auto scroll-mt-20">
+        <div className="text-center mb-8">
           <h2 className="text-3xl font-black text-slate-900 dark:text-white flex items-center justify-center gap-3">
             <Building2 className="text-slate-400" /> 会社概要
           </h2>
         </div>
+        <p className="mb-8 max-w-2xl mx-auto text-center text-xs sm:text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
+          CSO は Kelly Nam が担当します。日本法人の登記上の代表者は
+          <strong className="text-slate-700 dark:text-slate-300"> {COMPANY_REPRESENTATIVE}</strong>
+          です。お問い合わせや法令に基づく表示は代表者名義で行います。
+        </p>
         <div className="border-t border-slate-200 dark:border-slate-800">
-          {[
-            { label: '会社名', value: 'MoneyLab Ltd. (MoneyMart運営会社)' },
-            { label: '代表者', value: '代表取締役 Kelly Nam' },
-            { label: '設立', value: '2025年 12月' },
-            { label: '資本金', value: '5,000万円（資本準備金含む）' },
-            { label: '所在地', value: '〒106-0032 東京都港区六本木 1-4-5 アークヒルズサウスタワー' },
-            { label: '事業内容', value: '金融商品比較プラットフォーム「MoneyMart」の運営\nAI資産管理ツールの開発・提供' },
-            { label: '主要取引銀行', value: '三菱UFJ銀行、三井住友銀行、みずほ銀行' },
-          ].map((row, i) => (
-            <div key={i} className="flex flex-col md:flex-row py-5 border-b border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/30 transition px-4">
+          {PROFILE_ROWS.map((row) => (
+            <div key={row.label} className="flex flex-col md:flex-row py-5 border-b border-slate-200 dark:border-slate-800 px-4">
               <div className="md:w-1/3 font-bold text-slate-500 dark:text-slate-400 text-sm py-1 flex items-center gap-2">
                 <span className="w-1.5 h-1.5 bg-orange-500 rounded-full" /> {row.label}
               </div>
-              <div className="md:w-2/3 font-medium text-slate-900 dark:text-slate-200 whitespace-pre-line">
-                {row.value}
+              <div className="md:w-2/3 font-medium text-slate-900 dark:text-slate-200">
+                {row.label === 'お問い合わせ' ? (
+                  <a href={SUPPORT_MAILTO} className="text-orange-600 hover:underline">{row.value}</a>
+                ) : row.value}
               </div>
             </div>
           ))}
         </div>
       </section>
 
-      {/* 5. Bottom CTA */}
-      <section className="bg-slate-900 dark:bg-slate-950 text-white py-20 px-6 text-center">
-        <h2 className="text-2xl md:text-3xl font-black mb-6">私たちと一緒に働きませんか？</h2>
-        <p className="text-slate-400 mb-10 max-w-xl mx-auto">
-          MoneyLabでは、金融の未来を創る仲間を募集しています。<br />
-          エンジニア、マーケター、金融スペシャリストをお待ちしています。
-        </p>
-        <button className="bg-white text-slate-900 px-8 py-4 rounded-full font-bold hover:bg-orange-50 transition flex items-center gap-2 mx-auto">
-          採用情報を見る <ChevronRight size={18} />
-        </button>
+      <section className="bg-slate-50 dark:bg-slate-900/50 py-16 px-6">
+        <div className="max-w-5xl mx-auto grid md:grid-cols-3 gap-5 text-center">
+          <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6">
+            <Target className="mx-auto text-orange-500 mb-2" size={22} />
+            <h3 className="font-black text-slate-900 dark:text-white mb-2">発見</h3>
+            <p className="text-sm text-slate-500">金融商品を横断して比較できます。</p>
+          </div>
+          <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6">
+            <CheckCircle2 className="mx-auto text-orange-500 mb-2" size={22} />
+            <h3 className="font-black text-slate-900 dark:text-white mb-2">コントロール</h3>
+            <p className="text-sm text-slate-500">自己判断のためのツールと表示を用意します。</p>
+          </div>
+          <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6">
+            <Shield className="mx-auto text-orange-500 mb-2" size={22} />
+            <h3 className="font-black text-slate-900 dark:text-white mb-2">信頼</h3>
+            <p className="text-sm text-slate-500">資本提携に左右されない独立系として運営します。</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="about-contact" className="py-20 px-6 max-w-4xl mx-auto scroll-mt-20">
+        <div className="rounded-3xl bg-orange-500 text-white p-8 md:p-10 text-center mb-8">
+          <Briefcase className="mx-auto mb-3" size={28} />
+          <h2 className="text-2xl font-black mb-3">パートナーシップのご案内</h2>
+          <p className="text-orange-50 mb-6 text-sm md:text-base">
+            取材・提携のご相談は、下記メールまでお願いします。
+          </p>
+          <a
+            href={SUPPORT_MAILTO}
+            className="inline-flex items-center gap-2 bg-white text-orange-600 px-6 py-3 rounded-full font-bold hover:bg-orange-50 transition"
+          >
+            <Mail size={16} /> {COMPANY_SUPPORT_EMAIL}
+          </a>
+        </div>
+
+        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 p-6">
+          <Mail className="text-orange-500 mb-3" size={22} />
+          <h3 className="font-black text-slate-900 dark:text-white mb-2">お問い合わせ</h3>
+          <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed mb-3">
+            MoneyMartのご利用や会社へのご連絡は、サポート窓口へお願いします。
+          </p>
+          <a href={SUPPORT_MAILTO} className="block font-bold text-orange-600 hover:underline mb-3">
+            {COMPANY_SUPPORT_EMAIL}
+          </a>
+          <button
+            type="button"
+            onClick={() => navigate('/faq')}
+            className="text-sm font-bold text-slate-600 dark:text-slate-300 hover:text-orange-600"
+          >
+            FAQ・お問い合わせフォームへ
+          </button>
+        </div>
       </section>
     </div>
   )

@@ -1,0 +1,543 @@
+symbol	status	sector_en	sector_ja	name	source	priority
+AAPL	matched	Information Technology	テクノロジー	Apple Inc	STOCK_LIST_400	10
+MSFT	matched	Information Technology	テクノロジー	Microsoft Corp	STOCK_LIST_400	20
+NVDA	matched	Information Technology	テクノロジー	NVIDIA Corp	STOCK_LIST_400	30
+AMZN	matched	Consumer Discretionary	一般消費財	Amazon.com Inc	STOCK_LIST_400	40
+GOOGL	matched	Communication Services	コミュニケーション	Alphabet Inc	STOCK_LIST_400	50
+META	matched	Communication Services	コミュニケーション	Meta Platforms Inc	STOCK_LIST_400	60
+TSLA	matched	Consumer Discretionary	一般消費財	Tesla Inc	STOCK_LIST_400	70
+AVGO	matched	Information Technology	テクノロジー	Broadcom Inc	STOCK_LIST_400	80
+GOOG	matched	Communication Services	コミュニケーション	Alphabet Inc	STOCK_LIST_400	90
+BRK.B	matched	Financials	金融	Berkshire Hathaway Inc	STOCK_LIST_400	100
+JPM	matched	Financials	金融	JPMorgan Chase & Co	STOCK_LIST_400	110
+LLY	matched	Health Care	ヘルスケア	Eli Lilly & Co	STOCK_LIST_400	120
+V	matched	Financials	金融	Visa Inc	STOCK_LIST_400	130
+UNH	matched	Health Care	ヘルスケア	UnitedHealth Group Inc	STOCK_LIST_400	140
+XOM	matched	Energy	エネルギー	Exxon Mobil Corp	STOCK_LIST_400	150
+MA	matched	Financials	金融	Mastercard Inc	STOCK_LIST_400	160
+COST	matched	Consumer Staples	生活必需品	Costco Wholesale Corp	STOCK_LIST_400	170
+HD	matched	Consumer Discretionary	一般消費財	Home Depot Inc/The	STOCK_LIST_400	180
+PG	matched	Consumer Staples	生活必需品	Procter & Gamble Co/The	STOCK_LIST_400	190
+ORCL	matched	Information Technology	テクノロジー	Oracle Corp	STOCK_LIST_400	200
+JNJ	matched	Health Care	ヘルスケア	Johnson & Johnson	STOCK_LIST_400	210
+ABBV	matched	Health Care	ヘルスケア	AbbVie Inc	STOCK_LIST_400	220
+BAC	matched	Financials	金融	Bank of America Corp	STOCK_LIST_400	230
+KO	matched	Consumer Staples	生活必需品	Coca-Cola Co/The	STOCK_LIST_400	240
+MRK	matched	Health Care	ヘルスケア	Merck & Co Inc	STOCK_LIST_400	250
+CVX	matched	Energy	エネルギー	Chevron Corp	STOCK_LIST_400	260
+NFLX	matched	Communication Services	コミュニケーション	Netflix Inc	STOCK_LIST_400	270
+CRM	matched	Information Technology	テクノロジー	Salesforce Inc	STOCK_LIST_400	280
+AMD	matched	Information Technology	テクノロジー	Advanced Micro Devices Inc	STOCK_LIST_400	290
+WMT	matched	Consumer Staples	生活必需品	Walmart Inc	STOCK_LIST_400	300
+PEP	matched	Consumer Staples	生活必需品	PepsiCo Inc	STOCK_LIST_400	310
+TMO	matched	Health Care	ヘルスケア	Thermo Fisher Scientific Inc	STOCK_LIST_400	320
+LIN	matched	Materials	素材	Linde PLC	STOCK_LIST_400	330
+CSCO	matched	Information Technology	テクノロジー	Cisco Systems Inc	STOCK_LIST_400	340
+ACN	matched	Information Technology	テクノロジー	Accenture PLC	STOCK_LIST_400	350
+MCD	matched	Consumer Discretionary	一般消費財	McDonald's Corp	STOCK_LIST_400	360
+ABT	matched	Health Care	ヘルスケア	Abbott Laboratories	STOCK_LIST_400	370
+DHR	matched	Health Care	ヘルスケア	Danaher Corp	STOCK_LIST_400	380
+TXN	matched	Information Technology	テクノロジー	Texas Instruments Inc	STOCK_LIST_400	390
+ADBE	matched	Information Technology	テクノロジー	Adobe Inc	STOCK_LIST_400	400
+WFC	matched	Financials	金融	Wells Fargo & Co	STOCK_LIST_400	410
+NEE	matched	Utilities	公益	NextEra Energy Inc	STOCK_LIST_400	420
+PM	matched	Consumer Staples	生活必需品	Philip Morris International In	STOCK_LIST_400	430
+IBM	matched	Information Technology	テクノロジー	International Business Machine	STOCK_LIST_400	440
+INTC	matched	Information Technology	テクノロジー	Intel Corp	STOCK_LIST_400	450
+INTU	matched	Information Technology	テクノロジー	Intuit Inc	STOCK_LIST_400	460
+AMGN	matched	Health Care	ヘルスケア	Amgen Inc	STOCK_LIST_400	470
+SPGI	matched	Financials	金融	S&P Global Inc	STOCK_LIST_400	480
+CAT	matched	Industrials	資本財・産業	Caterpillar Inc	STOCK_LIST_400	490
+GE	matched	Industrials	資本財・産業	General Electric Co	STOCK_LIST_400	500
+GEV	matched	Industrials	資本財・産業	GE Vernova Inc	STOCK_LIST_400	510
+NOW	matched	Information Technology	テクノロジー	ServiceNow Inc	STOCK_LIST_400	520
+RTX	matched	Industrials	資本財・産業	RTX Corp	STOCK_LIST_400	530
+ISRG	matched	Health Care	ヘルスケア	Intuitive Surgical Inc	STOCK_LIST_400	540
+SYK	matched	Health Care	ヘルスケア	Stryker Corp	STOCK_LIST_400	550
+GS	matched	Financials	金融	Goldman Sachs Group Inc/The	STOCK_LIST_400	560
+BLK	matched	Financials	金融	Blackrock Inc	STOCK_LIST_400	570
+BKNG	matched	Consumer Discretionary	一般消費財	Booking Holdings Inc	STOCK_LIST_400	580
+VRTX	matched	Health Care	ヘルスケア	Vertex Pharmaceuticals Inc	STOCK_LIST_400	590
+VRT	matched	Industrials	資本財・産業	Vertiv Holdings Co	STOCK_LIST_400	600
+AXP	matched	Financials	金融	American Express Co	STOCK_LIST_400	610
+PLD	matched	Real Estate	不動産	Prologis Inc	STOCK_LIST_400	620
+LOW	matched	Consumer Discretionary	一般消費財	Lowe's Cos Inc	STOCK_LIST_400	630
+TJX	matched	Consumer Discretionary	一般消費財	TJX Cos Inc/The	STOCK_LIST_400	640
+ELV	matched	Health Care	ヘルスケア	Elevance Health Inc	STOCK_LIST_400	650
+ADI	matched	Information Technology	テクノロジー	Analog Devices Inc	STOCK_LIST_400	660
+MDLZ	matched	Consumer Staples	生活必需品	Mondelez International Inc	STOCK_LIST_400	670
+REGN	matched	Health Care	ヘルスケア	Regeneron Pharmaceuticals Inc	STOCK_LIST_400	680
+MMC	manual_override	Financials	金融	Marsh & McLennan	STOCK_LIST_400	690
+GILD	matched	Health Care	ヘルスケア	Gilead Sciences Inc	STOCK_LIST_400	700
+CVS	matched	Health Care	ヘルスケア	CVS Health Corp	STOCK_LIST_400	710
+DE	matched	Industrials	資本財・産業	Deere & Co	STOCK_LIST_400	720
+CI	matched	Health Care	ヘルスケア	Cigna Group/The	STOCK_LIST_400	730
+SLB	matched	Energy	エネルギー	SLB Ltd	STOCK_LIST_400	740
+BDX	matched	Health Care	ヘルスケア	Becton Dickinson & Co	STOCK_LIST_400	750
+EOG	matched	Energy	エネルギー	EOG Resources Inc	STOCK_LIST_400	760
+PANW	matched	Information Technology	テクノロジー	Palo Alto Networks Inc	STOCK_LIST_400	770
+KLAC	matched	Information Technology	テクノロジー	KLA Corp	STOCK_LIST_400	780
+SNPS	matched	Information Technology	テクノロジー	Synopsys Inc	STOCK_LIST_400	790
+ZTS	matched	Health Care	ヘルスケア	Zoetis Inc	STOCK_LIST_400	800
+SO	matched	Utilities	公益	Southern Co/The	STOCK_LIST_400	810
+MO	matched	Consumer Staples	生活必需品	Altria Group Inc	STOCK_LIST_400	820
+BSX	matched	Health Care	ヘルスケア	Boston Scientific Corp	STOCK_LIST_400	830
+DUK	matched	Utilities	公益	Duke Energy Corp	STOCK_LIST_400	840
+CME	matched	Financials	金融	CME Group Inc	STOCK_LIST_400	850
+AON	matched	Financials	金融	Aon PLC	STOCK_LIST_400	860
+ITW	matched	Industrials	資本財・産業	Illinois Tool Works Inc	STOCK_LIST_400	870
+ETN	matched	Industrials	資本財・産業	Eaton Corp PLC	STOCK_LIST_400	880
+LRCX	matched	Information Technology	テクノロジー	Lam Research Corp	STOCK_LIST_400	890
+MCK	matched	Health Care	ヘルスケア	McKesson Corp	STOCK_LIST_400	900
+PGR	matched	Financials	金融	Progressive Corp/The	STOCK_LIST_400	910
+NOC	matched	Industrials	資本財・産業	Northrop Grumman Corp	STOCK_LIST_400	920
+USB	matched	Financials	金融	US Bancorp	STOCK_LIST_400	930
+HCA	matched	Health Care	ヘルスケア	HCA Healthcare Inc	STOCK_LIST_400	940
+TT	matched	Industrials	資本財・産業	Trane Technologies PLC	STOCK_LIST_400	950
+ICE	matched	Financials	金融	Intercontinental Exchange Inc	STOCK_LIST_400	960
+APD	matched	Materials	素材	Air Products and Chemicals Inc	STOCK_LIST_400	970
+CDNS	matched	Information Technology	テクノロジー	Cadence Design Systems Inc	STOCK_LIST_400	980
+WM	matched	Industrials	資本財・産業	Waste Management Inc	STOCK_LIST_400	990
+MPC	matched	Energy	エネルギー	Marathon Petroleum Corp	STOCK_LIST_400	1000
+MSI	matched	Information Technology	テクノロジー	Motorola Solutions Inc	STOCK_LIST_400	1010
+ECL	matched	Materials	素材	Ecolab Inc	STOCK_LIST_400	1020
+EMR	matched	Industrials	資本財・産業	Emerson Electric Co	STOCK_LIST_400	1030
+PH	matched	Industrials	資本財・産業	Parker-Hannifin Corp	STOCK_LIST_400	1040
+AIG	matched	Financials	金融	American International Group I	STOCK_LIST_400	1050
+COF	matched	Financials	金融	Capital One Financial Corp	STOCK_LIST_400	1060
+ORLY	matched	Consumer Discretionary	一般消費財	O'Reilly Automotive Inc	STOCK_LIST_400	1070
+FCX	matched	Materials	素材	Freeport-McMoRan Inc	STOCK_LIST_400	1080
+OKE	matched	Energy	エネルギー	ONEOK Inc	STOCK_LIST_400	1090
+PSA	matched	Real Estate	不動産	Public Storage	STOCK_LIST_400	1100
+CARR	matched	Industrials	資本財・産業	Carrier Global Corp	STOCK_LIST_400	1110
+GD	matched	Industrials	資本財・産業	General Dynamics Corp	STOCK_LIST_400	1120
+HLT	matched	Consumer Discretionary	一般消費財	Hilton Worldwide Holdings Inc	STOCK_LIST_400	1130
+CTAS	matched	Industrials	資本財・産業	Cintas Corp	STOCK_LIST_400	1140
+NSC	matched	Industrials	資本財・産業	Norfolk Southern Corp	STOCK_LIST_400	1150
+MAR	matched	Consumer Discretionary	一般消費財	Marriott International Inc/MD	STOCK_LIST_400	1160
+AEP	matched	Utilities	公益	American Electric Power Co Inc	STOCK_LIST_400	1170
+PCAR	matched	Industrials	資本財・産業	PACCAR Inc	STOCK_LIST_400	1180
+WELL	matched	Real Estate	不動産	Welltower Inc	STOCK_LIST_400	1190
+F	matched	Consumer Discretionary	一般消費財	Ford Motor Co	STOCK_LIST_400	1200
+GM	matched	Consumer Discretionary	一般消費財	General Motors Co	STOCK_LIST_400	1210
+ROP	matched	Information Technology	テクノロジー	Roper Technologies Inc	STOCK_LIST_400	1220
+FTNT	matched	Information Technology	テクノロジー	Fortinet Inc	STOCK_LIST_400	1230
+MCHP	matched	Information Technology	テクノロジー	Microchip Technology Inc	STOCK_LIST_400	1240
+AZO	matched	Consumer Discretionary	一般消費財	AutoZone Inc	STOCK_LIST_400	1250
+EW	matched	Health Care	ヘルスケア	Edwards Lifesciences Corp	STOCK_LIST_400	1260
+KMB	matched	Consumer Staples	生活必需品	Kimberly-Clark Corp	STOCK_LIST_400	1270
+STZ	matched	Consumer Staples	生活必需品	Constellation Brands Inc	STOCK_LIST_400	1280
+PAYX	matched	Industrials	資本財・産業	Paychex Inc	STOCK_LIST_400	1290
+OXY	matched	Energy	エネルギー	Occidental Petroleum Corp	STOCK_LIST_400	1300
+TEL	matched	Information Technology	テクノロジー	TE Connectivity PLC	STOCK_LIST_400	1310
+ALL	matched	Financials	金融	Allstate Corp/The	STOCK_LIST_400	1320
+NUE	matched	Materials	素材	Nucor Corp	STOCK_LIST_400	1330
+SRE	matched	Utilities	公益	Sempra	STOCK_LIST_400	1340
+FAST	matched	Industrials	資本財・産業	Fastenal Co	STOCK_LIST_400	1350
+DLR	matched	Real Estate	不動産	Digital Realty Trust Inc	STOCK_LIST_400	1360
+IR	matched	Industrials	資本財・産業	Ingersoll Rand Inc	STOCK_LIST_400	1370
+MSCI	matched	Financials	金融	MSCI Inc	STOCK_LIST_400	1380
+D	matched	Utilities	公益	Dominion Energy Inc	STOCK_LIST_400	1390
+TROW	matched	Financials	金融	T Rowe Price Group Inc	STOCK_LIST_400	1400
+VRSK	matched	Industrials	資本財・産業	Verisk Analytics Inc	STOCK_LIST_400	1410
+CTVA	matched	Materials	素材	Corteva Inc	STOCK_LIST_400	1420
+ROST	matched	Consumer Discretionary	一般消費財	Ross Stores Inc	STOCK_LIST_400	1430
+O	matched	Real Estate	不動産	Realty Income Corp	STOCK_LIST_400	1440
+GWW	matched	Industrials	資本財・産業	WW Grainger Inc	STOCK_LIST_400	1450
+YUM	matched	Consumer Discretionary	一般消費財	Yum! Brands Inc	STOCK_LIST_400	1460
+CTSH	matched	Information Technology	テクノロジー	Cognizant Technology Solutions	STOCK_LIST_400	1470
+IDXX	matched	Health Care	ヘルスケア	IDEXX Laboratories Inc	STOCK_LIST_400	1480
+EA	matched	Communication Services	コミュニケーション	Electronic Arts Inc	STOCK_LIST_400	1490
+DXCM	matched	Health Care	ヘルスケア	Dexcom Inc	STOCK_LIST_400	1500
+HSY	matched	Consumer Staples	生活必需品	Hershey Co/The	STOCK_LIST_400	1510
+XEL	matched	Utilities	公益	Xcel Energy Inc	STOCK_LIST_400	1520
+GEHC	matched	Health Care	ヘルスケア	GE HealthCare Technologies Inc	STOCK_LIST_400	1530
+BIIB	matched	Health Care	ヘルスケア	Biogen Inc	STOCK_LIST_400	1540
+ON	matched	Information Technology	テクノロジー	ON Semiconductor Corp	STOCK_LIST_400	1550
+WEC	matched	Utilities	公益	WEC Energy Group Inc	STOCK_LIST_400	1560
+PPL	matched	Utilities	公益	PPL Corp	STOCK_LIST_400	1570
+ZBH	matched	Health Care	ヘルスケア	Zimmer Biomet Holdings Inc	STOCK_LIST_400	1580
+AVB	matched	Real Estate	不動産	AvalonBay Communities Inc	STOCK_LIST_400	1590
+CBRE	matched	Real Estate	不動産	CBRE Group Inc	STOCK_LIST_400	1600
+CDW	matched	Information Technology	テクノロジー	CDW Corp/DE	STOCK_LIST_400	1610
+CCI	matched	Real Estate	不動産	Crown Castle Inc	STOCK_LIST_400	1620
+WAB	matched	Industrials	資本財・産業	Westinghouse Air Brake Technol	STOCK_LIST_400	1630
+LUV	matched	Industrials	資本財・産業	Southwest Airlines Co	STOCK_LIST_400	1640
+FDX	matched	Industrials	資本財・産業	FedEx Corp	STOCK_LIST_400	1650
+KEYS	matched	Information Technology	テクノロジー	Keysight Technologies Inc	STOCK_LIST_400	1660
+RMD	matched	Health Care	ヘルスケア	ResMed Inc	STOCK_LIST_400	1670
+STT	matched	Financials	金融	State Street Corp	STOCK_LIST_400	1680
+MTD	matched	Health Care	ヘルスケア	Mettler-Toledo International I	STOCK_LIST_400	1690
+GLW	matched	Information Technology	テクノロジー	Corning Inc	STOCK_LIST_400	1700
+WST	matched	Health Care	ヘルスケア	West Pharmaceutical Services I	STOCK_LIST_400	1710
+LH	matched	Health Care	ヘルスケア	Labcorp Holdings Inc	STOCK_LIST_400	1720
+TDY	matched	Information Technology	テクノロジー	Teledyne Technologies Inc	STOCK_LIST_400	1730
+EXPD	matched	Industrials	資本財・産業	Expeditors International of Wa	STOCK_LIST_400	1740
+SYY	matched	Consumer Staples	生活必需品	Sysco Corp	STOCK_LIST_400	1750
+BR	matched	Industrials	資本財・産業	Broadridge Financial Solutions	STOCK_LIST_400	1760
+VLTO	matched	Industrials	資本財・産業	Veralto Corp	STOCK_LIST_400	1770
+IFF	matched	Materials	素材	International Flavors & Fragra	STOCK_LIST_400	1780
+DOV	matched	Industrials	資本財・産業	Dover Corp	STOCK_LIST_400	1790
+ULTA	matched	Consumer Discretionary	一般消費財	Ulta Beauty Inc	STOCK_LIST_400	1800
+SBUX	matched	Consumer Discretionary	一般消費財	Starbucks Corp	STOCK_LIST_400	1810
+DLTR	matched	Consumer Staples	生活必需品	Dollar Tree Inc	STOCK_LIST_400	1820
+DVN	matched	Energy	エネルギー	Devon Energy Corp	STOCK_LIST_400	1830
+MKC	matched	Consumer Staples	生活必需品	McCormick & Co Inc/MD	STOCK_LIST_400	1840
+LVS	matched	Consumer Discretionary	一般消費財	Las Vegas Sands Corp	STOCK_LIST_400	1850
+TFC	matched	Financials	金融	Truist Financial Corp	STOCK_LIST_400	1860
+FITB	matched	Financials	金融	Fifth Third Bancorp	STOCK_LIST_400	1870
+RF	matched	Financials	金融	Regions Financial Corp	STOCK_LIST_400	1880
+CFG	matched	Financials	金融	Citizens Financial Group Inc	STOCK_LIST_400	1890
+ADP	matched	Industrials	資本財・産業	Automatic Data Processing Inc	STOCK_LIST_400	1900
+ADSK	matched	Information Technology	テクノロジー	Autodesk Inc	STOCK_LIST_400	1910
+ALGN	matched	Health Care	ヘルスケア	Align Technology Inc	STOCK_LIST_400	1920
+ALNY	manual_override	Health Care	ヘルスケア	Alnylam Pharmaceuticals	STOCK_LIST_400	1930
+AMAT	matched	Information Technology	テクノロジー	Applied Materials Inc	STOCK_LIST_400	1940
+AMT	matched	Real Estate	不動産	American Tower Corp	STOCK_LIST_400	1950
+ASML	manual_override	Information Technology	テクノロジー	ASML Holding	STOCK_LIST_400	1960
+AZN	manual_override	Health Care	ヘルスケア	AstraZeneca	STOCK_LIST_400	1970
+BA	matched	Industrials	資本財・産業	Boeing Co/The	STOCK_LIST_400	1980
+BKR	matched	Energy	エネルギー	Baker Hughes Co	STOCK_LIST_400	1990
+C	matched	Financials	金融	Citigroup Inc	STOCK_LIST_400	2000
+CB	matched	Financials	金融	Chubb Ltd	STOCK_LIST_400	2010
+CEG	matched	Utilities	公益	Constellation Energy Corp	STOCK_LIST_400	2020
+CHTR	matched	Communication Services	コミュニケーション	Charter Communications Inc	STOCK_LIST_400	2030
+COP	matched	Energy	エネルギー	ConocoPhillips	STOCK_LIST_400	2040
+CPRT	matched	Industrials	資本財・産業	Copart Inc	STOCK_LIST_400	2050
+CSX	matched	Industrials	資本財・産業	CSX Corp	STOCK_LIST_400	2060
+DASH	matched	Consumer Discretionary	一般消費財	DoorDash Inc	STOCK_LIST_400	2070
+DDOG	matched	Information Technology	テクノロジー	Datadog Inc	STOCK_LIST_400	2080
+DIS	matched	Communication Services	コミュニケーション	Walt Disney Co/The	STOCK_LIST_400	2090
+EBAY	matched	Consumer Discretionary	一般消費財	eBay Inc	STOCK_LIST_400	2100
+ENPH	manual_override	Information Technology	テクノロジー	Enphase Energy	STOCK_LIST_400	2110
+EQIX	matched	Real Estate	不動産	Equinix Inc	STOCK_LIST_400	2120
+EXC	matched	Utilities	公益	Exelon Corp	STOCK_LIST_400	2130
+EXPE	matched	Consumer Discretionary	一般消費財	Expedia Group Inc	STOCK_LIST_400	2140
+GFS	manual_override	Information Technology	テクノロジー	GlobalFoundries	STOCK_LIST_400	2150
+HON	matched	Industrials	資本財・産業	Honeywell International Inc	STOCK_LIST_400	2160
+ILMN	manual_override	Health Care	ヘルスケア	Illumina	STOCK_LIST_400	2170
+JD	manual_override	Consumer Discretionary	一般消費財	JD.com	STOCK_LIST_400	2180
+KDP	matched	Consumer Staples	生活必需品	Keurig Dr Pepper Inc	STOCK_LIST_400	2190
+KHC	matched	Consumer Staples	生活必需品	Kraft Heinz Co/The	STOCK_LIST_400	2200
+LCID	manual_override	Consumer Discretionary	一般消費財	Lucid Group	STOCK_LIST_400	2210
+LMT	matched	Industrials	資本財・産業	Lockheed Martin Corp	STOCK_LIST_400	2220
+LULU	matched	Consumer Discretionary	一般消費財	Lululemon Athletica Inc	STOCK_LIST_400	2230
+MDB	manual_override	Information Technology	テクノロジー	MongoDB	STOCK_LIST_400	2240
+MELI	manual_override	Consumer Discretionary	一般消費財	MercadoLibre	STOCK_LIST_400	2250
+MNST	matched	Consumer Staples	生活必需品	Monster Beverage Corp	STOCK_LIST_400	2260
+MRVL	manual_override	Information Technology	テクノロジー	Marvell Technology	STOCK_LIST_400	2270
+MS	matched	Financials	金融	Morgan Stanley	STOCK_LIST_400	2280
+MU	matched	Information Technology	テクノロジー	Micron Technology Inc	STOCK_LIST_400	2290
+NXPI	matched	Information Technology	テクノロジー	NXP Semiconductors NV	STOCK_LIST_400	2300
+ODFL	matched	Industrials	資本財・産業	Old Dominion Freight Line Inc	STOCK_LIST_400	2310
+OKTA	manual_override	Information Technology	テクノロジー	Okta	STOCK_LIST_400	2320
+PDD	manual_override	Consumer Discretionary	一般消費財	PDD Holdings	STOCK_LIST_400	2330
+PYPL	matched	Financials	金融	PayPal Holdings Inc	STOCK_LIST_400	2340
+QCOM	matched	Information Technology	テクノロジー	QUALCOMM Inc	STOCK_LIST_400	2350
+SCHW	matched	Financials	金融	Charles Schwab Corp/The	STOCK_LIST_400	2360
+SHW	matched	Materials	素材	Sherwin-Williams Co/The	STOCK_LIST_400	2370
+SIRI	manual_override	Communication Services	コミュニケーション	Sirius XM	STOCK_LIST_400	2380
+T	matched	Communication Services	コミュニケーション	AT&T Inc	STOCK_LIST_400	2390
+TEAM	manual_override	Information Technology	テクノロジー	Atlassian	STOCK_LIST_400	2400
+TMUS	matched	Communication Services	コミュニケーション	T-Mobile US Inc	STOCK_LIST_400	2410
+TTD	matched	Communication Services	コミュニケーション	Trade Desk Inc/The	STOCK_LIST_400	2420
+UNP	matched	Industrials	資本財・産業	Union Pacific Corp	STOCK_LIST_400	2430
+UPS	matched	Industrials	資本財・産業	United Parcel Service Inc	STOCK_LIST_400	2440
+VZ	matched	Communication Services	コミュニケーション	Verizon Communications Inc	STOCK_LIST_400	2450
+WBD	matched	Communication Services	コミュニケーション	Warner Bros Discovery Inc	STOCK_LIST_400	2460
+WDAY	matched	Information Technology	テクノロジー	Workday Inc	STOCK_LIST_400	2470
+ZBRA	matched	Information Technology	テクノロジー	Zebra Technologies Corp	STOCK_LIST_400	2480
+ZS	manual_override	Information Technology	テクノロジー	Zscaler	STOCK_LIST_400	2490
+MMM	matched	Industrials	資本財・産業	3M Co	STOCK_LIST_400	2500
+AOS	matched	Industrials	資本財・産業	A O Smith Corp	STOCK_LIST_400	2510
+AES	matched	Utilities	公益	AES Corp/The	STOCK_LIST_400	2520
+AFL	matched	Financials	金融	Aflac Inc	STOCK_LIST_400	2530
+A	matched	Health Care	ヘルスケア	Agilent Technologies Inc	STOCK_LIST_400	2540
+ABNB	matched	Consumer Discretionary	一般消費財	Airbnb Inc	STOCK_LIST_400	2550
+AKAM	matched	Information Technology	テクノロジー	Akamai Technologies Inc	STOCK_LIST_400	2560
+ALB	matched	Materials	素材	Albemarle Corp	STOCK_LIST_400	2570
+ARE	matched	Real Estate	不動産	Alexandria Real Estate Equitie	STOCK_LIST_400	2580
+ALLE	matched	Industrials	資本財・産業	Allegion plc	STOCK_LIST_400	2590
+LNT	matched	Utilities	公益	Alliant Energy Corp	STOCK_LIST_400	2600
+AMCR	matched	Materials	素材	Amcor PLC	STOCK_LIST_400	2610
+AEE	matched	Utilities	公益	Ameren Corp	STOCK_LIST_400	2620
+AWK	matched	Utilities	公益	American Water Works Co Inc	STOCK_LIST_400	2630
+AMP	matched	Financials	金融	Ameriprise Financial Inc	STOCK_LIST_400	2640
+AME	matched	Industrials	資本財・産業	AMETEK Inc	STOCK_LIST_400	2650
+APH	matched	Information Technology	テクノロジー	Amphenol Corp	STOCK_LIST_400	2660
+APA	matched	Energy	エネルギー	APA Corp	STOCK_LIST_400	2670
+APTV	matched	Consumer Discretionary	一般消費財	Aptiv PLC	STOCK_LIST_400	2680
+ACGL	matched	Financials	金融	Arch Capital Group Ltd	STOCK_LIST_400	2690
+ADM	matched	Consumer Staples	生活必需品	Archer-Daniels-Midland Co	STOCK_LIST_400	2700
+ANET	matched	Information Technology	テクノロジー	Arista Networks Inc	STOCK_LIST_400	2710
+AJG	matched	Financials	金融	Arthur J Gallagher & Co	STOCK_LIST_400	2720
+AIZ	matched	Financials	金融	Assurant Inc	STOCK_LIST_400	2730
+ATO	matched	Utilities	公益	Atmos Energy Corp	STOCK_LIST_400	2740
+AVY	matched	Materials	素材	Avery Dennison Corp	STOCK_LIST_400	2750
+AXON	matched	Industrials	資本財・産業	Axon Enterprise Inc	STOCK_LIST_400	2760
+BALL	matched	Materials	素材	Ball Corp	STOCK_LIST_400	2770
+BAX	matched	Health Care	ヘルスケア	Baxter International Inc	STOCK_LIST_400	2780
+BBY	matched	Consumer Discretionary	一般消費財	Best Buy Co Inc	STOCK_LIST_400	2790
+BIO	manual_override	Health Care	ヘルスケア	Bio-Rad Laboratories	STOCK_LIST_400	2800
+TECH	matched	Health Care	ヘルスケア	Bio-Techne Corp	STOCK_LIST_400	2810
+BX	matched	Financials	金融	Blackstone Inc	STOCK_LIST_400	2820
+BWA	manual_override	Consumer Discretionary	一般消費財	BorgWarner	STOCK_LIST_400	2830
+BMY	matched	Health Care	ヘルスケア	Bristol-Myers Squibb Co	STOCK_LIST_400	2840
+BRO	matched	Financials	金融	Brown & Brown Inc	STOCK_LIST_400	2850
+BF-B	matched	Consumer Staples	生活必需品	Brown-Forman Corp	STOCK_LIST_400	2860
+BLDR	matched	Industrials	資本財・産業	Builders FirstSource Inc	STOCK_LIST_400	2870
+BG	matched	Consumer Staples	生活必需品	Bunge Global SA	STOCK_LIST_400	2880
+CZR	manual_override	Consumer Discretionary	一般消費財	Caesars Entertainment	STOCK_LIST_400	2890
+CPT	matched	Real Estate	不動産	Camden Property Trust	STOCK_LIST_400	2900
+CPB	matched	Consumer Staples	生活必需品	Campbell's Company/The	STOCK_LIST_400	2910
+CAH	matched	Health Care	ヘルスケア	Cardinal Health Inc	STOCK_LIST_400	2920
+KMX	manual_override	Consumer Discretionary	一般消費財	CarMax	STOCK_LIST_400	2930
+CCL	matched	Consumer Discretionary	一般消費財	Carnival Corp Ltd	STOCK_LIST_400	2940
+CBOE	matched	Financials	金融	Cboe Global Markets Inc	STOCK_LIST_400	2950
+CE	manual_override	Materials	素材	Celanese	STOCK_LIST_400	2960
+COR	matched	Health Care	ヘルスケア	Cencora Inc	STOCK_LIST_400	2970
+CNC	matched	Health Care	ヘルスケア	Centene Corp	STOCK_LIST_400	2980
+CNX	manual_override	Energy	エネルギー	CNX Resources	STOCK_LIST_400	2990
+CF	matched	Materials	素材	CF Industries Holdings Inc	STOCK_LIST_400	3000
+CRL	matched	Health Care	ヘルスケア	Charles River Laboratories Int	STOCK_LIST_400	3010
+CMG	matched	Consumer Discretionary	一般消費財	Chipotle Mexican Grill Inc	STOCK_LIST_400	3020
+CHD	matched	Consumer Staples	生活必需品	Church & Dwight Co Inc	STOCK_LIST_400	3030
+CHRW	matched	Industrials	資本財・産業	CH Robinson Worldwide Inc	STOCK_LIST_400	3040
+CINF	matched	Financials	金融	Cincinnati Financial Corp	STOCK_LIST_400	3050
+CLX	matched	Consumer Staples	生活必需品	Clorox Co/The	STOCK_LIST_400	3060
+CMS	matched	Utilities	公益	CMS Energy Corp	STOCK_LIST_400	3070
+CL	matched	Consumer Staples	生活必需品	Colgate-Palmolive Co	STOCK_LIST_400	3080
+CMCSA	matched	Communication Services	コミュニケーション	Comcast Corp	STOCK_LIST_400	3090
+CAG	matched	Consumer Staples	生活必需品	Conagra Brands Inc	STOCK_LIST_400	3100
+ED	matched	Utilities	公益	Consolidated Edison Inc	STOCK_LIST_400	3110
+COO	matched	Health Care	ヘルスケア	Cooper Cos Inc/The	STOCK_LIST_400	3120
+CPAY	matched	Financials	金融	Corpay Inc	STOCK_LIST_400	3130
+CSGP	matched	Real Estate	不動産	CoStar Group Inc	STOCK_LIST_400	3140
+CTRA	manual_override	Energy	エネルギー	Coterra Energy	STOCK_LIST_400	3150
+CRWD	matched	Information Technology	テクノロジー	Crowdstrike Holdings Inc	STOCK_LIST_400	3160
+CMI	matched	Industrials	資本財・産業	Cummins Inc	STOCK_LIST_400	3170
+DRI	matched	Consumer Discretionary	一般消費財	Darden Restaurants Inc	STOCK_LIST_400	3180
+DVA	matched	Health Care	ヘルスケア	DaVita Inc	STOCK_LIST_400	3190
+DAY	manual_override	Industrials	資本財・産業	Dayforce	STOCK_LIST_400	3200
+DECK	matched	Consumer Discretionary	一般消費財	Deckers Outdoor Corp	STOCK_LIST_400	3210
+DAL	matched	Industrials	資本財・産業	Delta Air Lines Inc	STOCK_LIST_400	3220
+FANG	matched	Energy	エネルギー	Diamondback Energy Inc	STOCK_LIST_400	3230
+DG	matched	Consumer Staples	生活必需品	Dollar General Corp	STOCK_LIST_400	3240
+DPZ	matched	Consumer Discretionary	一般消費財	Domino's Pizza Inc	STOCK_LIST_400	3250
+DOW	matched	Materials	素材	Dow Inc	STOCK_LIST_400	3260
+DHI	matched	Consumer Discretionary	一般消費財	DR Horton Inc	STOCK_LIST_400	3270
+DTE	matched	Utilities	公益	DTE Energy Co	STOCK_LIST_400	3280
+DD	matched	Materials	素材	DuPont de Nemours Inc	STOCK_LIST_400	3290
+EMN	manual_override	Materials	素材	Eastman Chemical	STOCK_LIST_400	3300
+EIX	matched	Utilities	公益	Edison International	STOCK_LIST_400	3310
+ETR	matched	Utilities	公益	Entergy Corp	STOCK_LIST_400	3320
+EPAM	matched	Information Technology	テクノロジー	EPAM Systems Inc	STOCK_LIST_400	3330
+EQT	matched	Energy	エネルギー	EQT Corp	STOCK_LIST_400	3340
+EFX	matched	Industrials	資本財・産業	Equifax Inc	STOCK_LIST_400	3350
+EQR	matched	Real Estate	不動産	Equity Residential	STOCK_LIST_400	3360
+ESS	matched	Real Estate	不動産	Essex Property Trust Inc	STOCK_LIST_400	3370
+EL	matched	Consumer Staples	生活必需品	Estee Lauder Cos Inc/The	STOCK_LIST_400	3380
+ETSY	manual_override	Consumer Discretionary	一般消費財	Etsy	STOCK_LIST_400	3390
+EG	matched	Financials	金融	Everest Group Ltd	STOCK_LIST_400	3400
+EVRG	matched	Utilities	公益	Evergy Inc	STOCK_LIST_400	3410
+ES	matched	Utilities	公益	Eversource Energy	STOCK_LIST_400	3420
+EXR	matched	Real Estate	不動産	Extra Space Storage Inc	STOCK_LIST_400	3430
+FFIV	matched	Information Technology	テクノロジー	F5 Inc	STOCK_LIST_400	3440
+FDS	matched	Financials	金融	FactSet Research Systems Inc	STOCK_LIST_400	3450
+FICO	matched	Information Technology	テクノロジー	Fair Isaac Corp	STOCK_LIST_400	3460
+FRT	matched	Real Estate	不動産	Federal Realty Investment Trus	STOCK_LIST_400	3470
+FIS	matched	Financials	金融	Fidelity National Information	STOCK_LIST_400	3480
+FSLR	matched	Information Technology	テクノロジー	First Solar Inc	STOCK_LIST_400	3490
+FE	matched	Utilities	公益	FirstEnergy Corp	STOCK_LIST_400	3500
+FTV	matched	Industrials	資本財・産業	Fortive Corp	STOCK_LIST_400	3510
+FOXA	matched	Communication Services	コミュニケーション	Fox Corp	STOCK_LIST_400	3520
+FOX	matched	Communication Services	コミュニケーション	Fox Corp	STOCK_LIST_400	3530
+BEN	matched	Financials	金融	Franklin Resources Inc	STOCK_LIST_400	3540
+GRMN	matched	Consumer Discretionary	一般消費財	Garmin Ltd	STOCK_LIST_400	3550
+IT	matched	Information Technology	テクノロジー	Gartner Inc	STOCK_LIST_400	3560
+GEN	matched	Information Technology	テクノロジー	Gen Digital Inc	STOCK_LIST_400	3570
+GNRC	matched	Industrials	資本財・産業	Generac Holdings Inc	STOCK_LIST_400	3580
+GIS	matched	Consumer Staples	生活必需品	General Mills Inc	STOCK_LIST_400	3590
+GPC	matched	Consumer Discretionary	一般消費財	Genuine Parts Co	STOCK_LIST_400	3600
+HAL	matched	Energy	エネルギー	Halliburton Co	STOCK_LIST_400	3610
+HIG	matched	Financials	金融	Hartford Insurance Group Inc/T	STOCK_LIST_400	3620
+HAS	matched	Consumer Discretionary	一般消費財	Hasbro Inc	STOCK_LIST_400	3630
+DOC	matched	Real Estate	不動産	Healthpeak Properties Inc	STOCK_LIST_400	3640
+HSIC	matched	Health Care	ヘルスケア	Henry Schein Inc	STOCK_LIST_400	3650
+HPE	matched	Information Technology	テクノロジー	Hewlett Packard Enterprise Co	STOCK_LIST_400	3660
+HOLX	manual_override	Health Care	ヘルスケア	Hologic	STOCK_LIST_400	3670
+HRL	matched	Consumer Staples	生活必需品	Hormel Foods Corp	STOCK_LIST_400	3680
+HST	matched	Real Estate	不動産	Host Hotels & Resorts Inc	STOCK_LIST_400	3690
+HWM	matched	Industrials	資本財・産業	Howmet Aerospace Inc	STOCK_LIST_400	3700
+HPQ	matched	Information Technology	テクノロジー	HP Inc	STOCK_LIST_400	3710
+HUBB	matched	Industrials	資本財・産業	Hubbell Inc	STOCK_LIST_400	3720
+HUM	matched	Health Care	ヘルスケア	Humana Inc	STOCK_LIST_400	3730
+HBAN	matched	Financials	金融	Huntington Bancshares Inc/OH	STOCK_LIST_400	3740
+HII	matched	Industrials	資本財・産業	Huntington Ingalls Industries	STOCK_LIST_400	3750
+IEX	matched	Industrials	資本財・産業	IDEX Corp	STOCK_LIST_400	3760
+INCY	matched	Health Care	ヘルスケア	Incyte Corp	STOCK_LIST_400	3770
+PODD	matched	Health Care	ヘルスケア	Insulet Corp	STOCK_LIST_400	3780
+IP	matched	Materials	素材	International Paper Co	STOCK_LIST_400	3790
+IVZ	matched	Financials	金融	Invesco Ltd	STOCK_LIST_400	3800
+INVH	matched	Real Estate	不動産	Invitation Homes Inc	STOCK_LIST_400	3810
+IQV	matched	Health Care	ヘルスケア	IQVIA Holdings Inc	STOCK_LIST_400	3820
+IRM	matched	Real Estate	不動産	Iron Mountain Inc	STOCK_LIST_400	3830
+JBHT	matched	Industrials	資本財・産業	JB Hunt Transport Services Inc	STOCK_LIST_400	3840
+JBL	matched	Information Technology	テクノロジー	Jabil Inc	STOCK_LIST_400	3850
+JKHY	matched	Financials	金融	Jack Henry & Associates Inc	STOCK_LIST_400	3860
+J	matched	Industrials	資本財・産業	Jacobs Solutions Inc	STOCK_LIST_400	3870
+JCI	matched	Industrials	資本財・産業	Johnson Controls International	STOCK_LIST_400	3880
+KVUE	matched	Consumer Staples	生活必需品	Kenvue Inc	STOCK_LIST_400	3890
+KEY	matched	Financials	金融	KeyCorp	STOCK_LIST_400	3900
+KIM	matched	Real Estate	不動産	Kimco Realty Corp	STOCK_LIST_400	3910
+KMI	matched	Energy	エネルギー	Kinder Morgan Inc	STOCK_LIST_400	3920
+KR	matched	Consumer Staples	生活必需品	Kroger Co/The	STOCK_LIST_400	3930
+LHX	matched	Industrials	資本財・産業	L3Harris Technologies Inc	STOCK_LIST_400	3940
+LW	manual_override	Consumer Staples	生活必需品	Lamb Weston	STOCK_LIST_400	3950
+LDOS	matched	Industrials	資本財・産業	Leidos Holdings Inc	STOCK_LIST_400	3960
+LEN	matched	Consumer Discretionary	一般消費財	Lennar Corp	STOCK_LIST_400	3970
+LNC	manual_override	Financials	金融	Lincoln National	STOCK_LIST_400	3980
+LYV	matched	Communication Services	コミュニケーション	Live Nation Entertainment Inc	STOCK_LIST_400	3990
+LKQ	manual_override	Consumer Discretionary	一般消費財	LKQ Corporation	STOCK_LIST_400	4000
+L	matched	Financials	金融	Loews Corp	STOCK_LIST_400	4010
+LYB	matched	Materials	素材	LyondellBasell Industries NV	STOCK_LIST_400	4020
+MTB	matched	Financials	金融	M&T Bank Corp	STOCK_LIST_400	4030
+MKTX	manual_override	Financials	金融	MarketAxess	STOCK_LIST_400	4040
+MLM	matched	Materials	素材	Martin Marietta Materials Inc	STOCK_LIST_400	4050
+MAS	matched	Industrials	資本財・産業	Masco Corp	STOCK_LIST_400	4060
+MTCH	manual_override	Communication Services	コミュニケーション	Match Group	STOCK_LIST_400	4070
+MDT	matched	Health Care	ヘルスケア	Medtronic PLC	STOCK_LIST_400	4080
+MET	matched	Financials	金融	MetLife Inc	STOCK_LIST_400	4090
+MGM	matched	Consumer Discretionary	一般消費財	MGM Resorts International	STOCK_LIST_400	4100
+MAA	matched	Real Estate	不動産	Mid-America Apartment Communit	STOCK_LIST_400	4110
+MRNA	matched	Health Care	ヘルスケア	Moderna Inc	STOCK_LIST_400	4120
+MHK	manual_override	Consumer Discretionary	一般消費財	Mohawk Industries	STOCK_LIST_400	4130
+MOH	manual_override	Health Care	ヘルスケア	Molina Healthcare	STOCK_LIST_400	4140
+TAP	matched	Consumer Staples	生活必需品	Molson Coors Beverage Co	STOCK_LIST_400	4150
+MPWR	matched	Information Technology	テクノロジー	Monolithic Power Systems Inc	STOCK_LIST_400	4160
+MCO	matched	Financials	金融	Moody's Corp	STOCK_LIST_400	4170
+MOS	matched	Materials	素材	Mosaic Co/The	STOCK_LIST_400	4180
+NDAQ	matched	Financials	金融	Nasdaq Inc	STOCK_LIST_400	4190
+NTAP	matched	Information Technology	テクノロジー	NetApp Inc	STOCK_LIST_400	4200
+NEM	matched	Materials	素材	Newmont Corp	STOCK_LIST_400	4210
+NWSA	matched	Communication Services	コミュニケーション	News Corp	STOCK_LIST_400	4220
+NWS	matched	Communication Services	コミュニケーション	News Corp	STOCK_LIST_400	4230
+NKE	matched	Consumer Discretionary	一般消費財	NIKE Inc	STOCK_LIST_400	4240
+NI	matched	Utilities	公益	NiSource Inc	STOCK_LIST_400	4250
+NDSN	matched	Industrials	資本財・産業	Nordson Corp	STOCK_LIST_400	4260
+NTRS	matched	Financials	金融	Northern Trust Corp	STOCK_LIST_400	4270
+NCLH	matched	Consumer Discretionary	一般消費財	Norwegian Cruise Line Holdings	STOCK_LIST_400	4280
+NRG	matched	Utilities	公益	NRG Energy Inc	STOCK_LIST_400	4290
+NVR	matched	Consumer Discretionary	一般消費財	NVR Inc	STOCK_LIST_400	4300
+OMC	matched	Communication Services	コミュニケーション	Omnicom Group Inc	STOCK_LIST_400	4310
+OTIS	matched	Industrials	資本財・産業	Otis Worldwide Corp	STOCK_LIST_400	4320
+PKG	matched	Materials	素材	Packaging Corp of America	STOCK_LIST_400	4330
+PAYC	manual_override	Industrials	資本財・産業	Paycom Software	STOCK_LIST_400	4340
+PNR	matched	Industrials	資本財・産業	Pentair PLC	STOCK_LIST_400	4350
+PFE	matched	Health Care	ヘルスケア	Pfizer Inc	STOCK_LIST_400	4360
+PCG	matched	Utilities	公益	PG&E Corp	STOCK_LIST_400	4370
+PSX	matched	Energy	エネルギー	Phillips 66	STOCK_LIST_400	4380
+PNW	matched	Utilities	公益	Pinnacle West Capital Corp	STOCK_LIST_400	4390
+PNC	matched	Financials	金融	PNC Financial Services Group I	STOCK_LIST_400	4400
+POOL	matched	Consumer Discretionary	一般消費財	Pool Corp	STOCK_LIST_400	4410
+PPG	matched	Materials	素材	PPG Industries Inc	STOCK_LIST_400	4420
+PFG	matched	Financials	金融	Principal Financial Group Inc	STOCK_LIST_400	4430
+PRU	matched	Financials	金融	Prudential Financial Inc	STOCK_LIST_400	4440
+PEG	matched	Utilities	公益	Public Service Enterprise Grou	STOCK_LIST_400	4450
+PTC	matched	Information Technology	テクノロジー	PTC Inc	STOCK_LIST_400	4460
+PHM	matched	Consumer Discretionary	一般消費財	PulteGroup Inc	STOCK_LIST_400	4470
+QRVO	manual_override	Information Technology	テクノロジー	Qorvo	STOCK_LIST_400	4480
+PWR	matched	Industrials	資本財・産業	Quanta Services Inc	STOCK_LIST_400	4490
+DGX	matched	Health Care	ヘルスケア	Quest Diagnostics Inc	STOCK_LIST_400	4500
+RL	matched	Consumer Discretionary	一般消費財	Ralph Lauren Corp	STOCK_LIST_400	4510
+RJF	matched	Financials	金融	Raymond James Financial Inc	STOCK_LIST_400	4520
+REG	matched	Real Estate	不動産	Regency Centers Corp	STOCK_LIST_400	4530
+RSG	matched	Industrials	資本財・産業	Republic Services Inc	STOCK_LIST_400	4540
+RVTY	matched	Health Care	ヘルスケア	Revvity Inc	STOCK_LIST_400	4550
+ROK	matched	Industrials	資本財・産業	Rockwell Automation Inc	STOCK_LIST_400	4560
+ROL	matched	Industrials	資本財・産業	Rollins Inc	STOCK_LIST_400	4570
+RCL	matched	Consumer Discretionary	一般消費財	Royal Caribbean Cruises Ltd	STOCK_LIST_400	4580
+SBAC	matched	Real Estate	不動産	SBA Communications Corp	STOCK_LIST_400	4590
+STX	matched	Information Technology	テクノロジー	Seagate Technology Holdings PL	STOCK_LIST_400	4600
+SPG	matched	Real Estate	不動産	Simon Property Group Inc	STOCK_LIST_400	4610
+SWKS	matched	Information Technology	テクノロジー	Skyworks Solutions Inc	STOCK_LIST_400	4620
+SJM	matched	Consumer Staples	生活必需品	J M Smucker Co/The	STOCK_LIST_400	4630
+SW	matched	Materials	素材	Smurfit Westrock PLC	STOCK_LIST_400	4640
+SNA	matched	Industrials	資本財・産業	Snap-on Inc	STOCK_LIST_400	4650
+SOLV	matched	Health Care	ヘルスケア	Solventum Corp	STOCK_LIST_400	4660
+SWK	matched	Industrials	資本財・産業	Stanley Black & Decker Inc	STOCK_LIST_400	4670
+STLD	matched	Materials	素材	Steel Dynamics Inc	STOCK_LIST_400	4680
+STE	matched	Health Care	ヘルスケア	STERIS PLC	STOCK_LIST_400	4690
+SMCI	matched	Information Technology	テクノロジー	Super Micro Computer Inc	STOCK_LIST_400	4700
+SYF	matched	Financials	金融	Synchrony Financial	STOCK_LIST_400	4710
+TTWO	matched	Communication Services	コミュニケーション	Take-Two Interactive Software	STOCK_LIST_400	4720
+TPR	matched	Consumer Discretionary	一般消費財	Tapestry Inc	STOCK_LIST_400	4730
+TRGP	matched	Energy	エネルギー	Targa Resources Corp	STOCK_LIST_400	4740
+TGT	matched	Consumer Staples	生活必需品	Target Corp	STOCK_LIST_400	4750
+TFX	manual_override	Health Care	ヘルスケア	Teleflex	STOCK_LIST_400	4760
+TER	matched	Information Technology	テクノロジー	Teradyne Inc	STOCK_LIST_400	4770
+TSCO	matched	Consumer Discretionary	一般消費財	Tractor Supply Co	STOCK_LIST_400	4780
+TDG	matched	Industrials	資本財・産業	TransDigm Group Inc	STOCK_LIST_400	4790
+TRV	matched	Financials	金融	Travelers Cos Inc/The	STOCK_LIST_400	4800
+TRMB	matched	Information Technology	テクノロジー	Trimble Inc	STOCK_LIST_400	4810
+TYL	matched	Information Technology	テクノロジー	Tyler Technologies Inc	STOCK_LIST_400	4820
+TSN	matched	Consumer Staples	生活必需品	Tyson Foods Inc	STOCK_LIST_400	4830
+UBER	matched	Industrials	資本財・産業	Uber Technologies Inc	STOCK_LIST_400	4840
+UDR	matched	Real Estate	不動産	UDR Inc	STOCK_LIST_400	4850
+UAL	matched	Industrials	資本財・産業	United Airlines Holdings Inc	STOCK_LIST_400	4860
+URI	matched	Industrials	資本財・産業	United Rentals Inc	STOCK_LIST_400	4870
+UHS	matched	Health Care	ヘルスケア	Universal Health Services Inc	STOCK_LIST_400	4880
+VLO	matched	Energy	エネルギー	Valero Energy Corp	STOCK_LIST_400	4890
+VTR	matched	Real Estate	不動産	Ventas Inc	STOCK_LIST_400	4900
+VRSN	matched	Information Technology	テクノロジー	VeriSign Inc	STOCK_LIST_400	4910
+VTRS	matched	Health Care	ヘルスケア	Viatris Inc	STOCK_LIST_400	4920
+VICI	matched	Real Estate	不動産	VICI Properties Inc	STOCK_LIST_400	4930
+VST	matched	Utilities	公益	Vistra Corp	STOCK_LIST_400	4940
+VNO	manual_override	Real Estate	不動産	Vornado Realty Trust	STOCK_LIST_400	4950
+VMC	matched	Materials	素材	Vulcan Materials Co	STOCK_LIST_400	4960
+WRB	matched	Financials	金融	W R Berkley Corp	STOCK_LIST_400	4970
+WAT	matched	Health Care	ヘルスケア	Waters Corp	STOCK_LIST_400	4980
+WDC	matched	Information Technology	テクノロジー	Western Digital Corp	STOCK_LIST_400	4990
+WY	matched	Real Estate	不動産	Weyerhaeuser Co	STOCK_LIST_400	5000
+WMB	matched	Energy	エネルギー	Williams Cos Inc/The	STOCK_LIST_400	5010
+WTW	matched	Financials	金融	Willis Towers Watson PLC	STOCK_LIST_400	5020
+WYNN	matched	Consumer Discretionary	一般消費財	Wynn Resorts Ltd	STOCK_LIST_400	5030
+XYL	matched	Industrials	資本財・産業	Xylem Inc/NY	STOCK_LIST_400	5040
+APO	matched	Financials	金融	Apollo Global Management Inc	stockMarketPageExtras	50010
+APP	matched	Information Technology	テクノロジー	AppLovin Corp	stockMarketPageExtras	50020
+ARES	matched	Financials	金融	Ares Management Corp	stockMarketPageExtras	50030
+BK	matched	Financials	金融	Bank of New York Mellon Corp/T	stockMarketPageExtras	50050
+BXP	matched	Real Estate	不動産	BXP Inc	stockMarketPageExtras	50080
+CASY	matched	Consumer Staples	生活必需品	Casey's General Stores Inc	stockMarketPageExtras	50090
+CIEN	matched	Information Technology	テクノロジー	Ciena Corp	stockMarketPageExtras	50110
+CNP	matched	Utilities	公益	CenterPoint Energy Inc	stockMarketPageExtras	50120
+COHR	matched	Information Technology	テクノロジー	Coherent Corp	stockMarketPageExtras	50130
+COIN	matched	Financials	金融	Coinbase Global Inc	stockMarketPageExtras	50140
+CRH	matched	Materials	素材	CRH PLC	stockMarketPageExtras	50150
+CVNA	matched	Consumer Discretionary	一般消費財	Carvana Co	stockMarketPageExtras	50160
+DELL	matched	Information Technology	テクノロジー	Dell Technologies Inc	stockMarketPageExtras	50170
+EME	matched	Industrials	資本財・産業	EMCOR Group Inc	stockMarketPageExtras	50180
+ERIE	matched	Financials	金融	Erie Indemnity Co	stockMarketPageExtras	50190
+EXE	matched	Energy	エネルギー	Expand Energy Corp	stockMarketPageExtras	50200
+FISV	matched	Financials	金融	Fiserv Inc	stockMarketPageExtras	50210
+FIX	matched	Industrials	資本財・産業	Comfort Systems USA Inc	stockMarketPageExtras	50220
+GDDY	matched	Information Technology	テクノロジー	GoDaddy Inc	stockMarketPageExtras	50230
+GL	matched	Financials	金融	Globe Life Inc	stockMarketPageExtras	50240
+GPN	matched	Financials	金融	Global Payments Inc	stockMarketPageExtras	50250
+HOOD	matched	Financials	金融	Robinhood Markets Inc	stockMarketPageExtras	50260
+IBKR	matched	Financials	金融	Interactive Brokers Group Inc	stockMarketPageExtras	50270
+KKR	matched	Financials	金融	KKR & Co Inc	stockMarketPageExtras	50280
+LII	matched	Industrials	資本財・産業	Lennox International Inc	stockMarketPageExtras	50290
+LITE	matched	Information Technology	テクノロジー	Lumentum Holdings Inc	stockMarketPageExtras	50300
+MRSH	matched	Financials	金融	Marsh & McLennan Cos Inc	stockMarketPageExtras	50310
+PLTR	matched	Information Technology	テクノロジー	Palantir Technologies Inc	stockMarketPageExtras	50320
+PSKY	matched	Communication Services	コミュニケーション	Paramount Skydance Corp	stockMarketPageExtras	50330
+Q	matched	Information Technology	テクノロジー	Qnity Electronics Inc	stockMarketPageExtras	50340
+SATS	matched	Communication Services	コミュニケーション	EchoStar Corp	stockMarketPageExtras	50350
+SNDK	matched	Information Technology	テクノロジー	Sandisk Corp/DE	stockMarketPageExtras	50360
+TKO	matched	Communication Services	コミュニケーション	TKO Group Holdings Inc	stockMarketPageExtras	50370
+TPL	matched	Energy	エネルギー	Texas Pacific Land Corp	stockMarketPageExtras	50380
+TXT	matched	Industrials	資本財・産業	Textron Inc	stockMarketPageExtras	50400
+VEEV	matched	Health Care	ヘルスケア	Veeva Systems Inc	stockMarketPageExtras	50410
+WSM	matched	Consumer Discretionary	一般消費財	Williams-Sonoma Inc	stockMarketPageExtras	50420
+XYZ	matched	Financials	金融	Block Inc	stockMarketPageExtras	50430

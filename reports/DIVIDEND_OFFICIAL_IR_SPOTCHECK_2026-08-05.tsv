@@ -1,0 +1,5 @@
+symbol	source	official_amt	official_months_basis	master_amt	master_months	notes
+WMT	Walmart IR 2026-02-19	0.2475 (annual 0.99)	Record: 3/5/8/12	0.2475	3/5/8/12	Yahoo 0.248 rounding; xlsx had 1/4/7/10 (payable-ish) WRONG
+AAPL	Apple IR dividend history	0.27	Record: 2/5/8/11	0.27	2/5/8/11	OK; lastEx updated to 2026-08-10
+MSFT	Microsoft press 2026-06-10	0.91	Ex: 2/5/8/11	0.91	2/5/8/11	Was wrongly 3/6/9/12 from Yahoo month bucketing
+KO	Coca-Cola IR 2026-02-19	0.53 (annual 2.12)	Record: 3/6/9/12	0.53	3/6/9/12	xlsx/Yahoo-soft had 1/4/7/10 WRONG

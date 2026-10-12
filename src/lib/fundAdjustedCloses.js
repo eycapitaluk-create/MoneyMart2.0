@@ -19,15 +19,15 @@ export function skipEodSplitHeuristicForSymbol(symbol) {
  * @param {{ skipSplitHeuristic?: boolean }} [options] - true なら分割推定を行わず終値のみ
  */
 export const buildSplitAdjustedCloses = (history = [], options = {}) => {
+  const toAdjOrNull = (v) => {
+    const n = Number(v)
+    return Number.isFinite(n) && n > 0 ? Number(n.toFixed(4)) : null
+  }
   if (options.skipSplitHeuristic) {
-    return history.map((r) => {
-      const v = Number(r?.close)
-      if (Number.isFinite(v) && v > 0) return Number(v.toFixed(4))
-      return 0
-    })
+    return history.map((r) => toAdjOrNull(r?.close))
   }
   const closes = history.map((r) => Number(r.close)).map((v) => (Number.isFinite(v) && v > 0 ? v : null))
-  if (closes.length <= 1) return closes.map((v) => (Number.isFinite(v) ? v : 0))
+  if (closes.length <= 1) return closes.map((v) => toAdjOrNull(v))
   const factors = new Array(closes.length).fill(1)
   const isLikelySplitRatio = (ratio) => Number.isFinite(ratio) && ratio >= 0.05 && ratio <= 20 && (ratio <= 0.58 || ratio >= 1.7)
   for (let i = closes.length - 2; i >= 0; i -= 1) {
@@ -36,7 +36,72 @@ export const buildSplitAdjustedCloses = (history = [], options = {}) => {
     const ratio = (Number.isFinite(cur) && Number.isFinite(next) && cur > 0) ? (next / cur) : NaN
     factors[i] = factors[i + 1] * (isLikelySplitRatio(ratio) ? ratio : 1)
   }
-  return closes.map((value, idx) => (Number.isFinite(value) ? Number((value * factors[idx]).toFixed(4)) : 0))
+  return closes.map((value, idx) => (Number.isFinite(value) ? Number((value * factors[idx]).toFixed(4)) : null))
+}
+
+const medianOfNumbers = (values = []) => {
+  const nums = values.filter((n) => Number.isFinite(n)).sort((a, b) => a - b)
+  if (nums.length === 0) return null
+  const mid = nums.length >>> 1
+  if (nums.length % 2) return nums[mid]
+  return (nums[mid - 1] + nums[mid]) / 2
+}
+
+/**
+ * 日次リターン列から、上場直後の誤終値スパイク（例: 500↔5000）を除いた実現ボラを年率換算する。
+ * @param {number[]} returns
+ * @param {{ maxAbsDailyReturn?: number }} [options]
+ */
+export function annualizeRealizedVolatilityFromDailyReturns(returns = [], options = {}) {
+  const raw = (Array.isArray(returns) ? returns : []).filter((r) => Number.isFinite(Number(r)))
+  if (raw.length < 2) return null
+
+  const hardCap = Number.isFinite(Number(options.maxAbsDailyReturn))
+    ? Math.max(0.05, Number(options.maxAbsDailyReturn))
+    : 0.5
+  const prelim = raw.filter((r) => Math.abs(r) <= hardCap)
+  const medAbs = medianOfNumbers(prelim.map((r) => Math.abs(r)))
+  const adaptiveCap = medAbs != null
+    ? Math.min(hardCap, Math.max(0.12, medAbs * 10))
+    : hardCap
+  const clean = (prelim.length >= 2 ? prelim : raw).filter((r) => Math.abs(r) <= adaptiveCap)
+  const minReturns = Number.isFinite(Number(options.minReturns))
+    ? Math.max(2, Math.floor(Number(options.minReturns)))
+    : 10
+  if (clean.length < minReturns) return null
+
+  const mean = clean.reduce((acc, cur) => acc + cur, 0) / clean.length
+  const variance = clean.reduce((acc, cur) => acc + ((cur - mean) ** 2), 0) / (clean.length - 1)
+  if (!Number.isFinite(variance) || variance < 0) return null
+
+  // 252 営業日ベースの年率換算（履歴が 1 年未満でも同式。短いサンプルは上の outlier 除去で IPO 誤データを除外）
+  return Math.sqrt(variance) * Math.sqrt(252) * 100
+}
+
+/**
+ * 日付ギャップを跨いだリターンを混ぜない年率ボラ（欠損日が多い .T 履歴の誤爆を防ぐ）。
+ * @param {Array<{ trade_date?: string }>} historyAsc
+ * @param {Array<number|null|undefined>} adjustedClosesAsc - history と同じ長さ
+ * @param {{ maxGapDays?: number, maxAbsDailyReturn?: number, minReturns?: number }} [options]
+ * @returns {number|null} 年率標準偏差（パーセント表示用に×100 済み）
+ */
+export function calculateRealizedVolatilityFromAscHistory(historyAsc = [], adjustedClosesAsc = [], options = {}) {
+  const hist = Array.isArray(historyAsc) ? historyAsc : []
+  const adj = Array.isArray(adjustedClosesAsc) ? adjustedClosesAsc : []
+  const maxGapDays = Number.isFinite(Number(options.maxGapDays)) ? Number(options.maxGapDays) : 14
+  const returns = []
+  for (let i = 1; i < hist.length; i += 1) {
+    const prev = Number(adj[i - 1])
+    const cur = Number(adj[i])
+    if (!Number.isFinite(prev) || prev <= 0 || !Number.isFinite(cur) || cur <= 0) continue
+    const d0 = new Date(String(hist[i - 1]?.trade_date || '').slice(0, 10) + 'T00:00:00')
+    const d1 = new Date(String(hist[i]?.trade_date || '').slice(0, 10) + 'T00:00:00')
+    if (Number.isNaN(d0.getTime()) || Number.isNaN(d1.getTime())) continue
+    const dayGap = (d1.getTime() - d0.getTime()) / 86400000
+    if (dayGap <= 0 || dayGap > maxGapDays) continue
+    returns.push((cur - prev) / prev)
+  }
+  return annualizeRealizedVolatilityFromDailyReturns(returns, options)
 }
 
 /**
@@ -44,20 +109,20 @@ export const buildSplitAdjustedCloses = (history = [], options = {}) => {
  * 履歴が足りないときのみ (終値−寄り付き)/寄り付き にフォールバック。
  */
 export const dayOverDayCloseChangeFromAdjustedSeries = (adjustedClosesAsc = [], sessionOpen = NaN) => {
-  const arr = (Array.isArray(adjustedClosesAsc) ? adjustedClosesAsc : []).map(Number)
+  const arr = Array.isArray(adjustedClosesAsc) ? adjustedClosesAsc : []
   const n = arr.length
   const open = Number(sessionOpen)
   if (n >= 2) {
-    const prevClose = arr[n - 2]
-    const close = arr[n - 1]
-    if (Number.isFinite(prevClose) && prevClose > 0 && Number.isFinite(close)) {
+    const prevClose = Number(arr[n - 2])
+    const close = Number(arr[n - 1])
+    if (Number.isFinite(prevClose) && prevClose > 0 && Number.isFinite(close) && close > 0) {
       const change = close - prevClose
       return { change, changePct: (change / prevClose) * 100 }
     }
   }
   if (n >= 1 && Number.isFinite(open) && open > 0) {
-    const close = arr[n - 1]
-    if (Number.isFinite(close)) {
+    const close = Number(arr[n - 1])
+    if (Number.isFinite(close) && close > 0) {
       const change = close - open
       return { change, changePct: (change / open) * 100 }
     }
@@ -97,11 +162,18 @@ export function resolveSpotCloseAndSessionChange(historyAsc, adjustedClosesAsc, 
   const latestDate = String(latestRow?.trade_date || '')
   const latestAhead = Boolean(latestDate && histLastDate && latestDate > histLastDate)
   const latestCloseNum = Number(latestRow?.close)
+  const lastAdj = hist.length > 0 ? adjusted[hist.length - 1] : undefined
+  const lastAdjNum = Number(lastAdj)
   const histLastClose = hist.length > 0
-    ? Number(adjusted[hist.length - 1] ?? histLastRow?.close ?? NaN)
+    ? (Number.isFinite(lastAdjNum) && lastAdjNum > 0
+      ? lastAdjNum
+      : Number(histLastRow?.close ?? NaN))
     : NaN
 
-  let close = Number(adjusted[adjusted.length - 1] || latestCloseNum || 0)
+  const tailAdj = Number(adjusted[adjusted.length - 1])
+  let close = (Number.isFinite(tailAdj) && tailAdj > 0)
+    ? tailAdj
+    : (Number.isFinite(latestCloseNum) && latestCloseNum > 0 ? latestCloseNum : 0)
   if (latestAhead && Number.isFinite(latestCloseNum) && latestCloseNum > 0) {
     close = latestCloseNum
   }

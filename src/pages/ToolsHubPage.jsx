@@ -1,6 +1,9 @@
 import { useState, useMemo, useEffect } from "react";
+import VerifiedDividendPayments from "../components/dividends/VerifiedDividendPayments";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { fetchFundUniverseSnapshot } from "../lib/fundUniverse";
+import { formatTrustFeePercent, parseTrustFeePercent } from "../lib/trustFee";
 import {
   AI_THEME_SYMBOL_SET,
   HIGH_DIVIDEND_SYMBOL_SET,
@@ -12,11 +15,13 @@ import {
   getDividendCadenceMeta,
   getDividendYieldPct,
   getFirstDividendMonth,
-  dividendCashToJpyApprox,
+  dividendGrossTotalJpyFromPerShare,
   formatDividendCash,
 } from "../lib/dividendCalendar";
-import { getDividendCalendarDetailRecord } from "../lib/dividendCalendarDetailLookup";
+import { getDividendCalendarDetailRecord, listDividendCalendarEligibleRecords } from "../lib/dividendCalendarDetailLookup";
 import { DIVIDEND_STOCK_UNIVERSE } from "../data/dividendStockUniverse";
+import { isRetiredStockSymbol } from "../lib/retiredStockSymbols";
+import { isUsListedEtfSymbol } from "../data/usListedEtfUniverse";
 import { MM_SIMULATION_PAST_PERFORMANCE_JA } from "../lib/moneymartSimulationDisclaimer";
 
 // ═══════════════════════════════════════════════════════════════
@@ -25,7 +30,7 @@ import { MM_SIMULATION_PAST_PERFORMANCE_JA } from "../lib/moneymartSimulationDis
 function fmtJPY(n) {
   if (Math.abs(n) >= 100000000) return `${(n/100000000).toFixed(2)}億円`;
   if (Math.abs(n) >= 10000)     return `${(n/10000).toFixed(1)}万円`;
-  return `${Math.round(n).toLocaleString()}円`;
+  return `${Math.round(n).toLocaleString('ja-JP')}円`;
 }
 
 const UI_FONT = '"Inter","Noto Sans JP","Hiragino Sans","Yu Gothic UI","Yu Gothic","Helvetica Neue","Arial",sans-serif';
@@ -50,10 +55,10 @@ const isHighDividendFund = (fund = {}) => {
 
 function formatSliderTick(value, unit) {
   if (unit === "円") {
-    if (Math.abs(value) >= 10000) return `${(value / 10000).toLocaleString()}万`;
-    return Number(value).toLocaleString();
+    if (Math.abs(value) >= 10000) return `${(value / 10000).toLocaleString('ja-JP')}万`;
+    return Number(value).toLocaleString('ja-JP');
   }
-  return `${Number(value).toLocaleString()}`;
+  return `${Number(value).toLocaleString('ja-JP')}`;
 }
 
 function useResponsiveLayout() {
@@ -170,8 +175,8 @@ function Slider({ label, value, min, max, step, unit, onChange, color, note, qui
   };
 
   const displayValue = isDecimalStep
-    ? Number(value).toLocaleString(undefined, { maximumFractionDigits: stepDecimals })
-    : Number(value).toLocaleString();
+    ? Number(value).toLocaleString('ja-JP', { maximumFractionDigits: stepDecimals })
+    : Number(value).toLocaleString('ja-JP');
   const tickRaw = [min, min + ((max - min) / 2), max].map(clampAndSnap);
   const ticks = [...new Set(tickRaw.map((v) => String(v)))].map((v) => Number(v));
 
@@ -718,7 +723,7 @@ function CurrencyCalc({ isDark = false }) {
         <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
           <div style={{ background:tc.cardBg, border:`1.5px solid ${tc.cardBorder}`, borderRadius:16, padding:16, boxShadow:tc.cardShadowSm }}>
             {!rates && !fxFailed && (
-              <div style={{ fontSize:12, color:tc.textMuted, marginBottom:10 }}>リアルタイム為替レート読込中...</div>
+              <div style={{ fontSize:12, color:tc.textMuted, marginBottom:10 }}>為替レートを取得しています…</div>
             )}
             {fxFailed && (
               <div style={{ fontSize:12, color:"#f87171", fontWeight:700, marginBottom:10 }}>
@@ -793,15 +798,17 @@ const TOOLS_DIVIDEND_DEMO_USD_JPY = 150;
 const TOOLS_DIVIDEND_DEFAULT_DEMO_IDS = ["MDT", "MCD", "AON", "MA", "8306"];
 
 // 銘柄一覧: 詳細マスター（generated json）を優先し、未登録銘柄のみ Universe を参照する。
-const DIV_STOCK_PICKER = DIVIDEND_STOCK_UNIVERSE.map((r, i) => {
+const toPickerDividends = (rows) => (Array.isArray(rows) ? rows : [])
+  .map((d) => ({
+    month: Number(d?.month),
+    amount: Number(d?.amount),
+  }))
+  .filter((d) => Number.isInteger(d.month) && d.month >= 1 && d.month <= 12 && Number.isFinite(d.amount) && d.amount > 0);
+
+const DIV_STOCK_PICKER = DIVIDEND_STOCK_UNIVERSE.filter((r) => !isRetiredStockSymbol(r.symbol) && !isUsListedEtfSymbol(r.symbol, r.name) && r.symbol !== "BK").map((r, i) => {
   const id = toDivStockId(r.symbol);
   const detail = getDividendCalendarDetailRecord(r.symbol);
-  const detailDividends = (Array.isArray(detail?.dividends) ? detail.dividends : [])
-    .map((d) => ({
-      month: Number(d?.month),
-      amount: Number(d?.amount),
-    }))
-    .filter((d) => Number.isInteger(d.month) && d.month >= 1 && d.month <= 12 && Number.isFinite(d.amount) && d.amount > 0);
+  const detailDividends = toPickerDividends(detail?.dividends);
 
   const months = Array.isArray(r.dividendMonths) ? r.dividendMonths : [];
   const perShare = Number(r.dividendAmountPerShare);
@@ -825,8 +832,34 @@ const DIV_STOCK_PICKER = DIVIDEND_STOCK_UNIVERSE.map((r, i) => {
   };
 });
 
+const DIV_STOCK_PICKER_IDS = new Set(DIV_STOCK_PICKER.map((s) => s.id));
+const DIV_ETF_PICKER = listDividendCalendarEligibleRecords()
+  .filter((r) => {
+    const cat = String(r?.category || "").toLowerCase();
+    return cat.includes("etf") || cat.includes("etn");
+  })
+  .map((r, i) => {
+    const id = toDivStockId(r.symbol);
+    const dividends = toPickerDividends(r.dividends);
+    const detailPrice = Number(r.price);
+    const isUs = String(r.category || "").includes("米国");
+    return {
+      id,
+      name: r.name,
+      flag: isUs ? "🇺🇸" : "🇯🇵",
+      sector: r.category || "ETF",
+      color: DEMO_COLORS[(DIV_STOCK_PICKER.length + i) % DEMO_COLORS.length],
+      dividends,
+      price: Number.isFinite(detailPrice) && detailPrice > 0 ? detailPrice : (isUs ? 50 : 2000),
+    };
+  })
+  .filter((s) => s.id && s.dividends.length > 0 && !DIV_STOCK_PICKER_IDS.has(s.id));
+
+DIV_STOCK_PICKER.push(...DIV_ETF_PICKER);
+
 const DIV_PICKER_BY_ID = new Map(DIV_STOCK_PICKER.map((s) => [s.id, s]));
-const TOOLS_DIVIDEND_DEFAULT_IDS_RESOLVED = TOOLS_DIVIDEND_DEFAULT_DEMO_IDS.filter((id) => DIV_PICKER_BY_ID.has(id));
+const TOOLS_DIVIDEND_DEFAULT_DEMO_IDS_WITH_ETF = [...TOOLS_DIVIDEND_DEFAULT_DEMO_IDS, "1306"];
+const TOOLS_DIVIDEND_DEFAULT_IDS_RESOLVED = TOOLS_DIVIDEND_DEFAULT_DEMO_IDS_WITH_ETF.filter((id) => DIV_PICKER_BY_ID.has(id));
 
 const MONTHS_JP = ["1月","2月","3月","4月","5月","6月","7月","8月","9月","10月","11月","12月"];
 
@@ -892,10 +925,10 @@ function DividendCalendar({ session = null, isDark = false }) {
   };
 
   const filteredStocks = useMemo(() => {
-    const q = stockQuery.trim().toLowerCase();
+    const q = stockQuery.normalize("NFKC").trim().toLowerCase().replace(/\s+/g, "");
     if (!q) return DIV_STOCK_PICKER;
     return DIV_STOCK_PICKER.filter((stock) =>
-      `${stock.id} ${stock.name} ${stock.sector}`.toLowerCase().includes(q)
+      `${stock.id} ${stock.name} ${stock.sector}`.normalize("NFKC").toLowerCase().replace(/\s+/g, "").includes(q)
     );
   }, [stockQuery]);
 
@@ -905,9 +938,9 @@ function DividendCalendar({ session = null, isDark = false }) {
     watched.forEach((stock) => {
       const q = Number(stock.qty ?? 10);
       stock.dividends.forEach((div) => {
-        const jpy = dividendCashToJpyApprox(div.amount, stock, TOOLS_DIVIDEND_DEMO_USD_JPY);
-        if (jpy > 0 && div.month >= 1 && div.month <= 12) {
-          map[div.month].push({ stock, amount: div.amount, total: jpy * q });
+        const total = dividendGrossTotalJpyFromPerShare(div.amount, q, stock, TOOLS_DIVIDEND_DEMO_USD_JPY);
+        if (total > 0 && div.month >= 1 && div.month <= 12) {
+          map[div.month].push({ stock, amount: div.amount, total });
         }
       });
     });
@@ -921,6 +954,8 @@ function DividendCalendar({ session = null, isDark = false }) {
   return (
     <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
 
+      <VerifiedDividendPayments symbols={watched.map(stock => stock.id)} />
+
       {/* ── バナー ─────────────────────────── */}
       <div style={{ background:isDark?"rgba(251, 146, 60, 0.12)":"linear-gradient(135deg,#fff7ed,#fef3c7)", border:isDark?"1.5px solid rgba(251, 191, 36, 0.35)":"1.5px solid #fed7aa", borderRadius:14, padding:"14px 18px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:12, flexWrap:"wrap" }}>
         <div style={{ display:"flex", alignItems:"center", gap:10 }}>
@@ -930,7 +965,7 @@ function DividendCalendar({ session = null, isDark = false }) {
               ツール画面はサンプル表示です
             </div>
             <div style={{ fontSize:12, color:isDark?"#fed7aa":"#b45309", marginTop:2 }}>
-              配当スケジュール・1株あたり金額はサイト内マスター（参考）です。米国株の円換算は{TOOLS_DIVIDEND_DEMO_USD_JPY}円/ドルの固定レート。ご自身の登録銘柄はマイページの配当タブで管理してください。
+              下の月別マスターには過去の権利落ち月・決算月が含まれ、支払月とは限りません。米国株の円換算は{TOOLS_DIVIDEND_DEMO_USD_JPY}円/ドルの固定レート。ご自身の登録銘柄はマイページの配当タブで管理してください。
             </div>
           </div>
         </div>
@@ -941,9 +976,9 @@ function DividendCalendar({ session = null, isDark = false }) {
 
       <div style={{ display:"flex", alignItems:isMobile ? "flex-start" : "center", justifyContent:"space-between", flexDirection:isMobile ? "column" : "row", gap:isMobile ? 8 : 0, background:"linear-gradient(135deg,#111827,#1f2937)", borderRadius:16, padding:"14px 20px" }}>
         <div>
-          <div style={{ fontSize:12, color:"#cbd5e1", marginBottom:2 }}>年間予想配当受取額</div>
+          <div style={{ fontSize:12, color:"#cbd5e1", marginBottom:2 }}>登録参考額の合計受取額</div>
           <div style={{ fontFamily:NUMERIC_FONT, fontSize:28, fontWeight:800, color:"#4ade80" }}>
-            {`¥${Math.round(yearTotal).toLocaleString()}`}
+            {`¥${Math.round(yearTotal).toLocaleString('ja-JP')}`}
           </div>
           <div style={{ fontSize:10, color:"#94a3b8", marginTop:4 }}>サンプル合計（税引前・参考）</div>
         </div>
@@ -1010,7 +1045,7 @@ function DividendCalendar({ session = null, isDark = false }) {
                   <div style={{ height:28, display:"flex", alignItems:"flex-end", justifyContent:"center", marginBottom:4 }}>
                     {hasD ? <div style={{ width:"80%", height:Math.max(4,(total/maxM)*24), background:isS?"#4ade80":(isDark?"rgba(74,222,128,0.25)":"#d1fae5"), borderRadius:"2px 2px 0 0" }}/> : <div style={{ width:"80%", height:2, background:tc.barTrack }}/>}
                   </div>
-                  {hasD ? <div style={{ fontFamily:NUMERIC_FONT, fontSize:11, fontWeight:700, color:isS?"#4ade80":tc.textMuted }}>¥{Math.round(total).toLocaleString()}</div>
+                  {hasD ? <div style={{ fontFamily:NUMERIC_FONT, fontSize:11, fontWeight:700, color:isS?"#4ade80":tc.textMuted }}>¥{Math.round(total).toLocaleString('ja-JP')}</div>
                         : <div style={{ fontSize:10, color:tc.textSoft }}>なし</div>}
                 </div>
               );
@@ -1021,9 +1056,9 @@ function DividendCalendar({ session = null, isDark = false }) {
             <div style={{ display:"flex", justifyContent:"space-between", marginBottom:12 }}>
               <div>
                 <div style={{ fontSize:13, fontWeight:800, color:tc.textTitle }}>{MONTHS_JP[selMonth-1]}の配当</div>
-                <div style={{ fontSize:11, color:tc.textMuted, marginTop:4 }}>サンプル選択銘柄のうち、{MONTHS_JP[selMonth-1]}に支払予定の項目だけを表示しています。</div>
+                <div style={{ fontSize:11, color:tc.textMuted, marginTop:4 }}>サンプル選択銘柄のうち、{MONTHS_JP[selMonth-1]}の参考登録項目を表示しています。公式支払日は上の一覧で確認してください。</div>
               </div>
-              {monthlyTotals[selMonth]>0 && <div style={{ fontFamily:NUMERIC_FONT, fontSize:14, fontWeight:800, color:"#4ade80" }}>¥{Math.round(monthlyTotals[selMonth]).toLocaleString()}</div>}
+              {monthlyTotals[selMonth]>0 && <div style={{ fontFamily:NUMERIC_FONT, fontSize:14, fontWeight:800, color:"#4ade80" }}>¥{Math.round(monthlyTotals[selMonth]).toLocaleString('ja-JP')}</div>}
             </div>
             {monthlyEvents[selMonth].length === 0 ? (
               <div style={{ textAlign:"center", padding:"20px 0", color:tc.textSoft, fontSize:12 }}>この月は配当がありません 📭</div>
@@ -1038,7 +1073,7 @@ function DividendCalendar({ session = null, isDark = false }) {
                   <div style={{ fontSize:10, color:tc.textMuted, marginTop:2 }}>{ev.stock.sector}</div>
                 </div>
                 <div style={{ textAlign:"right" }}>
-                  <div style={{ fontFamily:NUMERIC_FONT, fontSize:13, fontWeight:800, color:"#4ade80" }}>¥{Math.round(ev.total).toLocaleString()}</div>
+                  <div style={{ fontFamily:NUMERIC_FONT, fontSize:13, fontWeight:800, color:"#4ade80" }}>¥{Math.round(ev.total).toLocaleString('ja-JP')}</div>
                   <div style={{ fontSize:10, color:tc.textMuted }}>{formatDividendCash(ev.amount, ev.stock)}/株 × {getQty(ev.stock)}株</div>
                 </div>
               </div>
@@ -1070,11 +1105,11 @@ function DividendCalendar({ session = null, isDark = false }) {
                       {(stock.dividends || []).length ? getDividendCadenceMeta(stock.dividends).label : "マスター未登録"}
                     </span>
                     <span style={{ fontSize:10, color:tc.textSoft }}>
-                      {(stock.dividends || []).length ? stock.dividends.map((div) => `${div.month}月`).join(" / ") : "配当月なし"}
+                      {(stock.dividends || []).length ? stock.dividends.map((div) => `${div.month}月`).join(" / ") : "参考月未確認"}
                     </span>
                   </div>
                   <div style={{ fontSize:10, color:"#4ade80", marginTop:4, fontWeight:700 }}>
-                    予想年配当利回り {(stock.dividends || []).length && getDividendYieldPct(stock.price, stock.dividends) != null ? `${getDividendYieldPct(stock.price, stock.dividends).toFixed(2)}%` : "—"}
+                    月別参考額と参考価格の比率 {(stock.dividends || []).length && getDividendYieldPct(stock.price, stock.dividends) != null ? `${getDividendYieldPct(stock.price, stock.dividends).toFixed(2)}%` : "—"}
                   </div>
                 </div>
                 {isW && (
@@ -1181,8 +1216,8 @@ function ETFScreener({ isDark = false }) {
       if (nisa !== "すべて" && (fund.nisaCategory || "-") !== nisa) return false;
       if (themeFilter === "AIテーマ" && !isAiThemeFund(fund)) return false;
       if (themeFilter === "高配当" && !isHighDividendFund(fund)) return false;
-      const trustFeeValue = Number(fund.trustFee);
-      if (!Number.isFinite(trustFeeValue) || trustFeeValue > maxFee) return false;
+      const trustFeeValue = parseTrustFeePercent(fund.trustFee);
+      if (trustFeeValue == null || trustFeeValue > maxFee) return false;
       const return1YValue = Number(fund.returnRate1Y);
       if (!Number.isFinite(return1YValue) || return1YValue < minReturn) return false;
       const avgVolume = Number(fund.avgVolume);
@@ -1286,9 +1321,9 @@ function ETFScreener({ isDark = false }) {
               </div>
               <div style={{ display:"grid", gridTemplateColumns:isMobile ? "repeat(3,minmax(0,1fr))" : "repeat(3,1fr)", gap:isMobile ? 8 : 12, flexShrink:0, width:isMobile ? "100%" : "auto" }}>
                 {[
-                  { label:"信託報酬", val:Number.isFinite(Number(etf.trustFee))?`${Number(etf.trustFee).toFixed(3)}%`:"-", color:Number(etf.trustFee)<=0.15?"#16a34a":Number(etf.trustFee)<=0.35?"#d97706":"#dc2626" },
+                  { label:"信託報酬", val:formatTrustFeePercent(etf.trustFee), color:parseTrustFeePercent(etf.trustFee)==null?"#64748b":parseTrustFeePercent(etf.trustFee)<=0.15?"#16a34a":parseTrustFeePercent(etf.trustFee)<=0.35?"#d97706":"#dc2626" },
                   { label:"1Y", val:Number.isFinite(Number(etf.returnRate1Y))?`${Number(etf.returnRate1Y)>0?"+":""}${Number(etf.returnRate1Y).toFixed(1)}%`:"-", color:Number(etf.returnRate1Y)>=0?"#ef4444":"#2563eb" },
-                  { label:"平均出来高", val:Number(etf.avgVolume)>0?`${Math.round(Number(etf.avgVolume)/1000).toLocaleString()}K`:"-", color:"#2563eb" },
+                  { label:"平均出来高", val:Number(etf.avgVolume)>0?`${Math.round(Number(etf.avgVolume)/1000).toLocaleString('ja-JP')}K`:"-", color:"#2563eb" },
                 ].map(m=>(
                   <div key={m.label} style={{ textAlign:"center" }}>
                     <div style={{ fontFamily:NUMERIC_FONT, fontSize:13, fontWeight:800, color:m.color }}>{m.val}</div>
@@ -1316,8 +1351,8 @@ const TOOLS = [
   { id:"nisa",     label:"新NISAシミュレーター",  icon:"🏦", color:"#16a34a", bg:"#f0fdf4", border:"#86efac", desc:"積立・成長の２枠設定 → 複利収益 + 節税効果を計算",       badge:"人気",  component: NISASimulator },
   { id:"lumpvsdca",label:"積立 vs 一括投資",       icon:"⚖️", color:"#3b82f6", bg:"#eff6ff", border:"#bfdbfe", desc:"1000万円を今入れるか、毎月分散するか？4つの利回りで比較", badge:"NEW",   component: LumpVsDCA },
   { id:"tax",      label:"税金計算機",              icon:"🧾", color:"#f59e0b", bg:"#fffbeb", border:"#fde68a", desc:"売却益・配当の税金計算 + NISA節税シミュレーション",        badge:null,    component: TaxCalc },
-  { id:"currency", label:"為替積立計算機",          icon:"💱", color:"#8b5cf6", bg:"#faf5ff", border:"#e9d5ff", desc:"毎月の円をドルに換えるとNヶ月後にいくら？リアルタイム為替", badge:"無料", component: CurrencyCalc },
-  { id:"dividend", label:"配当カレンダー",          icon:"📅", color:"#f97316", bg:"#fff7ed", border:"#fed7aa", desc:"マスター参照のサンプルで配当月を試す（保存はマイページ）",          badge:null,    component: DividendCalendar },
+  { id:"currency", label:"為替積立計算機",          icon:"💱", color:"#8b5cf6", bg:"#faf5ff", border:"#e9d5ff", desc:"毎月の円をドルに換えるとNヶ月後にいくら？公開レート参照で試算", badge:"無料", component: CurrencyCalc },
+  { id:"dividend", label:"配当カレンダー",          icon:"📅", color:"#f97316", bg:"#fff7ed", border:"#fed7aa", desc:"サンプルデータで配当月を試す（保存はマイページ）",          badge:null,    component: DividendCalendar },
 ];
 
 const TOOL_GUIDES = {
@@ -1355,12 +1390,12 @@ const TOOL_GUIDES = {
       "税金額と手取り金額が即座に表示",
     ],
     example: "100万円の利益 → 課税口座で税金20.3万円、NISAなら0円",
-    tip: "同じ利益でも口座の種類で手取りが大きく変わります。まずNISA口座を使い切ることを優先しましょう。",
+    tip: "同じ利益でも口座の種類で手取りが大きく変わります。NISA口座の枠を先に確認します。",
   },
   currency: {
     title: "外貨積立計算機とは？",
     what: "毎月円をドルなどの外貨に換えて積み立てると、何ヶ月後にいくらになるかを計算するツールです。",
-    why: "円安が続く時代に、外貨資産を少しずつ持つ外貨積立が注目されています。リアルタイムの為替レートで試算できます。",
+    why: "円安が続く時代に、外貨資産を少しずつ持つ外貨積立が注目されています。参照した公開為替レートで試算できます（取得タイミングにより変動します）。",
     steps: [
       "毎月の積立円額を入力",
       "積立期間を設定",
@@ -1387,7 +1422,7 @@ const TOOL_EXTRA_DISCLAIMER_BY_ID = {
   nisa: '※ 節税効果はお客様の課税状況・口座の利用状況により異なります。実際の税務については税務署または税理士にご確認ください。',
   lumpvsdca: '※ 本結果は入力値に基づく試算です。実際の運用成果は市場環境・運用タイミングにより大きく異なります。',
   tax: '※ 税額・節税効果はお客様の課税状況・控除内容により異なります。実際の税務については税務署または税理士にご確認ください。',
-  currency: '※ 為替レートはリアルタイム参照ですが、将来の為替動向・運用成果を保証するものではありません。円高・円安シナリオはあくまで参考値です。',
+  currency: '※ 為替レートは公開情報を参照しています（ティック単位のリアルタイムではなく、取得タイミングにより異なります）。将来の為替動向・運用成果を保証するものではありません。円高・円安シナリオはあくまで参考値です。',
   dividend: '※ ツール画面はブラウザ内のサンプル表示です（マイページの登録銘柄とは連動しません）。米国株の円換算は固定レートです。配当予定・金額はサイト内マスターに基づく参考値であり、変更・取消される場合があります。表示金額は税引前です。実際の受取額は課税状況により異なります。',
 }
 
@@ -1413,6 +1448,12 @@ export default function ToolsHubPage({ session = null }) {
   const tool = TOOLS.find((t) => t.id === activeTool);
   const ToolComponent = tool?.component;
   const activeGuide = TOOL_GUIDES[activeTool] || null;
+
+  const toolsDocTitle = useMemo(
+    () => (tool?.label ? `${tool.label} | MoneyMart` : "ツール | MoneyMart"),
+    [tool?.label],
+  );
+  useDocumentTitle(toolsDocTitle);
 
   const openToolFromList = (id) => {
     setSearchParams({ tool: id }, { replace: false });
@@ -1443,6 +1484,11 @@ export default function ToolsHubPage({ session = null }) {
       setSearchParams({}, { replace: true });
     }
   }, [searchParams, setSearchParams]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [activeTool]);
 
   useEffect(() => {
     const onHubReset = () => {
@@ -1614,7 +1660,7 @@ export default function ToolsHubPage({ session = null }) {
                   ツール内容は誰でも閲覧できます。数値を変更して保存・実行するにはログインが必要です。
                 </p>
                 <div style={{ display:"flex", gap:12, marginTop:24, flexWrap:"wrap" }}>
-                  {["無料・会員登録不要", "リアルタイム為替対応", "投資シミュレーション中心"].map(t=>(
+                  {["閲覧は無料", "数値の変更・実行はログイン後", "投資シミュレーション中心"].map(t=>(
                     <div key={t} style={{ fontSize:12, fontWeight:800, color:"#cbd5e1", background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:999, padding:"8px 14px" }}>✓ {t}</div>
                   ))}
                 </div>
@@ -1625,7 +1671,7 @@ export default function ToolsHubPage({ session = null }) {
               <div className="mm-tool-landing-tip" style={{ background:"#fff7ed", border:"1.5px solid #fed7aa", borderRadius:22, padding:"18px 22px", marginBottom:32, display:"flex", alignItems:isMobile ? "flex-start" : "center", flexDirection:isMobile ? "column" : "row", gap:16 }}>
                 <span style={{ fontSize:22 }}>💡</span>
                 <div>
-                  <div className="mm-tool-landing-tip-title" style={{ fontSize:14, fontWeight:900, color:"#9a3412", marginBottom:5 }}>おすすめの使い方</div>
+                  <div className="mm-tool-landing-tip-title" style={{ fontSize:14, fontWeight:900, color:"#9a3412", marginBottom:5 }}>使い方</div>
                   <div className="mm-tool-landing-tip-body" style={{ display:"flex", alignItems:"center", gap:8, fontSize:13, color:"#c2410c", flexWrap:"wrap" }}>
                     {["⚖️ 積立 vs 一括", "→", "🏦 NISAシミュレーター", "→", "🧾 税金計算機"].map((t,i)=>(
                       <span key={i} style={{ fontWeight:t==="→"?400:700 }}>{t}</span>

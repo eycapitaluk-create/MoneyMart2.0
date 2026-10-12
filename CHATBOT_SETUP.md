@@ -1,6 +1,6 @@
 # MoneyMart 顧客チャット（Claude API）
 
-ブラウザ右下の 💬 から一般向け金融 Q&A チャットを表示します。**Anthropic Claude Haiku 3.5** を使用し、API キーはサーバー側のみで保持します。
+ブラウザ右下の 💬 から一般向け金融 Q&A チャットを表示します。**Anthropic Claude Haiku 4.5** を使用し、API キーはサーバー側のみで保持します。
 
 ## アーキテクチャ（この案で正しいか）
 
@@ -34,7 +34,7 @@
    モデルを変える場合のみ:
 
    ```bash
-   ANTHROPIC_CHATBOT_MODEL=claude-3-5-haiku-20241022
+   ANTHROPIC_CHATBOT_MODEL=claude-haiku-4-5-20251001
    ```
 
 ## 依存関係

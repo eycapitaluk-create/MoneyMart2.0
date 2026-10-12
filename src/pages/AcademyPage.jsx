@@ -63,7 +63,7 @@ const formatDuration = (seconds = 0) => {
 const formatViewsJa = (views = 0) => {
   const n = Number(views || 0)
   if (n >= 10000) return `${(n / 10000).toFixed(1)}万回視聴`
-  return `${n.toLocaleString()}回視聴`
+  return `${n.toLocaleString('ja-JP')}回視聴`
 }
 
 const isYoutubeUrl = (url) => {

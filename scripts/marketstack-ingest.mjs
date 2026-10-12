@@ -1,10 +1,11 @@
 import { createClient } from '@supabase/supabase-js'
+import { partitionIncomingPrices, writePriceQuarantine } from '../api/_lib/price-ingest-guard.js'
 
 const DEFAULT_MARKETSTACK_SYMBOLS = [
   'AAPL', 'MSFT', 'NVDA', 'AMZN', 'META', 'GOOGL', 'GOOG', 'TSLA', 'AVGO', 'AMD',
   'ORCL', 'NFLX', 'CRM', 'ADBE', 'INTC', 'QCOM', 'TXN', 'MU', 'CSCO', 'IBM',
   'PLTR', 'JPM', 'GS', 'MS', 'BAC', 'WFC', 'C', 'BLK', 'V', 'MA',
-  'AXP', 'PYPL', 'SCHW', 'USB', 'PNC', 'COF', 'BK', 'SPGI', 'ICE', 'JNJ',
+  'AXP', 'PYPL', 'SCHW', 'USB', 'PNC', 'COF', 'BNY', 'SPGI', 'ICE', 'JNJ',
   'PFE', 'MRK', 'UNH', 'ABBV', 'LLY', 'TMO', 'ABT', 'DHR', 'ISRG', 'BMY',
   'GILD', 'AMGN', 'VRTX', 'VRT', 'CVS', 'MDT', 'SYK', 'ZTS', 'REGN', 'CI', 'XOM',
   'CVX', 'COP', 'SLB', 'EOG', 'MPC', 'PSX', 'VLO', 'OKE', 'KMI', 'WMB',
@@ -193,10 +194,15 @@ const run = async () => {
       const { error } = await supabase.from('stock_symbols').upsert(symbolRows, { onConflict: 'symbol' })
       if (error) throw error
     }
-    if (priceRows.length > 0) {
+    const guarded = await partitionIncomingPrices(supabase, priceRows)
+    const quarantineWrite = await writePriceQuarantine(supabase, [...guarded.weekend, ...guarded.quarantined])
+    if (guarded.weekend.length || guarded.quarantined.length) {
+      console.warn(`held weekend=${guarded.weekend.length} extreme=${guarded.quarantined.length} stored=${quarantineWrite.stored}`)
+    }
+    if (guarded.accepted.length > 0) {
       const { error } = await supabase
         .from('stock_daily_prices')
-        .upsert(priceRows, { onConflict: 'source,symbol,trade_date' })
+        .upsert(guarded.accepted, { onConflict: 'source,symbol,trade_date' })
       if (error) throw error
     }
 

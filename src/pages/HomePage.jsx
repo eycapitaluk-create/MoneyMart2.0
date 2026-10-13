@@ -1052,7 +1052,7 @@ export default function HomePage({
                 <span className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-orange-100 dark:bg-orange-950/70 text-orange-600 dark:text-orange-400 ring-1 ring-orange-300/80 dark:ring-orange-700/60">
                   <Check size={14} strokeWidth={3} className="text-orange-600 dark:text-orange-400" />
                 </span>
-                <span>新NISA枠と<span className="text-orange-600 dark:text-orange-400">配当の見通し</span>を同じ流れで整理</span>
+                <span>新NISA枠と<span className="text-orange-600 dark:text-orange-400">配当の記録</span>を同じ流れで整理</span>
               </li>
               <li className="flex items-start gap-3 text-base md:text-lg text-slate-800 dark:text-slate-200 font-bold leading-snug">
                 <span className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-orange-100 dark:bg-orange-950/70 text-orange-600 dark:text-orange-400 ring-1 ring-orange-300/80 dark:ring-orange-700/60">
@@ -1254,7 +1254,7 @@ export default function HomePage({
                         🐕
                       </div>
                       <p className="text-[10px] font-bold text-slate-800 dark:text-slate-100 leading-snug">
-                        ファンドを追加すると、資産の推移や配当の見込みがひと目でわかります。
+                        ファンドを追加すると、資産の推移や配当の記録がひと目でわかります。
                       </p>
                     </div>
                     <div className="mt-2 flex flex-col gap-1.5">
@@ -1717,7 +1717,7 @@ export default function HomePage({
                 </div>
               </div>
               <p className="mt-4 text-sm font-black text-indigo-700 dark:text-indigo-300">
-                月々 -¥{refinanceExample.monthlyDiff.toLocaleString('ja-JP')} / 利息削減の見込み額 ¥{refinanceExample.totalInterestSaving.toLocaleString('ja-JP')}
+                月々 -¥{refinanceExample.monthlyDiff.toLocaleString('ja-JP')} / 利息差額の試算 ¥{refinanceExample.totalInterestSaving.toLocaleString('ja-JP')}
               </p>
               <div className="mt-4 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-white/80 dark:bg-slate-800/60 p-3">
                 <p className="text-[11px] font-black text-indigo-700 dark:text-indigo-300 mb-2">月返済の比較</p>
@@ -1845,7 +1845,7 @@ export default function HomePage({
                 </p>
               )}
               <p className="mt-4 text-sm font-black text-emerald-700 dark:text-emerald-300">
-                差額見込み: +¥{displayGap.toLocaleString('ja-JP')}
+                差額の試算: +¥{displayGap.toLocaleString('ja-JP')}
               </p>
               <button
                 type="button"

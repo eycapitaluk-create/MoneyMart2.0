@@ -200,7 +200,7 @@ const HERO_COPY = {
   points: {
     title: 'ポイ活サービスを比較',
     subtitle: '還元率・提携先・キャンペーンを比較し、日常支出の効率を高めます。',
-    promo: '還元率・提携先で最適化',
+    promo: '還元率・提携先で比較',
     metricA: '5.0%',
     metricALabel: '最大還元率の例',
     metricB: '全国',

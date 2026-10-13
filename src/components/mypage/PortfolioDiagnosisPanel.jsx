@@ -285,7 +285,7 @@ export default function PortfolioDiagnosisPanel({
               AIポートフォリオ分析
             </h3>
             <p className="mt-1 text-xs font-bold text-slate-500 dark:text-slate-400">
-              {scopeLabel}の保有資産をもとにAIが分散・リスク・改善案を分析します
+              保有データから確認ポイントを自動抽出します（投資助言ではありません）
             </p>
             <p className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">
               {userId
@@ -295,7 +295,7 @@ export default function PortfolioDiagnosisPanel({
           </div>
           <div className="flex-1 min-w-0 lg:px-2">
             <p className="text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">
-              本機能は情報整理・参考分析のみを目的としており、特定銘柄の特定の金融商品の売買を勧誘するものではありません。実際の投資判断はご自身の責任で行い、必要に応じて税理士・ファイナンシャルプランナー等の専門家へご相談ください。
+              特定の金融商品の売買を勧誘するものではありません。表示は保有データの整理です。
             </p>
           </div>
           <button
@@ -422,10 +422,10 @@ export default function PortfolioDiagnosisPanel({
               <div className="rounded-2xl border border-indigo-200 dark:border-indigo-900/50 bg-indigo-50/70 dark:bg-indigo-950/20 p-4">
                 <p className="text-xs font-black text-indigo-600 dark:text-indigo-300 mb-1 flex items-center gap-2">
                   <ArrowRight size={14} />
-                  想定される選択肢
+                  確認ポイント
                 </p>
                 <p className="text-[10px] text-indigo-500/90 dark:text-indigo-400/80 mb-3 leading-relaxed">
-                  以下は一般的な観点の例であり、売買の指示や確約ではありません。実際の判断はご自身の責任で行ってください。
+                  保有データの整理です。特定の金融商品の売買を勧誘するものではありません。
                 </p>
                 <div className="space-y-2.5">
                   {result.actions.map((row, idx) => (

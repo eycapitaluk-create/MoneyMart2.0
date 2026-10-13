@@ -425,7 +425,6 @@ const PORTFOLIO_QUOTES_HYDRATE_TIMEOUT_MS = 25_000
 const OWNED_ASSET_SYNC_TIMEOUT_MS = 20_000
 const POINT_EXPIRY_ALERT_DAYS = 30
 const PRICE_STALE_ALERT_DAYS = 3
-const TARGET_STOCK_RATIO_PCT = 60
 const PORTFOLIO_DROP_ALERT_THRESHOLD_OPTIONS = [
   { value: null, label: 'オフ' },
   { value: -3, label: '-3%' },
@@ -1242,7 +1241,7 @@ const buildAiSummaryReport = ({ totalReturnRate, dti, concentration, bestReturn 
       : '負債比率は許容範囲です。積立比率の見直し余地を確認できます。',
     bestReturn >= 20
       ? '高リターン銘柄の比率が大きくなっていないか、事前ルールと照らして確認できます。'
-      : 'リターン改善余地があります。コストや分散の観点から積立条件を確認できます。',
+      : '登録したコストと保有の散らばりを、あとから見比べる材料になります。',
   ]
 
   const confidence = riskScoreResult.score >= 70 ? '高' : riskScoreResult.score >= 40 ? '中' : '中'
@@ -2884,7 +2883,7 @@ const LoanApprovalDiagnosisModal = ({ isOpen, onClose }) => {
 
     if (prob >= 80) return { prob, label: '高め', color: 'text-emerald-500', confidenceLow, confidenceHigh, reasons }
     if (prob >= 60) return { prob, label: '標準', color: 'text-amber-500', confidenceLow, confidenceHigh, reasons }
-    return { prob, label: '要改善', color: 'text-red-500', confidenceLow, confidenceHigh, reasons }
+    return { prob, label: '低め', color: 'text-red-500', confidenceLow, confidenceHigh, reasons }
   }
 
   const handleAnswer = (option) => {
@@ -3392,7 +3391,7 @@ const SummarySection = ({
           <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 p-4 mt-4">
             <h4 className="text-sm font-black text-slate-900 dark:text-white mb-2">クイックインサイト</h4>
             <p className="text-xs text-slate-500 leading-relaxed">
-              現在はファンド中心の構成です。リスクを抑えたい場合は、値動きの異なる資産の比率を高めると変動幅の平準化が期待できます。
+              表示中の数値は登録データに基づきます。特定の金融商品の売買を勧誘するものではありません。
             </p>
           </div>
 
@@ -5096,9 +5095,6 @@ const WealthSection = ({
   ]
     .filter((row) => Number.isFinite(Number(row.staleDays)) && Number(row.staleDays) >= PRICE_STALE_ALERT_DAYS)
     .sort((a, b) => Number(b.staleDays || 0) - Number(a.staleDays || 0))
-  const currentStockRatioPct = totalCurrentValue > 0 ? (stockTotalCurrentJpy / totalCurrentValue) * 100 : 0
-  const currentFundRatioPct = totalCurrentValue > 0 ? (fundTotalCurrentJpy / totalCurrentValue) * 100 : 0
-  const stockRatioGapPct = currentStockRatioPct - TARGET_STOCK_RATIO_PCT
   const prevDayPortfolioValue = Number(portfolioDropSnapshot?.prevDayValue || 0)
   const prevWeekPortfolioValue = Number(portfolioDropSnapshot?.prevWeekValue || 0)
   // 0.01% 単位（centis）に量子化 — 評価額の微変動で useMemo→履歴 effect→dispatch が連鎖しないようにする
@@ -6336,7 +6332,7 @@ const WealthSection = ({
             <p className="text-xs font-black tracking-wide uppercase">AI ASSET REPORT (PREMIUM)</p>
           </div>
           <p className="mt-2 text-base font-black text-slate-900 dark:text-white">資産AIレポートはプレミアム限定でご利用いただけます。</p>
-          <p className="mt-1.5 text-sm text-slate-600 dark:text-slate-300">例: 現在の比率では「高ボラ資産が+12%」のため、分散改善余地があります。</p>
+          <p className="mt-1.5 text-sm text-slate-600 dark:text-slate-300">保有データから確認ポイントを自動抽出します（投資助言ではありません）。</p>
           <p className="mt-3 inline-flex items-center rounded-full bg-indigo-100 dark:bg-indigo-900/40 px-3 py-1 text-xs font-black text-indigo-700 dark:text-indigo-200">クリックしてプレミアムで確認</p>
         </button>
         </div>
@@ -7098,7 +7094,7 @@ const WealthSection = ({
                   <h3 className="font-black text-slate-900 dark:text-white">保存した配分セット</h3>
                   <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
                     {isPaidMember
-                      ? 'ファンド一覧のポートフォリオ最適化で保存した「ウォッチセット」と同じデータです（ここでは配分セットと表示）。銘柄と比率を保ったまま「最適化で開く」から比較・再調整に戻れます。'
+                      ? 'ファンド一覧の配分シミュレーションで保存した「ウォッチセット」と同じデータです（ここでは配分セットと表示）。銘柄と比率を保ったまま「シミュレーションで開く」から比較画面に戻れます。'
                       : '配分セットの保存/削除はプレミアム限定です。無料では閲覧のみ可能です。'}
                   </p>
                 </div>
@@ -7127,7 +7123,7 @@ const WealthSection = ({
                             onClick={() => navigate(buildFundOptimizerCompareUrl(set))}
                             className="px-2.5 py-1 rounded-md border border-indigo-200 dark:border-indigo-800 text-[11px] font-bold text-indigo-700 dark:text-indigo-200 hover:bg-white/80 dark:hover:bg-indigo-900/30"
                           >
-                            最適化で開く
+                            シミュレーションで開く
                           </button>
                           <button
                             type="button"
@@ -7162,7 +7158,7 @@ const WealthSection = ({
                   <h3 className="text-lg font-black text-slate-900 dark:text-white">ファンドウォッチリスト</h3>
                   <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
                     {isPaidMember
-                      ? 'ファンド一覧のハート登録と同じウォッチリストです。メモはブラウザに保存されます。配分セットに含まれる銘柄は、各カードの「配分セット」欄にセット名が表示されます。最適化でウォッチセットを保存・適用したとき、まだウォッチに無い構成銘柄は自動で追加されます。'
+                      ? 'ファンド一覧のハート登録と同じウォッチリストです。メモはブラウザに保存されます。配分セットに含まれる銘柄は、各カードの「配分セット」欄にセット名が表示されます。配分シミュレーションでウォッチセットを保存したとき、まだウォッチに無い構成銘柄は自動で追加されます。'
                       : `無料プランは最大${FREE_FUND_WATCHLIST_LIMIT}件まで表示されます。`}
                   </p>
                 </div>
@@ -7448,142 +7444,52 @@ const WealthSection = ({
           {totalCurrentValue > 0 ? (
             <div className="xl:col-span-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 p-5 flex flex-col min-h-0 max-xl:h-auto xl:h-full">
               <h3 className="font-black text-slate-900 dark:text-white flex items-center gap-2">
-                <PieChart size={16} className="text-indigo-500" /> 構成比アラート
+                <PieChart size={16} className="text-indigo-500" /> 構成比
               </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                目標比率は参考値（株式 {TARGET_STOCK_RATIO_PCT}% / ファンド {100 - TARGET_STOCK_RATIO_PCT}%）です。
+              <p className="mt-3 text-sm font-black text-slate-900 dark:text-white">
+                目標配分は未設定です
               </p>
-              <div className="mt-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 p-4">
-                <p className="text-sm font-black text-slate-900 dark:text-white">
-                  現在 株式 {currentStockRatioPct.toFixed(0)}% / ファンド {currentFundRatioPct.toFixed(0)}%
-                </p>
-                <p className={`mt-2 text-sm font-bold ${Math.abs(stockRatioGapPct) >= 15 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-600 dark:text-slate-300'}`}>
-                  株式比率ギャップ {stockRatioGapPct >= 0 ? '+' : ''}{stockRatioGapPct.toFixed(1)}%
-                </p>
-                <button
-                  type="button"
-                  onClick={() => document.getElementById('wealth-allocation-chart')?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
-                  className="mt-3 w-full px-3 py-2 rounded-lg bg-slate-900 dark:bg-orange-500 text-white text-xs font-black hover:opacity-90"
-                >
-                  構成比の内訳を見る
-                </button>
-              </div>
-              {(() => {
-                const targetStockW = Math.max(0, Math.min(100, Number(TARGET_STOCK_RATIO_PCT) || 0))
-                const curStockW = Math.max(0, Math.min(100, Number(currentStockRatioPct) || 0))
-                const curFundW = Math.max(0, Math.min(100, Number(currentFundRatioPct) || 0))
-                const norm = curStockW + curFundW
-                const curStockBar = norm > 0 ? (curStockW / norm) * 100 : 0
-                const curFundBar = norm > 0 ? (curFundW / norm) * 100 : 0
-                const targetStockJpy = totalCurrentValue * (targetStockW / 100)
-                const stockDeltaJpy = targetStockJpy - Number(stockTotalCurrentJpy || 0)
-                const showYenHint = totalCurrentValue > 0 && Math.abs(Number(stockRatioGapPct) || 0) >= 1
-                const yenHint =
-                  showYenHint && Number.isFinite(stockDeltaJpy) && Math.abs(stockDeltaJpy) >= 1
-                    ? `評価額ベースで目標の株式比率に近づける目安は、株式をおおよそ ${
-                        stockDeltaJpy >= 0 ? '+' : '−'
-                      }¥${Math.round(Math.abs(stockDeltaJpy)).toLocaleString('ja-JP')}（売買・手数料・税は含みません）。`
-                    : null
-                return (
-                  <div className="mt-4 flex flex-col min-h-0 xl:flex-1 xl:min-h-0">
-                    <div className="space-y-3">
-                      <div>
-                        <p className="text-[10px] font-black uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-2">
-                          目標と現在（棒は左＝株式 / 右＝ファンド）
-                        </p>
-                        <div className="space-y-2.5">
-                          <div>
-                            <div className="flex items-center justify-between gap-2 mb-1">
-                              <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300">目標</span>
-                              <span className="text-[10px] font-mono font-bold tabular-nums text-slate-500 dark:text-slate-400">
-                                株 {targetStockW.toFixed(0)}% / ファ {Math.max(0, 100 - targetStockW).toFixed(0)}%
-                              </span>
-                            </div>
-                            <div
-                              className="flex h-2 w-full overflow-hidden rounded-full bg-slate-200/80 dark:bg-slate-700/80"
-                              role="img"
-                              aria-label={`目標 株式${targetStockW.toFixed(0)}パーセント、ファンド${Math.max(0, 100 - targetStockW).toFixed(0)}パーセント`}
-                            >
-                              <div className="h-full bg-emerald-500 dark:bg-emerald-500/90" style={{ width: `${targetStockW}%` }} />
-                              <div className="h-full bg-blue-500 dark:bg-blue-500/90" style={{ width: `${100 - targetStockW}%` }} />
-                            </div>
-                          </div>
-                          <div>
-                            <div className="flex items-center justify-between gap-2 mb-1">
-                              <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300">現在</span>
-                              <span className="text-[10px] font-mono font-bold tabular-nums text-slate-500 dark:text-slate-400">
-                                株 {curStockW.toFixed(0)}% / ファ {curFundW.toFixed(0)}%
-                              </span>
-                            </div>
-                            <div
-                              className="flex h-2 w-full overflow-hidden rounded-full bg-slate-200/80 dark:bg-slate-700/80"
-                              role="img"
-                              aria-label={`現在 株式${curStockW.toFixed(0)}パーセント、ファンド${curFundW.toFixed(0)}パーセント`}
-                            >
-                              <div className="h-full bg-emerald-500 dark:bg-emerald-500/90" style={{ width: `${curStockBar}%` }} />
-                              <div className="h-full bg-blue-500 dark:bg-blue-500/90" style={{ width: `${curFundBar}%` }} />
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      {yenHint ? (
-                        <p className="text-[11px] font-semibold leading-relaxed text-slate-600 dark:text-slate-300">{yenHint}</p>
-                      ) : null}
-                      {monthlyUnrealizedPnlSplit.mode === 'bar' ? (
-                        <div className="mt-3 pt-3 border-t border-slate-200/90 dark:border-slate-700/80">
-                          <div className="rounded-xl border border-slate-200/90 dark:border-slate-600/80 bg-slate-50/90 dark:bg-slate-800/50 px-3 py-2.5">
-                            <p className="text-[11px] sm:text-xs font-bold text-slate-600 dark:text-slate-300">
-                              含み損益の寄与度（合計損益に占める割合）
-                            </p>
-                            <p className="mt-1 text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">
-                              ※ 上の「目標／現在」バー（評価額の構成比）とは別指標です（損益の大きさの分け合い）。
-                            </p>
-                            <div
-                              className="mt-2 flex h-2.5 w-full overflow-hidden rounded-full bg-slate-200/80 dark:bg-slate-700/80"
-                              role="img"
-                              aria-label={`含み損益の合計に対し、株式が${monthlyUnrealizedPnlSplit.stockPct.toFixed(0)}パーセント、ファンドが${monthlyUnrealizedPnlSplit.fundPct.toFixed(0)}パーセントを占めます`}
-                            >
-                              <div
-                                className="h-full bg-emerald-500 dark:bg-emerald-500/90"
-                                style={{ width: `${monthlyUnrealizedPnlSplit.stockBarW}%` }}
-                              />
-                              <div
-                                className="h-full bg-blue-500 dark:bg-blue-500/90"
-                                style={{ width: `${monthlyUnrealizedPnlSplit.fundBarW}%` }}
-                              />
-                            </div>
-                            <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[10px] sm:text-[11px] font-bold tabular-nums">
-                              <span className="text-emerald-700 dark:text-emerald-300">
-                                株式（損益シェア）{' '}
-                                {monthlyUnrealizedPnlSplit.stockPct >= 10
-                                  ? monthlyUnrealizedPnlSplit.stockPct.toFixed(0)
-                                  : monthlyUnrealizedPnlSplit.stockPct.toFixed(1)}
-                                %
-                              </span>
-                              <span className="text-blue-700 dark:text-blue-300">
-                                ファンド（損益シェア）{' '}
-                                {monthlyUnrealizedPnlSplit.fundPct >= 10
-                                  ? monthlyUnrealizedPnlSplit.fundPct.toFixed(0)
-                                  : monthlyUnrealizedPnlSplit.fundPct.toFixed(1)}
-                                %
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      ) : null}
-                    </div>
-                    <div className="min-h-3 shrink-0 xl:flex-1" aria-hidden="true" />
-                    <div className="space-y-3 pt-3 border-t border-slate-200/90 dark:border-slate-700/80">
-                      <p className="text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">
-                        株式比率のズレが <span className="font-black">±15%</span> を超えると、上のギャップ表示を強調します。
-                      </p>
-                      <p className="text-[10px] leading-relaxed text-slate-400 dark:text-slate-500">
-                        目標比率と目安金額は参考情報です。投資助言ではありません。
-                      </p>
-                    </div>
+              <p className="mt-2 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
+                特定の金融商品の売買を勧誘するものではありません。
+              </p>
+              <button
+                type="button"
+                onClick={() => document.getElementById('wealth-allocation-chart')?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
+                className="mt-4 w-full px-3 py-2 rounded-lg bg-slate-900 dark:bg-orange-500 text-white text-xs font-black hover:opacity-90"
+              >
+                構成比の内訳を見る
+              </button>
+              {monthlyUnrealizedPnlSplit.mode === 'bar' ? (
+                <div className="mt-4 pt-3 border-t border-slate-200/90 dark:border-slate-700/80">
+                  <p className="text-[11px] sm:text-xs font-bold text-slate-600 dark:text-slate-300">
+                    含み損益の寄与度（合計損益に占める割合）
+                  </p>
+                  <div
+                    className="mt-2 flex h-2.5 w-full overflow-hidden rounded-full bg-slate-200/80 dark:bg-slate-700/80"
+                    role="img"
+                    aria-label={`含み損益の合計に対し、株式が${monthlyUnrealizedPnlSplit.stockPct.toFixed(0)}パーセント、ファンドが${monthlyUnrealizedPnlSplit.fundPct.toFixed(0)}パーセントを占めます`}
+                  >
+                    <div className="h-full bg-emerald-500 dark:bg-emerald-500/90" style={{ width: `${monthlyUnrealizedPnlSplit.stockBarW}%` }} />
+                    <div className="h-full bg-blue-500 dark:bg-blue-500/90" style={{ width: `${monthlyUnrealizedPnlSplit.fundBarW}%` }} />
                   </div>
-                )
-              })()}
+                  <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[10px] sm:text-[11px] font-bold tabular-nums">
+                    <span className="text-emerald-700 dark:text-emerald-300">
+                      株式（損益シェア）{' '}
+                      {monthlyUnrealizedPnlSplit.stockPct >= 10
+                        ? monthlyUnrealizedPnlSplit.stockPct.toFixed(0)
+                        : monthlyUnrealizedPnlSplit.stockPct.toFixed(1)}
+                      %
+                    </span>
+                    <span className="text-blue-700 dark:text-blue-300">
+                      ファンド（損益シェア）{' '}
+                      {monthlyUnrealizedPnlSplit.fundPct >= 10
+                        ? monthlyUnrealizedPnlSplit.fundPct.toFixed(0)
+                        : monthlyUnrealizedPnlSplit.fundPct.toFixed(1)}
+                      %
+                    </span>
+                  </div>
+                </div>
+              ) : null}
             </div>
           ) : null}
           <div className="xl:col-span-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 p-5 flex flex-col min-h-0 max-xl:h-auto xl:h-full">
@@ -7989,7 +7895,7 @@ const WealthSection = ({
                       <strong className="text-slate-600 dark:text-slate-300">前営業日</strong>の基準額、または<strong className="text-slate-600 dark:text-slate-300">約1週間前</strong>の基準額（いずれもその時点の終値ベース推計）に対して、
                       下がり幅 / 上がり幅が条件を満たしたときに出ます。条件を満たす<strong className="text-slate-600 dark:text-slate-300">前日比</strong>と<strong className="text-slate-600 dark:text-slate-300">前週比</strong>は別々に数えるため、
                       最大<strong className="text-slate-600 dark:text-slate-300">2件</strong>が同時に表示されることがあります。
-                      左の「株式比率ギャップ」等の<strong className="text-slate-600 dark:text-slate-300">構成比アラート</strong>は別の仕組みです。
+                      左の<strong className="text-slate-600 dark:text-slate-300">構成比</strong>（目標配分の有無）は、この上下アラートとは別の表示です。
                     </p>
                   ) : null}
                   {(hasVisiblePortfolioDropAlert || hasVisiblePortfolioRiseAlert) ? (
@@ -9705,8 +9611,8 @@ const BudgetSection = ({
           <div className="mt-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/60 p-3">
             <h5 className="text-[11px] font-black text-slate-700 dark:text-slate-200 mb-1.5">家計メモ</h5>
             <div className="space-y-1 text-[11px] text-slate-600 dark:text-slate-300">
-              <p>・ポイント/保険を登録すると、固定費の見込みと期限アラートの精度が上がります。</p>
-              <p>・今月の着地見込みは「シバの家計先読みアラート」で確認できます。</p>
+              <p>・ポイント/保険を登録すると、固定費の試算と期限アラートの材料が増えます。</p>
+              <p>・今月の着地は「シバの家計先読みアラート」で確認できます。</p>
             </div>
           </div>
         </div>
@@ -9740,14 +9646,14 @@ const BudgetSection = ({
                   <div className="min-w-0 flex-1">
                     <p className="text-[10px] font-black text-orange-500 tracking-wide">SHIBA LIVE REPORT</p>
                     <p className="text-sm font-black text-slate-800 dark:text-slate-100 leading-snug">{spendForecastHeadline}</p>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">見込み ¥{spendingRunRateYen.toLocaleString('ja-JP')} / 予算 ¥{Number(budgetTargetYen || 0).toLocaleString('ja-JP')}</p>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">試算 ¥{spendingRunRateYen.toLocaleString('ja-JP')} / 予算 ¥{Number(budgetTargetYen || 0).toLocaleString('ja-JP')}</p>
                   </div>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div className="rounded-xl border border-amber-200 dark:border-amber-900/50 bg-amber-50/60 dark:bg-amber-900/20 p-3">
-                  <p className="text-[10px] font-black text-amber-700 dark:text-amber-300">月末支出見込み</p>
+                  <p className="text-[10px] font-black text-amber-700 dark:text-amber-300">月末支出の試算</p>
                   <p className={`mt-1 text-sm font-black ${
                     spendForecastStatus === 'overspend'
                       ? 'text-rose-600 dark:text-rose-300'
@@ -9791,8 +9697,8 @@ const BudgetSection = ({
                   </div>
                   <p className="text-xs font-bold text-slate-700 dark:text-slate-200">
                     {projectedDeficitYen > 0
-                      ? `今月は ${projectedDeficitYen.toLocaleString('ja-JP')}円 の不足見込みです。`
-                      : `月末の余剰見込みは ${projectedFreeCashYen.toLocaleString('ja-JP')}円 です。`}
+                      ? `今月は ${projectedDeficitYen.toLocaleString('ja-JP')}円 の不足試算です。`
+                      : `月末の余剰試算は ${projectedFreeCashYen.toLocaleString('ja-JP')}円 です。`}
                   </p>
                   <div className="mt-2 h-2 rounded-full bg-emerald-100 dark:bg-emerald-900/40 overflow-hidden">
                     <div className="h-full rounded-full bg-emerald-500" style={{ width: `${freeCashProgressPct}%` }} />
@@ -10849,7 +10755,7 @@ const BudgetSectionV2 = ({
           <div className="rounded-2xl border-[1.5px] border-[#1A1714] bg-[#1A1714] px-4 py-3.5 md:px-5 md:py-4 shadow-[0_4px_24px_rgba(0,0,0,0.1)] text-white">
             <p className="text-xs font-bold uppercase tracking-wider text-white/40 mb-1">月内支出</p>
             <p className="text-[22px] sm:text-[26px] font-black tabular-nums leading-none">{formatCurrency(summaryData.totalSpent)}</p>
-            <p className="text-xs text-white/55 mt-2 tabular-nums">月末支出見込み {formatCurrency(monthEndProjectionYen)}</p>
+            <p className="text-xs text-white/55 mt-2 tabular-nums">月末支出の試算 {formatCurrency(monthEndProjectionYen)}</p>
             <p className="text-xs text-white/40 mt-1.5">
               先月比{' '}
               {momVsPrevMonthPct == null ? (
@@ -11795,7 +11701,7 @@ const DebtSection = ({
 
               <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight mt-3">
                 {dtiNumeric > DTI_THRESHOLD
-                  ? '⚠️ 返済負担が高まっています。借り換えを検討してください。'
+                  ? '返済負担率は登録した条件では高めです。数値は入力の整理であり、借り換えを勧めるものではありません。'
                   : '✅ 適正範囲内(35%以下)です。健全な家計状態です。'}
               </p>
             </div>
@@ -12018,7 +11924,7 @@ const DebtSection = ({
                   <p className="font-black">¥{baseTotalInterestYen.toLocaleString('ja-JP')}</p>
                 </div>
                 <div className="rounded-xl bg-white dark:bg-slate-900 p-3 border border-slate-200 dark:border-slate-700">
-                  <p className="text-xs text-slate-500 dark:text-slate-300">利息削減見込み</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-300">利息差額の試算</p>
                   <p className="font-black text-emerald-600 dark:text-emerald-300">¥{interestSavingYen.toLocaleString('ja-JP')}</p>
                 </div>
               </div>
@@ -12179,9 +12085,9 @@ const CoachSection = ({
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6">
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-5">
             <div>
-              <h2 className="text-2xl font-black text-slate-900 dark:text-white">家計最適化レポート</h2>
+              <h2 className="text-2xl font-black text-slate-900 dark:text-white">家計の試算</h2>
               <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                iDeCo・NISAの節税試算と、負債最適化シミュレーションを1画面で管理します。
+                iDeCo・NISAの節税試算と、負債の試算を1画面で整理します。特定の金融商品の売買を勧誘するものではありません。
               </p>
             </div>
             <div className="flex p-1 bg-slate-100 dark:bg-slate-800 rounded-xl w-full md:w-auto">
@@ -12207,7 +12113,7 @@ const CoachSection = ({
                 }`}
               >
                 <Wallet size={16} />
-                負債の最適化
+                負債の試算
               </button>
             </div>
           </div>
@@ -12441,7 +12347,7 @@ const CoachSection = ({
           <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 border border-slate-200 dark:border-slate-800">
             <div className="flex items-center justify-between gap-4 mb-5">
               <div>
-                <h3 className="text-2xl font-black text-slate-900 dark:text-white">負債最適化レポート</h3>
+                <h3 className="text-2xl font-black text-slate-900 dark:text-white">負債の試算</h3>
                 <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">このページ内で負債の追加・修正・削除ができます。</p>
               </div>
               <button
@@ -15012,7 +14918,7 @@ export default function MyPage({
         status: result.status,
         resultJson: result,
       })
-      setTaxShieldStatus(`節税シミュレーションを保存しました。見込み節税額 ¥${Math.abs(Number(result.potentialTaxSavingYen || 0)).toLocaleString('ja-JP')}`)
+      setTaxShieldStatus(`節税シミュレーションを保存しました。試算額 ¥${Math.abs(Number(result.potentialTaxSavingYen || 0)).toLocaleString('ja-JP')}`)
     } catch (err) {
       setTaxShieldStatus(`シミュレーション保存に失敗: ${err?.message || 'unknown error'}`)
     }
@@ -15045,9 +14951,9 @@ export default function MyPage({
         ...prev,
         ...saved,
       }))
-      setCashFlowStatus('資金フロー最適化の入力を保存しました。')
+      setCashFlowStatus('資金フローの入力を保存しました。')
     } catch (err) {
-      setCashFlowStatus(`資金フロー最適化の保存に失敗: ${err?.message || 'unknown error'}`)
+      setCashFlowStatus(`資金フローの保存に失敗: ${err?.message || 'unknown error'}`)
     } finally {
       setCashFlowSaving(false)
     }
@@ -15073,7 +14979,7 @@ export default function MyPage({
           ...result,
         },
       })
-      setCashFlowStatus(`資金フロー試算を保存しました。追加利息見込み ¥${Math.abs(Number(result.additionalInterestYen || 0)).toLocaleString('ja-JP')}`)
+      setCashFlowStatus(`資金フロー試算を保存しました。追加利息の試算 ¥${Math.abs(Number(result.additionalInterestYen || 0)).toLocaleString('ja-JP')}`)
     } catch (err) {
       setCashFlowStatus(`資金フロー試算に失敗: ${err?.message || 'unknown error'}`)
     }

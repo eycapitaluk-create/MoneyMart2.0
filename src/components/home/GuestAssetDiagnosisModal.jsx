@@ -18,36 +18,6 @@ const STEPS = [
   { key: 'horizon', label: '投資期間', options: ONBOARDING_HORIZON_OPTIONS },
 ]
 
-function ScoreRing({ score = 0, grade = 'C' }) {
-  const safe = Math.max(0, Math.min(100, Number(score) || 0))
-  const color = safe >= 70 ? '#16a34a' : safe >= 55 ? '#f59e0b' : '#ea580c'
-  const r = 40
-  const c = 2 * Math.PI * r
-  const dash = (safe / 100) * c
-  return (
-    <div className="relative w-[104px] h-[104px] shrink-0">
-      <svg width="104" height="104" viewBox="0 0 104 104" aria-hidden>
-        <circle cx="52" cy="52" r={r} fill="none" stroke="#e2e8f0" strokeWidth="9" />
-        <circle
-          cx="52"
-          cy="52"
-          r={r}
-          fill="none"
-          stroke={color}
-          strokeWidth="9"
-          strokeDasharray={`${dash} ${c}`}
-          strokeLinecap="round"
-          transform="rotate(-90 52 52)"
-        />
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-2xl font-black tabular-nums" style={{ color }}>{safe}</span>
-        <span className="text-xs font-black" style={{ color }}>{grade}</span>
-      </div>
-    </div>
-  )
-}
-
 export default function GuestAssetDiagnosisModal({
   isOpen,
   onClose,
@@ -79,8 +49,9 @@ export default function GuestAssetDiagnosisModal({
     saveGuestDiagnosisResult(result)
     trackAnalyticsEvent('guest_diag_complete', {
       source,
-      score: result.score,
-      grade: result.grade,
+      assetMix: result.answers?.assetMix || '',
+      riskTolerance: result.answers?.riskTolerance || '',
+      horizon: result.answers?.horizon || '',
     })
   }, [result, answers, source])
 
@@ -88,9 +59,12 @@ export default function GuestAssetDiagnosisModal({
 
   const current = STEPS[step]
   const currentValue = answers[current?.key] || ''
+  // Advance with the question on screen. The old formula added the current
+  // answer and then subtracted it when the step incremented, so questions 2 and 3
+  // stayed at the previous width.
   const progressPct = step >= STEPS.length
     ? 100
-    : Math.round(((step + (currentValue ? 1 : 0)) / STEPS.length) * 100)
+    : Math.round(((step + 1) / STEPS.length) * 100)
 
   const pick = (value) => {
     if (!current) return
@@ -106,7 +80,7 @@ export default function GuestAssetDiagnosisModal({
   const handleSignup = () => {
     saveGuestDiagnosisDraft(answers)
     if (result) saveGuestDiagnosisResult(result)
-    trackAnalyticsEvent('guest_diag_signup_click', { source, score: result?.score })
+    trackAnalyticsEvent('guest_diag_signup_click', { source })
     onSignup?.()
   }
 
@@ -133,13 +107,20 @@ export default function GuestAssetDiagnosisModal({
             <p className="text-[11px] font-black tracking-[0.16em]">30秒 · かんたん診断</p>
           </div>
           <h2 id="guest-diag-title" className="text-xl font-black text-slate-900 dark:text-white leading-snug pr-8">
-            {step >= STEPS.length ? 'あなたの資産プロフィール診断' : '3つの質問で、いまの方向性をチェック'}
+            {step >= STEPS.length ? '回答の整理' : '3つの質問で、回答を整理します'}
           </h2>
           <p className="mt-2 text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
             口座・銀行の連携は不要です。この3問は好みの確認で、保有銘柄の重なりは見ていません。回答は参考情報であり、投資助言ではありません。
           </p>
 
-          <div className="mt-4 h-1.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+          <div
+            className="mt-4 h-1.5 w-full rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden"
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={progressPct}
+            aria-label={`質問の進行 ${progressPct}%`}
+          >
             <div
               className="h-full rounded-full bg-gradient-to-r from-orange-500 to-amber-400 transition-all duration-300"
               style={{ width: `${progressPct}%` }}
@@ -182,28 +163,38 @@ export default function GuestAssetDiagnosisModal({
             </div>
           ) : result ? (
             <div className="mt-6">
-              <div className="flex items-center gap-4 rounded-2xl border border-orange-200/80 dark:border-orange-900/50 bg-orange-50/60 dark:bg-orange-950/20 p-4">
-                <ScoreRing score={result.score} grade={result.grade} />
-                <div className="min-w-0">
-                  <p className="text-base font-black text-slate-900 dark:text-white">{result.headline}</p>
-                  <p className="mt-1 text-sm text-slate-600 dark:text-slate-400 leading-relaxed">{result.summary}</p>
-                </div>
+              <div className="rounded-2xl border border-orange-200/80 dark:border-orange-900/50 bg-orange-50/60 dark:bg-orange-950/20 p-4">
+                <p className="text-base font-black text-slate-900 dark:text-white">{result.headline}</p>
+                <p className="mt-1 text-sm text-slate-600 dark:text-slate-400 leading-relaxed">{result.summary}</p>
+                <dl className="mt-3 space-y-2 text-sm">
+                  <div>
+                    <dt className="text-[11px] font-black text-slate-500 dark:text-slate-400">資産の中心</dt>
+                    <dd className="font-bold text-slate-800 dark:text-slate-100">{result.assetMixLabel}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-[11px] font-black text-slate-500 dark:text-slate-400">リスク許容</dt>
+                    <dd className="font-bold text-slate-800 dark:text-slate-100">{result.riskLabel}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-[11px] font-black text-slate-500 dark:text-slate-400">期間</dt>
+                    <dd className="font-bold text-slate-800 dark:text-slate-100">{result.horizonLabel}</dd>
+                  </div>
+                </dl>
               </div>
 
               <div className="mt-4 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
                 <div className="px-4 py-3 bg-slate-50 dark:bg-slate-950/60 border-b border-slate-200 dark:border-slate-700">
-                  <p className="text-xs font-black text-slate-500 dark:text-slate-400">改善フォーカス（例）</p>
+                  <p className="text-xs font-black text-slate-500 dark:text-slate-400">マイページで確認できること</p>
                 </div>
-                <div className="relative px-4 py-4">
-                  <p className="text-sm font-bold text-slate-800 dark:text-slate-200">{result.focus}</p>
-                  <div className="mt-3 space-y-2 select-none pointer-events-none blur-[5px] opacity-70" aria-hidden>
-                    <p className="text-sm text-slate-600 dark:text-slate-400">・株式とファンドの比率バランスを確認</p>
-                    <p className="text-sm text-slate-600 dark:text-slate-400">・地域・セクター分散の見直しポイント</p>
-                    <p className="text-sm text-slate-600 dark:text-slate-400">・保有1件登録でAIレポートの精度が向上</p>
-                  </div>
-                  <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-white dark:from-slate-900 to-transparent" />
+                <div className="px-4 py-4 space-y-2">
+                  <p className="text-sm text-slate-700 dark:text-slate-200">・登録した保有の評価額</p>
+                  <p className="text-sm text-slate-700 dark:text-slate-200">・株式とファンドの現在の比率</p>
+                  <p className="text-sm text-slate-700 dark:text-slate-200">・登録した取引にもとづく損益</p>
                 </div>
               </div>
+              <p className="mt-3 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
+                特定の金融商品の売買を勧誘するものではありません。
+              </p>
 
               <ul className="mt-4 space-y-2 text-xs font-bold text-slate-600 dark:text-slate-400">
                 <li className="flex items-center gap-2"><Clock3 size={14} className="text-orange-500" /> 無料マイページを30秒で開設</li>

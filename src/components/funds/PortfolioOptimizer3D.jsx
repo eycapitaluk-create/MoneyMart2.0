@@ -231,7 +231,7 @@ export default function PortfolioOptimizer3D({
           symbol: 'diamond',
         },
         hoverinfo: 'text',
-        hovertext: `最適配分<br>リスク: ${fmt(optimalPoint.risk, 2)}%<br>リターン: ${fmt(optimalPoint.ret, 2)}%<br>信託報酬: ${fmt(optimalPoint.fee, 3)}%`,
+        hovertext: `比較点<br>リスク: ${fmt(optimalPoint.risk, 2)}%<br>リターン: ${fmt(optimalPoint.ret, 2)}%<br>信託報酬: ${fmt(optimalPoint.fee, 3)}%`,
         customdata: ['optimal'],
         showlegend: false,
       })
@@ -361,7 +361,7 @@ export default function PortfolioOptimizer3D({
       ) : null}
       {optimalPoint ? (
         <div className="rounded-lg border border-orange-200 bg-white/95 px-2.5 py-1.5 dark:border-orange-700 dark:bg-slate-900/95">
-          <p className="text-[10px] font-black text-orange-700 dark:text-orange-300">最適配分</p>
+          <p className="text-[10px] font-black text-orange-700 dark:text-orange-300">比較点</p>
           <p className="text-[10px] font-semibold text-slate-600 dark:text-slate-300 mt-0.5 leading-snug">
             リターン {fmt(optimalPoint.ret, 1)}% / リスク {fmt(optimalPoint.risk, 1)}% / 費用 {fmt(optimalPoint.fee, 2)}%
           </p>

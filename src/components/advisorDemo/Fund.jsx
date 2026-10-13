@@ -172,7 +172,7 @@ export default function FundPage({ client, clients, onPickClient, onToast }) {
       <div className="grid gap-3 sm:grid-cols-3">
         {[
           { id: 'compare', title: 'ファンド比較', sub: '最大4本を並べて分析', Icon: GitCompare, color: '#3b82f6' },
-          { id: 'optimizer', title: 'ファンド最適化', sub: 'AIで配分提案', Icon: Sparkles, color: C.accent },
+          { id: 'optimizer', title: '配分シミュレーション', sub: '比率の比較', Icon: Sparkles, color: C.accent },
           { id: 'list', title: 'ファンド一覧', sub: '全ファンドを検索', Icon: List, color: C.green },
         ].map((a) => (
           <button

@@ -969,7 +969,7 @@ export default function InsightPage({ session = null }) {
               関連ツールで確認する
             </h2>
             <p className="text-xs text-stone-500 dark:text-slate-400 mb-4 leading-relaxed">
-              記事の論点を、保有の重複やNISA・配当の見通しと突き合わせて整理できます。
+              記事の論点を、保有の重複やNISA・配当の記録と突き合わせて整理できます。
             </p>
             <div className="flex flex-wrap gap-2">
               <Link to="/etf-compare" className="inline-flex rounded-xl bg-amber-600 text-white px-4 py-2.5 text-sm font-black hover:bg-amber-700">ETFを比較する</Link>

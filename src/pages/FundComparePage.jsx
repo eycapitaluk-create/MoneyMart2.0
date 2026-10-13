@@ -543,7 +543,7 @@ export default function FundComparePage({
     }))
   ), [funds])
 
-  // オプティマイザの最適配分を算出（イコールではなくスコアベース）
+  // 配分スライダー用の比率を算出（等分ではなくスコアベース）
   const optimizerOptimalWeightsMap = useMemo(() => {
     if (optimizerSelectedFunds.length < 2) return null
     const rawCombos = generateWeightCombos(optimizerSelectedFunds.length, optimizerSelectedFunds.length === 3 ? 5 : 2)

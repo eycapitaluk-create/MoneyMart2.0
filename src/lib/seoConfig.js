@@ -71,7 +71,7 @@ export function getSeoForRoute(pathname, search = '') {
       match: (p) => p === '/dividend-calendar',
       title: '配当カレンダー（日本株・米国株）無料｜入金予定の整理 | MoneyMart',
       description:
-        '日本株・米国株の配当月・入金見込みをカレンダーで整理する無料ツール。新NISAや長期保有のキャッシュフロー確認、ETFと個別株の配当見通しの比較に使えます。将来の配当を保証するものではありません。',
+        '日本株・米国株の配当月・入金の試算をカレンダーで整理する無料ツール。新NISAや長期保有のキャッシュフロー確認、ETFと個別株の配当記録の比較に使えます。将来の配当を保証するものではありません。',
       path: '/dividend-calendar',
       isTool: true,
       toolName: 'MoneyMart 配当カレンダー',

@@ -1563,7 +1563,7 @@ export default function FundPage({
       }))
   ), [selectedFundIds, dbFunds])
 
-  // オプティマイザの最適配分（イコールではなくスコアベース）を算出（optimizerWeightsByFundId に依存しない）
+  // 配分スライダー用の比率（等分ではなくスコアベース）を算出（optimizerWeightsByFundId に依存しない）
   const optimizerOptimalWeightsMap = useMemo(() => {
     if (optimizerSelectedFunds.length < 2) return null
     const rawCombos = generateWeightCombos(optimizerSelectedFunds.length, optimizerSelectedFunds.length === 3 ? 5 : 2)
@@ -1604,7 +1604,7 @@ export default function FundPage({
     return next
   }, [optimizerSelectedFunds])
 
-  // デフォルトは最適配分（オプティマイジング済み）。ウォッチセット適用時は保存済み配分を優先。上位3件選択時は最適配分を適用
+  // デフォルトは比較点の比率。ウォッチセット適用時は保存済み配分を優先。上位3件選択時はその比率を適用
   useEffect(() => {
     if (optimizerSelectedFunds.length === 0) {
       setOptimizerWeightsByFundId({})
@@ -1633,7 +1633,7 @@ export default function FundPage({
     setOptimizerWeightsByFundId(next)
   }, [optimizerSelectedFunds, optimizerOptimalWeightsMap])
 
-  // 構成モーダルを開いたときに最適配分を自動適用（isComposeModalOpen のみを deps にして再実行ループを防止）
+  // 構成モーダルを開いたときに比較点の比率を反映（isComposeModalOpen のみを deps にして再実行ループを防止）
   useEffect(() => {
     const wasOpen = prevComposeModalOpenRef.current
     prevComposeModalOpenRef.current = isComposeModalOpen
@@ -1745,7 +1745,7 @@ export default function FundPage({
     return { points: scored, pathPoints, currentPoint, optimalPoint, ranges }
   }, [optimizerSelectedFunds, optimizerCurrentWeights])
 
-  // 上位3件選択時は最適配分を適用（イコールではなくオプティマイジング）
+  // 上位3件選択時は比較点の比率を適用（等分ではない）
   useEffect(() => {
     if (!pendingTop3OptimizerRef.current || !optimizerFrontier.optimalPoint || optimizerSelectedFunds.length < 2) return
     const ids = optimizerSelectedFunds.map((f) => f.id)
@@ -1834,8 +1834,8 @@ export default function FundPage({
       return
     }
 
-    if (typeof onUiMessage === 'function') onUiMessage('最適化に使えるファンドデータがまだ不足しています。', 'info')
-    else window.alert('最適化に使えるファンドデータがまだ不足しています。')
+    if (typeof onUiMessage === 'function') onUiMessage('配分シミュレーションに使えるファンドデータがまだ不足しています。', 'info')
+    else window.alert('配分シミュレーションに使えるファンドデータがまだ不足しています。')
   }
 
   const applyOptimalAllocationToSlider = () => {
@@ -2069,9 +2069,9 @@ export default function FundPage({
     <section className={`rounded-2xl border border-slate-200 dark:border-slate-700/70 bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-slate-900 dark:via-slate-900 dark:to-slate-950 shadow-2xl p-4 md:p-6 ${className}`.trim()}>
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-4">
         <div>
-          <h2 className="text-lg font-black text-slate-900 dark:text-white">3D ポートフォリオ最適化（リスク / リターン / 信託報酬）</h2>
+          <h2 className="text-lg font-black text-slate-900 dark:text-white">3D 配分シミュレーション（リスク / リターン / 信託報酬）</h2>
           <p className="text-xs text-slate-600 dark:text-slate-300 mt-1">
-            比較チェックで2〜3ファンドを選ぶと、配分スライダーの操作に応じて「Optimal Allocation」が都度更新されます。
+            比較チェックで2〜3ファンドを選ぶと、配分スライダーに応じて比較点が更新されます。特定の金融商品の売買を勧誘するものではありません。
           </p>
         </div>
         <div className="flex items-center gap-2 relative">
@@ -2081,7 +2081,7 @@ export default function FundPage({
             title="1ヶ月リターン上位3件"
             className="px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-600 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
           >
-            上位3件を自動選択
+            1ヶ月リターン上位3件を選ぶ
           </button>
           <button
             type="button"
@@ -2089,7 +2089,7 @@ export default function FundPage({
             onClick={applyOptimalAllocationToSlider}
             className="px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-600 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-indigo-600 hover:text-white hover:border-indigo-600 disabled:opacity-50 disabled:pointer-events-none"
           >
-            最適配分を適用
+            比較点の比率を反映
           </button>
         </div>
       </div>
@@ -2147,7 +2147,7 @@ export default function FundPage({
 
             {optimizerFrontier.optimalPoint && optimizerFrontier.currentPoint && (
               <div className="rounded-xl border border-indigo-200 dark:border-indigo-500/30 bg-indigo-50 dark:bg-slate-950/70 p-3 mt-3">
-                <p className="text-[11px] font-black tracking-wider text-indigo-700 dark:text-indigo-300">最適配分</p>
+                <p className="text-[11px] font-black tracking-wider text-indigo-700 dark:text-indigo-300">比較点</p>
                 <p className="text-[11px] text-slate-700 dark:text-slate-300 mt-1">
                   リターン {fmtPct(optimizerFrontier.optimalPoint.ret)} / リスク {optimizerFrontier.optimalPoint.risk.toFixed(1)}% / 信託報酬 {formatTrustFeePercent(optimizerFrontier.optimalPoint.fee)}
                 </p>
@@ -2216,9 +2216,9 @@ export default function FundPage({
       <section className="mb-6 rounded-2xl border border-slate-200 dark:border-slate-700/70 bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-slate-900 dark:via-slate-900 dark:to-slate-950 shadow-xl p-4 md:p-5">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
           <div>
-            <h2 className="text-lg font-black text-slate-900 dark:text-white">ポートフォリオ最適化</h2>
+            <h2 className="text-lg font-black text-slate-900 dark:text-white">配分シミュレーション</h2>
             <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 leading-relaxed">
-              3D最適化・配分調整・ウォッチセット（配分セット）保存は「構成」ポップアップ内でまとめて操作できます。保存したセットはマイページの「保存した配分セット」に一覧表示されます。
+              配分の比較・調整と、ウォッチセット（配分セット）の保存は「構成」ポップアップ内で操作できます。保存したセットはマイページの「保存した配分セット」に一覧表示されます。特定の金融商品の売買を勧誘するものではありません。
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -2231,7 +2231,7 @@ export default function FundPage({
               title="1ヶ月リターン上位3件"
               className="px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-600 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
             >
-              上位3件を自動選択
+              1ヶ月リターン上位3件を選ぶ
             </button>
             <button
               type="button"

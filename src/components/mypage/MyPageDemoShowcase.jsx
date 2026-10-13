@@ -149,7 +149,7 @@ export default function MyPageDemoShowcase({
                 <BarChart2 size={18} className="text-sky-600 dark:text-sky-400" />
               </div>
               <div>
-                <p className="text-xs font-black text-sky-600 dark:text-sky-400">ファンド最適化</p>
+                <p className="text-xs font-black text-sky-600 dark:text-sky-400">配分シミュレーション</p>
                 <p className="text-sm font-black text-slate-900 dark:text-white">配分を試す（見本）</p>
               </div>
             </div>
@@ -160,7 +160,7 @@ export default function MyPageDemoShowcase({
                 onClick={() => go('/funds', { source: 'optimizer' })}
                 className="w-full min-h-9 rounded-xl bg-sky-500 hover:bg-sky-600 text-white text-[11px] font-black py-2"
               >
-                ファンド一覧で最適化ツールを試す
+                ファンド一覧で配分を見る
               </button>
             </div>
           </div>

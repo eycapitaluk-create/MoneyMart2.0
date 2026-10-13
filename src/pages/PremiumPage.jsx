@@ -49,13 +49,13 @@ const FREE_FUND_WATCHLIST_LIMIT = 3
 const COMPARISON_ROWS = [
   { label: '相場・センチメント、ヒートマップ、EOD 市場データ', rowIcon: LayoutGrid, free: 'yes', premium: 'yes' },
   { label: '金融商品の比較（ファンド・ETF 等）', rowIcon: BarChart2, free: 'yes', premium: 'yes' },
-  { label: 'ファンド最適化シミュ（実行回数）', rowIcon: SlidersHorizontal, free: 'partial', freeNote: `月${FREE_FUND_OPTIMIZER_RUNS_PER_MONTH}回まで`, premium: 'yes', premiumNote: '無制限' },
-  { label: '最適化の「ウォッチセット」：保存・適用・削除', rowIcon: Save, free: 'no', freeNote: '使い捨て試算のみ', premium: 'yes', premiumNote: '保存可能' },
+  { label: '配分シミュレーション（実行回数）', rowIcon: SlidersHorizontal, free: 'partial', freeNote: `月${FREE_FUND_OPTIMIZER_RUNS_PER_MONTH}回まで`, premium: 'yes', premiumNote: '無制限' },
+  { label: '配分シミュレーションの「ウォッチセット」：保存・削除', rowIcon: Save, free: 'no', freeNote: '使い捨て試算のみ', premium: 'yes', premiumNote: '保存可能' },
   { label: 'マイページの目標配分プリセット（配分セット）', rowIcon: PieChart, free: 'partial', freeNote: '表示のみ', premium: 'yes', premiumNote: '保存・上書・削除' },
   { label: 'ファンドウォッチリスト（登録本数）', rowIcon: ListTree, free: 'partial', freeNote: `最大${FREE_FUND_WATCHLIST_LIMIT}本`, premium: 'yes', premiumNote: '無制限' },
   { label: '配当カレンダー・配当ウォッチ（登録銘柄数）', rowIcon: Calendar, free: 'partial', freeNote: '最大3銘柄', premium: 'yes', premiumNote: '無制限＋グループ' },
   { label: '配当の税引後（手取り）表示・NISA 反映', rowIcon: BookMarked, free: 'no', premium: 'yes' },
-  { label: '配当アラート（手取りベースの入金見込み等）', rowIcon: Bell, free: 'no', premium: 'yes' },
+  { label: '配当アラート（手取りベースの入金試算等）', rowIcon: Bell, free: 'no', premium: 'yes' },
   {
     label: 'マイページ（株式）：追加買い・平均取得単価計算',
     rowIcon: LineChart,
@@ -71,7 +71,7 @@ const COMPARISON_ROWS = [
 const COMPARISON_SECTIONS = [
   { id: 'market', title: '市場', shortLabel: '市場', subtitle: 'ヒートマップ・EOD 等', sectionIcon: Globe },
   { id: 'product', title: '商品比較', shortLabel: '比較', subtitle: 'ファンド・ETF', sectionIcon: PieChart },
-  { id: 'optimizer', title: '最適化・連携', shortLabel: '最適化', subtitle: 'シム・保存・配分', sectionIcon: SlidersHorizontal },
+  { id: 'optimizer', title: '配分・連携', shortLabel: '配分', subtitle: 'シム・保存・配分', sectionIcon: SlidersHorizontal },
   { id: 'dividend', title: '配当', shortLabel: '配当', subtitle: 'カレンダー・手取り', sectionIcon: CircleDollarSign },
   { id: 'mypage', title: 'マイページ', shortLabel: 'マイページ', subtitle: '株式・試算', sectionIcon: User },
   { id: 'alerts', title: 'アラート・分析', shortLabel: '分析', subtitle: '通知・AI', sectionIcon: Activity },
@@ -96,8 +96,8 @@ const RECOMMENDATION_CARDS = [
   },
   {
     icon: LineChart,
-    title: '資産配分を最適化したい方',
-    body: 'シミュレーションと保存機能で、配分案を比較しやすくします。',
+    title: '配分を比べたい方',
+    body: 'シミュレーションと保存機能で、配分を見比べられます。',
     iconGradient: 'from-blue-500 to-indigo-600 shadow-blue-500/25',
   },
   {

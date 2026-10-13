@@ -32,7 +32,7 @@ export default async function handler(_req, res) {
     <main style="max-width:720px;margin:0 auto;padding:28px 16px 42px 16px;">
       <h1 style="margin:0;font-size:34px;line-height:1.15;font-weight:900;">家計トラッカー</h1>
       <p style="margin:10px 0 0 0;font-size:14px;line-height:1.8;color:#475569;">
-        月次の支出を分類し、積立や配当の入金見込みと並べてキャッシュフローを確認できます。レシート読み取りはログイン後に利用できます。
+        月次の支出を分類し、積立や配当の入金試算と並べてキャッシュフローを確認できます。レシート読み取りはログイン後に利用できます。
       </p>
       <p style="margin:16px 0 0;font-weight:800;">
         <a href="/dividend-calendar" style="color:#c2410c;margin-right:12px;">配当予定を見る</a>

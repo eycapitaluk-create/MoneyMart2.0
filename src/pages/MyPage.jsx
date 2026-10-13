@@ -398,17 +398,15 @@ const getFundWatchlistMemoStorageKey = (userId) =>
   (userId ? `${FUND_WATCHLIST_MEMO_STORAGE_KEY_PREFIX}_${userId}` : `${FUND_WATCHLIST_MEMO_STORAGE_KEY_PREFIX}_guest`)
 const AI_REPORT_DRAFT_STORAGE_KEY = 'mm_ai_report_draft_v1'
 const MYPAGE_TAB_STORAGE_KEY = 'mm_mypage_active_tab_v1'
-const MYPAGE_ALLOWED_TABS = ['wealth', 'stock', 'fund', 'related', 'sellhistory', 'point', 'debt', 'coach', 'dividend']
+const MYPAGE_ALLOWED_TABS = ['wealth', 'analysis', 'watch', 'stock', 'fund', 'related', 'sellhistory', 'point', 'debt', 'coach', 'dividend']
 const normalizeMyPageTab = (value = '') => {
   const raw = String(value || '').trim().toLowerCase()
   if (!raw) return 'wealth'
-  if (raw === 'summary') return 'wealth'
+  if (raw === 'summary' || raw === 'stock' || raw === 'stocks' || raw === 'fund' || raw === 'funds') return 'wealth'
   if (raw === 'budget') return 'point'
-  if (raw === 'stocks') return 'stock'
-  if (raw === 'funds') return 'fund'
   if (raw === 'coach') return 'debt'
   if (raw === 'history' || raw === 'sell-history' || raw === 'sell_history') return 'sellhistory'
-  if (raw === 'impact' || raw === 'exposure' || raw === 'kanren') return 'related'
+  if (raw === 'related' || raw === 'impact' || raw === 'exposure' || raw === 'kanren') return 'analysis'
   return raw
 }
 /** App の通知バッジのみ更新。家計の保存成功時だけ呼ぶ（レンダー連動の useEffect では呼ばない）。 */
@@ -3921,11 +3919,22 @@ const WealthSection = ({
 
   const [stockTabHelpOpen, setStockTabHelpOpen] = useState(false)
   const [fundTabHelpOpen, setFundTabHelpOpen] = useState(false)
+  const [holdingAddSheet, setHoldingAddSheet] = useState(null)
 
   useEffect(() => {
     if (tabMode !== 'stock') setStockTabHelpOpen(false)
     if (tabMode !== 'fund') setFundTabHelpOpen(false)
+    setHoldingAddSheet(null)
   }, [tabMode])
+
+  useEffect(() => {
+    if (!holdingAddSheet) return undefined
+    const onKey = (e) => {
+      if (e.key === 'Escape') setHoldingAddSheet(null)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [holdingAddSheet])
 
   useEffect(() => {
     if (!stockTabHelpOpen && !fundTabHelpOpen) return undefined
@@ -5046,6 +5055,14 @@ const WealthSection = ({
   const isWealthTab = tabMode === 'wealth'
   const isStockTab = tabMode === 'stock'
   const isFundTab = tabMode === 'fund'
+  const isAnalysisTab = tabMode === 'analysis'
+  const isWatchTab = tabMode === 'watch'
+  const isAssetHome = isWealthTab
+  const showOverview = isAnalysisTab
+  const showStockHoldings = isAssetHome || isStockTab
+  const showFundHoldings = isAssetHome || isFundTab
+  const showStockWatch = isWatchTab || isStockTab
+  const showFundWatch = isWatchTab || isFundTab
   const stockHasInputs = groupedOwnedStocks.length > 0
   /** ownedStockItems は v_stock_latest / プロファイル取得より遅れる。raw の保有ロットがあれば「未登録」バナーを出さない */
   const stockReportHasData =
@@ -5478,9 +5495,9 @@ const WealthSection = ({
     : isFundTab
       ? fundDiagnosisHoldings
       : [...stockDiagnosisHoldings, ...fundDiagnosisHoldings]
-  const showFreeHoldingsBanner = ENFORCE_FREE_OWNED_DISTINCT_SYMBOL_CAPS && !isPaidMember && (isStockTab || isFundTab || tabMode === 'wealth')
+  const showFreeHoldingsBanner = ENFORCE_FREE_OWNED_DISTINCT_SYMBOL_CAPS && !isPaidMember && (isStockTab || isFundTab || tabMode === 'wealth' || isAssetHome)
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-6">
       {avgDownModalOpen && avgDownSelectedStock ? (
         <div className="fixed inset-0 z-[120] flex items-center justify-center px-4">
           <button
@@ -5859,7 +5876,8 @@ const WealthSection = ({
           </p>
         </div>
       ) : null}
-      {tabMode === 'wealth' ? <WealthAccumulationSimCard /> : null}
+      {isAssetHome ? <div className="order-40"><WealthAccumulationSimCard /></div> : null}
+      {showOverview ? (
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
         {(isStockTab && !stockReportHasData) ? (
           <div className="xl:col-span-12 rounded-2xl border border-dashed border-orange-300 dark:border-orange-700 bg-orange-50/50 dark:bg-orange-950/25 px-6 py-10 text-center shadow-sm">
@@ -6302,8 +6320,9 @@ const WealthSection = ({
           </>
         )}
       </div>
+      ) : null}
 
-      {isPaidMember ? (
+      {showOverview ? (isPaidMember ? (
         <Suspense
           fallback={(
             <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/40 p-6 animate-pulse min-h-[140px]" aria-hidden />
@@ -6336,7 +6355,7 @@ const WealthSection = ({
           <p className="mt-3 inline-flex items-center rounded-full bg-indigo-100 dark:bg-indigo-900/40 px-3 py-1 text-xs font-black text-indigo-700 dark:text-indigo-200">クリックしてプレミアムで確認</p>
         </button>
         </div>
-      )}
+      )) : null}
 
       {isStockTab && Boolean(globalThis?.__MM_DEV__) && (
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 overflow-hidden">
@@ -6398,8 +6417,8 @@ const WealthSection = ({
         </div>
       )}
 
-      {isFundTab && fundHasInputs && (
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
+      {(isFundTab || isAssetHome) && fundHasInputs && (
+        <div className={`grid grid-cols-1 xl:grid-cols-12 gap-4 ${isAssetHome ? 'order-4' : ''}`}>
           <div className="xl:col-span-5 bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 overflow-hidden">
             <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/60">
               <h3 className="font-black text-slate-900 dark:text-white">ファンド 国別配分 (円換算)</h3>
@@ -6502,12 +6521,21 @@ const WealthSection = ({
         </div>
       )}
 
-      {isFundTab && (
-        <div className="space-y-4">
+      {showFundHoldings && (
+        <div className={`space-y-4 ${isAssetHome ? 'order-3' : ''}`}>
           <div id="mypage-owned-fund-section" className="scroll-mt-24 bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 overflow-hidden">
             <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/60">
               <div className="flex items-start justify-between gap-3">
-                <h3 id="fund-performance-heading" className="font-black text-slate-900 dark:text-white shrink-0">ファンドパフォーマンス</h3>
+                <h3 id="fund-performance-heading" className="font-black text-slate-900 dark:text-white shrink-0">保有ファンド</h3>
+                <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setHoldingAddSheet('fund')}
+                  className="inline-flex items-center gap-1 rounded-xl bg-slate-900 dark:bg-orange-500 text-white px-3 py-2 text-xs font-black hover:opacity-90"
+                >
+                  <Plus size={14} aria-hidden />
+                  追加
+                </button>
                 <button
                   type="button"
                   onClick={() => setFundTabHelpOpen(true)}
@@ -6518,9 +6546,20 @@ const WealthSection = ({
                 >
                   <HelpCircle className="w-5 h-5" aria-hidden />
                 </button>
+                </div>
               </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">実際に買ったファンドを追加して、取引別・合算損益率を管理できます。</p>
-              <div className="mt-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-[2.1fr_1fr_1fr_1fr_auto] gap-3 md:gap-2 xl:items-end">
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">実際に買ったファンドを「＋追加」から登録し、取引別・合算損益率を管理できます。</p>
+              {holdingAddSheet === 'fund' ? (
+              <div className="fixed inset-0 z-[130] flex items-end sm:items-center justify-center px-0 sm:px-4">
+                <button type="button" className="absolute inset-0 bg-slate-900/55" aria-label="閉じる" onClick={() => setHoldingAddSheet(null)} />
+                <div className="relative z-[131] w-full max-w-lg max-h-[min(90vh,760px)] overflow-y-auto rounded-t-2xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex items-center justify-between gap-3 mb-3">
+                    <h4 className="text-base font-black text-slate-900 dark:text-white">保有ファンドを追加</h4>
+                    <button type="button" onClick={() => setHoldingAddSheet(null)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800" aria-label="閉じる">
+                      <X size={18} aria-hidden />
+                    </button>
+                  </div>
+              <div className="grid grid-cols-1 gap-3">
                 {(() => {
                   const submitOwnedFund = async () => {
                     const ok = await onAddOwnedFund?.({
@@ -6537,6 +6576,7 @@ const WealthSection = ({
                       setOwnedFundSymbolOptions([])
                     setFundSuggestOpen(false)
                     setFundSuggestIndex(-1)
+                    setHoldingAddSheet(null)
                     }
                   }
                   const onFundInputKeyDown = async (e) => {
@@ -6702,13 +6742,16 @@ const WealthSection = ({
                   )
                 })()}
               </div>
+                </div>
+              </div>
+              ) : null}
             </div>
             <p className="lg:hidden px-4 pt-3 pb-1 text-xs font-semibold text-slate-500 dark:text-slate-400 leading-snug">
               スマホではカードで縦スクロールのみ。表は横幅のある画面（PC）で表示されます。
             </p>
             <div className="lg:hidden px-3 pb-3 space-y-3">
               {groupedOwnedFunds.length === 0 ? (
-                <p className="text-center text-sm text-slate-500 dark:text-slate-400 py-6">保有ファンドがまだありません。上のフォームから追加してください。</p>
+                <p className="text-center text-sm text-slate-500 dark:text-slate-400 py-6">保有ファンドがまだありません。右上の「＋追加」から登録してください。</p>
               ) : (
                 groupedOwnedFunds.map((fund) => {
                   const pnlYen = fund.currentValueJpy - fund.totalCostJpy
@@ -6906,7 +6949,7 @@ const WealthSection = ({
                   {groupedOwnedFunds.length === 0 && (
                     <tr className="border-t border-slate-100 dark:border-slate-800">
                       <td colSpan={10} className="px-4 py-8 text-center text-sm text-slate-500 dark:text-slate-400">
-                        保有ファンドがまだありません。上のフォームから追加してください。
+                        保有ファンドがまだありません。右上の「＋追加」から登録してください。
                       </td>
                     </tr>
                   )}
@@ -7087,6 +7130,11 @@ const WealthSection = ({
               </span>
             </p>
           </div>
+        </div>
+      )}
+
+      {showFundWatch && (
+        <div className="space-y-4">
           <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 overflow-hidden">
             <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/60">
               <div className="flex items-center justify-between gap-3">
@@ -7251,9 +7299,9 @@ const WealthSection = ({
         </div>
       )}
 
-      {!isFundTab && (
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
-        <div id={isWealthTab ? 'wealth-allocation-chart' : undefined} className={`${isStockTab || isWealthTab ? 'xl:col-span-5' : 'xl:col-span-7'} bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 overflow-hidden`}>
+      {(isAssetHome || isStockTab) && (
+      <div className={`grid grid-cols-1 xl:grid-cols-12 gap-4 ${isAssetHome ? 'order-1' : ''}`}>
+        <div id={isWealthTab ? 'wealth-allocation-chart' : undefined} className={`${isAssetHome ? 'order-2 xl:order-1 ' : ''}${isStockTab || isWealthTab ? 'xl:col-span-5' : 'xl:col-span-7'} bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 overflow-hidden`}>
           <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/60">
             <h3 className="font-black text-slate-900 dark:text-white">{isWealthTab ? '株式/ファンド構成比' : isStockTab ? '株式 セクター別配分 (円換算)' : isFundTab ? 'ファンド 国別配分 (円換算)' : '資産成長トレンド (6ヶ月)'}</h3>
           </div>
@@ -7364,7 +7412,7 @@ const WealthSection = ({
           </div>
         </div>
 
-        <div className={`${isStockTab || isWealthTab ? 'xl:col-span-7' : 'xl:col-span-5'} bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 p-5`}>
+        <div className={`${isAssetHome ? 'order-1 xl:order-2 ' : ''}${isStockTab || isWealthTab ? 'xl:col-span-7' : 'xl:col-span-5'} bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 p-5`}>
           <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
             <h3 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
               <PieChart size={18} className="text-indigo-500" /> {isWealthTab ? '資産成長トレンド' : isStockTab ? '株式パフォーマンス推移' : isFundTab ? 'ファンドパフォーマンス推移' : '株式/ファンド構成比'}
@@ -7440,7 +7488,7 @@ const WealthSection = ({
       )}
 
       {isWealthTab && (
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 xl:items-stretch">
+        <div className="order-4 grid grid-cols-1 xl:grid-cols-12 gap-4 xl:items-stretch">
           {totalCurrentValue > 0 ? (
             <div className="xl:col-span-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 p-5 flex flex-col min-h-0 max-xl:h-auto xl:h-full">
               <h3 className="font-black text-slate-900 dark:text-white flex items-center gap-2">
@@ -7945,11 +7993,20 @@ const WealthSection = ({
         </div>
       )}
 
-      {isStockTab && (
-      <div id="mypage-stock-holdings" className="scroll-mt-24 bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 overflow-hidden">
+      {showStockHoldings && (
+      <div id="mypage-stock-holdings" className={`scroll-mt-24 bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 overflow-hidden ${isAssetHome ? 'order-2' : ''}`}>
           <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/60">
             <div className="flex items-start justify-between gap-3">
-              <h3 id="stock-performance-heading" className="font-black text-slate-900 dark:text-white shrink-0">株式パフォーマンス</h3>
+              <h3 id="stock-performance-heading" className="font-black text-slate-900 dark:text-white shrink-0">保有銘柄</h3>
+              <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => setHoldingAddSheet('stock')}
+                className="inline-flex items-center gap-1 rounded-xl bg-slate-900 dark:bg-orange-500 text-white px-3 py-2 text-xs font-black hover:opacity-90"
+              >
+                <Plus size={14} aria-hidden />
+                追加
+              </button>
               <button
                 type="button"
                 onClick={() => setStockTabHelpOpen(true)}
@@ -7960,8 +8017,9 @@ const WealthSection = ({
               >
                 <HelpCircle className="w-5 h-5" aria-hidden />
               </button>
+              </div>
             </div>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">ウォッチリストとは別に、実際に買った銘柄を追加して損益率を管理できます。</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">実際に買った銘柄を「＋追加」から登録し、損益率を管理できます。</p>
             {userId ? (
               <div
                 className="mt-3 rounded-xl border-2 border-amber-400 dark:border-amber-500 bg-amber-50 dark:bg-amber-950/40 px-3 py-2.5 shadow-sm ring-1 ring-amber-200/80 dark:ring-amber-700/50"
@@ -7990,6 +8048,16 @@ const WealthSection = ({
                 </p>
               </div>
             )}
+            {holdingAddSheet === 'stock' ? (
+            <div className="fixed inset-0 z-[130] flex items-end sm:items-center justify-center px-0 sm:px-4">
+              <button type="button" className="absolute inset-0 bg-slate-900/55" aria-label="閉じる" onClick={() => setHoldingAddSheet(null)} />
+              <div className="relative z-[131] w-full max-w-lg max-h-[min(90vh,760px)] overflow-y-auto rounded-t-2xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <h4 className="text-base font-black text-slate-900 dark:text-white">保有銘柄を追加</h4>
+                  <button type="button" onClick={() => setHoldingAddSheet(null)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800" aria-label="閉じる">
+                    <X size={18} aria-hidden />
+                  </button>
+                </div>
             <div className="mt-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white/70 dark:bg-slate-900/40 px-3 py-2">
               <p className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
                 例) 銘柄コード: `AAPL` または会社名: `Apple` / 買付日: `2026/01/15` / 保有数量: `10` または `12.345`（小数第3位まで） / 買付価格: `195.2` → 「保有銘柄を追加」
@@ -8015,7 +8083,7 @@ const WealthSection = ({
                 </li>
               </ul>
             </div>
-            <div className="mt-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-[2.2fr_1.1fr_1fr_1fr_auto] gap-3 md:gap-2 xl:items-end">
+            <div className="mt-3 grid grid-cols-1 gap-3">
               {/*
                 Enter key should submit from any input to make quick entry possible.
               */}
@@ -8038,6 +8106,7 @@ const WealthSection = ({
                     setOwnedSymbolOptions([])
                     setStockSuggestOpen(false)
                     setStockSuggestIndex(-1)
+                    setHoldingAddSheet(null)
                   }
                 }
                 const onInputKeyDown = async (e) => {
@@ -8213,13 +8282,16 @@ const WealthSection = ({
                 )
               })()}
             </div>
+              </div>
+            </div>
+            ) : null}
           </div>
           <p className="lg:hidden px-4 pt-3 pb-1 text-xs font-semibold text-slate-500 dark:text-slate-400 leading-snug">
             スマホではカードで縦スクロールのみ。表は横幅のある画面（PC）で表示されます。
           </p>
           <div className="lg:hidden px-3 pb-3 space-y-3">
             {groupedOwnedStocks.length === 0 ? (
-              <p className="text-center text-sm text-slate-500 dark:text-slate-400 py-6">保有銘柄がまだありません。上のフォームから追加してください。</p>
+              <p className="text-center text-sm text-slate-500 dark:text-slate-400 py-6">保有銘柄がまだありません。右上の「＋追加」から登録してください。</p>
             ) : (
               groupedOwnedStocks.map((stock) => {
                 const avgBuyPrice = stock.totalQty > 0 ? (stock.totalCost / stock.totalQty) : 0
@@ -8421,7 +8493,7 @@ const WealthSection = ({
                 {groupedOwnedStocks.length === 0 && (
                   <tr className="border-t border-slate-100 dark:border-slate-800">
                     <td colSpan={9} className="px-4 py-8 text-center text-sm text-slate-500 dark:text-slate-400">
-                      保有銘柄がまだありません。上のフォームから追加してください。
+                      保有銘柄がまだありません。右上の「＋追加」から登録してください。
                     </td>
                   </tr>
                 )}
@@ -8620,7 +8692,7 @@ const WealthSection = ({
       </div>
       )}
 
-      {isStockTab && (
+      {showStockWatch && (
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/60">
             <h3 className="text-lg font-black text-slate-900 dark:text-white">株式ウォッチリスト</h3>
@@ -12792,7 +12864,7 @@ export default function MyPage({
     }
   })
   useEffect(() => {
-    if (activeTab !== 'related') return undefined
+    if (activeTab !== 'analysis') return undefined
     let cancelled = false
     ;(async () => {
       try {
@@ -12830,10 +12902,10 @@ export default function MyPage({
     }
   }
 
-  /** 資産運用タブの空状態などから、株式／ファンドタブへ切り替えつつ入力欄へスクロール */
+  /** 資産タブの保有一覧へ移動して、該当セクションまでスクロール */
   const switchPortfolioTabAndScroll = (mode) => {
     if (mode !== 'stock' && mode !== 'fund') return
-    handleTabChange(mode)
+    handleTabChange('wealth')
     const anchor = mode === 'stock' ? 'mypage-stock-holdings' : 'mypage-owned-fund-section'
     window.setTimeout(() => {
       document.getElementById(anchor)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -16043,9 +16115,15 @@ export default function MyPage({
   )
 
   const renderContent = () => {
-    switch (activeTab) {
+    const sectionTab = activeTab === 'related'
+      ? 'analysis'
+      : (activeTab === 'stock' || activeTab === 'fund' ? 'wealth' : activeTab)
+    switch (sectionTab) {
+      case 'analysis':
+      case 'watch':
       case 'wealth':
         return (
+          <div className="space-y-6">
           <WealthSection
             stockWatchlistItems={effectiveStockWatchlistItems}
             ownedStocks={ownedStocks}
@@ -16082,7 +16160,7 @@ export default function MyPage({
             onDeleteAsset={handleDeleteAsset}
             pointAccounts={effectivePointAccounts}
             insurances={effectiveInsurances}
-            tabMode="wealth"
+            tabMode={sectionTab}
             realizedStockTrades={realizedStockTrades}
             onRecordStockSale={handleRecordStockSale}
             realizedFundTrades={realizedFundTrades}
@@ -16091,6 +16169,14 @@ export default function MyPage({
             portfolioQuotesHydrating={stockPortfolioQuotesHydrating || fundPortfolioQuotesHydrating}
             onSwitchPortfolioTab={switchPortfolioTabAndScroll}
           />
+            {sectionTab === 'analysis' ? (
+              <PortfolioRelatedPanel
+                exposureProfile={exposureProfile}
+                loading={exposureLoading}
+                newsRows={relatedNewsRows}
+              />
+            ) : null}
+          </div>
         )
       case 'stock':
         return (
@@ -16190,6 +16276,11 @@ export default function MyPage({
         )
       case 'point':
         return (
+          <div className="space-y-4">
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={() => handleTabChange('point')} className="px-4 py-2 rounded-full text-xs md:text-sm font-bold bg-slate-900 dark:bg-orange-500 text-white">家計の記録</button>
+              <button type="button" onClick={() => handleTabChange('debt')} className="px-4 py-2 rounded-full text-xs md:text-sm font-bold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400">ローン・負債</button>
+            </div>
           <BudgetSectionV2
             user={user}
             isPaidMember={isPaidMember}
@@ -16217,10 +16308,15 @@ export default function MyPage({
             insuranceSaving={insuranceSaving}
             pointSaving={pointSaving}
           />
+          </div>
         )
       case 'debt':
         return (
           <div className="space-y-8">
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={() => handleTabChange('point')} className="px-4 py-2 rounded-full text-xs md:text-sm font-bold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400">家計の記録</button>
+              <button type="button" onClick={() => handleTabChange('debt')} className="px-4 py-2 rounded-full text-xs md:text-sm font-bold bg-slate-900 dark:bg-orange-500 text-white">ローン・負債</button>
+            </div>
             <DebtSection
               annualIncome={financeProfile.annual_income_manwon}
               debtRemainingYen={loanRemainingYen}
@@ -16353,8 +16449,8 @@ export default function MyPage({
               assetsReady={ownedAssetDbReady}
               stockRealizedDbReady={realizedDbAvailable}
               fundRealizedDbReady={realizedFundDbAvailable}
-              onGoStockTab={() => handleTabChange('stock')}
-              onGoFundTab={() => handleTabChange('fund')}
+              onGoStockTab={() => switchPortfolioTabAndScroll('stock')}
+              onGoFundTab={() => switchPortfolioTabAndScroll('fund')}
               onUpdateStockTrade={handleUpdateStockRealizedTrade}
               onDeleteStockTrade={handleDeleteStockRealizedTrade}
               onUpdateFundTrade={handleUpdateFundRealizedTrade}
@@ -16436,26 +16532,24 @@ export default function MyPage({
                   まずは保有資産の登録から
                 </p>
                 <p className="text-[11px] md:text-xs leading-relaxed text-slate-700 dark:text-slate-300 mb-3">
-                  株式や投資信託を登録すると、総資産や評価損益がまとめて確認できます。画面下の
-                  <span className="font-bold text-slate-900 dark:text-white">「株式」</span>
-                  または
-                  <span className="font-bold text-slate-900 dark:text-white">「ファンド」</span>
-                  タブを開き、銘柄・数量・取得単価などを入力してください。
+                  株式や投資信託を登録すると、総資産や評価損益がまとめて確認できます。資産タブの
+                  <span className="font-bold text-slate-900 dark:text-white">「＋追加」</span>
+                  から銘柄・数量・取得単価などを入力してください。
                 </p>
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
-                    onClick={() => handleTabChange('stock')}
+                    onClick={() => switchPortfolioTabAndScroll('stock')}
                     className="inline-flex items-center justify-center rounded-xl bg-slate-900 dark:bg-orange-500 px-3 py-2 text-[11px] font-black text-white hover:opacity-95 transition"
                   >
-                    株式タブへ
+                    保有銘柄へ
                   </button>
                   <button
                     type="button"
-                    onClick={() => handleTabChange('fund')}
+                    onClick={() => switchPortfolioTabAndScroll('fund')}
                     className="inline-flex items-center justify-center rounded-xl border-2 border-orange-400 dark:border-orange-600 bg-white dark:bg-slate-900 px-3 py-2 text-[11px] font-black text-orange-800 dark:text-orange-200 hover:bg-orange-50 dark:hover:bg-orange-950/50 transition"
                   >
-                    ファンドタブへ
+                    保有ファンドへ
                   </button>
                 </div>
               </div>
@@ -16492,21 +16586,19 @@ export default function MyPage({
 
           <div className="flex overflow-x-auto gap-2 pb-0.5 scrollbar-hide pointer-events-auto">
             {[
-              { id: 'wealth', label: '資産運用' },
-              { id: 'stock', label: '株式' },
-              { id: 'fund', label: 'ファンド' },
-              { id: 'related', label: '保有との関連' },
+              { id: 'wealth', label: '資産' },
+              { id: 'analysis', label: '分析' },
               { id: 'sellhistory', label: '売却履歴' },
-              { id: 'dividend', label: '配当カレンダー' },
+              { id: 'dividend', label: '配当' },
+              { id: 'watch', label: 'ウォッチ' },
               { id: 'point', label: '家計簿' },
-              { id: 'debt', label: 'ローン・負債管理' },
             ].map((tab) => (
               <button
                 key={`primary-tab-${tab.id}`}
                 type="button"
                 onClick={() => handleTabChange(tab.id)}
                 className={`pointer-events-auto inline-flex items-center px-4 py-2.5 rounded-full text-xs md:text-sm font-bold whitespace-nowrap transition shrink-0 ${
-                  activeTab === tab.id
+                  activeTab === tab.id || (tab.id === 'point' && activeTab === 'debt')
                     ? 'bg-slate-900 dark:bg-orange-500 text-white'
                     : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400'
                 }`}

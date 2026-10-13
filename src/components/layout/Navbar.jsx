@@ -91,6 +91,9 @@ export default function Navbar({
   const [desktopMoreOpen, setDesktopMoreOpen] = useState(false)
   const [showMobileAlertPanel, setShowMobileAlertPanel] = useState(false)
   const [notificationHooksReady, setNotificationHooksReady] = useState(false)
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false)
+  const accountLabel = String(session?.user?.email || userProfile?.display_name || userProfile?.full_name || '').trim()
+  const accountInitial = (accountLabel[0] || 'M').toUpperCase()
   const planTier = String(
     userProfile?.planTier
     || userProfile?.plan_tier
@@ -203,6 +206,7 @@ export default function Navbar({
     await supabase.auth.signOut({ scope: 'local' })
     setIsMobileMenuOpen(false)
     setShowMobileAlertPanel(false)
+    setAccountMenuOpen(false)
     navigate('/')
   }
 
@@ -308,7 +312,7 @@ export default function Navbar({
               <Link
                 to="/mypage?tab=wealth"
                 className={`${desktopSecondaryNavClass(isMainNavActive(pathname, 'mypage'))} text-xs xl:text-sm whitespace-nowrap`}
-                title="マイページ（資産運用タブから開きます）"
+                title="マイページ（資産タブから開きます）"
               >
                 <span className="hidden xl:inline">マイページ</span>
                 <span className="xl:hidden">マイ</span>
@@ -499,12 +503,39 @@ export default function Navbar({
                   ) : null}
                 </div>
                 {session ? (
-                  <button
-                    onClick={handleLogout}
-                    className="bg-slate-900 hover:bg-black dark:bg-slate-100 dark:hover:bg-white dark:text-slate-900 text-white px-3 xl:px-5 py-2 rounded-full text-xs xl:text-sm font-bold transition shadow-lg whitespace-nowrap shrink-0"
-                  >
-                    ログアウト
-                  </button>
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setAccountMenuOpen((v) => !v)}
+                      className="w-9 h-9 rounded-full bg-slate-900 dark:bg-orange-500 text-white text-sm font-black flex items-center justify-center shrink-0"
+                      aria-label="アカウントメニュー"
+                      aria-expanded={accountMenuOpen}
+                    >
+                      {accountInitial}
+                    </button>
+                    {accountMenuOpen ? (
+                      <>
+                        <div className="fixed inset-0 z-[95]" aria-hidden onClick={() => setAccountMenuOpen(false)} />
+                        <div className="absolute right-0 top-full mt-1 z-[100] w-52 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-lg p-1">
+                          <p className="px-3 py-2 text-[11px] font-bold text-slate-400 truncate">{accountLabel}</p>
+                          <Link
+                            to="/mypage?tab=wealth"
+                            onClick={() => setAccountMenuOpen(false)}
+                            className="block px-3 py-2 rounded-lg text-sm font-bold text-slate-800 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800"
+                          >
+                            マイページ
+                          </Link>
+                          <button
+                            type="button"
+                            onClick={handleLogout}
+                            className="w-full text-left px-3 py-2 rounded-lg text-sm font-bold text-slate-800 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800"
+                          >
+                            ログアウト
+                          </button>
+                        </div>
+                      </>
+                    ) : null}
+                  </div>
                 ) : (
                   <button
                     onClick={() => navigate('/login', { state: { from: `${window.location.pathname}${window.location.search}` } })}
@@ -795,7 +826,7 @@ export default function Navbar({
             {authReady && session ? (
               <Link
                 to="/mypage?tab=wealth"
-                title="マイページ（資産運用タブから開きます）"
+                title="マイページ（資産タブから開きます）"
                 onClick={() => setIsMobileMenuOpen(false)}
                 className={mobileNavRowClass(isMainNavActive(pathname, 'mypage'))}
               >
@@ -816,12 +847,18 @@ export default function Navbar({
             {!authReady ? (
               <div className="w-full h-12 rounded-xl bg-slate-200 dark:bg-slate-700 animate-pulse" />
             ) : session ? (
-              <button
-                onClick={handleLogout}
-                className="w-full bg-slate-900 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2"
-              >
-                ログアウト
-              </button>
+              <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-3 space-y-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="w-9 h-9 rounded-full bg-slate-900 dark:bg-orange-500 text-white text-sm font-black flex items-center justify-center shrink-0">{accountInitial}</span>
+                  <span className="text-xs font-bold text-slate-500 truncate">{accountLabel}</span>
+                </div>
+                <button
+                  onClick={handleLogout}
+                  className="w-full text-left px-2 py-2 rounded-lg text-sm font-bold text-slate-800 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800"
+                >
+                  ログアウト
+                </button>
+              </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <button

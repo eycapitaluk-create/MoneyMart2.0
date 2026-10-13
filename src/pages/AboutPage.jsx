@@ -214,11 +214,11 @@ export default function AboutPage() {
         <h3 className="mt-10 mb-4 text-lg font-black text-slate-900 dark:text-white">投資業界での主な経歴</h3>
         <ol className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 divide-y divide-slate-200 dark:divide-slate-800">
           {[
-            ['2008年6月〜2012年6月', 'Caliburn Capital Partners LLP', 'Analyst'],
-            ['2012年7月〜2014年2月', 'Newton Investment Management', 'Analyst'],
-            ['2014年3月〜2015年5月', 'Rathbone Brothers Plc', 'Analyst'],
-            ['2015年6月〜2022年3月', 'Fidelity International', 'Senior Manager'],
-            ['2022年4月〜2023年8月', 'Aegon', 'Senior Investment Analyst'],
+            ['2008年〜2012年', 'Caliburn Capital Partners LLP', 'Analyst'],
+            ['2012年〜2014年', 'Newton Investment Management', 'Analyst'],
+            ['2014年〜2015年', 'Rathbone Brothers Plc', 'Analyst'],
+            ['2015年〜2022年', 'Fidelity International', 'Senior Manager'],
+            ['2022年〜2023年', 'Aegon', 'Senior Investment Analyst'],
           ].map(([period, org, role]) => (
             <li key={period} className="px-4 py-4 sm:px-5 grid grid-cols-1 sm:grid-cols-[11.5rem_minmax(0,1fr)_auto] gap-1 sm:gap-4 sm:items-baseline">
               <p className="text-xs font-bold text-slate-500 dark:text-slate-400">{period}</p>

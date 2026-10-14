@@ -1245,7 +1245,7 @@ const buildAiSummaryReport = ({ totalReturnRate, dti, concentration, bestReturn 
       : '負債比率は許容範囲です。積立比率の見直し余地を確認できます。',
     bestReturn >= 20
       ? '高リターン銘柄の比率が大きくなっていないか、事前ルールと照らして確認できます。'
-      : 'リターン改善余地があります。コストや分散の観点から積立条件を確認できます。',
+      : 'コストや分散の観点から積立条件を確認できます。',
   ]
 
   const confidence = riskScoreResult.score >= 70 ? '高' : riskScoreResult.score >= 40 ? '中' : '中'
@@ -6338,7 +6338,7 @@ const WealthSection = ({
             <p className="text-xs font-black tracking-wide uppercase">AI ASSET REPORT (PREMIUM)</p>
           </div>
           <p className="mt-2 text-base font-black text-slate-900 dark:text-white">資産AIレポートはプレミアム限定でご利用いただけます。</p>
-          <p className="mt-1.5 text-sm text-slate-600 dark:text-slate-300">例: 現在の比率では「高ボラ資産が+12%」のため、分散改善余地があります。</p>
+          <p className="mt-1.5 text-sm text-slate-600 dark:text-slate-300">例: 現在の比率では「高ボラ資産が+12%」です。分散の偏りを確認できます。</p>
           <p className="mt-3 inline-flex items-center rounded-full bg-indigo-100 dark:bg-indigo-900/40 px-3 py-1 text-xs font-black text-indigo-700 dark:text-indigo-200">クリックしてプレミアムで確認</p>
         </button>
         </div>
@@ -7100,7 +7100,7 @@ const WealthSection = ({
                   <h3 className="font-black text-slate-900 dark:text-white">保存した配分セット</h3>
                   <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
                     {isPaidMember
-                      ? 'ファンド一覧のポートフォリオ最適化で保存した「ウォッチセット」と同じデータです（ここでは配分セットと表示）。銘柄と比率を保ったまま「最適化で開く」から比較・再調整に戻れます。'
+                      ? 'ファンド一覧の配分シミュレーションで保存した「ウォッチセット」と同じデータです（ここでは配分セットと表示）。銘柄と比率を保ったまま「配分で開く」から比較・再調整に戻れます。'
                       : '配分セットの保存/削除はプレミアム限定です。無料では閲覧のみ可能です。'}
                   </p>
                 </div>
@@ -7129,7 +7129,7 @@ const WealthSection = ({
                             onClick={() => navigate(buildFundOptimizerCompareUrl(set))}
                             className="px-2.5 py-1 rounded-md border border-indigo-200 dark:border-indigo-800 text-[11px] font-bold text-indigo-700 dark:text-indigo-200 hover:bg-white/80 dark:hover:bg-indigo-900/30"
                           >
-                            最適化で開く
+                            配分で開く
                           </button>
                           <button
                             type="button"
@@ -7164,7 +7164,7 @@ const WealthSection = ({
                   <h3 className="text-lg font-black text-slate-900 dark:text-white">ファンドウォッチリスト</h3>
                   <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
                     {isPaidMember
-                      ? 'ファンド一覧のハート登録と同じウォッチリストです。メモはブラウザに保存されます。配分セットに含まれる銘柄は、各カードの「配分セット」欄にセット名が表示されます。最適化でウォッチセットを保存・適用したとき、まだウォッチに無い構成銘柄は自動で追加されます。'
+                      ? 'ファンド一覧のハート登録と同じウォッチリストです。メモはブラウザに保存されます。配分セットに含まれる銘柄は、各カードの「配分セット」欄にセット名が表示されます。配分シミュレーションでウォッチセットを保存・適用したとき、まだウォッチに無い構成銘柄は自動で追加されます。'
                       : `無料プランは最大${FREE_FUND_WATCHLIST_LIMIT}件まで表示されます。`}
                   </p>
                 </div>
@@ -9628,8 +9628,8 @@ const BudgetSection = ({
           <div className="mt-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/60 p-3">
             <h5 className="text-[11px] font-black text-slate-700 dark:text-slate-200 mb-1.5">家計メモ</h5>
             <div className="space-y-1 text-[11px] text-slate-600 dark:text-slate-300">
-              <p>・ポイント/保険を登録すると、固定費の見込みと期限アラートの精度が上がります。</p>
-              <p>・今月の着地見込みは「シバの家計先読みアラート」で確認できます。</p>
+              <p>・ポイント/保険を登録すると、固定費の試算と期限アラートの精度が上がります。</p>
+              <p>・今月の着地の試算は「シバの家計先読みアラート」で確認できます。</p>
             </div>
           </div>
         </div>
@@ -9663,14 +9663,14 @@ const BudgetSection = ({
                   <div className="min-w-0 flex-1">
                     <p className="text-[10px] font-black text-orange-500 tracking-wide">SHIBA LIVE REPORT</p>
                     <p className="text-sm font-black text-slate-800 dark:text-slate-100 leading-snug">{spendForecastHeadline}</p>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">見込み ¥{spendingRunRateYen.toLocaleString('ja-JP')} / 予算 ¥{Number(budgetTargetYen || 0).toLocaleString('ja-JP')}</p>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">試算 ¥{spendingRunRateYen.toLocaleString('ja-JP')} / 予算 ¥{Number(budgetTargetYen || 0).toLocaleString('ja-JP')}</p>
                   </div>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div className="rounded-xl border border-amber-200 dark:border-amber-900/50 bg-amber-50/60 dark:bg-amber-900/20 p-3">
-                  <p className="text-[10px] font-black text-amber-700 dark:text-amber-300">月末支出見込み</p>
+                  <p className="text-[10px] font-black text-amber-700 dark:text-amber-300">月末支出の試算</p>
                   <p className={`mt-1 text-sm font-black ${
                     spendForecastStatus === 'overspend'
                       ? 'text-rose-600 dark:text-rose-300'
@@ -9714,8 +9714,8 @@ const BudgetSection = ({
                   </div>
                   <p className="text-xs font-bold text-slate-700 dark:text-slate-200">
                     {projectedDeficitYen > 0
-                      ? `今月は ${projectedDeficitYen.toLocaleString('ja-JP')}円 の不足見込みです。`
-                      : `月末の余剰見込みは ${projectedFreeCashYen.toLocaleString('ja-JP')}円 です。`}
+                      ? `今月は ${projectedDeficitYen.toLocaleString('ja-JP')}円 の不足の試算です。`
+                      : `月末の余剰の試算は ${projectedFreeCashYen.toLocaleString('ja-JP')}円 です。`}
                   </p>
                   <div className="mt-2 h-2 rounded-full bg-emerald-100 dark:bg-emerald-900/40 overflow-hidden">
                     <div className="h-full rounded-full bg-emerald-500" style={{ width: `${freeCashProgressPct}%` }} />
@@ -10772,7 +10772,7 @@ const BudgetSectionV2 = ({
           <div className="rounded-2xl border-[1.5px] border-[#1A1714] bg-[#1A1714] px-4 py-3.5 md:px-5 md:py-4 shadow-[0_4px_24px_rgba(0,0,0,0.1)] text-white">
             <p className="text-xs font-bold uppercase tracking-wider text-white/40 mb-1">月内支出</p>
             <p className="text-[22px] sm:text-[26px] font-black tabular-nums leading-none">{formatCurrency(summaryData.totalSpent)}</p>
-            <p className="text-xs text-white/55 mt-2 tabular-nums">月末支出見込み {formatCurrency(monthEndProjectionYen)}</p>
+            <p className="text-xs text-white/55 mt-2 tabular-nums">月末支出の試算 {formatCurrency(monthEndProjectionYen)}</p>
             <p className="text-xs text-white/40 mt-1.5">
               先月比{' '}
               {momVsPrevMonthPct == null ? (
@@ -11718,7 +11718,7 @@ const DebtSection = ({
 
               <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight mt-3">
                 {dtiNumeric > DTI_THRESHOLD
-                  ? '⚠️ 返済負担が高まっています。借り換えを検討してください。'
+                  ? '⚠️ 返済負担が高まっています。借り換え条件を確認できます。'
                   : '✅ 適正範囲内(35%以下)です。健全な家計状態です。'}
               </p>
             </div>
@@ -11941,7 +11941,7 @@ const DebtSection = ({
                   <p className="font-black">¥{baseTotalInterestYen.toLocaleString('ja-JP')}</p>
                 </div>
                 <div className="rounded-xl bg-white dark:bg-slate-900 p-3 border border-slate-200 dark:border-slate-700">
-                  <p className="text-xs text-slate-500 dark:text-slate-300">利息削減見込み</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-300">利息の差額試算</p>
                   <p className="font-black text-emerald-600 dark:text-emerald-300">¥{interestSavingYen.toLocaleString('ja-JP')}</p>
                 </div>
               </div>
@@ -12102,9 +12102,9 @@ const CoachSection = ({
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6">
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-5">
             <div>
-              <h2 className="text-2xl font-black text-slate-900 dark:text-white">家計最適化レポート</h2>
+              <h2 className="text-2xl font-black text-slate-900 dark:text-white">家計シミュレーション</h2>
               <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                iDeCo・NISAの節税試算と、負債最適化シミュレーションを1画面で管理します。
+                iDeCo・NISAの節税試算と、負債シミュレーションを1画面で管理します。
               </p>
             </div>
             <div className="flex p-1 bg-slate-100 dark:bg-slate-800 rounded-xl w-full md:w-auto">
@@ -12130,7 +12130,7 @@ const CoachSection = ({
                 }`}
               >
                 <Wallet size={16} />
-                負債の最適化
+                負債のシミュレーション
               </button>
             </div>
           </div>
@@ -12364,7 +12364,7 @@ const CoachSection = ({
           <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 border border-slate-200 dark:border-slate-800">
             <div className="flex items-center justify-between gap-4 mb-5">
               <div>
-                <h3 className="text-2xl font-black text-slate-900 dark:text-white">負債最適化レポート</h3>
+                <h3 className="text-2xl font-black text-slate-900 dark:text-white">負債シミュレーション</h3>
                 <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">このページ内で負債の追加・修正・削除ができます。</p>
               </div>
               <button
@@ -14930,7 +14930,7 @@ export default function MyPage({
         status: result.status,
         resultJson: result,
       })
-      setTaxShieldStatus(`節税シミュレーションを保存しました。見込み節税額 ¥${Math.abs(Number(result.potentialTaxSavingYen || 0)).toLocaleString('ja-JP')}`)
+      setTaxShieldStatus(`節税シミュレーションを保存しました。節税額の試算 ¥${Math.abs(Number(result.potentialTaxSavingYen || 0)).toLocaleString('ja-JP')}`)
     } catch (err) {
       setTaxShieldStatus(`シミュレーション保存に失敗: ${err?.message || 'unknown error'}`)
     }
@@ -14963,9 +14963,9 @@ export default function MyPage({
         ...prev,
         ...saved,
       }))
-      setCashFlowStatus('資金フロー最適化の入力を保存しました。')
+      setCashFlowStatus('資金フローの入力を保存しました。')
     } catch (err) {
-      setCashFlowStatus(`資金フロー最適化の保存に失敗: ${err?.message || 'unknown error'}`)
+      setCashFlowStatus(`資金フローの保存に失敗: ${err?.message || 'unknown error'}`)
     } finally {
       setCashFlowSaving(false)
     }
@@ -14991,7 +14991,7 @@ export default function MyPage({
           ...result,
         },
       })
-      setCashFlowStatus(`資金フロー試算を保存しました。追加利息見込み ¥${Math.abs(Number(result.additionalInterestYen || 0)).toLocaleString('ja-JP')}`)
+      setCashFlowStatus(`資金フロー試算を保存しました。追加利息の試算 ¥${Math.abs(Number(result.additionalInterestYen || 0)).toLocaleString('ja-JP')}`)
     } catch (err) {
       setCashFlowStatus(`資金フロー試算に失敗: ${err?.message || 'unknown error'}`)
     }

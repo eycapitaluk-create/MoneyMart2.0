@@ -265,11 +265,11 @@ export default function DividendCalendarSection({
               <p className="font-mono text-4xl font-black text-green-400">¥{Math.round(yearTotalJpy).toLocaleString('ja-JP')}</p>
               {isPaidMember ? (
                 <p className="mt-2 text-sm font-black text-emerald-300">
-                  税引後見込み受取額: ¥{Math.round(yearTotalNetJpy).toLocaleString('ja-JP')}
+                  税引後の試算受取額: ¥{Math.round(yearTotalNetJpy).toLocaleString('ja-JP')}
                 </p>
               ) : (
                 <p className="mt-2 text-xs font-bold text-amber-300">
-                  税引後見込み受取額:{' '}
+                  税引後の試算受取額:{' '}
                   <button
                     type="button"
                     onClick={openPremiumFromLock}
@@ -738,7 +738,7 @@ export default function DividendCalendarSection({
                     </div>
                     {isPaidMember ? (
                       <div className="mt-1 text-[11px] font-black text-emerald-600 dark:text-emerald-400">
-                        税引後見込み: {formatDividendCash(
+                        税引後の試算: {formatDividendCash(
                           getDividendNetCashInNative(
                             getAnnualDividendPerShare(newDividends) * modalStockQty,
                             newItemStub,
@@ -748,7 +748,7 @@ export default function DividendCalendarSection({
                       </div>
                     ) : (
                       <div className="mt-1 text-[11px] font-bold text-amber-600 dark:text-amber-400">
-                        税引後見込み: 🔒 プレミアムで確認
+                        税引後の試算: 🔒 プレミアムで確認
                       </div>
                     )}
                     {isLikelyUsdDivStock(newItemStub) ? (

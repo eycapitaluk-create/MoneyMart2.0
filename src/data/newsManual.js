@@ -25,7 +25,7 @@ export const NEWS_MARKET_TICKER = [
   },
   {
     source: "Yahoo Japan",
-    title: "スリム化で併載OK、ランドクルーザーやジムニーに最適? INNO ルーフギアケースにキャンプ派必見の新型が登場! 【CAR MONO図鑑】(MotorFan)",
+    title: "スリム化で併載OK、ランドクルーザーやジムニー向け? INNO ルーフギアケースにキャンプ派必見の新型が登場! 【CAR MONO図鑑】(MotorFan)",
     time: "22:32",
     topic: "Business",
     url: "https://news.yahoo.co.jp/articles/e617992e067d44ab8bad9aa9de809d98c27a6a55",
@@ -138,7 +138,7 @@ export const NEWS_MARKET_PICKUP = [
   },
   {
     source: "Yahoo Japan",
-    title: "スリム化で併載OK、ランドクルーザーやジムニーに最適? INNO ルーフギアケースにキャンプ派必見の新型が登場! 【CAR MONO図鑑】(MotorFan)",
+    title: "スリム化で併載OK、ランドクルーザーやジムニー向け? INNO ルーフギアケースにキャンプ派必見の新型が登場! 【CAR MONO図鑑】(MotorFan)",
     time: "22:32",
     topic: "Business",
     url: "https://news.yahoo.co.jp/articles/e617992e067d44ab8bad9aa9de809d98c27a6a55",
@@ -207,7 +207,7 @@ export const NEWS_FUND_PICKUP = [
   },
   {
     source: "Yahoo Japan",
-    title: "スリム化で併載OK、ランドクルーザーやジムニーに最適? INNO ルーフギアケースにキャンプ派必見の新型が登場! 【CAR MONO図鑑】(MotorFan)",
+    title: "スリム化で併載OK、ランドクルーザーやジムニー向け? INNO ルーフギアケースにキャンプ派必見の新型が登場! 【CAR MONO図鑑】(MotorFan)",
     time: "22:32",
     topic: "Business",
     url: "https://news.yahoo.co.jp/articles/e617992e067d44ab8bad9aa9de809d98c27a6a55",
@@ -276,7 +276,7 @@ export const NEWS_STOCK_DISCLOSURES = [
   },
   {
     source: "Yahoo Japan",
-    title: "スリム化で併載OK、ランドクルーザーやジムニーに最適? INNO ルーフギアケースにキャンプ派必見の新型が登場! 【CAR MONO図鑑】(MotorFan)",
+    title: "スリム化で併載OK、ランドクルーザーやジムニー向け? INNO ルーフギアケースにキャンプ派必見の新型が登場! 【CAR MONO図鑑】(MotorFan)",
     time: "22:32",
     topic: "Business",
     url: "https://news.yahoo.co.jp/articles/e617992e067d44ab8bad9aa9de809d98c27a6a55",

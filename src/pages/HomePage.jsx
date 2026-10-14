@@ -1461,7 +1461,7 @@ export default function HomePage({
                 id: 'diagnose',
                 step: '02',
                 title: '02 次に、数字で確認する',
-                desc: 'AIシミュレーターで、自分に合った数字を確認。「なんとなく」の判断から、根拠のある選択へ。',
+                desc: '条件を入れて、数字を確かめられます。',
                 cta: '30秒で診断をはじめる',
                 action: handleRiskClick,
                 icon: Sparkles,

@@ -80,7 +80,7 @@ const ETF_META_MAP = new Map(
 const isJapaneseNewsItem = (item) => String(item?.language || '').toLowerCase() === 'ja'
 const FALLBACK_WEEKLY_ECONOMIC_EVENTS = [
   { id: 'fallback-us-cpi', dateLabel: '3/10 (火)', country: 'US', event: '米国 消費者物価指数（CPI）', importance: 5 },
-  { id: 'fallback-fomc', dateLabel: '3/17-18 (火-水)', country: 'US', event: 'FOMC 金利発表・経済見通し・ドットチャート', importance: 5 },
+  { id: 'fallback-fomc', dateLabel: '3/17-18 (火-水)', country: 'US', event: 'FOMC 金利発表・経済予測・ドットチャート', importance: 5 },
 ]
 /** 2026年の主要マクロ・決算・テックイベント要約（参考。公式日程で要確認） */
 const CURATED_ECONOMIC_EVENTS = [
@@ -236,7 +236,7 @@ const CURATED_ECONOMIC_EVENTS = [
     dateLabel: '6/16-17 (火-水)',
     country: 'US',
     category: '金利',
-    event: 'FRB FOMC（経済見通し・ドットチャート＝下半期の利下げ回数が焦点）',
+    event: 'FRB FOMC（経済予測・ドットチャート＝下半期の利下げ回数が焦点）',
     impact: '',
     importance: 5,
   },
@@ -357,7 +357,7 @@ const CURATED_MARKET_MAJOR_BOARD_SLIDES = [
     lines: [
       '🚗 Tesla（TSLA）— 2026年度1Q本決算：4/21（火）17:30頃（ET）予定［Tesla IR］。納車台数の鈍化を受け実質営業利益率の維持度が焦点。低価格モデル（モデル2）の進捗とFSD収益化ロードマップに注目。',
       '📱 Meta（META）— 2026年度1Q決算：4/22（水）予定［Meta IR］。AI活用による広告配信の効率化が収益に寄与したか。Llama 4への投資規模とメタバース部門の損失管理が材料。',
-      '🔍 Alphabet（GOOGL）— 2026年度1Q決算：4/23（木）予定［Alphabet IR］。検索へのAI統合下での広告単価とGCP成長。AI軍拡競争の中でのコスト構造最適化が株価の方向感を左右しそうです。',
+      '🔍 Alphabet（GOOGL）— 2026年度1Q決算：4/23（木）予定［Alphabet IR］。検索へのAI統合下での広告単価とGCP成長。AI軍拡競争の中でのコスト構造の見直しが株価の方向感を左右しそうです。',
     ],
   },
   {

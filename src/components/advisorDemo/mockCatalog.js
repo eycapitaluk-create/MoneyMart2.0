@@ -156,7 +156,7 @@ const ARTICLE_HEADLINES = [
   ['中国景気指標、回復の兆し', '経済', 'economy', ['JP_EQUITY']],
   ['配当貴族銘柄、インカム需要で堅調', '教育', 'education', ['US_EQUITY', 'FINANCIALS']],
   ['NISA成長投資枠、活用ポイント整理', '教育', 'education', ['JP_EQUITY']],
-  ['REIT市場、金利見通しで二極化', '市場', 'market', ['US_RATE', 'JPY']],
+  ['REIT市場、金利の見方で二極化', '市場', 'market', ['US_RATE', 'JPY']],
   ['半導体装置メーカー、受注回復', '企業', 'company', ['TECH', 'JP_EQUITY']],
   ['ヘルスケアETF、安定需要続く', 'レポート', 'report', ['US_EQUITY']],
   ['円安メリット企業ランキング', 'レポート', 'report', ['JPY', 'JP_EQUITY']],

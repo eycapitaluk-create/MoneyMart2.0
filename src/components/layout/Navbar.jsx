@@ -1,5 +1,5 @@
 import { Link, useNavigate, useLocation } from 'react-router-dom'
-import { Menu, X, LogIn, Sun, Moon, Bell, ShieldCheck, CreditCard, ChevronDown, BookOpen, Newspaper, Sparkles, Wallet, PiggyBank, AlertTriangle } from 'lucide-react'
+import { Menu, X, LogIn, Sun, Moon, Bell, ShieldCheck, CreditCard, ChevronDown, BookOpen, Newspaper, Wallet, PiggyBank, AlertTriangle } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useSiteContentNotification } from '../../hooks/useSiteContentNotification'
@@ -47,21 +47,6 @@ function desktopMainNavClass(active) {
   return active
     ? `${base} text-orange-600 dark:text-orange-400 font-black underline underline-offset-[7px] decoration-2 decoration-orange-500`
     : `${base} text-slate-600 dark:text-slate-300 font-bold hover:text-orange-500`
-}
-
-function desktopSecondaryNavClass(active) {
-  const base = 'rounded-sm px-0.5 -mx-0.5 transition text-sm font-bold'
-  return active
-    ? `${base} text-orange-600 dark:text-orange-400 underline underline-offset-[7px] decoration-2 decoration-orange-500`
-    : `${base} text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white`
-}
-
-function desktopPremiumNavClass(active) {
-  const base =
-    'rounded-sm px-0.5 -mx-0.5 transition inline-flex items-center gap-1 text-sm font-bold'
-  return active
-    ? `${base} text-amber-800 dark:text-amber-200 underline underline-offset-[7px] decoration-2 decoration-amber-500`
-    : `${base} text-amber-700 dark:text-amber-300 hover:text-amber-600 dark:hover:text-amber-400`
 }
 
 function mobileNavRowClass(active) {
@@ -150,6 +135,8 @@ export default function Navbar({
   const moreNavActive =
     isMainNavActive(pathname, 'products')
     || isMainNavActive(pathname, 'tools')
+    || isMainNavActive(pathname, 'premium')
+    || isMainNavActive(pathname, 'insights')
 
   const hasSiteNotify = insightNew || newsNew
   const hasMypageAlerts = Boolean(session && mypageAlertCount > 0)
@@ -227,8 +214,8 @@ export default function Navbar({
             {/* デスクトップメニュー — コア5 + その他ドロップダウン */}
             <div className="hidden lg:flex items-center gap-2.5 xl:gap-4 text-[13px] xl:text-sm shrink-0">
               <Link to="/market" className={desktopMainNavClass(isMainNavActive(pathname, 'market'))}>マーケット</Link>
-              <Link to="/stocks" className={desktopMainNavClass(isMainNavActive(pathname, 'stocks'))}>株式</Link>
               <Link to="/funds" className={desktopMainNavClass(isMainNavActive(pathname, 'funds'))}>ファンド</Link>
+              <Link to="/stocks" className={desktopMainNavClass(isMainNavActive(pathname, 'stocks'))}>株式</Link>
               <Link to="/news" className={desktopMainNavClass(isMainNavActive(pathname, 'news'))}>ニュース</Link>
               <Link
                 to="/community"
@@ -285,6 +272,20 @@ export default function Navbar({
                       >
                         ツール
                       </Link>
+                      <Link
+                        to="/premium"
+                        onClick={() => setDesktopMoreOpen(false)}
+                        className={`block px-4 py-2 font-bold hover:bg-slate-50 dark:hover:bg-slate-800 ${isMainNavActive(pathname, 'premium') ? 'text-orange-600 dark:text-orange-400' : 'text-slate-800 dark:text-slate-100'}`}
+                      >
+                        プレミアム
+                      </Link>
+                      <Link
+                        to="/insights"
+                        onClick={() => setDesktopMoreOpen(false)}
+                        className={`block px-4 py-2 font-bold hover:bg-slate-50 dark:hover:bg-slate-800 ${isMainNavActive(pathname, 'insights') ? 'text-orange-600 dark:text-orange-400' : 'text-slate-800 dark:text-slate-100'}`}
+                      >
+                        インサイト
+                      </Link>
                     </div>
                   </>
                 ) : null}
@@ -294,30 +295,7 @@ export default function Navbar({
 
           {/* 2. 右側メニュー */}
           <div className="hidden lg:flex items-center gap-2 xl:gap-3 shrink-0">
-            <Link
-              to="/premium"
-              className={`${desktopPremiumNavClass(isMainNavActive(pathname, 'premium'))} text-xs xl:text-sm whitespace-nowrap`}
-            >
-              <Sparkles size={14} className="shrink-0" aria-hidden />
-              プレミアム
-            </Link>
-            <Link
-              to="/insights"
-              className={`${desktopSecondaryNavClass(isMainNavActive(pathname, 'insights'))} text-xs xl:text-sm whitespace-nowrap`}
-            >
-              インサイト
-            </Link>
             <CampaignCp2026NavLink userEmail={session?.user?.email} />
-            {session ? (
-              <Link
-                to="/mypage?tab=wealth"
-                className={`${desktopSecondaryNavClass(isMainNavActive(pathname, 'mypage'))} text-xs xl:text-sm whitespace-nowrap`}
-                title="マイページ（資産タブから開きます）"
-              >
-                <span className="hidden xl:inline">マイページ</span>
-                <span className="xl:hidden">マイ</span>
-              </Link>
-            ) : null}
 
             <div className="h-4 w-px bg-slate-300 dark:bg-slate-700 mx-1" />
 
@@ -507,7 +485,7 @@ export default function Navbar({
                     <button
                       type="button"
                       onClick={() => setAccountMenuOpen((v) => !v)}
-                      className="w-9 h-9 rounded-full bg-slate-900 dark:bg-orange-500 text-white text-sm font-black flex items-center justify-center shrink-0"
+                      className="w-9 h-9 rounded-full bg-[#1e3a5f] text-white text-sm font-black flex items-center justify-center shrink-0"
                       aria-label="アカウントメニュー"
                       aria-expanded={accountMenuOpen}
                     >
@@ -760,8 +738,8 @@ export default function Navbar({
       {isMobileMenuOpen && (
         <div className="lg:hidden bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 p-4 pb-28 space-y-4 shadow-xl">
           <Link to="/market" onClick={() => setIsMobileMenuOpen(false)} className={mobileNavRowClass(isMainNavActive(pathname, 'market'))}>マーケット</Link>
-          <Link to="/stocks" onClick={() => setIsMobileMenuOpen(false)} className={mobileNavRowClass(isMainNavActive(pathname, 'stocks'))}>株式</Link>
           <Link to="/funds" onClick={() => setIsMobileMenuOpen(false)} className={mobileNavRowClass(isMainNavActive(pathname, 'funds'))}>ファンド</Link>
+          <Link to="/stocks" onClick={() => setIsMobileMenuOpen(false)} className={mobileNavRowClass(isMainNavActive(pathname, 'stocks'))}>株式</Link>
           <Link to="/news" onClick={() => setIsMobileMenuOpen(false)} className={mobileNavRowClass(isMainNavActive(pathname, 'news'))}>ニュース</Link>
           <Link
             to="/community"
@@ -774,7 +752,6 @@ export default function Navbar({
               <CommunityTierBadge tier={communityTier} size="xs" />
             ) : null}
           </Link>
-          <Link to="/tools" onClick={() => { notifyToolsHubReset(); setIsMobileMenuOpen(false) }} className={mobileNavRowClass(isMainNavActive(pathname, 'tools'))}>ツール</Link>
           <CampaignCp2026NavLink
             userEmail={session?.user?.email}
             variant="mobile"
@@ -791,7 +768,7 @@ export default function Navbar({
                   : 'border-slate-200 dark:border-slate-700'
               }`}
             >
-              <span className={mobileNavRowClass(isMainNavActive(pathname, 'products'))}>金融商品</span>
+              <span className={mobileNavRowClass(isMainNavActive(pathname, 'products') || isMainNavActive(pathname, 'tools') || isMainNavActive(pathname, 'premium') || isMainNavActive(pathname, 'insights'))}>その他</span>
               <ChevronDown
                 size={16}
                 className={`text-slate-500 transition-transform ${isMobileProductsOpen ? 'rotate-180' : ''}`}
@@ -799,6 +776,7 @@ export default function Navbar({
             </button>
             {isMobileProductsOpen ? (
               <div className="space-y-2 pl-4 border-l-2 border-slate-100 dark:border-slate-700">
+                <Link to="/products" onClick={() => setIsMobileMenuOpen(false)} className="block text-base font-bold text-slate-900 dark:text-slate-100 py-1">金融商品</Link>
                 {productCategories.map((cat) => (
                   <Link
                     key={cat.id}
@@ -809,6 +787,9 @@ export default function Navbar({
                     {cat.name}
                   </Link>
                 ))}
+                <Link to="/tools" onClick={() => { notifyToolsHubReset(); setIsMobileMenuOpen(false) }} className="block text-base font-bold text-slate-900 dark:text-slate-100 py-1">ツール</Link>
+                <Link to="/premium" onClick={() => setIsMobileMenuOpen(false)} className="block text-base font-bold text-slate-900 dark:text-slate-100 py-1">プレミアム</Link>
+                <Link to="/insights" onClick={() => setIsMobileMenuOpen(false)} className="block text-base font-bold text-slate-900 dark:text-slate-100 py-1">インサイト</Link>
               </div>
             ) : null}
           </div>
@@ -822,7 +803,6 @@ export default function Navbar({
                 ) : null}
               </div>
             ) : null}
-            <Link to="/insights" onClick={() => setIsMobileMenuOpen(false)} className={mobileNavRowClass(isMainNavActive(pathname, 'insights'))}>インサイト</Link>
             {authReady && session ? (
               <Link
                 to="/mypage?tab=wealth"
@@ -833,23 +813,12 @@ export default function Navbar({
                 マイページ
               </Link>
             ) : null}
-            <Link
-              to="/premium"
-              onClick={() => setIsMobileMenuOpen(false)}
-              className={
-                isMainNavActive(pathname, 'premium')
-                  ? 'block font-black text-lg text-amber-700 dark:text-amber-300 underline underline-offset-4 decoration-2 decoration-amber-500'
-                  : 'block font-bold text-lg text-amber-600 dark:text-amber-400'
-              }
-            >
-              プレミアム
-            </Link>
             {!authReady ? (
               <div className="w-full h-12 rounded-xl bg-slate-200 dark:bg-slate-700 animate-pulse" />
             ) : session ? (
               <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-3 space-y-2">
                 <div className="flex items-center gap-2 min-w-0">
-                  <span className="w-9 h-9 rounded-full bg-slate-900 dark:bg-orange-500 text-white text-sm font-black flex items-center justify-center shrink-0">{accountInitial}</span>
+                  <span className="w-9 h-9 rounded-full bg-[#1e3a5f] text-white text-sm font-black flex items-center justify-center shrink-0">{accountInitial}</span>
                   <span className="text-xs font-bold text-slate-500 truncate">{accountLabel}</span>
                 </div>
                 <button

@@ -301,6 +301,14 @@ export function getSeoForRoute(pathname, search = '') {
       noindex: true,
     },
     {
+      match: (p) => p === '/login',
+      title: 'ログイン | MoneyMart',
+      description: 'MoneyMart にログインします。',
+      path: '/login',
+      isTool: false,
+      noindex: true,
+    },
+    {
       match: (p) => p === '/signup-complete',
       title: 'メール確認完了 | MoneyMart',
       description:

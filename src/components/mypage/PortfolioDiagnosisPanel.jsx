@@ -277,7 +277,7 @@ export default function PortfolioDiagnosisPanel({
 
   return (
     <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-      <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 bg-gradient-to-r from-violet-50 to-indigo-50 dark:from-slate-900 dark:to-slate-900">
+      <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 bg-gradient-to-r from-orange-50 to-slate-50 dark:from-slate-900 dark:to-slate-900">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between lg:gap-4">
           <div className="min-w-0 lg:max-w-[38%]">
             <h3 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
@@ -351,7 +351,7 @@ export default function PortfolioDiagnosisPanel({
 
             <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4">
               <p className="text-xs font-black text-slate-500 dark:text-slate-400 mb-3 flex items-center gap-2">
-                <Target size={14} className="text-indigo-500" />
+                <Target size={14} className="text-orange-500" />
                 分散スコア
               </p>
               <div className="space-y-3">
@@ -419,18 +419,18 @@ export default function PortfolioDiagnosisPanel({
             ) : null}
 
             {Array.isArray(result.actions) && result.actions.length > 0 ? (
-              <div className="rounded-2xl border border-indigo-200 dark:border-indigo-900/50 bg-indigo-50/70 dark:bg-indigo-950/20 p-4">
-                <p className="text-xs font-black text-indigo-600 dark:text-indigo-300 mb-1 flex items-center gap-2">
+              <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-900/40 p-4">
+                <p className="text-xs font-black text-[#1e3a5f] dark:text-orange-200 mb-1 flex items-center gap-2">
                   <ArrowRight size={14} />
                   確認ポイント
                 </p>
-                <p className="text-[10px] text-indigo-500/90 dark:text-indigo-400/80 mb-3 leading-relaxed">
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 mb-3 leading-relaxed">
                   保有データの整理です。特定の金融商品の売買を勧誘するものではありません。
                 </p>
                 <div className="space-y-2.5">
                   {result.actions.map((row, idx) => (
                     <div key={idx} className="flex gap-3 text-sm text-slate-800 dark:text-slate-200 leading-6">
-                      <span className="shrink-0 font-black text-indigo-600 dark:text-indigo-400">{row.priority}</span>
+                      <span className="shrink-0 font-black text-orange-600 dark:text-orange-300">{row.priority}</span>
                       <span>{row.action}</span>
                     </div>
                   ))}
@@ -487,7 +487,7 @@ export default function PortfolioDiagnosisPanel({
                             </span>
                           </div>
                           <div className="h-2 mt-1 rounded-full bg-white dark:bg-slate-900 overflow-hidden">
-                            <div className="h-full rounded-full bg-gradient-to-r from-violet-500 to-indigo-500" style={{ width: `${row.weight}%` }} />
+                            <div className="h-full rounded-full bg-orange-500" style={{ width: `${row.weight}%` }} />
                           </div>
                         </div>
                       </div>

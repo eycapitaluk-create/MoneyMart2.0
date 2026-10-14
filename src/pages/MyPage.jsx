@@ -3511,7 +3511,7 @@ const WealthAccumulationSimCard = () => {
     if (typeof window === 'undefined') return true
     try {
       const v = window.localStorage.getItem(WEALTH_ACCUM_SIM_EXPANDED_KEY)
-      if (v === null) return true
+      if (v === null) return false
       return v === '1'
     } catch {
       return true
@@ -5496,6 +5496,13 @@ const WealthSection = ({
       ? fundDiagnosisHoldings
       : [...stockDiagnosisHoldings, ...fundDiagnosisHoldings]
   const showFreeHoldingsBanner = ENFORCE_FREE_OWNED_DISTINCT_SYMBOL_CAPS && !isPaidMember && (isStockTab || isFundTab || tabMode === 'wealth' || isAssetHome)
+  const assetStockCount = groupedOwnedStocks.length
+  const assetFundCount = groupedOwnedFunds.length
+  const assetStocksBeforeFunds = assetStockCount > 0 || assetFundCount === 0
+  const assetStockOrder = isAssetHome ? (assetStocksBeforeFunds ? 'order-2' : 'order-3') : ''
+  const assetFundOrder = isAssetHome ? (assetStocksBeforeFunds ? 'order-3' : 'order-2') : ''
+  const assetStockEmptyLine = Boolean(isAssetHome && assetStockCount === 0)
+  const assetFundEmptyLine = Boolean(isAssetHome && assetFundCount === 0)
   return (
     <div className="flex flex-col gap-6">
       {avgDownModalOpen && avgDownSelectedStock ? (
@@ -5876,7 +5883,7 @@ const WealthSection = ({
           </p>
         </div>
       ) : null}
-      {isAssetHome ? <div className="order-40"><WealthAccumulationSimCard /></div> : null}
+      {isAssetHome ? <div className="order-last"><WealthAccumulationSimCard /></div> : null}
       {showOverview ? (
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
         {(isStockTab && !stockReportHasData) ? (
@@ -6522,8 +6529,21 @@ const WealthSection = ({
       )}
 
       {showFundHoldings && (
-        <div className={`space-y-4 ${isAssetHome ? 'order-3' : ''}`}>
-          <div id="mypage-owned-fund-section" className="scroll-mt-24 bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 overflow-hidden">
+        <div id="mypage-owned-fund-section" className={`scroll-mt-24 ${assetFundEmptyLine ? '' : 'space-y-4'} ${assetFundOrder}`}>
+          {assetFundEmptyLine ? (
+            <div className="flex items-center justify-between gap-3 rounded-2xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3 shadow-md shadow-slate-900/10 dark:shadow-black/30">
+              <p className="text-sm font-bold text-slate-600 dark:text-slate-300">保有ファンドはまだありません</p>
+              <button
+                type="button"
+                onClick={() => setHoldingAddSheet('fund')}
+                className="inline-flex items-center gap-1 rounded-xl bg-slate-900 dark:bg-orange-500 text-white px-3 py-2 text-xs font-black hover:opacity-90 shrink-0"
+              >
+                <Plus size={14} aria-hidden />
+                追加
+              </button>
+            </div>
+          ) : null}
+          <div className={`${assetFundEmptyLine ? 'h-0 overflow-hidden border-0 shadow-none' : 'bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 overflow-hidden'}`} aria-hidden={assetFundEmptyLine && holdingAddSheet !== 'fund' ? true : undefined}>
             <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/60">
               <div className="flex items-start justify-between gap-3">
                 <h3 id="fund-performance-heading" className="font-black text-slate-900 dark:text-white shrink-0">保有ファンド</h3>
@@ -6550,7 +6570,7 @@ const WealthSection = ({
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">実際に買ったファンドを「＋追加」から登録し、取引別・合算損益率を管理できます。</p>
               {holdingAddSheet === 'fund' ? (
-              <div className="fixed inset-0 z-[130] flex items-end sm:items-center justify-center px-0 sm:px-4">
+              <div className="fixed inset-0 z-[130] flex items-end sm:items-center justify-center px-0 sm:px-4 pointer-events-auto">
                 <button type="button" className="absolute inset-0 bg-slate-900/55" aria-label="閉じる" onClick={() => setHoldingAddSheet(null)} />
                 <div className="relative z-[131] w-full max-w-lg max-h-[min(90vh,760px)] overflow-y-auto rounded-t-2xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center justify-between gap-3 mb-3">
@@ -6620,7 +6640,7 @@ const WealthSection = ({
                   return (
                     <>
                       <div className="relative md:col-span-2 xl:col-span-1">
-                        <span className={ownedMobileFieldLabelClass}>ファンドコード / 名称</span>
+                        <span className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">ファンド</span>
                         <input
                           type="text"
                           value={newOwnedFundSymbol}
@@ -6699,7 +6719,7 @@ const WealthSection = ({
                         </div>
                       )}
                       <div>
-                        <span className={ownedMobileFieldLabelClass}>投資元本</span>
+                        <span className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">投資元本(円)</span>
                         <input
                           type="text"
                           inputMode="decimal"
@@ -6711,7 +6731,7 @@ const WealthSection = ({
                         />
                       </div>
                       <div>
-                        <span className={ownedMobileFieldLabelClass}>買付日</span>
+                        <span className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">買付日</span>
                         <OwnedBuyDateTextInput
                           value={newOwnedFundBuyDate}
                           onCommit={(iso) => setNewOwnedFundBuyDate(iso)}
@@ -6720,7 +6740,7 @@ const WealthSection = ({
                         />
                       </div>
                       <div>
-                        <span className={ownedMobileFieldLabelClass}>買付価格 (基準価格)</span>
+                        <span className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">買付価格</span>
                         <input
                           type="text"
                           inputMode="decimal"
@@ -7300,8 +7320,8 @@ const WealthSection = ({
       )}
 
       {(isAssetHome || isStockTab) && (
-      <div className={`grid grid-cols-1 xl:grid-cols-12 gap-4 ${isAssetHome ? 'order-1' : ''}`}>
-        <div id={isWealthTab ? 'wealth-allocation-chart' : undefined} className={`${isAssetHome ? 'order-2 xl:order-1 ' : ''}${isStockTab || isWealthTab ? 'xl:col-span-5' : 'xl:col-span-7'} bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 overflow-hidden`}>
+      <div className={isAssetHome ? 'contents' : 'grid grid-cols-1 xl:grid-cols-12 gap-4'}>
+        <div id={isWealthTab ? 'wealth-allocation-chart' : undefined} className={`${isAssetHome ? 'order-4 ' : ''}${isStockTab || isWealthTab ? 'xl:col-span-5' : 'xl:col-span-7'} bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 overflow-hidden`}>
           <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/60">
             <h3 className="font-black text-slate-900 dark:text-white">{isWealthTab ? '株式/ファンド構成比' : isStockTab ? '株式 セクター別配分 (円換算)' : isFundTab ? 'ファンド 国別配分 (円換算)' : '資産成長トレンド (6ヶ月)'}</h3>
           </div>
@@ -7412,7 +7432,7 @@ const WealthSection = ({
           </div>
         </div>
 
-        <div className={`${isAssetHome ? 'order-1 xl:order-2 ' : ''}${isStockTab || isWealthTab ? 'xl:col-span-7' : 'xl:col-span-5'} bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 p-5`}>
+        <div className={`${isAssetHome ? 'order-1 ' : ''}${isStockTab || isWealthTab ? 'xl:col-span-7' : 'xl:col-span-5'} bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 p-5`}>
           <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
             <h3 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
               <PieChart size={18} className="text-indigo-500" /> {isWealthTab ? '資産成長トレンド' : isStockTab ? '株式パフォーマンス推移' : isFundTab ? 'ファンドパフォーマンス推移' : '株式/ファンド構成比'}
@@ -7993,8 +8013,22 @@ const WealthSection = ({
         </div>
       )}
 
-      {showStockHoldings && (
-      <div id="mypage-stock-holdings" className={`scroll-mt-24 bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 overflow-hidden ${isAssetHome ? 'order-2' : ''}`}>
+      {showStockHoldings ? (
+      <div className={assetStockOrder}>
+      {assetStockEmptyLine ? (
+        <div id="mypage-stock-holdings" className="scroll-mt-24 flex items-center justify-between gap-3 rounded-2xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3 shadow-md shadow-slate-900/10 dark:shadow-black/30">
+          <p className="text-sm font-bold text-slate-600 dark:text-slate-300">保有株式はまだありません</p>
+          <button
+            type="button"
+            onClick={() => setHoldingAddSheet('stock')}
+            className="inline-flex items-center gap-1 rounded-xl bg-slate-900 dark:bg-orange-500 text-white px-3 py-2 text-xs font-black hover:opacity-90 shrink-0"
+          >
+            <Plus size={14} aria-hidden />
+            追加
+          </button>
+        </div>
+      ) : null}
+      <div id={assetStockEmptyLine ? undefined : 'mypage-stock-holdings'} className={`${assetStockEmptyLine ? 'h-0 overflow-hidden border-0 shadow-none' : 'scroll-mt-24 bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 overflow-hidden'}`} aria-hidden={assetStockEmptyLine && holdingAddSheet !== 'stock' ? true : undefined}>
           <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/60">
             <div className="flex items-start justify-between gap-3">
               <h3 id="stock-performance-heading" className="font-black text-slate-900 dark:text-white shrink-0">保有銘柄</h3>
@@ -8049,7 +8083,7 @@ const WealthSection = ({
               </div>
             )}
             {holdingAddSheet === 'stock' ? (
-            <div className="fixed inset-0 z-[130] flex items-end sm:items-center justify-center px-0 sm:px-4">
+            <div className="fixed inset-0 z-[130] flex items-end sm:items-center justify-center px-0 sm:px-4 pointer-events-auto">
               <button type="button" className="absolute inset-0 bg-slate-900/55" aria-label="閉じる" onClick={() => setHoldingAddSheet(null)} />
               <div className="relative z-[131] w-full max-w-lg max-h-[min(90vh,760px)] overflow-y-auto rounded-t-2xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
                 <div className="flex items-center justify-between gap-3 mb-3">
@@ -8686,11 +8720,12 @@ const WealthSection = ({
             <span className="block mt-2">
               数量・買付価格・買付日の編集は保存され、損益率に反映されます。誤追加した取引は各行から削除できます（
               <span className="font-bold text-slate-700 dark:text-slate-200">削除は売却記録ではなく実現損益に影響しません</span>
-              ）。実売却で减少させる場合は「売却を記録（実現損益）」を使ってください。
+              ）。実売却で減少させる場合は「売却を記録（実現損益）」を使ってください。
             </span>
           </p>
       </div>
-      )}
+      </div>
+      ) : null}
 
       {showStockWatch && (
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 overflow-hidden">

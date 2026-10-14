@@ -3832,6 +3832,39 @@ function rowsForTrendWindow(rows, months) {
   return sliced.length >= 2 ? sliced : dated.slice(-2)
 }
 
+function niceManStep(raw) {
+  const steps = raw < 1 ? [0.1, 0.2, 0.5, 1] : [1, 2, 5, 10, 20, 50, 100]
+  return steps.find((step) => step + 1e-9 >= raw) || steps[steps.length - 1]
+}
+
+function trendYAxisSpec(rows) {
+  const values = (Array.isArray(rows) ? rows : []).map((row) => Number(row?.value)).filter((value) => Number.isFinite(value))
+  const fallback = { domain: ['auto', 'auto'], ticks: undefined, width: 48, format: (value) => `${Math.round(Number(value) / 10000)}万` }
+  if (values.length === 0) return fallback
+  const min = Math.min(...values)
+  const max = Math.max(...values)
+  const span = Math.max(1, max - min)
+  const pad = Math.max(span * 0.12, 1)
+  const lo = Math.max(0, min - pad)
+  const hi = max + pad
+  const stepMan = niceManStep(((hi - lo) / 10000) / 4)
+  const step = stepMan * 10000
+  const start = Math.floor(lo / step) * step
+  const ticks = []
+  for (let value = start; value <= hi + step * 0.01 && ticks.length < 6; value += step) {
+    if (value + step * 0.001 >= lo) ticks.push(Math.round(value))
+  }
+  if (ticks.length === 0) ticks.push(Math.round(lo), Math.round(hi))
+  if (ticks[0] > min) ticks.unshift(Math.max(0, ticks[0] - step))
+  if (ticks[ticks.length - 1] < max) ticks.push(ticks[ticks.length - 1] + step)
+  const format = (value) => {
+    const man = Number(value) / 10000
+    const text = stepMan < 1 ? man.toFixed(1) : String(Math.round(man))
+    return `${text}万`
+  }
+  return { domain: [ticks[0], ticks[ticks.length - 1]], ticks, width: stepMan < 1 ? 56 : 44, format }
+}
+
 function sparseLabelIndexes(count, max = 5) {
   if (count <= 0) return new Set()
   if (count <= max) return new Set(Array.from({ length: count }, (_, i) => i))
@@ -3849,6 +3882,7 @@ function WealthValueLineCard({ title, rows, months, onMonths, noteOpen, onToggle
   const labelIndexList = [...labelIndexes].sort((a, b) => a - b)
   const firstLabelIndex = labelIndexList[0]
   const lastLabelIndex = labelIndexList[labelIndexList.length - 1]
+  const yAxis = trendYAxisSpec(data)
   return (
     <div className={`bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 p-5 ${className}`}>
       <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
@@ -3909,9 +3943,10 @@ function WealthValueLineCard({ title, rows, months, onMonths, noteOpen, onToggle
                 tick={{ fontSize: 11, fill: '#64748b' }}
                 axisLine={false}
                 tickLine={false}
-                width={48}
-                tickFormatter={(v) => `${Math.round(Number(v) / 10000)}万`}
-                domain={['auto', 'auto']}
+                width={yAxis.width}
+                ticks={yAxis.ticks}
+                domain={yAxis.domain}
+                tickFormatter={yAxis.format}
               />
               <Tooltip formatter={(v) => `¥${Math.round(Number(v) || 0).toLocaleString('ja-JP')}`} />
               <Line type="monotone" dataKey="value" name="評価額" stroke={TREND_ORANGE} strokeWidth={2.5} dot={false} activeDot={{ r: 4 }} />

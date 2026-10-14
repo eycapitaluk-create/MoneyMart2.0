@@ -294,7 +294,30 @@ const LEGAL_CONTENTS = {
           </ul>
         </section>
         <section>
-          <h3 className="font-bold text-slate-900 dark:text-white mb-2">第4条 安全管理措置</h3>
+          <h3 className="font-bold text-slate-900 dark:text-white mb-2">第4条 外部サービスへの送信（外国にある第三者への提供を含む）</h3>
+          <p>1. 本サービスの一部の機能では、AI（人工知能）による処理のため、機能の提供に必要な範囲の情報を Anthropic, PBC（所在国：アメリカ合衆国）に送信します。対象となる主な機能と送信する情報は次のとおりです。</p>
+          <ul className="list-disc pl-5 mt-2 space-y-1">
+            <li>保有銘柄のスクリーンショット読み取り：ユーザーが選択した画像</li>
+            <li>家計簿の AI まとめ：カテゴリ別の集計金額など（店名・メモ・個々の明細は送信しません）</li>
+          </ul>
+          <p className="mt-2">2. スクリーンショット読み取りでは、画像を送信する前に本条の内容を表示し、ユーザーの同意を得たうえで送信します。当社は画像を保存しません。読み取った内容は、ユーザーが画面で確認して登録した場合にのみ保有情報として保存されます。</p>
+          <p className="mt-2">3. 送信した情報は、送信先において AI モデルの学習には利用されません。ただし、送信先の規約に基づき、不正利用の監視等のため一定期間保管される場合があります。</p>
+          <p className="mt-2">
+            4. アメリカ合衆国の個人情報の保護に関する制度については、個人情報保護委員会が公表している情報（
+            <a
+              href="https://www.ppc.go.jp/personalinfo/legal/kaiseihogohou/#gaikoku"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-orange-600 dark:text-orange-400 font-semibold hover:underline break-all"
+            >
+              https://www.ppc.go.jp/personalinfo/legal/kaiseihogohou/#gaikoku
+            </a>
+            ）をご参照ください。送信先は、個人情報の適切な取扱いに関する方針を定め、これに基づき情報を管理しています。
+          </p>
+          <p className="mt-2">5. 証券会社の CSV ファイルからの取込では、ファイルはユーザーの端末内で読み取り、銘柄・数量・取得単価・取得日（米ドル建ての場合は通貨・取得時の為替を含む）のみを保存します。口座番号・氏名等のその他の項目は保存しません。</p>
+        </section>
+        <section>
+          <h3 className="font-bold text-slate-900 dark:text-white mb-2">第5条 安全管理措置</h3>
           <p>当社は、取得した個人情報について、不正アクセス・紛失・破壊・改ざん・漏洩等を防ぐため、以下の安全管理措置を講じます。</p>
           <ul className="list-disc pl-5 mt-2 space-y-1">
             <li>個人情報へのアクセス権限の管理および制限</li>
@@ -304,7 +327,7 @@ const LEGAL_CONTENTS = {
           </ul>
         </section>
         <section>
-          <h3 className="font-bold text-slate-900 dark:text-white mb-2">第5条 Cookieおよびアクセス解析</h3>
+          <h3 className="font-bold text-slate-900 dark:text-white mb-2">第6条 Cookieおよびアクセス解析</h3>
           <p>本サービスでは、利便性向上およびサービス改善を目的として、Cookie（クッキー）を使用しています。</p>
           <p className="mt-2">
             また、Microsoft Clarity（マイクロソフト社提供の行動分析ツール）を利用し、クリック・スクロール等の利用状況を匿名化された形で収集する場合があります。マイページ（資産・家計データを含む画面）、管理画面、パスワード再設定画面では記録を行いません。Clarityのプライバシーについては
@@ -322,15 +345,15 @@ const LEGAL_CONTENTS = {
           <p className="mt-2">ブラウザの設定によりCookieを無効にすることができますが、一部のサービス機能がご利用いただけなくなる場合があります。</p>
         </section>
         <section>
-          <h3 className="font-bold text-slate-900 dark:text-white mb-2">第6条 個人情報の開示・訂正・削除</h3>
+          <h3 className="font-bold text-slate-900 dark:text-white mb-2">第7条 個人情報の開示・訂正・削除</h3>
           <p>ユーザーは、当社が保有する自己の個人情報について、開示・訂正・削除・利用停止を求める権利を有します。ご請求の場合は、下記お問い合わせ窓口までご連絡ください。本人確認の上、合理的な期間内に対応いたします。</p>
         </section>
         <section>
-          <h3 className="font-bold text-slate-900 dark:text-white mb-2">第7条 プライバシーポリシーの変更</h3>
+          <h3 className="font-bold text-slate-900 dark:text-white mb-2">第8条 プライバシーポリシーの変更</h3>
           <p>当社は、法令の改正や事業内容の変更等に伴い、本プライバシーポリシーを変更することがあります。重要な変更を行う場合は、本サービス上での告知またはメールにて事前にお知らせします。変更後のポリシーは、本サービス上に掲載した時点で効力を生じるものとします。</p>
         </section>
         <section>
-          <h3 className="font-bold text-slate-900 dark:text-white mb-2">第8条 お問い合わせ窓口</h3>
+          <h3 className="font-bold text-slate-900 dark:text-white mb-2">第9条 お問い合わせ窓口</h3>
           <p>会社名: マネーラボ株式会社（英文商号 MoneyLab Inc.）</p>
           <p>個人情報保護責任者: 代表取締役 片桐 明子</p>
         </section>
@@ -528,7 +551,7 @@ export default function LegalPage() {
         <div className="px-8 pb-8 text-center border-t border-slate-100 dark:border-slate-800 pt-8">
           <p className="text-xs text-slate-400">
             本ページの内容は予告なく変更される場合があります。<br />
-            最終更新日: 2026年 3月 31日
+            最終更新日: {type === 'privacy' ? '2026年 10月 14日' : '2026年 3月 31日'}
           </p>
         </div>
       </div>

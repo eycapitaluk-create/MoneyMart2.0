@@ -10,78 +10,55 @@
       "maxDuration": 120
     }
   },
-  "crons": [
-    {
-      "path": "/api/cron/marketstack-daily?us_only=1",
-      "schedule": "0 0 * * *"
-    },
-    {
-      "path": "/api/cron/marketstack-daily?jp_only=1&us_only=0",
-      "schedule": "0 7 * * *"
-    },
-    {
-      "path": "/api/cron/marketstack-commodities",
-      "schedule": "0 22 * * *"
-    },
-    {
-      "path": "/api/cron/market-news",
-      "schedule": "5 22 * * *"
-    },
-    {
-      "path": "/api/cron/ai-news-summarize",
-      "schedule": "0 */6 * * *"
-    },
-    {
-      "path": "/api/cron/ai-news",
-      "schedule": "15 22 * * *"
-    },
-    {
-      "path": "/api/cron/company-news-brief",
-      "schedule": "45 22 * * *"
-    },
-    {
-      "path": "/api/cron/stock-ai-analysis",
-      "schedule": "30 8 * * *"
-    },
-    {
-      "path": "/api/cron/community-hourly",
-      "schedule": "0 * * * *"
-    },
-    {
-      "path": "/api/cron/price-series-check",
-      "schedule": "30 8 * * *"
-    }
-  ],
+  "crons": [],
   "headers": [
     {
       "source": "/(login|signup|forgot-password|reset-password|complete-profile|signup-complete)",
       "headers": [
-        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow"
+        }
       ]
     },
     {
       "source": "/mypage(.*)",
       "headers": [
-        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow"
+        }
       ]
     },
     {
       "source": "/admin(.*)",
       "headers": [
-        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow"
+        }
       ]
     },
     {
       "source": "/business/demo",
       "headers": [
-        { "key": "X-Robots-Tag", "value": "noindex, nofollow, noarchive" },
-        { "key": "Cache-Control", "value": "private, no-store, max-age=0" }
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow, noarchive"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "private, no-store, max-age=0"
+        }
       ]
     },
     {
       "source": "/(community|lounge|signup-complete)",
       "headers": [
-        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow"
+        }
       ]
     }
   ],

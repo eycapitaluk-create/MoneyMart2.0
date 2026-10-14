@@ -27,6 +27,7 @@ as $$
     where u.id = p_user_id
       and (
         lower(u.email) like '%@moneymart.co.jp'
+        or lower(u.email) like '%@community.seed'
         or lower(u.email) = 'test@moneymart.co.jp'
         or lower(u.email) like 'test+%'
         or lower(u.email) like '%+test@%'
@@ -79,6 +80,7 @@ begin
         where u.created_at >= v_since
           and not (
             lower(u.email) like '%@moneymart.co.jp'
+            or lower(u.email) like '%@community.seed'
             or lower(u.email) = 'test@moneymart.co.jp'
             or lower(u.email) like 'test+%'
             or lower(u.email) like '%+test@%'

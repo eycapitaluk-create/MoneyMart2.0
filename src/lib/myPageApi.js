@@ -7,6 +7,7 @@ import {
 } from './membership'
 import { decodeHtmlEntities } from './fundDisplayUtils'
 import { isMisclassifiedStockHeldAsFundSymbol } from './ownedFundSymbolGuard'
+import { insertRowsSkippingDuplicates } from './expenseChildInsert'
 
 const TABLE_NOT_FOUND_CODE = '42P01'
 const COLUMN_NOT_FOUND_CODE = '42703'
@@ -250,10 +251,10 @@ const materializeRecurringExpenses = async (userId) => {
     }
   }
 
-  if (pendingRows.length > 0) {
-    const { error } = await supabase.from('user_expenses').insert(pendingRows)
-    if (error) throw error
-  }
+  await insertRowsSkippingDuplicates(pendingRows, async (batch) => {
+    const { error } = await supabase.from('user_expenses').insert(batch)
+    return { error }
+  })
 }
 
 export const loadMyPageData = async (userId) => {
@@ -657,7 +658,32 @@ const stripSellFxColumns = (rows) => (Array.isArray(rows) ? rows : []).map((row)
   return rest
 })
 
+const isMissingBuyLotsColumn = (error) => {
+  const msg = String(error?.message || '')
+  const code = String(error?.code || '')
+  return code === '42703' || code === 'PGRST204' || /buy_lots/.test(msg)
+}
+
+const parseBuyLots = (raw) => (
+  (Array.isArray(raw) ? raw : [])
+    .map((lot) => {
+      const buyDate = String(lot?.buy_date || lot?.buyDate || '').slice(0, 10)
+      const qty = Number(lot?.qty)
+      const costJpy = Number(lot?.cost_jpy ?? lot?.costJpy)
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(buyDate) || !(qty > 0)) return null
+      return { buyDate, qty, costJpy: Number.isFinite(costJpy) ? costJpy : 0 }
+    })
+    .filter(Boolean)
+)
+
 const selectRealizedStockRows = async (userId) => {
+  const withLots = await supabase
+    .from('user_stock_realized_trades')
+    .select(`${REALIZED_STOCK_SELECT},buy_lots`)
+    .eq('user_id', userId)
+    .order('created_at', { ascending: true })
+  if (!withLots.error) return withLots
+  if (!isMissingBuyLotsColumn(withLots.error) && !isMissingSellFxColumn(withLots.error)) return withLots
   const full = await supabase
     .from('user_stock_realized_trades')
     .select(REALIZED_STOCK_SELECT)
@@ -667,6 +693,20 @@ const selectRealizedStockRows = async (userId) => {
   return supabase
     .from('user_stock_realized_trades')
     .select(REALIZED_STOCK_SELECT_BASE)
+    .eq('user_id', userId)
+    .order('created_at', { ascending: true })
+}
+
+const selectRealizedFundRows = async (userId) => {
+  const withLots = await supabase
+    .from('user_fund_realized_trades')
+    .select('trade_id,symbol,sell_date,qty,sell_price,cost_basis_jpy,proceeds_jpy,realized_pnl_jpy,created_at,buy_lots')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: true })
+  if (!withLots.error || !isMissingBuyLotsColumn(withLots.error)) return withLots
+  return supabase
+    .from('user_fund_realized_trades')
+    .select('trade_id,symbol,sell_date,qty,sell_price,cost_basis_jpy,proceeds_jpy,realized_pnl_jpy,created_at')
     .eq('user_id', userId)
     .order('created_at', { ascending: true })
 }
@@ -692,11 +732,7 @@ export const loadOwnedAssetPositions = async (userId) => {
       .eq('user_id', userId)
       .order('created_at', { ascending: true }),
     selectRealizedStockRows(userId),
-    supabase
-      .from('user_fund_realized_trades')
-      .select('trade_id,symbol,sell_date,qty,sell_price,cost_basis_jpy,proceeds_jpy,realized_pnl_jpy,created_at')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: true }),
+    selectRealizedFundRows(userId),
   ])
 
   const firstErr = stockRes.error || fundRes.error
@@ -822,6 +858,7 @@ export const loadOwnedAssetPositions = async (userId) => {
       realizedPnlJpy: Number(row.realized_pnl_jpy || 0),
       sellFxRate: Number.isFinite(sellFxRate) && sellFxRate > 0 ? sellFxRate : null,
       sellFxDate: /^\d{4}-\d{2}-\d{2}$/.test(sellFxDate) ? sellFxDate : '',
+      buyLots: parseBuyLots(row.buy_lots),
     }
   })
 
@@ -848,6 +885,7 @@ export const loadOwnedAssetPositions = async (userId) => {
     costBasisJpy: Number(row.cost_basis_jpy || 0),
     proceedsJpy: Number(row.proceeds_jpy || 0),
     realizedPnlJpy: Number(row.realized_pnl_jpy || 0),
+    buyLots: parseBuyLots(row.buy_lots),
   }))
 
   return {

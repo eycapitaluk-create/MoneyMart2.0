@@ -12,6 +12,8 @@ const OFF_TOPIC =
 
 const HAS_JP_TICKER = /\d{4}(?:\.T)?\b/
 
+export const MARKET_PICKUP_COUNT = 6
+
 /**
  * @param {object} row — raw `news_manual` or normalized client row with title, description, language
  */
@@ -24,6 +26,9 @@ export function isMarketRelevantManualNews(row) {
   const text = `${title} ${desc}`
   if (!text.trim()) return false
   if (OFF_TOPIC.test(text)) return false
+  // Editorially selected pickup rows include earnings and tech news that may
+  // not contain a finance keyword. Preserve the selection on CSR and SSR.
+  if (row.bucket === 'market_pickup') return true
   if (FINANCE_HINT.test(text)) return true
   if (HAS_JP_TICKER.test(title)) return true
   return false

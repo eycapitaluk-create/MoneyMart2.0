@@ -26,7 +26,6 @@ import MyPageDemoShowcase from '../components/mypage/MyPageDemoShowcase'
 import GuestEtfCompareTrialWall from '../components/funds/GuestEtfCompareTrialWall'
 import {
   consumeGuestEtfCompareTrial,
-  getGuestEtfCompareTrialRemaining,
   isGuestEtfCompareTrialConsumed,
 } from '../lib/guestEtfCompareTrial'
 import { supabase } from '../lib/supabase'
@@ -35,7 +34,13 @@ import { recordUserActivityEvent } from '../lib/userActivityApi'
 import { resolveFundDisplayName, resolveFundNisaCategory, normalizeFundSymbolKey } from '../lib/fundDisplayUtils'
 import { getEtfListedEnName } from '../data/etfListedEnNameMap'
 import { normalizeNisaCategoryField } from '../lib/textEncodingUtils'
-import { findBaseCloseByCalendarOffset, computeAnnualizedReturnPct, findFirstPositiveClose } from '../lib/calendarDateUtils'
+import {
+  findBaseCloseByCalendarOffset,
+  computeOneYearPriceReturnPct,
+  formatOneYearPriceReturnPct,
+  ONE_YEAR_RETURN_MISSING_TEXT,
+  ONE_YEAR_RETURN_BASIS_TEXT,
+} from '../lib/calendarDateUtils'
 import {
   buildSplitAdjustedCloses,
   calculateRealizedVolatilityFromAscHistory,
@@ -83,6 +88,7 @@ function CompareModalLoadingCard() {
   )
 }
 import { ETF_LIST_FROM_XLSX, ETF_SYMBOLS_FROM_XLSX } from '../data/etfListFromXlsx'
+import { formatTrustFeePercent, parseTrustFeePercent, refreshCachedTrustFees } from '../lib/trustFee'
 import {
   AI_THEME_SYMBOL_SET,
   HIGH_DIVIDEND_SYMBOL_SET,
@@ -180,24 +186,11 @@ const fundPassesFundPageListingGate = (f) => {
 
 const sortFundsForFundPage = (funds) =>
   [...funds].sort((a, b) => {
-    const a1 = Number.isFinite(Number(a.returnRate1Y)) ? Number(a.returnRate1Y) : null
-    const b1 = Number.isFinite(Number(b.returnRate1Y)) ? Number(b.returnRate1Y) : null
+    const a1 = parseOptionalFundMetric(a.returnRate1Y)
+    const b1 = parseOptionalFundMetric(b.returnRate1Y)
     if (a1 != null && b1 != null) return b1 - a1
     if (a1 != null) return -1
     if (b1 != null) return 1
-    const a2 = Number.isFinite(Number(a.returnRate3M))
-      ? Number(a.returnRate3M)
-      : Number.isFinite(Number(a.returnRate1M))
-        ? Number(a.returnRate1M)
-        : null
-    const b2 = Number.isFinite(Number(b.returnRate3M))
-      ? Number(b.returnRate3M)
-      : Number.isFinite(Number(b.returnRate1M))
-        ? Number(b.returnRate1M)
-        : null
-    if (a2 != null && b2 != null) return b2 - a2
-    if (a2 != null) return -1
-    if (b2 != null) return 1
     return String(a.fundName || '').localeCompare(String(b.fundName || ''), 'ja')
   })
 
@@ -419,11 +412,7 @@ const writeFundPageCache = (funds) => {
     // ignore storage errors
   }
 }
-const formatTrustFee = (value) => {
-  const n = Number(value)
-  if (!Number.isFinite(n)) return '-'
-  return `${n.toFixed(2)}%`
-}
+const formatTrustFee = (value) => formatTrustFeePercent(value)
 const normalizeSortValue = (value) => {
   if (value === null || value === undefined || value === '') return null
   if (typeof value === 'number') return Number.isFinite(value) ? value : null
@@ -455,19 +444,13 @@ const parseOptionalFundMetric = (v) => {
   const n = Number(v)
   return Number.isFinite(n) ? n : null
 }
-/** 1年リターン非表示時のホバー説明（新設ファンド等） */
-const fund1YearReturnMissingTitle = (fund) => {
-  const hasYtd = parseOptionalFundMetric(fund?.returnYTD) != null
-  if (hasYtd) {
-    return '1年分の実績が揃っていないため、年初来リターン（YTD）を表示しています。'
-  }
-  return '運用開始から1年未満など、1年リターンを算出・表示できない場合があります。'
-}
+/** 1年リターン非表示時の説明 */
+const fund1YearReturnMissingTitle = () => ONE_YEAR_RETURN_MISSING_TEXT
 
 function Fund1YearReturnHintIcon({ fund }) {
   const ttId = useId()
   const [tipPos, setTipPos] = useState(null)
-  const text = fund1YearReturnMissingTitle(fund)
+  const text = fund1YearReturnMissingTitle()
 
   useEffect(() => {
     if (!tipPos) return undefined
@@ -492,7 +475,7 @@ function Fund1YearReturnHintIcon({ fund }) {
       <button
         type="button"
         tabIndex={0}
-        aria-label="1年リターンが「-」またはYTDになる理由"
+        aria-label={ONE_YEAR_RETURN_MISSING_TEXT}
         aria-describedby={tipPos ? ttId : undefined}
         onMouseEnter={(e) => showTip(e.currentTarget)}
         onMouseLeave={() => setTipPos(null)}
@@ -1087,6 +1070,7 @@ export default function FundPage({
       }
       setIsHydrating(true)
       setFetchedDateLabel(new Intl.DateTimeFormat('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()))
+      let feesRefreshed = false
       try {
         const etfSymbols = ETF_SYMBOLS_FROM_XLSX
         const latestBatches = []
@@ -1145,6 +1129,19 @@ export default function FundPage({
         const sortedSymbolsByVolume = [...latestMap.values()]
           .sort((a, b) => Number(b.volume || 0) - Number(a.volume || 0))
           .map((row) => row.symbol)
+        const shownFunds = (Array.isArray(cachedFunds) && cachedFunds.length > 0)
+          ? cachedFunds.filter(fundPassesFundPageListingGate)
+          : (Array.isArray(staleFunds) && staleFunds.length > 0)
+            ? staleFunds.filter(fundPassesFundPageListingGate)
+            : (Array.isArray(FUND_PAGE_BOOTSTRAP_CACHE) ? FUND_PAGE_BOOTSTRAP_CACHE.filter(fundPassesFundPageListingGate) : [])
+        const feeRefreshedFunds = refreshCachedTrustFees(shownFunds, symbolRows, normalizeFundSymbolKey)
+        if (feeRefreshedFunds.length > 0) {
+          feesRefreshed = true
+          writeFundPageCache(feeRefreshedFunds)
+          FUND_PAGE_BOOTSTRAP_CACHE = feeRefreshedFunds
+          if (!cancelled) setDbFunds(feeRefreshedFunds)
+        }
+
         const etfSymbolsFromLatest = [...new Set(sortedSymbolsByVolume)]
         const cutoff = new Date()
         cutoff.setFullYear(cutoff.getFullYear() - 1)
@@ -1172,7 +1169,6 @@ export default function FundPage({
               const { close, sessionDod } = resolveSpotCloseAndSessionChange(symbolHistory, adjustedClosesRaw, row)
               const volumes = symbolHistory.map((r) => Number(r.volume)).filter((v) => Number.isFinite(v) && v >= 0)
               const historyCount = closes.length
-              const oneYearBaseClose = findBaseCloseByCalendarOffset(symbolHistory, { years: 1 }, adjustedClosesRaw)
               const threeMonthBaseClose = findBaseCloseByCalendarOffset(symbolHistory, { months: 3 }, adjustedClosesRaw)
               const closeLookback = findBaseCloseByCalendarOffset(symbolHistory, { months: 1 }, adjustedClosesRaw)
               const return1d = Number.isFinite(sessionDod.changePct) ? sessionDod.changePct : 0
@@ -1188,29 +1184,16 @@ export default function FundPage({
               )
                 ? Math.floor((latestTradeDate.getTime() - firstTradeDate.getTime()) / (1000 * 60 * 60 * 24))
                 : 0
-              const hasReliableOneYearHistory = historyCount >= 2 && historySpanDays >= 330
               const hasReliableThreeMonthHistory = historyCount >= 2 && historySpanDays >= 90
               const hasReliableOneMonthHistory = historyCount >= 2 && historySpanDays >= 25
-              let return1y = hasReliableOneYearHistory && oneYearBaseClose != null && oneYearBaseClose > 0
-                ? ((close - oneYearBaseClose) / oneYearBaseClose) * 100
-                : null
-              // 上場直後など1年未満: 設定来リターンを年率換算して 1年/シャープに使う
-              if (!Number.isFinite(return1y)) {
-                const inceptionBase = findFirstPositiveClose(symbolHistory, adjustedClosesRaw)
-                return1y = computeAnnualizedReturnPct({
-                  close,
-                  baseClose: inceptionBase,
-                  spanDays: historySpanDays,
-                  minSpanDays: 90,
-                })
-              }
+              const return1y = computeOneYearPriceReturnPct(symbolHistory, adjustedClosesRaw, close)
               const return3m = hasReliableThreeMonthHistory && threeMonthBaseClose != null && threeMonthBaseClose > 0
                 ? ((close - threeMonthBaseClose) / threeMonthBaseClose) * 100
                 : null
               const return1m = closeLookback != null && closeLookback > 0 ? ((close - closeLookback) / closeLookback) * 100 : null
               const return1mRank = hasReliableOneMonthHistory && Number.isFinite(return1m) ? Number(return1m) : null
               const etfMeta = TARGET_ETF_META_MAP.get(symbol)
-              const trustFeeValue = Number.isFinite(Number(meta.trust_fee)) ? Number(meta.trust_fee) : Number(etfMeta?.trustFee)
+              const trustFeeValue = parseTrustFeePercent(meta.trust_fee) ?? parseTrustFeePercent(etfMeta?.trustFee)
               const normalizedNisaCategory = resolveFundNisaCategory(symbol, meta.nisa_category, etfMeta?.nisaCategory)
               const profileRow = profileMap.get(symbol) || null
               const displayName = resolveFundDisplayName(symbol, meta, etfMeta, profileRow)
@@ -1299,7 +1282,7 @@ export default function FundPage({
         writeFundPageCache(sortedFunds)
       } catch (error) {
         console.error('Error fetching data:', error.message)
-        if (!cancelled && !(Array.isArray(cachedFunds) && cachedFunds.length > 0)) {
+        if (!cancelled && !feesRefreshed && !(Array.isArray(cachedFunds) && cachedFunds.length > 0)) {
           setDbFunds([])
         }
       } finally {
@@ -1547,7 +1530,10 @@ export default function FundPage({
 
   const lowFeeLeaders = useMemo(() => {
     return [...dbFunds]
-      .filter((f) => Number.isFinite(Number(f.trustFee)) && Number(f.trustFee) >= 0)
+      .filter((f) => {
+        const fee = parseTrustFeePercent(f.trustFee)
+        return fee != null && fee >= 0
+      })
       .sort((a, b) => Number(a.trustFee) - Number(b.trustFee))
       .slice(0, 5)
   }, [dbFunds])
@@ -1957,7 +1943,7 @@ export default function FundPage({
     // Top/Bottomに加えて、ウォッチ中銘柄は常に表示する。
     const watchIds = new Set(Array.isArray(effectiveWatchlist) ? effectiveWatchlist : [])
     const calculable = dbFunds
-      .filter((f) => Number.isFinite(Number(f.stdDev)) && Number.isFinite(Number(f.returnRate1Y)))
+      .filter((f) => parseOptionalFundMetric(f.stdDev) != null && parseOptionalFundMetric(f.returnRate1Y) != null)
     if (calculable.length === 0) return []
     const watchlistedOnly = calculable
       .filter((f) => watchIds.has(f.id))
@@ -1994,10 +1980,6 @@ export default function FundPage({
     setSortConfig({ key, direction })
   }
   const toggleCompareFund = (fundId) => {
-    if (!isLoggedIn) {
-      promptLogin()
-      return
-    }
     setSelectedFundIds((prev) => {
       if (prev.includes(fundId)) return prev.filter((id) => id !== fundId)
       if (prev.length >= 3) {
@@ -2020,7 +2002,9 @@ export default function FundPage({
         setIsCompareTrialLimitModalOpen(true)
         return
       }
-      consumeGuestEtfCompareTrial()
+      consumeGuestEtfCompareTrial(
+        [...selectedFundIds].map((id) => String(id || '').trim().toUpperCase()).filter(Boolean).sort().join(','),
+      )
       trackAnalyticsEvent('guest_etf_compare_trial_consumed', { source: 'fund_page' })
     }
     setIsCompareModalOpen(true)
@@ -2166,10 +2150,10 @@ export default function FundPage({
               <div className="rounded-xl border border-indigo-200 dark:border-indigo-500/30 bg-indigo-50 dark:bg-slate-950/70 p-3 mt-3">
                 <p className="text-[11px] font-black tracking-wider text-indigo-700 dark:text-indigo-300">最適配分</p>
                 <p className="text-[11px] text-slate-700 dark:text-slate-300 mt-1">
-                  リターン {fmtPct(optimizerFrontier.optimalPoint.ret)} / リスク {optimizerFrontier.optimalPoint.risk.toFixed(1)}% / 信託報酬 {optimizerFrontier.optimalPoint.fee.toFixed(2)}%
+                  リターン {fmtPct(optimizerFrontier.optimalPoint.ret)} / リスク {optimizerFrontier.optimalPoint.risk.toFixed(1)}% / 信託報酬 {formatTrustFeePercent(optimizerFrontier.optimalPoint.fee)}
                 </p>
                 <p className="text-[11px] text-slate-700 dark:text-slate-300">
-                  現在配分 リターン {fmtPct(optimizerFrontier.currentPoint.ret)} / リスク {optimizerFrontier.currentPoint.risk.toFixed(1)}% / 信託報酬 {optimizerFrontier.currentPoint.fee.toFixed(2)}%
+                  現在配分 リターン {fmtPct(optimizerFrontier.currentPoint.ret)} / リスク {optimizerFrontier.currentPoint.risk.toFixed(1)}% / 信託報酬 {formatTrustFeePercent(optimizerFrontier.currentPoint.fee)}
                 </p>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
                   比率: {optimizerCurrentWeights.map((w, idx) => `${String.fromCharCode(65 + idx)} ${w.toFixed(1)}%`).join(' / ')}
@@ -2447,7 +2431,7 @@ export default function FundPage({
                         tickFormatter={(v) => `${Math.round(Number(v))}%`}
                         width={56}
                         label={{
-                          value: '1年リターン（%）',
+                          value: '1年リターン（市場終値・分配金除く）',
                           angle: -90,
                           position: 'left',
                           offset: 8,
@@ -2663,7 +2647,7 @@ export default function FundPage({
           <div className="mx-5 mb-4 rounded-xl border border-amber-200/90 dark:border-amber-900/40 bg-amber-50/90 dark:bg-amber-950/25 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <p className="text-xs leading-relaxed text-stone-700 dark:text-slate-300">
               未ログインでは<strong className="font-black text-amber-800 dark:text-amber-200">先頭{guestListHardCap}件のみ</strong>
-              表示し、リターン・信託報酬などの数値は非表示です。
+              表示し、一覧の数値は伏せています。比較結果（信託報酬・リターン）は登録前に1回だけ最後まで見られます。2回目と保存はログイン後です。
             </p>
             <div className="flex flex-wrap gap-2 shrink-0">
               <button
@@ -2689,13 +2673,7 @@ export default function FundPage({
             const isWatchlisted = Array.isArray(effectiveWatchlist) && effectiveWatchlist.includes(fund.id)
             const isCompared = selectedFundIds.includes(fund.id)
             const ret1y = parseOptionalFundMetric(fund.returnRate1Y)
-            const retYtd = parseOptionalFundMetric(fund.returnYTD)
-            const retDisplay = ret1y != null
-              ? fmtPct(fund.returnRate1Y)
-              : (retYtd != null
-                ? `YTD ${retYtd >= 0 ? '+' : ''}${retYtd.toFixed(1)}%`
-                : '-')
-            const retValue = ret1y != null ? ret1y : (retYtd ?? NaN)
+            const retDisplay = formatOneYearPriceReturnPct(ret1y)
             return (
               <div
                 key={fund.id}
@@ -2739,8 +2717,9 @@ export default function FundPage({
                       <span className="flex min-w-0 items-center gap-0.5">
                         <span
                           className={`font-black truncate ${
-                            ret1y == null && retYtd != null ? 'text-xs' : ''
-                          } ${retDisplay === '-' ? 'text-slate-400' : signedReturnTextClassStrong(retValue)}`}
+                            ret1y == null ? 'text-slate-400' : signedReturnTextClassStrong(ret1y)
+                          }`}
+                          title={ret1y == null ? ONE_YEAR_RETURN_MISSING_TEXT : ONE_YEAR_RETURN_BASIS_TEXT}
                         >
                           {retDisplay}
                         </span>
@@ -2773,7 +2752,10 @@ export default function FundPage({
                 <th className="px-4 py-3 text-right cursor-pointer" onClick={() => requestSort('aumValue')}>AUM <SortIcon colKey="aumValue" /></th>
                 <th className="px-4 py-3 text-right cursor-pointer" onClick={() => requestSort('sharpe')}>リスク対リターン <SortIcon colKey="sharpe" /></th>
                 <th className="px-4 py-3 text-right cursor-pointer" onClick={() => requestSort('stdDev')}>変動性 <SortIcon colKey="stdDev" /></th>
-                <th className="px-4 py-3 text-right cursor-pointer" onClick={() => requestSort('returnRate1Y')}>1年リターン <SortIcon colKey="returnRate1Y" /></th>
+                <th className="px-4 py-3 text-right cursor-pointer" onClick={() => requestSort('returnRate1Y')} title={ONE_YEAR_RETURN_BASIS_TEXT}>
+                  1年リターン <SortIcon colKey="returnRate1Y" />
+                  <span className="mt-0.5 block text-[10px] font-normal normal-case text-slate-400">{ONE_YEAR_RETURN_BASIS_TEXT}</span>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -2781,7 +2763,6 @@ export default function FundPage({
               const isWatchlisted = Array.isArray(effectiveWatchlist) && effectiveWatchlist.includes(fund.id)
                 const isCompared = selectedFundIds.includes(fund.id)
                 const ret1y = parseOptionalFundMetric(fund.returnRate1Y)
-                const retYtd = parseOptionalFundMetric(fund.returnYTD)
               return (
                   <tr
                   key={fund.id}
@@ -2810,7 +2791,12 @@ export default function FundPage({
                         {isCompared ? <Check size={12} /> : null}
                     </button>
                     </td>
-                    <td className="px-4 py-3 font-bold text-slate-600 dark:text-slate-300">{(currentPage - 1) * itemsPerPage + idx + 1}</td>
+                    <td
+                      className="px-4 py-3 font-bold text-slate-600 dark:text-slate-300"
+                      title={sortConfig.key === 'returnRate1Y' && ret1y == null ? ONE_YEAR_RETURN_MISSING_TEXT : undefined}
+                    >
+                      {sortConfig.key === 'returnRate1Y' && ret1y == null ? '—' : (currentPage - 1) * itemsPerPage + idx + 1}
+                    </td>
                     <td className="px-4 py-3">
                       <div className="flex items-start justify-between gap-2">
                     <div>
@@ -2864,24 +2850,14 @@ export default function FundPage({
                     <td
                       className={`px-4 py-3 text-right font-bold ${
                         isLoggedIn
-                          ? (ret1y != null
-                            ? signedReturnTextClassStrong(ret1y)
-                            : (retYtd != null
-                              ? signedReturnTextClassStrong(retYtd)
-                              : 'text-slate-400'))
+                          ? (ret1y != null ? signedReturnTextClassStrong(ret1y) : 'text-slate-400')
                           : ''
                       }`}
                     >
                       {isLoggedIn ? (
                       <div className="inline-flex w-full min-w-[4.5rem] items-center justify-end gap-1">
-                        <span
-                          className={ret1y != null ? '' : (retYtd != null ? 'text-[11px] leading-tight' : '')}
-                        >
-                          {ret1y != null
-                            ? fmtPct(fund.returnRate1Y)
-                            : (retYtd != null
-                              ? `YTD ${retYtd >= 0 ? '+' : ''}${retYtd.toFixed(1)}%`
-                              : '-')}
+                        <span title={ret1y == null ? ONE_YEAR_RETURN_MISSING_TEXT : ONE_YEAR_RETURN_BASIS_TEXT}>
+                          {formatOneYearPriceReturnPct(ret1y)}
                         </span>
                         <Fund1YearReturnHintIcon fund={fund} />
                       </div>
@@ -3015,8 +2991,8 @@ export default function FundPage({
             {!isLoggedIn ? (
               <p className="text-[10px] font-bold text-amber-300 mt-0.5 truncate">
                 {isGuestEtfCompareTrialConsumed()
-                  ? '比較はログイン後に利用できます'
-                  : `無料お試し 残り${getGuestEtfCompareTrialRemaining()}回`}
+                  ? '無料お試しは使用済みです。次の比較はログイン後です。'
+                  : '比較結果（信託報酬・リターン）を1回だけ登録前に見られます。'}
               </p>
             ) : null}
           </div>
@@ -3239,7 +3215,7 @@ export default function FundPage({
                           <div>
                             <p className="text-[17px] sm:text-[20px] md:text-[22px] leading-tight font-black text-slate-900 dark:text-white">将来推移シミュレーション (20年)</p>
                             <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-                              現在配分ベース | 期待収益 {fmtPct(optimizerFrontier.currentPoint?.ret)} / リスク {Number(optimizerFrontier.currentPoint?.risk || 0).toFixed(1)}% / 信託報酬 {Number(optimizerFrontier.currentPoint?.fee || 0).toFixed(2)}%
+                              現在配分ベース | 期待収益 {fmtPct(optimizerFrontier.currentPoint?.ret)} / リスク {Number(optimizerFrontier.currentPoint?.risk || 0).toFixed(1)}% / 信託報酬 {formatTrustFeePercent(optimizerFrontier.currentPoint?.fee)}
                             </p>
                           </div>
                         </div>
@@ -3296,7 +3272,7 @@ export default function FundPage({
                             <div className="rounded-xl border border-rose-200 dark:border-rose-700/50 bg-rose-50/60 dark:bg-rose-950/20 p-3">
                               <p className="text-[11px] font-bold text-rose-600 dark:text-rose-300">支払う手数料 (推計)</p>
                               <p className="text-[18px] sm:text-[22px] md:text-[26px] leading-none font-black text-rose-700 dark:text-rose-200 mt-2">{fmtYen(composeGrowthLast.feePaid)}</p>
-                              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">※信託報酬 {Number(optimizerFrontier.currentPoint?.fee || 0).toFixed(2)}% に基づく</p>
+                              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">※信託報酬 {formatTrustFeePercent(optimizerFrontier.currentPoint?.fee)} に基づく</p>
                             </div>
                           </div>
                         )}
@@ -3379,7 +3355,7 @@ export default function FundPage({
 
       <div className="text-right mt-4 text-xs text-slate-400">※ データ提供: 情報提供元（ETF）</div>
       <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
-        ※ 信託報酬は税込換算の参考値（JPX銘柄一覧の税抜目安×1.1、一部は交付目論見書の税込）です。予告なく変更される場合があります。最新情報は各運用会社の公式サイト・JPXをご確認ください。
+        ※ 信託報酬は保存済みの税込年率の参考値です。運用会社の公表資料を確認した銘柄には基本料率・概算値・上限値を含み、純資産の段階料率により実際の率が異なる場合があります。低コスト順位は保存済み参考値を比較したもので、日々の実効料率や総経費率の順位ではありません。有価証券貸付の報酬・その他費用は別途。最新の適用料率は運用会社の公式資料をご確認ください。
       </p>
       <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
         ※ 過去の運用実績・リターンは将来の成果を保証するものではありません。

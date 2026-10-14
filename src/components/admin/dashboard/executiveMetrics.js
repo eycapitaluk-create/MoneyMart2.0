@@ -106,7 +106,7 @@ export function totalUsersCaption(cohortSize, cap = CRM_COHORT_CAP) {
   const atCap = n >= cap
   return atCap
     ? `Loaded cohort at the ${cap}-row cap. Signup change vs the prior period is not shown on this count.`
-    : `Loaded cohort, max ${cap} (staff excluded). Signup change vs the prior period is not shown on this count.`
+    : `Loaded cohort, max ${cap} (staff and community seed accounts excluded). Signup change vs the prior period is not shown on this count.`
 }
 
 export function formatSharePct(pct) {

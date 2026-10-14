@@ -1,0 +1,47 @@
+{
+  "baseline_deployment": "dpl_EDYKfqn6QyHVUs2L3bMKqu8bdaBu",
+  "alias": "https://www.moneymart.co.jp",
+  "ready": true,
+  "do_not_deploy_this_worktree": true,
+  "cron_switch": "enabled",
+  "cron_switch_confirmed_by": "user",
+  "cron_switch_evidence": "output/moneymart/data-automation/2026-10-09/vercel-cron-enabled.png",
+  "cron_enabled_checkbox": 1,
+  "first_scheduled_run": "not_yet_run",
+  "first_scheduled_run_note": "The first full schedule is still in the future. Enabling the switch is not a completed run.",
+  "paid_fallback_hold_from": "2026-10-13T00:00:00+09:00",
+  "ops_readback": "/Users/justinnam/.codex/.chatgpt-projects/g-p-6aa34815caf08191bc03c44ab079b209/output/moneymart/data-automation/2026-10-09/yahoo-price-ops-readback.json",
+  "worktree": "/Users/justinnam/.cursor/worktrees/MoneyMart2.0/utn",
+  "source": "production-source-exact",
+  "worktree_not_deployed": true,
+  "applied": [
+    "api/_lib/colabTargetUniverse.json",
+    "api/_lib/exchangeSessionReference.json",
+    "api/_lib/exchangeCalendar.js",
+    "api/_lib/marketstackSupplement.js",
+    "api/_lib/tradingSessionDate.js",
+    "api/_lib/yahooUnadjustedBar.js",
+    "api/_lib/yahooPricePlan.js",
+    "api/cron/yahoo-unadjusted-daily.js",
+    "api/cron/marketstack-daily.js",
+    "scripts/test-trading-session-date.mjs",
+    "scripts/test-marketstack-supplement.mjs",
+    "scripts/test-price-route-guards.mjs",
+    "vercel.json crons only"
+  ],
+  "already_matching": [
+    "src/data/etfUniverseLite.js"
+  ],
+  "preserved_conflict": {
+    "path": "scripts/import-market-dashboard-xlsx.mjs",
+    "reason": "worktree has uncommitted close-only null OHLC and 1306.T skip",
+    "not_applied_from_verified_source": [
+      "rowsPreservingExistingOhlc",
+      "upsert market_dashboard_daily on trade_date,item",
+      "remove market_dashboard_recent delete+insert fallback"
+    ]
+  },
+  "not_scheduled": [
+    "/api/cron/marketstack-daily"
+  ]
+}

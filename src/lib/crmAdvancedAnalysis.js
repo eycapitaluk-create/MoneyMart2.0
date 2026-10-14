@@ -1,5 +1,5 @@
 import { classifyReferrerChannel } from './referrerBuckets'
-import { hasPremiumIntent, isActivatedSignup, isCrmInternalUser } from './crmInternalUsers'
+import { hasPremiumIntent, hasSignupSource, isActivatedSignup, isCrmInternalUser, jstDateKey } from './crmInternalUsers'
 
 const DAY_MS = 86400000
 const MIN_N = 8
@@ -31,30 +31,23 @@ export function wilsonInterval(successes, n, z = 1.96) {
   }
 }
 
-const hasAttribution = (row) => {
-  if (row?.has_attribution != null) return Boolean(row.has_attribution)
-  return Boolean(
-    String(row?.signup_referrer_domain || '').trim()
-    || String(row?.signup_utm_source || '').trim()
-    || String(row?.signup_utm_medium || '').trim()
-    || String(row?.signup_utm_campaign || '').trim()
-    || String(row?.signup_ref || '').trim()
-    || String(row?.signup_landing_path || '').trim(),
-  )
-}
+const hasAttribution = (row) => hasSignupSource(row)
 
 const channelOf = (row) => classifyReferrerChannel({
   referrerDomain: row?.signup_referrer_domain,
   utmSource: row?.signup_utm_source,
   utmMedium: row?.signup_utm_medium,
   utmCampaign: row?.signup_utm_campaign,
+  signupRef: row?.signup_ref,
 })
 
 const createdMs = (row) => (row?.user_created_at ? new Date(row.user_created_at).getTime() : 0)
 
 const isoWeekStart = (ms) => {
-  const d = new Date(ms)
-  const utc = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())
+  const key = jstDateKey(ms)
+  if (!key) return ''
+  const [year, month, dayOfMonth] = key.split('-').map(Number)
+  const utc = Date.UTC(year, month - 1, dayOfMonth)
   const day = new Date(utc).getUTCDay() || 7
   const monday = utc - (day - 1) * DAY_MS
   return new Date(monday).toISOString().slice(0, 10)

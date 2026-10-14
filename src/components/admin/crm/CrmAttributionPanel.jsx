@@ -37,11 +37,11 @@ export default function CrmAttributionPanel({
       </div>
 
       <div className={`${panelClass} ${panelPad}`}>
-        <h3 className={titleClass}>What “Direct / unknown” means</h3>
+        <h3 className={titleClass}>What “Not captured” means</h3>
         <p className="text-xs text-gray-600 dark:text-gray-400 mt-2 leading-relaxed">
-          Not only typed URLs and bookmarks. Includes untagged social or email links, in-app browsers,
-          privacy-restricted referrals, and signups created before attribution capture.
-          It means the source cannot be proven — not that the customer had no source.
+          The signup row has no referrer, UTM, or ref code. A landing path such as / is the first page
+          we stored, not where the person came from. Untagged social or email links, in-app browsers,
+          and privacy-restricted referrals all land here. The source cannot be proven.
         </p>
         {REFERRER_CHANNEL_NOTES?.smartnews ? (
           <p className="text-xs text-gray-600 dark:text-gray-400 mt-2 leading-relaxed">

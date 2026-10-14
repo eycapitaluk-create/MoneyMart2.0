@@ -24,6 +24,7 @@ import FearGreedIndex from '../components/market/FearGreedIndex'
 import MarketMajorNewsTicker from '../components/market/MarketMajorNewsTicker'
 import MembersBlurGate from '../components/auth/MembersBlurGate'
 import { heatmapChangeBgClass, signedReturnTextClassStrong } from '../lib/marketDirectionColors'
+import { latestUsableCommodityRows } from '../lib/commodityDataGuard'
 
 const REGION_TICKER_LIST = [
   { symbol: 'ACWI', exposure: 'All World' },
@@ -757,7 +758,7 @@ export default function MarketPage({ session = null }) {
             .in('symbol', customHeatmapSymbols)
             .gte('trade_date', historyFromDate)
             .order('trade_date', { ascending: false }),
-          supabase.from('commodity_daily_prices').select('commodity_name,trade_date,percentage_day')
+          supabase.from('commodity_daily_prices').select('commodity_name,trade_date,percentage_day,raw')
             .in('commodity_name', COMMODITY_NAMES)
             .order('trade_date', { ascending: false }),
         ])
@@ -800,7 +801,7 @@ export default function MarketPage({ session = null }) {
               const prevClose = Number(customPrevCloseMap.get(symbol))
               if (!Number.isFinite(prevClose) || !Number.isFinite(close) || prevClose <= 0) return null
               const change = Number((((close - prevClose) / prevClose) * 100).toFixed(1))
-              return { symbol: tile.symbol, name: tile.name, change }
+              return { symbol: tile.symbol, name: tile.name, change, tradeDate: live?.trade_date || null }
             })
             .filter(Boolean)
         // 原材料: commodity_daily_prices（MarketStack /commodities）を優先、なければ ETF
@@ -808,17 +809,13 @@ export default function MarketPage({ session = null }) {
         const commodityRows = commodityRes.data || []
         const commodityErr = commodityRes.error
         if (!commodityErr && commodityRows && commodityRows.length > 0) {
-            const byName = new Map()
-            for (const r of commodityRows) {
-              const name = String(r?.commodity_name || '')
-              if (!byName.has(name)) byName.set(name, r)
-            }
+            const byName = latestUsableCommodityRows(commodityRows)
             commodityTilesData = COMMODITY_NAMES
               .map((name) => {
                 const row = byName.get(name)
                 const pct = Number(row?.percentage_day)
-                if (!row || !Number.isFinite(pct)) return null
-                return { symbol: name, name: COMMODITY_NAME_JA[name] || name, change: Number(pct.toFixed(1)) }
+                if (!row || row.percentage_day == null || !Number.isFinite(pct)) return null
+                return { symbol: name, name: COMMODITY_NAME_JA[name] || name, change: Number(pct.toFixed(1)), tradeDate: row.trade_date }
               })
               .filter(Boolean)
         }
@@ -1388,7 +1385,7 @@ export default function MarketPage({ session = null }) {
               <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 transition-colors">
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="text-sm font-black text-slate-900 dark:text-white">原材料（金・銀・銅・原油）</h3>
-                  <span className="text-[10px] font-bold text-slate-600 dark:text-slate-300 tabular-nums shrink-0">{heatmapDataDate ? `基準日: ${heatmapDataDate}` : ''}</span>
+                  <span className="text-[10px] font-bold text-slate-600 dark:text-slate-300 tabular-nums shrink-0">取引日は各タイルに表示</span>
                 </div>
                 <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-2 leading-relaxed">
                   各タイル: 日次変動率（指数はデータ提供元の定義、ETF参照データ使用時は前営業日終値比）
@@ -1409,6 +1406,7 @@ export default function MarketPage({ session = null }) {
                           {Number(item.change || 0) >= 0 ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
                           {Number(item.change || 0) >= 0 ? '+' : ''}{Number(item.change || 0).toFixed(1)}%
                         </p>
+                        <p className="text-[10px] font-bold opacity-90 tabular-nums">{item.tradeDate ? `取引日 ${item.tradeDate}` : '取引日未確認'}</p>
                         <div className="absolute inset-0 bg-white opacity-0 group-hover:opacity-10 transition" />
                       </div>
                     ))

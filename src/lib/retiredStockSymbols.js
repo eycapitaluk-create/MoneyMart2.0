@@ -1,4 +1,7 @@
-/** Symbols delisted / merged out of the app universe (no listing, no search). */
+/**
+ * Symbols delisted / merged out of the app universe (no listing, no search).
+ * MMC stays listed: the app US universe is 549 and still includes MMC alongside MRSH.
+ */
 const RETIRED_CANONICAL = new Set([
   '7205.T',
   '9719.T',
@@ -6,7 +9,6 @@ const RETIRED_CANONICAL = new Set([
   'JNPR',
   'PARA',
   'WBA',
-  'MMC',
   'IPG',
   'SEE',
 ])

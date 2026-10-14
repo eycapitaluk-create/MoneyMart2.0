@@ -25,7 +25,13 @@ import {
   fundSymbolLookupVariants,
   normalizeFundSymbolKey,
 } from '../lib/fundDisplayUtils'
-import { findBaseCloseByCalendarOffset } from '../lib/calendarDateUtils'
+import {
+  computeOneYearPriceReturnPct,
+  formatOneYearPriceReturnPct,
+  hasOneYearPriceReturn,
+  ONE_YEAR_RETURN_MISSING_TEXT,
+  ONE_YEAR_RETURN_BASIS_TEXT,
+} from '../lib/calendarDateUtils'
 import {
   buildSplitAdjustedCloses,
   chartDownsampleIndices,
@@ -37,9 +43,10 @@ import { dedupeStockDailyPricesByTradeDate } from '../lib/stockDailyHistory'
 import { signedReturnTextClassStrong } from '../lib/marketDirectionColors'
 import { LEGAL_NOTICE_TEMPLATES } from '../constants/legalNoticeTemplates'
 import GuestEtfCompareTrialWall from '../components/funds/GuestEtfCompareTrialWall'
+import { formatTrustFeePercent, parseTrustFeePercent } from '../lib/trustFee'
 import {
   consumeGuestEtfCompareTrial,
-  getGuestEtfCompareTrialRemaining,
+  getGuestEtfCompareGrantedKey,
   isGuestEtfCompareTrialConsumed,
 } from '../lib/guestEtfCompareTrial'
 const PortfolioOptimizer3D = lazy(() => import('../components/funds/PortfolioOptimizer3D'))
@@ -115,11 +122,7 @@ const toProjectionAnnualRatePct = (rawPct) => {
   // keep variation by allocation, but avoid unrealistic explosion.
   return Math.max(-20, Math.min(80, raw * 0.35))
 }
-const formatTrustFee = (value) => {
-  const n = Number(value)
-  if (!Number.isFinite(n)) return '-'
-  return `${n.toFixed(2)}%`
-}
+const formatTrustFee = (value) => formatTrustFeePercent(value)
 const formatMonthDay = (isoDate) => {
   const [year, month, day] = String(isoDate || '').split('-')
   if (!year || !month || !day) return String(isoDate || '')
@@ -227,9 +230,7 @@ export default function FundComparePage({
   const [searchParams, setSearchParams] = useSearchParams()
   const authReturnPath = `${location.pathname}${location.search}`
   const isLoggedIn = Boolean(user?.id)
-  const [guestCompareBlocked, setGuestCompareBlocked] = useState(() => (
-    !embeddedMode && !Boolean(user?.id) && isGuestEtfCompareTrialConsumed()
-  ))
+  const [grantedGuestKey, setGrantedGuestKey] = useState(null)
   const [guestTrialNotice, setGuestTrialNotice] = useState('')
   const [loading, setLoading] = useState(true)
   const [notice, setNotice] = useState('')
@@ -307,25 +308,32 @@ export default function FundComparePage({
     return [...new Set(raw)].slice(0, 3)
   }, [idsParam])
 
+  const guestCompareKey = [...requestedSymbols].sort().join(',')
+  const guestCompareBlocked = !embeddedMode
+    && !isLoggedIn
+    && requestedSymbols.length >= 2
+    && isGuestEtfCompareTrialConsumed()
+    && getGuestEtfCompareGrantedKey() !== guestCompareKey
+    && grantedGuestKey !== guestCompareKey
+
   useEffect(() => {
-    if (embeddedMode || isLoggedIn) {
-      setGuestCompareBlocked(false)
+    if (embeddedMode || isLoggedIn || requestedSymbols.length < 2) {
       setGuestTrialNotice('')
       return
     }
-    if (isGuestEtfCompareTrialConsumed()) {
-      setGuestCompareBlocked(true)
-      setGuestTrialNotice('')
+    const key = [...requestedSymbols].sort().join(',')
+    if (!isGuestEtfCompareTrialConsumed()) {
+      consumeGuestEtfCompareTrial(key)
+      setGrantedGuestKey(key)
+      setGuestTrialNotice('無料お試しは1回です。信託報酬とリターンはこの画面で確認できます。次の比較と保存はログイン後です。')
       return
     }
-    setGuestCompareBlocked(false)
-    if (requestedSymbols.length >= 2) {
-      const consumed = consumeGuestEtfCompareTrial()
-      if (consumed) {
-        setGuestTrialNotice('無料お試し（1回目）— 登録すると何度でもETF比較できます')
-      }
+    if (getGuestEtfCompareGrantedKey() === key || grantedGuestKey === key) {
+      setGuestTrialNotice('無料お試しは1回です。信託報酬とリターンはこの画面で確認できます。次の比較と保存はログイン後です。')
+      return
     }
-  }, [embeddedMode, isLoggedIn, requestedSymbols])
+    setGuestTrialNotice('')
+  }, [embeddedMode, grantedGuestKey, isLoggedIn, requestedSymbols])
 
   useEffect(() => {
     let cancelled = false
@@ -333,7 +341,7 @@ export default function FundComparePage({
       setLoading(true)
       setError('')
       setNotice('')
-      if (!embeddedMode && !isLoggedIn && isGuestEtfCompareTrialConsumed()) {
+      if (requestedSymbols.length < 2 || guestCompareBlocked) {
         setFunds([])
         setChartData([])
         setLoading(false)
@@ -426,19 +434,15 @@ export default function FundComparePage({
           const adjustedSeries = buildSplitAdjustedCloses(history, {
             skipSplitHeuristic: skipEodSplitHeuristicForSymbol(symKey),
           })
-          const oneYearBaseClose = findBaseCloseByCalendarOffset(history, { years: 1 }, adjustedSeries)
           const { close, sessionDod } = resolveSpotCloseAndSessionChange(history, adjustedSeries, latest)
-          const adjPositiveCount = adjustedSeries.filter((v) => Number.isFinite(Number(v)) && Number(v) > 0).length
-          const return1y = (adjPositiveCount >= 20 && oneYearBaseClose != null && oneYearBaseClose > 0)
-            ? ((close - oneYearBaseClose) / oneYearBaseClose) * 100
-            : null
+          const return1y = computeOneYearPriceReturnPct(history, adjustedSeries, close)
           const vol = calculateRealizedVolatilityFromAscHistory(history, adjustedSeries)
           const sharpe = (Number.isFinite(return1y) && Number.isFinite(vol) && vol > 0) ? (return1y / vol) : null
           const avgVol30 = volumes.length > 0
             ? volumes.slice(-30).reduce((acc, cur) => acc + cur, 0) / Math.min(30, volumes.length)
             : Number(latest.volume || 0)
           const change1d = Number.isFinite(sessionDod.changePct) ? sessionDod.changePct : null
-          const trustFeeValue = Number.isFinite(Number(meta.trust_fee)) ? Number(meta.trust_fee) : Number(xlsx?.trustFee)
+          const trustFeeValue = parseTrustFeePercent(meta.trust_fee) ?? parseTrustFeePercent(xlsx?.trustFee)
           const normalizedNisaCategory = resolveFundNisaCategory(symKey, meta.nisa_category, xlsx?.nisaCategory)
           return {
             symbol: symKey,
@@ -508,11 +512,11 @@ export default function FundComparePage({
     }
     run()
     return () => { cancelled = true }
-  }, [requestedSymbols, embeddedMode, isLoggedIn])
+  }, [requestedSymbols, embeddedMode, isLoggedIn, guestCompareBlocked])
 
   const scatterData = useMemo(() => (
     funds
-      .filter((f) => Number.isFinite(Number(f.return1y)) && Number.isFinite(Number(f.volatility)))
+      .filter((f) => hasOneYearPriceReturn(f.return1y) && Number.isFinite(Number(f.volatility)) && f.volatility !== null && f.volatility !== '')
       .map((f, idx) => ({
         ...f,
         x: Number(f.volatility),
@@ -872,8 +876,15 @@ export default function FundComparePage({
     }
     const keys = funds.map((_, idx) => `f${idx + 1}`)
     const baseByKey = {}
-    keys.forEach((key) => {
-      const first = visiblePerformanceSeries.find((row) => Number.isFinite(Number(row?.[key])))
+    keys.forEach((key, idx) => {
+      if (performanceTimeline === '1Y' && !hasOneYearPriceReturn(funds[idx]?.return1y)) {
+        baseByKey[key] = null
+        return
+      }
+      const first = visiblePerformanceSeries.find((row) => {
+        const value = row?.[key]
+        return value != null && value !== '' && Number.isFinite(Number(value))
+      })
       const base = Number(first?.[key] || 0)
       baseByKey[key] = base > 0 ? base : null
     })
@@ -891,7 +902,7 @@ export default function FundComparePage({
       })
       return next
     })
-  }, [visiblePerformanceSeries, funds.length])
+  }, [visiblePerformanceSeries, funds, performanceTimeline])
   const performanceYAxisDomain = useMemo(() => {
     if (!Array.isArray(rebasedPerformanceSeries) || rebasedPerformanceSeries.length === 0 || funds.length === 0) return ['auto', 'auto']
     const keys = funds.map((_, idx) => `f${idx + 1}`)
@@ -1048,9 +1059,9 @@ export default function FundComparePage({
             <p className="mt-2 text-[11px] font-semibold text-amber-800/90 dark:text-amber-200/90">
               例: <span className="font-mono">/etf-compare?ids=1306.T,1321.T</span>
             </p>
-            {!isLoggedIn && !isGuestEtfCompareTrialConsumed() ? (
+            {!isLoggedIn ? (
               <p className="mt-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-[11px] font-bold text-sky-800 dark:border-sky-900/40 dark:bg-sky-950/30 dark:text-sky-200">
-                無料お試し：あと{getGuestEtfCompareTrialRemaining()}回、ETF比較をお試しできます
+                比較結果（信託報酬・リターン）は1回だけ登録前に見られます。2回目と保存はログイン後です。
               </p>
             ) : null}
           </div>
@@ -1094,7 +1105,7 @@ export default function FundComparePage({
                           tickFormatter={(v) => `${Math.round(Number(v))}%`}
                           width={56}
                           label={{
-                            value: '1年リターン（%）',
+                            value: '1年リターン（市場終値・分配金除く）',
                             angle: -90,
                             position: 'left',
                             offset: 8,
@@ -1136,6 +1147,13 @@ export default function FundComparePage({
                     <option value="1Y">1Y</option>
                   </select>
                 </div>
+                {performanceTimeline === '1Y' && funds.some((fund) => !hasOneYearPriceReturn(fund.return1y)) ? (
+                  <p className="mb-2 text-[11px] font-bold leading-relaxed text-slate-500 dark:text-slate-400">
+                    {ONE_YEAR_RETURN_MISSING_TEXT}
+                    {' '}
+                    （{funds.filter((fund) => !hasOneYearPriceReturn(fund.return1y)).map((fund) => fund.name || fund.symbol).join('、')}）
+                  </p>
+                ) : null}
             <div className="h-[220px] sm:h-[280px] md:h-[300px]">
               <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={rebasedPerformanceSeries} margin={{ top: 8, right: 8, bottom: 56, left: 0 }}>
@@ -1159,6 +1177,7 @@ export default function FundComparePage({
                         iconSize={8}
                       />
                       {funds.map((f, idx) => (
+                        performanceTimeline === '1Y' && !hasOneYearPriceReturn(f.return1y) ? null : (
                     <Line
                           key={f.symbol}
                       type="monotone"
@@ -1169,6 +1188,7 @@ export default function FundComparePage({
                           dot={false}
                           connectNulls={false}
                     />
+                        )
                   ))}
                 </LineChart>
               </ResponsiveContainer>
@@ -1219,12 +1239,14 @@ export default function FundComparePage({
                       <dl className="mt-3 grid grid-cols-2 gap-x-2 gap-y-2 text-[11px]">
                         <div>
                           <dt className="font-bold text-slate-500 dark:text-slate-400">1年リターン</dt>
+                          <dd className="text-[10px] font-bold text-slate-400">{ONE_YEAR_RETURN_BASIS_TEXT}</dd>
                           <dd
                             className={`mt-0.5 font-black ${
-                              Number.isFinite(Number(f.return1y)) ? signedReturnTextClassStrong(Number(f.return1y)) : 'text-slate-400'
+                              hasOneYearPriceReturn(f.return1y) ? signedReturnTextClassStrong(Number(f.return1y)) : 'text-slate-400'
                             }`}
+                            title={hasOneYearPriceReturn(f.return1y) ? ONE_YEAR_RETURN_BASIS_TEXT : ONE_YEAR_RETURN_MISSING_TEXT}
                           >
-                            {fmtPct(f.return1y)}
+                            {formatOneYearPriceReturnPct(f.return1y)}
                           </dd>
                         </div>
                         <div>
@@ -1284,7 +1306,10 @@ export default function FundComparePage({
                   <tr>
                     <th className="px-4 py-3 text-left">銘柄</th>
                     <th className="px-4 py-3 text-center">ウォッチ</th>
-                    <th className="px-4 py-3 text-right">1年リターン</th>
+                    <th className="px-4 py-3 text-right" title={ONE_YEAR_RETURN_BASIS_TEXT}>
+                      1年リターン
+                      <span className="mt-0.5 block text-[10px] font-normal">{ONE_YEAR_RETURN_BASIS_TEXT}</span>
+                    </th>
                     <th className="px-4 py-3 text-right">変動性</th>
                     <th className="px-4 py-3 text-right">シャープレシオ</th>
                     <th className="px-4 py-3 text-right">信託報酬</th>
@@ -1330,11 +1355,14 @@ export default function FundComparePage({
                           />
                         </button>
                       </td>
-                      <td className={`px-4 py-3 text-right font-bold ${
-                        Number.isFinite(Number(f.return1y))
-                          ? signedReturnTextClassStrong(Number(f.return1y))
-                          : 'text-slate-400'
-                      }`}>{fmtPct(f.return1y)}</td>
+                      <td
+                        className={`px-4 py-3 text-right font-bold ${
+                          hasOneYearPriceReturn(f.return1y)
+                            ? signedReturnTextClassStrong(Number(f.return1y))
+                            : 'text-slate-400'
+                        }`}
+                        title={hasOneYearPriceReturn(f.return1y) ? ONE_YEAR_RETURN_BASIS_TEXT : ONE_YEAR_RETURN_MISSING_TEXT}
+                      >{formatOneYearPriceReturnPct(f.return1y)}</td>
                       <td className="px-4 py-3 text-right text-slate-700 dark:text-slate-300">{Number.isFinite(f.volatility) ? `${f.volatility.toFixed(1)}%` : '-'}</td>
                       <td className="px-4 py-3 text-right text-slate-700 dark:text-slate-300">{Number.isFinite(f.sharpe) ? f.sharpe.toFixed(2) : '-'}</td>
                       <td className="px-4 py-3 text-right text-slate-700 dark:text-slate-300">{formatTrustFee(f.trustFee)}</td>

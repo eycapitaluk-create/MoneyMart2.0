@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import { isMarketRelevantManualNews } from './marketNewsRelevance'
+import { isMarketRelevantManualNews, MARKET_PICKUP_COUNT } from './marketNewsRelevance'
 import {
   isValidManualNewsTimestamp,
   manualNewsRowRecencyMs,
@@ -149,7 +149,7 @@ export const fetchNewsManualData = async () => {
   return {
     updatedAt: latestUpdated || null,
     marketTicker: sortTickerLikeByRecency(byBucket.market_ticker),
-    marketPickup: byBucket.market_pickup,
+    marketPickup: byBucket.market_pickup.slice(0, MARKET_PICKUP_COUNT),
     fundPickup: byBucket.fund_pickup,
     stockDisclosures: byBucket.stock_disclosures,
     marketMajorEvents: byBucket.market_major_event,

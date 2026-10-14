@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { breadcrumbListJsonLd, buildHeadBlock, escapeHtml, getSiteOrigin, webApplicationLd } from './lib/seoHead.js'
-import { isMarketRelevantManualNews } from '../../src/lib/marketNewsRelevance.js'
+import { isMarketRelevantManualNews, MARKET_PICKUP_COUNT } from '../../src/lib/marketNewsRelevance.js'
 import { manualNewsRowRecencyMs, stripJapaneseCalendarPhrasesFromTitle } from '../../src/lib/newsManualRecency.js'
 
 const toTimeText = (value = '') => {
@@ -83,7 +83,7 @@ export default async function handler(_req, res) {
     const dailyBrief = briefCandidates[0] || null
     const byBucket = {
       market_ticker: tickerCandidates.slice(0, 10),
-      market_pickup: pickupCandidates.slice(0, 6),
+      market_pickup: pickupCandidates.slice(0, MARKET_PICKUP_COUNT),
       fund_pickup: fundCandidates.slice(0, 6),
       daily_brief: dailyBrief,
     }
@@ -213,4 +213,3 @@ export default async function handler(_req, res) {
     return sendHtml(res, 500, `<!doctype html><html lang="ja"><body><h1>マーケット指標を表示できません</h1><p>しばらくしてから再度お試しください。</p></body></html>`)
   }
 }
-

@@ -34,14 +34,19 @@ export function getGuestEtfCompareTrialRemaining() {
   return Math.max(0, GUEST_ETF_COMPARE_TRIAL_LIMIT - getGuestEtfCompareTrialUsageCount())
 }
 
+export function getGuestEtfCompareGrantedKey() {
+  return String(readStore()?.grantedKey || '')
+}
+
 /** @returns {boolean} true if a trial slot was consumed by this call */
-export function consumeGuestEtfCompareTrial() {
+export function consumeGuestEtfCompareTrial(compareKey = '') {
   if (isGuestEtfCompareTrialConsumed()) return false
   const store = readStore()
   const nextUsed = getGuestEtfCompareTrialUsageCount() + 1
   writeStore({
     ...store,
     usedCount: nextUsed,
+    grantedKey: String(compareKey || ''),
     consumedAt: new Date().toISOString(),
   })
   return true

@@ -96,6 +96,7 @@ begin
     ) as has_attribution,
     (
       lower(u.email) like '%@moneymart.co.jp'
+      or lower(u.email) like '%@community.seed'
       or lower(u.email) = 'test@moneymart.co.jp'
       or lower(u.email) like 'test+%'
       or lower(u.email) like '%+test@%'
@@ -125,6 +126,7 @@ begin
     case
       when (
         lower(u.email) like '%@moneymart.co.jp'
+        or lower(u.email) like '%@community.seed'
         or lower(u.email) = 'test@moneymart.co.jp'
         or lower(u.email) like 'test+%'
         or lower(u.email) like '%+test@%'

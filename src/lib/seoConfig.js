@@ -216,7 +216,7 @@ export function getSeoForRoute(pathname, search = '') {
       match: (p) => p === '/about',
       title: '運営会社 | MoneyMart',
       description:
-        'マネーラボ株式会社（MoneyLab Inc.）が運営するMoneyMartの会社概要・ミッション・チーム。お問い合わせは support@moneymart.co.jp です。',
+        'マネーラボ株式会社（MoneyLab Inc.）が運営する独立系の金融プラットフォーム MoneyMart。資本提携に左右されない立場で、公平な比較と金融ツールへのアクセスを届けます。',
       path: '/about',
       isTool: false,
     },

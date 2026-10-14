@@ -480,12 +480,12 @@ export default function Navbar({
                                     <span className="font-bold block">
                                       {isPremium && dividendMonthAlertsForView.find((a) => a.stock_id === '__MONTH_NET_SUMMARY__')
                                         ? dividendMonthAlertsForView.find((a) => a.stock_id === '__MONTH_NET_SUMMARY__')?.title
-                                        : `今月は配当予定月（ウォッチ ${dividendMonthAlertCount}）`}
+                                        : `登録銘柄の公式支払日が今月です（${dividendMonthAlertCount}件）`}
                                     </span>
                                     <span className="text-slate-500 dark:text-slate-400 line-clamp-4">
                                       {dividendMonthAlertsForView
                                         .filter((a) => a.stock_id !== '__MONTH_NET_SUMMARY__')
-                                        .map((a) => `${a.title} が今月配当します。`)
+                                        .map((a) => `${a.title}：受取資格・保有条件は公式資料をご確認ください。`)
                                         .join('、')}
                                     </span>
                                   </span>
@@ -707,12 +707,12 @@ export default function Navbar({
                         <span className="font-bold block">
                           {isPremium && dividendMonthAlertsForView.find((a) => a.stock_id === '__MONTH_NET_SUMMARY__')
                             ? dividendMonthAlertsForView.find((a) => a.stock_id === '__MONTH_NET_SUMMARY__')?.title
-                            : `今月は配当予定月（ウォッチ ${dividendMonthAlertCount}）`}
+                            : `登録銘柄の公式支払日が今月です（${dividendMonthAlertCount}件）`}
                         </span>
                         <span className="text-slate-500 dark:text-slate-400 line-clamp-4">
                           {dividendMonthAlertsForView
                             .filter((a) => a.stock_id !== '__MONTH_NET_SUMMARY__')
-                            .map((a) => `${a.title} が今月配当します。`)
+                            .map((a) => `${a.title}：受取資格・保有条件は公式資料をご確認ください。`)
                             .join('、')}
                         </span>
                       </span>

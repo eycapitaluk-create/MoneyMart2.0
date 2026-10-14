@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { parseTrustFeePercent } from '../lib/trustFee'
 import Button from '../components/ui/Button'
 import Card from '../components/ui/Card'
 import InsightRichEditor from '../components/insights/InsightRichEditor'
@@ -40,10 +41,12 @@ import {
 import {
   crmUserSegment,
   hasPremiumIntent,
+  hasSignupSource,
   isActivatedSignup,
   isCrmInternalEmail,
   isCrmInternalUser,
   isInternalReferrerDomain,
+  jstDateKey,
   buildInternalUserIdSet,
   filterStaffAnalyticsEvents,
   isSmartNewsSignup,
@@ -140,7 +143,7 @@ const isAnalyticsRpcFallbackError = (err) => {
     c === '57014'
     || m.includes('statement timeout')
     || m.includes('canceling statement due to statement timeout')
-    || m.includes('v_customer_site_analytics_events')
+    || m.includes('admin_customer_analytics_events')
   )
 }
 
@@ -597,17 +600,7 @@ const mapCrmTrafficPayload = (payload) => {
 }
 
 
-const crmHasAttribution = (row) => {
-  if (row?.has_attribution != null) return Boolean(row.has_attribution)
-  return Boolean(
-    String(row?.signup_referrer_domain || '').trim()
-    || String(row?.signup_utm_source || '').trim()
-    || String(row?.signup_utm_medium || '').trim()
-    || String(row?.signup_utm_campaign || '').trim()
-    || String(row?.signup_ref || '').trim()
-    || String(row?.signup_landing_path || '').trim(),
-  )
-}
+const crmHasAttribution = (row) => hasSignupSource(row)
 
 
 const sortCountEntries = (map, limit) => (
@@ -625,7 +618,7 @@ function buildCrmAcquisitionSummary(rows) {
   const utmSourceOnly = new Map()
 
   for (const r of list) {
-    const ref = String(r.signup_referrer_domain || '').trim() || '(direct / unknown)'
+    const ref = String(r.signup_referrer_domain || '').trim() || 'Not captured'
     if (!isInternalReferrerDomain(ref)) {
       refCounts.set(ref, (refCounts.get(ref) || 0) + 1)
     }
@@ -644,15 +637,14 @@ function buildCrmAcquisitionSummary(rows) {
   const today = new Date()
   const signupsByDayLast14 = []
   for (let i = 13; i >= 0; i -= 1) {
-    const d = new Date(today)
-    d.setDate(d.getDate() - i)
-    signupsByDayLast14.push({ day: d.toISOString().slice(0, 10), count: 0 })
+    const d = new Date(today.getTime() - i * 86400000)
+    signupsByDayLast14.push({ day: jstDateKey(d), count: 0 })
   }
   const dayIndex = new Map(signupsByDayLast14.map((x) => [x.day, x]))
   for (const r of list) {
     const raw = r.user_created_at
     if (!raw) continue
-    const day = String(raw).slice(0, 10)
+    const day = jstDateKey(raw)
     const slot = dayIndex.get(day)
     if (slot) slot.count += 1
   }
@@ -660,7 +652,7 @@ function buildCrmAcquisitionSummary(rows) {
   const totalRows = list.length
   const topReferrersSorted = sortCountEntries(refCounts, 15)
   const topRef0 = topReferrersSorted[0]
-  const directRaw = refCounts.get('(direct / unknown)') || 0
+  const directRaw = refCounts.get('Not captured') || 0
   const topReferrerSharePct = totalRows && topRef0
     ? Math.round(((topRef0.count / totalRows) * 1000)) / 10
     : 0
@@ -2356,7 +2348,7 @@ export default function AdminPage() {
           const profile = symbolMap.get(symbol)
           const hasVLatest = hasLatest.has(symbol)
           const historyCount = historyBySymbol.get(symbol) || 0
-          const hasTrustFee = Number.isFinite(Number(profile?.trust_fee)) || Number.isFinite(Number(meta?.trustFee))
+          const hasTrustFee = parseTrustFeePercent(profile?.trust_fee) != null || parseTrustFeePercent(meta?.trustFee) != null
           const hasNisa = Boolean((profile?.nisa_category || meta?.nisaCategory || '').trim())
           const issues = []
           if (!hasVLatest) issues.push('no v_stock_latest')
@@ -2391,8 +2383,7 @@ export default function AdminPage() {
         productsRecentRes,
         academyRecentRes,
         reportsRecentRes,
-        latestStockRes,
-        latestFundRes,
+        latestPriceRes,
       ] = await Promise.all([
         supabase.from('products').select('id', { count: 'exact', head: true }),
         supabase.from('products').select('id', { count: 'exact', head: true }).eq('is_active', true),
@@ -2401,7 +2392,6 @@ export default function AdminPage() {
         supabase.from('products').select('created_at').gte('created_at', `${dayStart}T00:00:00`),
         supabase.from('academy_courses').select('created_at').gte('created_at', `${dayStart}T00:00:00`),
         supabase.from('lounge_reports').select('created_at').gte('created_at', `${dayStart}T00:00:00`),
-        supabase.from('stock_prices').select('trade_date').order('trade_date', { ascending: false }).limit(1),
         supabase.from('v_stock_latest').select('trade_date').order('trade_date', { ascending: false }).limit(1),
       ])
 
@@ -2443,8 +2433,8 @@ export default function AdminPage() {
         dauMetricDate,
         signupsToday,
         saveSuccessRate,
-        latestStockDate: latestStockRes.data?.[0]?.trade_date || null,
-        latestFundDate: latestFundRes.data?.[0]?.trade_date || null,
+        latestStockDate: latestPriceRes.data?.[0]?.trade_date || null,
+        latestFundDate: latestPriceRes.data?.[0]?.trade_date || null,
         daily,
       })
     } catch (err) {
@@ -2454,31 +2444,39 @@ export default function AdminPage() {
     }
   }
 
-  const fetchAdminAnalyticsEventRows = async (sinceIso, internalUserIds) => {
+  const fetchAdminAnalyticsEventRows = async (sinceIso, internalUserIds, { eventName = null, maxRows = 60000 } = {}) => {
     const columns = 'event_name,page_path,session_id,user_id,referrer_domain,source,medium,campaign,dwell_ms,event_meta,created_at'
     const pageSize = 1000
-    const maxRows = 60000
-    const fromView = []
+    const fromRpc = []
+    let rpcMissing = false
     for (let offset = 0; offset < maxRows; offset += pageSize) {
-      const { data, error } = await supabase
-        .from('v_customer_site_analytics_events')
-        .select(columns)
-        .gte('created_at', sinceIso)
-        .order('created_at', { ascending: false })
-        .range(offset, offset + pageSize - 1)
-      if (error) break
+      const { data, error } = await supabase.rpc('admin_customer_analytics_events', {
+        p_since: sinceIso,
+        p_limit: pageSize,
+        p_offset: offset,
+        p_event_name: eventName,
+      })
+      if (error) {
+        if (isAnalyticsRpcMissingError(error)) {
+          rpcMissing = true
+          break
+        }
+        throw error
+      }
       if (!data?.length) break
-      fromView.push(...data)
+      fromRpc.push(...data)
       if (data.length < pageSize) break
     }
-    if (fromView.length > 0) return fromView
+    if (!rpcMissing) return fromRpc
 
-    const { data, error } = await supabase
+    let query = supabase
       .from('site_analytics_events')
       .select(columns)
       .gte('created_at', sinceIso)
       .order('created_at', { ascending: false })
-      .limit(20000)
+      .limit(Math.min(maxRows, 20000))
+    if (eventName) query = query.eq('event_name', eventName)
+    const { data, error } = await query
     if (error) throw error
     return filterStaffAnalyticsEvents(Array.isArray(data) ? data : [], internalUserIds)
   }
@@ -2846,33 +2844,10 @@ export default function AdminPage() {
       }
 
       const since = new Date(Date.now() - clamped * 86400000).toISOString()
-      const internalUserIds = buildInternalUserIdSet(crmRowsSnapshot)
-      let events = []
-      const pageSize = 1000
-      for (let offset = 0; offset < 30000; offset += pageSize) {
-        const { data, error } = await supabase
-          .from('v_customer_site_analytics_events')
-          .select('created_at,event_meta,event_name,referrer_domain,user_id,session_id,page_path')
-          .gte('created_at', since)
-          .eq('event_name', 'page_view')
-          .order('created_at', { ascending: false })
-          .range(offset, offset + pageSize - 1)
-        if (error) break
-        if (!data?.length) break
-        events.push(...data)
-        if (data.length < pageSize) break
-      }
-      if (events.length === 0) {
-        const { data: rawEvents, error: evErr } = await supabase
-          .from('site_analytics_events')
-          .select('created_at,event_meta,event_name,referrer_domain,user_id,session_id,page_path')
-          .gte('created_at', since)
-          .eq('event_name', 'page_view')
-          .order('created_at', { ascending: false })
-          .limit(12000)
-        if (evErr) throw evErr
-        events = filterStaffAnalyticsEvents(rawEvents || [], internalUserIds)
-      }
+      const events = await fetchAdminAnalyticsEventRows(since, internalUserIds, {
+        eventName: 'page_view',
+        maxRows: 12000,
+      })
 
       let audience = aggregateAudienceFromEvents(events, { internalUserIds })
       audience.meta = { ...audience.meta, days: clamped }

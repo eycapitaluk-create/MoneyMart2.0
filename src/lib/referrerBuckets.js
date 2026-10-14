@@ -94,6 +94,7 @@ export function classifyReferrerChannel({
   utmSource,
   utmMedium,
   utmCampaign,
+  signupRef,
 } = {}) {
   const utmSrc = String(utmSource || '').trim().toLowerCase()
   const utmMed = String(utmMedium || '').trim().toLowerCase()
@@ -150,6 +151,11 @@ export function classifyReferrerChannel({
     return { ...CHANNEL_META.search_other, detail: domain }
   }
 
+  const refCode = String(signupRef || '').trim()
+  if (!domain && refCode) {
+    return { ...CHANNEL_META.referral, detail: refCode }
+  }
+
   if (!domain) {
     return { ...CHANNEL_META.direct, detail: 'No referrer or UTM on first touch' }
   }
@@ -195,6 +201,7 @@ export function aggregateSignupReferrerChannels(rows) {
       utmSource: row?.signup_utm_source,
       utmMedium: row?.signup_utm_medium,
       utmCampaign: row?.signup_utm_campaign,
+      signupRef: row?.signup_ref,
     })
     const prev = buckets.get(channel.id) || { id: channel.id, label: channel.label, count: 0 }
     prev.count += 1

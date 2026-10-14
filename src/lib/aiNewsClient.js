@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { sortNewsEditorial } from './newsEditorial.js'
 
 /** 見出し・要約に日本語が含まれるか（英語のみの行を除外するヒューリスティック） */
 const JP_CHAR_RE = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/
@@ -61,6 +62,7 @@ const normalizeRow = (row) => ({
   companyName: row?.company_name || row?.companyName || '',
   flag: row?.flag || '',
   market: normalizeNewsMarketTab(row),
+  marketRegion: row?.market || '',
   sector: row?.sector || 'その他',
   headline: row?.headline || '',
   source: row?.source || 'MoneyMart',
@@ -77,6 +79,9 @@ const normalizeRow = (row) => ({
   discussionTitle: row?.discussion_title || row?.discussionTitle || '',
   discussionBody: row?.discussion_body || row?.discussionBody || '',
   publishedAt: row?.published_at || row?.publishedAt || '',
+  updatedAt: row?.updated_at || row?.updatedAt || row?.published_at || '',
+  batchKey: row?.batch_key || row?.batchKey || '',
+  sortOrder: row?.sort_order ?? row?.sortOrder ?? null,
   language: String(row?.language || '').trim().toLowerCase(),
   aiAnalysisStatus: row?.ai_analysis_status || 'complete',
   rawSnippet: row?.raw_snippet || row?.rawSnippet || '',
@@ -90,7 +95,7 @@ export const getFallbackAiNewsData = () => ({
 /** マイグレーション前の DB には ai_analysis_status / raw_snippet が無く、select 全体が失敗する。 */
 const AI_NEWS_SELECT_CORE =
   'id,ticker,company_name,flag,market,sector,headline,source,source_url,time_text,is_hot,summary,analysis,sentiment,reason,impact,keywords,discussion_title,discussion_body,published_at,updated_at,sort_order,language'
-const AI_NEWS_SELECT_FULL = `${AI_NEWS_SELECT_CORE},ai_analysis_status,raw_snippet`
+const AI_NEWS_SELECT_FULL = `${AI_NEWS_SELECT_CORE},ai_analysis_status,raw_snippet,batch_key`
 /** AI要約一覧の公開日フィルタ（日）。4日のみだと過去記事が一覧から消えるため、閲覧用に30日程度を確保 */
 export const AI_NEWS_LOOKBACK_DAYS = 30
 const AI_NEWS_FETCH_LIMIT = 300
@@ -106,7 +111,7 @@ function cutoffIsoDaysAgo(days) {
   return new Date(Date.now() - (1000 * 60 * 60 * 24 * days)).toISOString()
 }
 
-/** id で重複除去し published_at 降順（同日内は sort_order 昇順） */
+/** id で重複除去。表示順は取得後に編集バッチと sort_order で決める。 */
 function mergeAiNewsRowsById(primary, extra) {
   const map = new Map()
   const add = (row) => {
@@ -117,14 +122,7 @@ function mergeAiNewsRowsById(primary, extra) {
   }
   for (const row of primary || []) add(row)
   for (const row of extra || []) add(row)
-  return [...map.values()].sort((a, b) => {
-    const tb = Date.parse(b.published_at || '') || 0
-    const ta = Date.parse(a.published_at || '') || 0
-    if (tb !== ta) return tb - ta
-    const sa = Number(a.sort_order) || 0
-    const sb = Number(b.sort_order) || 0
-    return sa - sb
-  })
+  return [...map.values()]
 }
 
 async function loadAiNewsSummaries(selectColumns) {
@@ -198,9 +196,9 @@ export const fetchAiNewsData = async () => {
 
   if (error || !Array.isArray(data) || data.length === 0) return fallback
 
-  const rows = data.map(normalizeRow).filter(isAiNewsJapaneseRow)
+  const rows = sortNewsEditorial(data.map(normalizeRow).filter(isAiNewsJapaneseRow))
   const latestUpdated = rows
-    .map((row) => row?.publishedAt || '')
+    .map((row) => row?.updatedAt || '')
     .filter(Boolean)
     .sort()
     .slice(-1)[0] || fallback.updatedAt

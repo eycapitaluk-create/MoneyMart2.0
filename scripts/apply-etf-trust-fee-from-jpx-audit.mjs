@@ -1,24 +1,31 @@
 /**
- * Apply JPX ETF list trust fees → stock_symbols.trust_fee
+ * Compare JPX tax-exclusive ETF list fees with stock_symbols.trust_fee.
  *
- * Convention: store 税込 estimate = JPX税抜 × 1.1 (3dp), matching how many
- * Japanese product pages advertise the inclusive rate.
- * Prospectus overrides for known MAXIS cases (税込 exact).
+ * A stored pre-tax rate is not treated as already correct. "以内" caps are not
+ * an upper bound that makes any lower rate OK. Inclusive comparison is exact
+ * (exclusive × 1.1), not rounded to 3 decimals.
  *
- * Skips rows already within TOL of either 税抜 or 税込 estimate.
+ * DB writes are off unless --write-verified-prospectus is passed, and then only
+ * the prospectus map is eligible. Unverified JPX-derived fees are report-only.
  *
  *   node scripts/apply-etf-trust-fee-from-jpx-audit.mjs
- *   node scripts/apply-etf-trust-fee-from-jpx-audit.mjs --dry-run
+ *   node scripts/apply-etf-trust-fee-from-jpx-audit.mjs --write-verified-prospectus
  */
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createClient } from '@supabase/supabase-js'
+import {
+  PROSPECTUS_INCLUSIVE_TRUST_FEE,
+  classifyTrustFee,
+  feesMatch,
+  parseTrustFeePercent,
+  planTrustFeeUpdate,
+} from '../src/lib/trustFee.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(__dirname, '..')
-const DRY = process.argv.includes('--dry-run')
-const TOL = 0.005
+const WRITE_VERIFIED = process.argv.includes('--write-verified-prospectus')
 
 function loadEnv(file) {
   try {
@@ -36,14 +43,6 @@ function loadEnv(file) {
 
 loadEnv(path.join(ROOT, '.env.local'))
 loadEnv(path.join(ROOT, '.env'))
-
-/** Known prospectus 税込 (prefer over JPX×1.1) */
-const PROSPECTUS_INC = {
-  '2558.T': 0.077,
-  '2630.T': 0.077,
-  '2631.T': 0.22,
-  '2632.T': 0.22,
-}
 
 function parseFeeCell(raw) {
   const s = String(raw || '').replace(/％/g, '%').trim()
@@ -68,8 +67,7 @@ function parseJpxMarkdown(md) {
 }
 
 function targetInc(sym, jpx) {
-  if (PROSPECTUS_INC[sym] != null) return PROSPECTUS_INC[sym]
-  return Number((jpx.value * 1.1).toFixed(3))
+  return planTrustFeeUpdate({ symbol: sym, stored: null, exclusive: jpx.value }).target
 }
 
 async function fetchJpx() {
@@ -140,28 +138,27 @@ async function main() {
   for (const [sym, jpx] of jpxMap) {
     const want = targetInc(sym, jpx)
     const cur = dbBy.get(sym)
-    const curFee = cur?.trust_fee == null ? null : Number(cur.trust_fee)
+    const curFee = parseTrustFeePercent(cur?.trust_fee)
     const ex = jpx.value
-    const inc = Number((ex * 1.1).toFixed(3))
-    const ok =
-      curFee != null
-      && (Math.abs(curFee - want) <= TOL
-        || Math.abs(curFee - ex) <= TOL
-        || Math.abs(curFee - inc) <= TOL
-        || (jpx.within && curFee <= ex + TOL)
-        || (jpx.within && curFee <= inc + TOL))
-    // Still force prospectus overrides even if "ok" against wrong value
-    const force = PROSPECTUS_INC[sym] != null && curFee != null && Math.abs(curFee - PROSPECTUS_INC[sym]) > TOL
-    if (ok && !force) {
-      skipped.push(sym)
-      continue
-    }
+    const status = classifyTrustFee({ symbol: sym, stored: curFee, exclusive: ex, within: jpx.within })
+    const plan = planTrustFeeUpdate({ symbol: sym, stored: curFee, exclusive: ex })
     if (!cur) {
-      // symbol not in DB — skip create (master must exist)
       skipped.push(`${sym}:no_db_row`)
       continue
     }
-    updates.push({ symbol: sym, from: curFee, to: want, jpx_ex: ex, jpx_raw: jpx.raw })
+    if (!plan.verified) {
+      if (!feesMatch(curFee, want)) {
+        skipped.push(`${sym}:${status}:report_only`)
+      } else {
+        skipped.push(sym)
+      }
+      continue
+    }
+    if (!plan.writable) {
+      skipped.push(sym)
+      continue
+    }
+    updates.push({ symbol: sym, from: curFee, to: plan.target, status, jpx_ex: ex, jpx_raw: jpx.raw })
   }
 
   console.log(`to update: ${updates.length}, skip: ${skipped.length}`)
@@ -173,8 +170,8 @@ async function main() {
   fs.writeFileSync(reportPath, `${lines.join('\n')}\n`)
   console.log(`Wrote ${reportPath}`)
 
-  if (DRY) {
-    console.log('Dry run — no DB writes')
+  if (!WRITE_VERIFIED) {
+    console.log('No DB writes. Unverified JPX fees stay report-only. --write-verified-prospectus updates prospectus symbols only.')
     console.log(updates.slice(0, 20))
     return
   }
@@ -200,7 +197,7 @@ async function main() {
     if (feeIdx >= 0 && symIdx >= 0) {
       const bySym = new Map(updates.map((u) => [u.symbol, u.to]))
       // also apply prospectus overrides always
-      for (const [s, v] of Object.entries(PROSPECTUS_INC)) bySym.set(s, v)
+      for (const [s, v] of Object.entries(PROSPECTUS_INCLUSIVE_TRUST_FEE)) bySym.set(s, v)
       let n = 0
       for (let i = 1; i < csv.length; i += 1) {
         if (!csv[i]) continue

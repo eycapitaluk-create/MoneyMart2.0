@@ -2,13 +2,14 @@ import { supabase } from './supabase'
 import { ETF_LIST_FROM_XLSX } from '../data/etfListFromXlsx'
 import { resolveFundDisplayName, resolveFundNisaCategory, normalizeFundSymbolKey } from './fundDisplayUtils'
 import { normalizeNisaCategoryField } from './textEncodingUtils'
-import { findBaseCloseByCalendarOffset } from './calendarDateUtils'
+import { computeOneYearPriceReturnPct } from './calendarDateUtils'
 import {
   buildSplitAdjustedCloses,
   resolveSpotCloseAndSessionChange,
   skipEodSplitHeuristicForSymbol,
 } from './fundAdjustedCloses'
 import { fetchStockDailyHistoryBySymbolMap } from './stockDailyHistory'
+import { parseTrustFeePercent } from './trustFee'
 
 const FUND_UNIVERSE_CACHE_KEY = 'moneymart.fund.universe.snapshot.v1'
 const FUND_UNIVERSE_CACHE_TTL_MS = 1000 * 60 * 5
@@ -99,7 +100,7 @@ const buildLocalFallbackSnapshot = () => {
       const symbol = String(item?.symbol || '').trim()
       if (!symbol) return null
       const displayName = resolveFundDisplayName(symbol, {}, item)
-      const trustFeeValue = Number(item?.trustFee)
+      const trustFeeValue = parseTrustFeePercent(item?.trustFee)
       return {
         id: symbol,
         symbol,
@@ -196,27 +197,9 @@ export const fetchFundUniverseSnapshot = async () => {
         skipSplitHeuristic: skipEodSplitHeuristicForSymbol(symbol),
       })
       const { close } = resolveSpotCloseAndSessionChange(history, adjustedClosesRaw, latest)
-      const closes = adjustedClosesRaw.filter((value) => Number.isFinite(value) && value > 0)
       const volumes = history.map((row) => Number(row.volume)).filter((value) => Number.isFinite(value) && value >= 0)
-      const historyCount = closes.length
-      const oneYearBaseClose = findBaseCloseByCalendarOffset(history, { years: 1 }, adjustedClosesRaw)
-      const firstTradeDateRaw = history[0]?.trade_date
-      const latestTradeDateRaw = history[Math.max(0, history.length - 1)]?.trade_date
-      const firstTradeDate = firstTradeDateRaw ? new Date(firstTradeDateRaw) : null
-      const latestTradeDate = latestTradeDateRaw ? new Date(latestTradeDateRaw) : null
-      const historySpanDays = (
-        firstTradeDate
-        && latestTradeDate
-        && Number.isFinite(firstTradeDate.getTime())
-        && Number.isFinite(latestTradeDate.getTime())
-      )
-        ? Math.floor((latestTradeDate.getTime() - firstTradeDate.getTime()) / (1000 * 60 * 60 * 24))
-        : 0
-      const hasReliableOneYearHistory = historyCount >= 2 && historySpanDays >= 330
-      const return1y = hasReliableOneYearHistory && oneYearBaseClose != null && oneYearBaseClose > 0 && close > 0
-        ? ((close - oneYearBaseClose) / oneYearBaseClose) * 100
-        : null
-      const trustFeeValue = Number.isFinite(Number(meta.trust_fee)) ? Number(meta.trust_fee) : Number(xlsxMeta?.trustFee)
+      const return1y = computeOneYearPriceReturnPct(history, adjustedClosesRaw, close)
+      const trustFeeValue = parseTrustFeePercent(meta.trust_fee) ?? parseTrustFeePercent(xlsxMeta?.trustFee)
       const avgVolume = volumes.length > 0
         ? volumes.slice(-30).reduce((sum, value) => sum + value, 0) / Math.min(30, volumes.length)
         : Math.max(0, Number(latest.volume || 0))

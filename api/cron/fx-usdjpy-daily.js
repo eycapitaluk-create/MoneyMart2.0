@@ -15,6 +15,7 @@ import {
   fetchFrankfurterRange,
   fetchTwelveDataRange,
 } from '../_lib/fx-usdjpy-providers.js'
+import { frankfurterRowsSkippingYahoo } from '../_lib/fxYahooSync.js'
 
 function getServerEnv(name) {
   return String(process.env[name] ?? '').trim()
@@ -79,7 +80,18 @@ export default async function handler(req, res) {
     })).filter((r) => Number.isFinite(r.usd_jpy) && r.usd_jpy > 0)
 
     const admin = createClient(supabaseUrl, supabaseKey, { auth: { persistSession: false } })
-    const { error: upErr } = await admin.from('fx_daily_usdjpy').upsert(rows, {
+    const { data: existingFx, error: existingErr } = await admin
+      .from('fx_daily_usdjpy')
+      .select('as_of_date,provider')
+      .in('as_of_date', rows.map((row) => row.as_of_date))
+    if (existingErr) {
+      return res.status(500).json({ ok: false, error: existingErr.message || 'fx read failed' })
+    }
+    const safeRows = frankfurterRowsSkippingYahoo(existingFx, rows)
+    if (!safeRows.length) {
+      return res.status(200).json({ ok: true, provider, upserted: 0, skipped_yahoo: rows.length, window: { start, end } })
+    }
+    const { error: upErr } = await admin.from('fx_daily_usdjpy').upsert(safeRows, {
       onConflict: 'as_of_date',
     })
 
@@ -90,7 +102,8 @@ export default async function handler(req, res) {
     return res.status(200).json({
       ok: true,
       provider,
-      upserted: rows.length,
+      upserted: safeRows.length,
+      skipped_yahoo: rows.length - safeRows.length,
       window: { start, end },
     })
   } catch (e) {

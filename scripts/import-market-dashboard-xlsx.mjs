@@ -1,7 +1,7 @@
 /**
  * market_dashboard_YYYY-MM-DD.xlsx →
- *   stock_daily_prices / commodity_daily_prices / fx_daily_usdjpy /
- *   market_dashboard_recent  （Business アプリが読む統合テーブル — 常に更新）
+ *   stock_daily_prices / fx_daily_usdjpy /
+ *   market_dashboard_daily  （Business の market_dashboard_recent ビューの実테이블）
  *
  *   node scripts/import-market-dashboard-xlsx.mjs /path/to/market_dashboard_2026-08-25.xlsx
  *   node scripts/import-market-dashboard-xlsx.mjs /path/to/market_dashboard_2026-08-25.xlsx --dry-run
@@ -9,7 +9,10 @@
  */
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { createClient } from '@supabase/supabase-js'
+import { importerFxWrites } from '../api/_lib/fxYahooSync.js'
+import { omitUnverifiedSpreadsheetCommodities } from '../src/lib/commodityDataGuard.js'
 import XLSX from 'xlsx'
 
 const SOURCE = 'marketstack'
@@ -169,42 +172,60 @@ const parseDashboardRows = (xlsxPath) => {
     if (!symbol) continue
 
     symbolRows.push({ symbol, name: label, is_active: true })
+    // 1306.T is the TOPIX ETF and already has a real OHLC bar. A dashboard close must not replace it.
+    if (symbol === '1306.T') continue
     indexPriceRows.push({
       source: SOURCE,
       symbol,
       trade_date: tradeDate,
-      open: value,
-      high: value,
-      low: value,
+      open: null,
+      high: null,
+      low: null,
       close: value,
       volume: null,
-      raw: { imported_from: fileBase, dashboard_label: label, pct_day: pct },
+      raw: {
+        imported_from: fileBase,
+        dashboard_label: label,
+        pct_day: pct,
+        price_basis: 'close_only',
+        ohlc: 'unavailable',
+      },
     })
   }
 
   return { fileBase, tradeDate, commodityRows, indexPriceRows, symbolRows, fxUsdJpy, recentRows }
 }
 
-const upsertMarketDashboardRecent = async (supabase, recentRows, tradeDate) => {
+export function rowsPreservingExistingOhlc(incomingRows, existingRows) {
+  const byKey = new Map((existingRows || []).map((row) => [`${row.symbol}|${row.trade_date}`, row]))
+  const writes = []
+  const kept = []
+  for (const row of incomingRows || []) {
+    const existing = byKey.get(`${row.symbol}|${row.trade_date}`)
+    const hasOhlc = existing && [existing.open, existing.high, existing.low].some((value) => value != null)
+    if (hasOhlc) {
+      kept.push(row.symbol)
+      continue
+    }
+    writes.push({
+      ...row,
+      open: null,
+      high: null,
+      low: null,
+      close: row.close,
+      volume: existing?.volume ?? null,
+    })
+  }
+  return { writes, kept }
+}
+
+const upsertMarketDashboardDaily = async (supabase, recentRows) => {
   if (!recentRows.length) return { count: 0, mode: 'skip' }
-
-  // Prefer natural key. Fall back to delete+insert if constraint name differs.
-  const { error: upErr } = await supabase
-    .from('market_dashboard_recent')
+  const { error } = await supabase
+    .from('market_dashboard_daily')
     .upsert(recentRows, { onConflict: 'trade_date,item' })
-
-  if (!upErr) return { count: recentRows.length, mode: 'upsert' }
-
-  const { error: delErr } = await supabase
-    .from('market_dashboard_recent')
-    .delete()
-    .eq('trade_date', tradeDate)
-  if (delErr) throw new Error(`market_dashboard_recent upsert failed (${upErr.message}); delete fallback failed (${delErr.message})`)
-
-  const { error: insErr } = await supabase.from('market_dashboard_recent').insert(recentRows)
-  if (insErr) throw new Error(`market_dashboard_recent insert failed: ${insErr.message} (after upsert: ${upErr.message})`)
-
-  return { count: recentRows.length, mode: 'delete+insert' }
+  if (error) throw new Error(`market_dashboard_daily upsert failed: ${error.message}`)
+  return { count: recentRows.length, mode: 'upsert' }
 }
 
 const run = async () => {
@@ -217,7 +238,11 @@ const run = async () => {
   if (!xlsxPath) throw new Error('Usage: node scripts/import-market-dashboard-xlsx.mjs /path/market_dashboard_YYYY-MM-DD.xlsx')
 
   const parsed = parseDashboardRows(xlsxPath)
+  parsed.recentRows = omitUnverifiedSpreadsheetCommodities(parsed.recentRows)
   const dryRun = process.argv.slice(3).includes('--dry-run')
+  if (/PARTIAL_DO_NOT_IMPORT/i.test(path.basename(xlsxPath)) && !dryRun) {
+    throw new Error('Partial workbook rejected: inspect with --dry-run; do not import missing or unverified values.')
+  }
   const jpMarketClosed = process.argv.slice(3).includes('--jp-market-closed')
   if (jpMarketClosed) {
     const closedSymbols = new Set(['^N225', '1306.T'])
@@ -232,7 +257,7 @@ const run = async () => {
     console.log(
       `[dry-run] ${parsed.fileBase} (${parsed.tradeDate}): `
       + `indices=${parsed.indexPriceRows.length}, `
-      + `commodities=${parsed.commodityRows.length}, `
+      + `commodities_held=${parsed.commodityRows.length}, `
       + `fx=${parsed.fxUsdJpy != null ? 'USD/JPY' : 'skip'}, `
       + `recent=${parsed.recentRows.length}, `
       + `jp_market_closed=${jpMarketClosed ? 'yes' : 'no'}. No database rows were changed.`,
@@ -248,20 +273,57 @@ const run = async () => {
   }
 
   if (parsed.indexPriceRows.length > 0) {
-    const { error } = await supabase
+    const symbols = [...new Set(parsed.indexPriceRows.map((row) => row.symbol))]
+    const { data: existingRows, error: existingErr } = await supabase
       .from('stock_daily_prices')
-      .upsert(parsed.indexPriceRows, { onConflict: 'source,symbol,trade_date' })
-    if (error) throw error
+      .select('symbol,trade_date,open,high,low,close,volume')
+      .in('symbol', symbols)
+      .eq('trade_date', parsed.tradeDate)
+    if (existingErr) throw existingErr
+    const { writes, kept } = rowsPreservingExistingOhlc(parsed.indexPriceRows, existingRows || [])
+    if (kept.length) {
+      console.log(`[keep-ohlc] left existing ranged bars unchanged: ${kept.join(', ')}`)
+    }
+    for (const row of writes) {
+      const existing = (existingRows || []).find((item) => item.symbol === row.symbol && item.trade_date === row.trade_date)
+      if (existing) {
+        const { error } = await supabase
+          .from('stock_daily_prices')
+          .update({ close: row.close, raw: row.raw })
+          .eq('symbol', row.symbol)
+          .eq('trade_date', row.trade_date)
+          .is('open', null)
+          .is('high', null)
+          .is('low', null)
+        if (error) throw error
+      } else {
+        const { error } = await supabase.from('stock_daily_prices').insert([row])
+        if (error) throw error
+      }
+    }
   }
 
   if (parsed.commodityRows.length > 0) {
-    const { error } = await supabase
-      .from('commodity_daily_prices')
-      .upsert(parsed.commodityRows, { onConflict: 'commodity_name,trade_date' })
-    if (error) throw error
+    console.log(`[hold-commodities] skipped ${parsed.commodityRows.length} spreadsheet commodity/score rows; verified settlement job owns these values`)
   }
 
-  if (parsed.fxUsdJpy != null) {
+  const { data: fxExisting, error: fxExistingErr } = await supabase
+    .from('fx_daily_usdjpy')
+    .select('as_of_date,usd_jpy,provider,updated_at')
+    .eq('as_of_date', parsed.tradeDate)
+    .maybeSingle()
+  if (fxExistingErr) throw fxExistingErr
+  const fxGuard = importerFxWrites({
+    tradeDate: parsed.tradeDate,
+    fxValue: parsed.fxUsdJpy,
+    fxExisting,
+    recentRows: parsed.recentRows,
+  })
+  parsed.recentRows = fxGuard.recentRows
+  if (fxGuard.reason === 'yahoo_fx_protected') {
+    console.log(`[keep-yahoo-fx] left Yahoo USD/JPY and dashboard FX for ${parsed.tradeDate} unchanged`)
+  }
+  if (fxGuard.writeUsdJpy) {
     const { error } = await supabase.from('fx_daily_usdjpy').upsert({
       as_of_date: parsed.tradeDate,
       usd_jpy: parsed.fxUsdJpy,
@@ -271,19 +333,22 @@ const run = async () => {
     if (error) throw error
   }
 
-  const recent = await upsertMarketDashboardRecent(supabase, parsed.recentRows, parsed.tradeDate)
+  const recent = await upsertMarketDashboardDaily(supabase, parsed.recentRows)
 
   console.log(
     `Done ${parsed.fileBase} (${parsed.tradeDate}): `
     + `indices=${parsed.indexPriceRows.length}, `
-    + `commodities=${parsed.commodityRows.length}, `
+    + `commodities_held=${parsed.commodityRows.length}, `
     + `fx=${parsed.fxUsdJpy != null ? 'USD/JPY' : 'skip'}, `
     + `recent=${recent.count} (${recent.mode}) `
-    + `(→stock_daily_prices/commodity_daily/fx_daily/market_dashboard_recent)`,
+    + `(→stock_daily_prices/fx_daily/market_dashboard_daily; commodity and risk-score values preserved)`,
   )
 }
 
-run().catch((e) => {
-  console.error(e)
-  process.exit(1)
-})
+const isDirectRun = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))
+if (isDirectRun) {
+  run().catch((e) => {
+    console.error(e)
+    process.exit(1)
+  })
+}

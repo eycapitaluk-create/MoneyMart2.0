@@ -21,6 +21,8 @@ import {
 import LazyHomeBottomA8Ad from '../components/LazyHomeBottomA8Ad'
 import { supabase } from '../lib/supabase'
 import { resolveFundDisplayName } from '../lib/fundDisplayUtils'
+import { formatTrustFeePercent, parseTrustFeePercent } from '../lib/trustFee'
+import HomeHeroBrandFilm from '../components/home/HomeHeroBrandFilm'
 import { ETF_LIST_FROM_XLSX } from '../data/etfListFromXlsx'
 import {
   AI_THEME_SYMBOL_SET,
@@ -29,7 +31,7 @@ import {
   HIGH_DIVIDEND_ISIN_SET,
 } from '../data/etfThemeFlags'
 import { looksLikeHighDividendFromText } from '../lib/fundSubcategoryHeuristics'
-import { findBaseCloseByCalendarOffset } from '../lib/calendarDateUtils'
+import { findBaseCloseByCalendarOffset, computeOneYearPriceReturnPct, hasOneYearPriceReturn } from '../lib/calendarDateUtils'
 import { buildSplitAdjustedCloses, resolveSpotCloseAndSessionChange, skipEodSplitHeuristicForSymbol } from '../lib/fundAdjustedCloses'
 import { dedupeStockDailyPricesByTradeDate } from '../lib/stockDailyHistory'
 import { trackAnalyticsEvent } from '../lib/analytics'
@@ -444,7 +446,6 @@ export default function HomePage({
           const { close } = resolveSpotCloseAndSessionChange(history, adjustedClosesRaw, latest)
           const volumes = history.map((row) => Number(row.volume)).filter((value) => Number.isFinite(value) && value >= 0)
           const historyCount = closes.length
-          const oneYearBaseClose = findBaseCloseByCalendarOffset(history, { years: 1 }, adjustedClosesRaw)
           const oneMonthBaseClose = findBaseCloseByCalendarOffset(history, { months: 1 }, adjustedClosesRaw)
           const firstTradeDateRaw = history[0]?.trade_date
           const latestTradeDateRaw = history[Math.max(0, history.length - 1)]?.trade_date
@@ -458,18 +459,15 @@ export default function HomePage({
           )
             ? Math.floor((latestTradeDate.getTime() - firstTradeDate.getTime()) / (1000 * 60 * 60 * 24))
             : 0
-          const hasReliableOneYearHistory = historyCount >= 2 && historySpanDays >= 330
           const hasReliableOneMonthHistory = historyCount >= 2 && historySpanDays >= 14
-          const ret1y = hasReliableOneYearHistory && oneYearBaseClose != null && oneYearBaseClose > 0 && close > 0
-            ? ((close - oneYearBaseClose) / oneYearBaseClose) * 100
-            : null
+          const ret1y = computeOneYearPriceReturnPct(history, adjustedClosesRaw, close)
           const ret1m = hasReliableOneMonthHistory && oneMonthBaseClose != null && oneMonthBaseClose > 0 && close > 0
             ? ((close - oneMonthBaseClose) / oneMonthBaseClose) * 100
             : null
           const avgVolume = volumes.length > 0
             ? volumes.slice(-30).reduce((sum, value) => sum + value, 0) / Math.min(30, volumes.length)
             : Math.max(0, Number(latest.volume || 0))
-          const trustFeeValue = Number.isFinite(Number(meta.trust_fee)) ? Number(meta.trust_fee) : Number(xlsxMeta?.trustFee)
+          const trustFeeValue = parseTrustFeePercent(meta.trust_fee) ?? parseTrustFeePercent(xlsxMeta?.trustFee)
           const displayName = resolveFundDisplayName(symKey, meta, xlsxMeta, null)
           const dbAumYen = Number(meta?.aum)
           const aumOkuYen = Number.isFinite(dbAumYen) && dbAumYen > 0 ? dbAumYen / 1e8 : null
@@ -624,13 +622,15 @@ export default function HomePage({
         const bM = Number.isFinite(bm)
         if (aM && bM && bm !== am) return bm - am
         if (aM !== bM) return (bM ? 1 : 0) - (aM ? 1 : 0)
-        return Number(b.ret1y || -999) - Number(a.ret1y || -999)
+        const aRet = hasOneYearPriceReturn(a.ret1y) ? Number(a.ret1y) : -999
+        const bRet = hasOneYearPriceReturn(b.ret1y) ? Number(b.ret1y) : -999
+        return bRet - aRet
       })
       .slice(0, 5)
   ), [fundRankingOnFundPage])
   const lowFeeTop5 = useMemo(() => (
     [...fundRankingOnFundPage]
-      .filter((fund) => Number.isFinite(Number(fund.trustFee)))
+      .filter((fund) => parseTrustFeePercent(fund.trustFee) != null)
       .sort((a, b) => {
         const df = Number(a.trustFee) - Number(b.trustFee)
         if (df !== 0) return df
@@ -659,8 +659,8 @@ export default function HomePage({
         const bM = Number.isFinite(bm)
         if (aM && bM && bm !== am) return bm - am
         if (aM !== bM) return (bM ? 1 : 0) - (aM ? 1 : 0)
-        const aRet = Number.isFinite(Number(a.ret1y)) ? Number(a.ret1y) : -999
-        const bRet = Number.isFinite(Number(b.ret1y)) ? Number(b.ret1y) : -999
+        const aRet = hasOneYearPriceReturn(a.ret1y) ? Number(a.ret1y) : -999
+        const bRet = hasOneYearPriceReturn(b.ret1y) ? Number(b.ret1y) : -999
         if (bRet !== aRet) return bRet - aRet
         return Number(b.avgVolume || 0) - Number(a.avgVolume || 0)
       })
@@ -676,8 +676,8 @@ export default function HomePage({
         const bM = Number.isFinite(bm)
         if (aM && bM && bm !== am) return bm - am
         if (aM !== bM) return (bM ? 1 : 0) - (aM ? 1 : 0)
-        const aRet = Number.isFinite(Number(a.ret1y)) ? Number(a.ret1y) : -999
-        const bRet = Number.isFinite(Number(b.ret1y)) ? Number(b.ret1y) : -999
+        const aRet = hasOneYearPriceReturn(a.ret1y) ? Number(a.ret1y) : -999
+        const bRet = hasOneYearPriceReturn(b.ret1y) ? Number(b.ret1y) : -999
         if (bRet !== aRet) return bRet - aRet
         return Number(b.avgVolume || 0) - Number(a.avgVolume || 0)
       })
@@ -711,8 +711,9 @@ export default function HomePage({
         metric: (fund) => {
           const m = Number(fund.ret1m)
           if (Number.isFinite(m)) return `1M ${m >= 0 ? '+' : ''}${m.toFixed(1)}%`
+          if (!hasOneYearPriceReturn(fund.ret1y)) return '--'
           const y = Number(fund.ret1y)
-          return Number.isFinite(y) ? `1Y ${y >= 0 ? '+' : ''}${y.toFixed(1)}%` : '--'
+          return `1Y ${y > 0 ? '+' : ''}${y.toFixed(1)}%`
         },
         metricClass: (fund) => {
           const r = Number.isFinite(Number(fund.ret1m)) ? Number(fund.ret1m) : Number(fund.ret1y)
@@ -728,7 +729,7 @@ export default function HomePage({
         source: 'home_top_low_fee',
         list: lowFeeTop5,
         empty: '手数料データがありません',
-        metric: (fund) => `信託報酬 ${Number(fund.trustFee).toFixed(2)}%`,
+        metric: (fund) => `信託報酬 ${formatTrustFeePercent(fund.trustFee)}`,
         metricClass: 'text-indigo-600 dark:text-indigo-300',
       },
       {
@@ -753,7 +754,7 @@ export default function HomePage({
         metric: (fund) => {
           const m = Number(fund.ret1m)
           if (Number.isFinite(m)) return `1M ${m >= 0 ? '+' : ''}${m.toFixed(1)}%`
-          if (Number.isFinite(Number(fund.ret1y))) return `1Y ${Number(fund.ret1y) > 0 ? '+' : ''}${Number(fund.ret1y).toFixed(1)}%`
+          if (hasOneYearPriceReturn(fund.ret1y)) return `1Y ${Number(fund.ret1y) > 0 ? '+' : ''}${Number(fund.ret1y).toFixed(1)}%`
           return '--'
         },
         metricClass: (fund) => {
@@ -774,7 +775,7 @@ export default function HomePage({
         metric: (fund) => {
           const m = Number(fund.ret1m)
           if (Number.isFinite(m)) return `1M ${m >= 0 ? '+' : ''}${m.toFixed(1)}%`
-          if (Number.isFinite(Number(fund.ret1y))) return `1Y ${Number(fund.ret1y) > 0 ? '+' : ''}${Number(fund.ret1y).toFixed(1)}%`
+          if (hasOneYearPriceReturn(fund.ret1y)) return `1Y ${Number(fund.ret1y) > 0 ? '+' : ''}${Number(fund.ret1y).toFixed(1)}%`
           return '--'
         },
         metricClass: (fund) => {
@@ -998,8 +999,8 @@ export default function HomePage({
             <div
               className={`grid grid-cols-1 gap-8 md:gap-10 lg:grid-cols-[1.12fr_1fr] lg:gap-x-10 xl:gap-x-12 lg:gap-y-10 lg:items-start ${
             REFERRAL_INVITE_UI_ENABLED && session?.user && referralCode
-              ? "[grid-template-areas:'hero-text'_'hero-refer'_'hero-phone'] lg:[grid-template-areas:'hero-text_hero-phone'_'hero-refer_hero-refer']"
-              : "[grid-template-areas:'hero-text'_'hero-phone'] lg:[grid-template-areas:'hero-text_hero-phone']"
+              ? "[grid-template-areas:'hero-text'_'hero-film'_'hero-refer'_'hero-phone'] lg:[grid-template-areas:'hero-text_hero-phone'_'hero-refer_hero-refer'_'hero-film_hero-film']"
+              : "[grid-template-areas:'hero-text'_'hero-film'_'hero-phone'] lg:[grid-template-areas:'hero-text_hero-phone'_'hero-film_hero-film']"
           }`}
             >
           <div className="[grid-area:hero-text] text-left flex flex-col items-start min-w-0 w-full px-3 sm:px-4 md:px-5 lg:pl-6 lg:pr-2 xl:pl-8">
@@ -1018,7 +1019,7 @@ export default function HomePage({
                 </span>
               </div>
               <span className="block mt-1 sm:mt-1.5 text-slate-900 dark:text-slate-100 text-[1.62rem] min-[400px]:text-[1.75rem] sm:text-[2.2rem] md:text-[2.55rem] lg:text-[2.9rem] leading-[1.22] sm:leading-[1.18] break-keep">
-                <span className="block">投信とETFの重なり・集中リスク</span>
+                <span className="block">まずはETFを2本、並べて比べる</span>
                 <span className="block">
                   新NISA・配当を<span className="text-red-500 dark:text-red-400">ひとつの画面で</span>。
                 </span>
@@ -1035,7 +1036,7 @@ export default function HomePage({
                 <span className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-orange-100 dark:bg-orange-950/70 text-orange-600 dark:text-orange-400 ring-1 ring-orange-300/80 dark:ring-orange-700/60">
                   <Check size={14} strokeWidth={3} className="text-orange-600 dark:text-orange-400" />
                 </span>
-                <span><span className="text-orange-600 dark:text-orange-400">30秒</span>でかんたん資産プロフィール診断</span>
+                <span>同じ指数のETFを<span className="text-orange-600 dark:text-orange-400">2本比較</span>（例: TOPIXの1306と1475）</span>
               </li>
               <li className="flex items-start gap-3 text-base md:text-lg text-slate-800 dark:text-slate-200 font-bold leading-snug">
                 <span className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-orange-100 dark:bg-orange-950/70 text-orange-600 dark:text-orange-400 ring-1 ring-orange-300/80 dark:ring-orange-700/60">
@@ -1047,7 +1048,7 @@ export default function HomePage({
                 <span className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-orange-100 dark:bg-orange-950/70 text-orange-600 dark:text-orange-400 ring-1 ring-orange-300/80 dark:ring-orange-700/60">
                   <Check size={14} strokeWidth={3} className="text-orange-600 dark:text-orange-400" />
                 </span>
-                <span>投信とETFの<span className="text-orange-600 dark:text-orange-400">重なり・集中度</span>を確認</span>
+                <span><span className="text-orange-600 dark:text-orange-400">3つの質問</span>で資産の中心・リスク・期間を整理</span>
               </li>
               <li className="flex items-start gap-3 text-base md:text-lg text-slate-800 dark:text-slate-200 font-bold leading-snug">
                 <span className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-orange-100 dark:bg-orange-950/70 text-orange-600 dark:text-orange-400 ring-1 ring-orange-300/80 dark:ring-orange-700/60">
@@ -1172,6 +1173,12 @@ export default function HomePage({
               ) : null}
             </div>
           ) : null}
+
+          <section className="[grid-area:hero-film] min-w-0 w-full px-3 sm:px-4 md:px-5 lg:px-6 lg:col-span-2" aria-label="ブランドフィルム">
+            <div className="mx-auto w-full max-w-4xl min-w-0">
+              <HomeHeroBrandFilm />
+            </div>
+          </section>
 
           <div className="[grid-area:hero-phone] relative flex justify-center lg:justify-end lg:items-start lg:pl-4 lg:pr-2 xl:pl-6 xl:pr-4 pt-2 lg:pt-16 xl:pt-20">
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none lg:translate-y-14">
@@ -1360,6 +1367,24 @@ export default function HomePage({
           </div>
         </section>
       ) : null}
+
+      <section className="max-w-7xl mx-auto px-4 mt-6" aria-label="MoneyMartについて">
+        <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-5 py-5 md:px-8 md:py-6 shadow-sm">
+          <h2 className="text-xl md:text-2xl font-black text-slate-900 dark:text-white leading-snug">
+            独立した立場から、金融の力をすべての人へ。
+          </h2>
+          <p className="mt-2 max-w-3xl text-sm md:text-base text-slate-600 dark:text-slate-400 leading-relaxed">
+            MoneyMartは、資本提携に左右されない独立系の金融プラットフォームです。英国の投資業界で18年以上の実務経験を持つ創業チームの専門性を生かし、誰もが公平に比較し、自分で判断するための情報とツールを届けます。
+          </p>
+          <Link
+            to="/about#founding-team"
+            className="mt-4 inline-flex items-center gap-1.5 text-sm font-black text-orange-600 dark:text-orange-400 underline-offset-4 hover:underline"
+          >
+            MoneyMartについて
+            <ArrowRight size={16} aria-hidden />
+          </Link>
+        </div>
+      </section>
 
       <section className="max-w-7xl mx-auto px-4 mt-6">
         <button

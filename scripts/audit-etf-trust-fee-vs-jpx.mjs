@@ -2,7 +2,8 @@
  * Full audit: MoneyMart stock_symbols.trust_fee vs JPX ETF list (税抜).
  *
  * JPX source note: fees on the list are 税抜き, year-end (or listing-time for new listings).
- * MoneyMart store appears mixed historically (some 税込 like 2558=0.077).
+ * A stored tax-exclusive match is tax_mismatch_pre_tax, not OK.
+ * A rate merely under a variable cap is review_needed, not a tax mismatch.
  *
  *   node scripts/audit-etf-trust-fee-vs-jpx.mjs
  *   node scripts/audit-etf-trust-fee-vs-jpx.mjs --jpx-md=/path/to/jpx.md
@@ -11,6 +12,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createClient } from '@supabase/supabase-js'
+import { classifyTrustFee, inclusiveFromExclusive } from '../src/lib/trustFee.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(__dirname, '..')
@@ -33,7 +35,6 @@ loadEnv(path.join(ROOT, '.env.local'))
 loadEnv(path.join(ROOT, '.env'))
 
 const JPX_URL = 'https://www.jpx.co.jp/equities/products/etfs/issues/01.html'
-const TOL = 0.005 // absolute percentage points
 
 function parseFeeCell(raw) {
   const s = String(raw || '').replace(/％/g, '%').trim()
@@ -121,18 +122,13 @@ async function loadDbFees(sb) {
   return rows
 }
 
-function classify(mm, jpx) {
-  if (mm == null || !Number.isFinite(mm)) return 'mm_missing'
-  if (!jpx) return 'jpx_missing'
-  const ex = jpx.jpxFeeExTax
-  const inc = +(ex * 1.1).toFixed(6)
-  const matchEx = Math.abs(mm - ex) <= TOL
-  const matchInc = Math.abs(mm - inc) <= TOL
-  if (jpx.jpxWithin && mm <= ex + TOL) return 'ok_within_cap_ex'
-  if (matchEx) return 'ok_ex_tax'
-  if (matchInc) return 'ok_inc_tax'
-  // suspicious: mm lower than both by a lot, or higher
-  return 'mismatch'
+function classify(mm, jpx, symbol) {
+  return classifyTrustFee({
+    symbol,
+    stored: mm,
+    exclusive: jpx?.jpxFeeExTax,
+    within: Boolean(jpx?.jpxWithin),
+  })
 }
 
 async function main() {
@@ -161,14 +157,14 @@ async function main() {
   for (const [sym, j] of jpx) {
     const mm = dbBySym.get(sym)
     const mmFee = mm ? Number(mm.trust_fee) : null
-    const status = classify(mmFee, j)
+    const status = classify(mmFee, j, sym)
     results.push({
       symbol: sym,
       name_jpx: j.name,
       name_mm: mm?.name || '',
       mm_fee: mmFee,
       jpx_fee_ex_tax: j.jpxFeeExTax,
-      jpx_fee_inc_est: +(j.jpxFeeExTax * 1.1).toFixed(4),
+      jpx_fee_inc_est: inclusiveFromExclusive(j.jpxFeeExTax),
       jpx_raw: j.jpxRaw,
       jpx_within: j.jpxWithin,
       status,
@@ -200,7 +196,7 @@ async function main() {
   for (const r of results) counts[r.status] = (counts[r.status] || 0) + 1
 
   const mismatch = results
-    .filter((r) => r.status === 'mismatch')
+    .filter((r) => r.status === 'mismatch' || r.status === 'tax_mismatch_pre_tax')
     .sort((a, b) => Math.abs(b.delta_vs_ex || 0) - Math.abs(a.delta_vs_ex || 0))
 
   const tsvPath = path.join(outDir, 'ETF_TRUST_FEE_AUDIT_VS_JPX.tsv')

@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { ExternalLink, Flame, RefreshCw, Newspaper } from 'lucide-react'
 import { fetchAiNewsData, fetchNewsPageManual } from '../lib/aiNewsClient'
+import { newsRegionLabel, hasNewsStockDetail } from '../lib/newsEditorial.js'
 import { LEGAL_NOTICE_TEMPLATES } from '../constants/legalNoticeTemplates'
 import {
   MATSUI_FX_A8,
@@ -72,19 +73,6 @@ const displayNewsFlag = (flag) => {
   const s = String(flag).replace(JP_FLAG_RE, '').replace(/\s+/g, ' ').trim()
   if (s === '') return null
   return s
-}
-
-const marketRegionLabel = (m) => {
-  if (m === 'jp') return '🇯🇵 日本株'
-  if (m === 'eu') return '🇪🇺 欧州株'
-  return '🇺🇸 米国株'
-}
-
-const exchangeHint = (item) => {
-  const t = String(item.ticker || '')
-  if (item.market === 'jp' || /\.T$/i.test(t)) return '東証プライム'
-  if (item.market === 'eu') return '欧州'
-  return 'NASDAQ'
 }
 
 /** 株式ページの銘柄マスタ（例: 7203.T）と一致するようクエリを正規化 */
@@ -236,9 +224,8 @@ const isAiTrendSummarySource = (source) => String(source || '').includes('AIト�
 /** 元記事（外部）・株式詳細（内部） */
 function NewsArticleLinks({ item, variant = 'light', compact = false }) {
   const href = resolvedSourceHref(item)
-  const ticker = String(item?.ticker || '').trim()
   const showArticle = Boolean(href) && !isAiTrendSummarySource(item?.source)
-  const showStock = Boolean(ticker)
+  const showStock = hasNewsStockDetail(item)
   if (!showArticle && !showStock) return null
 
   const textSm = compact ? 'text-[9px]' : 'text-[10px]'
@@ -687,21 +674,19 @@ function NewsPage({ session = null }) {
                   <div className="pointer-events-none absolute left-0 right-0 top-0 h-1" style={{ background: MM_ORANGE }} aria-hidden />
                   <div>
                     <div className="mb-3.5 flex flex-wrap items-center gap-2">
-                      <SentimentPill sentiment={layout.hero.sentiment} hot isDark={isDark} />
+                      <SentimentPill sentiment={layout.hero.sentiment} hot={layout.hero.isHot} isDark={isDark} />
                       {isLoggedIn && !exposureLoading && !exposureProfile?.empty ? (
                         <ExposureLevelBadge level={scoreNewsExposure(layout.hero, exposureProfile).level} compact />
                       ) : null}
                       <span className="text-[9px] font-black uppercase tracking-widest text-white/50">
-                        {layout.hero.sector && layout.hero.sector !== 'その他' ? `${layout.hero.sector} · ` : ''}{marketRegionLabel(layout.hero.market)}
+                        {layout.hero.sector && layout.hero.sector !== 'その他' ? `${layout.hero.sector} · ` : ''}{newsRegionLabel(layout.hero)}
                       </span>
                     </div>
-                    <div className="mb-1 text-[2.6rem] font-bold leading-none tracking-tight sm:text-[3.15rem]" style={{ fontFamily: "'Zen Kaku Gothic New', sans-serif" }}>
-                      {layout.hero.ticker || '—'}
+                    <div className="mb-3 text-xs text-white/50">
+                      {layout.hero.companyName || layout.hero.sector || '市場ニュース'}
+                      {hasNewsStockDetail(layout.hero) ? ` · ${layout.hero.ticker}` : ''}
                     </div>
-                    <div className="mb-4 text-[13px] text-white/40">
-                      {layout.hero.companyName || '—'} · {exchangeHint(layout.hero)}
-                    </div>
-                    <h2 className="mb-4 text-[1.35rem] font-bold leading-snug tracking-tight sm:text-[1.4rem]" style={{ fontFamily: "'Zen Kaku Gothic New', sans-serif" }}>
+                    <h2 className="mb-4 text-[1.65rem] font-bold leading-snug tracking-tight sm:text-[2rem]" style={{ fontFamily: "'Zen Kaku Gothic New', sans-serif" }}>
                       {layout.hero.headline}
                     </h2>
                     <p className="mb-5 text-[13px] leading-[1.8] text-white/60">
@@ -750,11 +735,8 @@ function NewsPage({ session = null }) {
                               · {item.sector && item.sector !== 'その他' ? `${item.sector} · ` : ''}{displayNewsFlag(item.flag) || '🌐'}
                             </span>
                           </div>
-                          <div className="mb-0.5 text-[1.65rem] font-bold leading-none tracking-tight" style={{ fontFamily: "'Zen Kaku Gothic New', sans-serif", color: themeInk }}>
-                            {item.ticker || '—'}
-                          </div>
-                          <div className="mb-2.5 text-[11px]" style={{ color: themeMuted }}>{item.companyName} · {exchangeHint(item)}</div>
-                          <h3 className="mb-2 text-[15px] font-bold leading-snug tracking-tight" style={{ fontFamily: "'Zen Kaku Gothic New', sans-serif", color: themeInk }}>
+                          <div className="mb-2.5 text-[11px]" style={{ color: themeMuted }}>{item.companyName}{hasNewsStockDetail(item) ? ` · ${item.ticker}` : ''} · {newsRegionLabel(item)}</div>
+                          <h3 className="mb-2 text-[17px] font-bold leading-snug tracking-tight" style={{ fontFamily: "'Zen Kaku Gothic New', sans-serif", color: themeInk }}>
                             {item.headline}
                           </h3>
                           <p className="line-clamp-3 text-[11px] leading-[1.7]" style={{ color: themeMuted }}>{summaryBody(item)}</p>
@@ -800,17 +782,14 @@ function NewsPage({ session = null }) {
                           <ExposureLevelBadge level={scoreNewsExposure(item, exposureProfile).level} compact />
                         ) : null}
                         <span style={{ color: dark ? 'rgba(255,255,255,0.3)' : themeMuted, fontWeight: 400 }}>
-                          · {item.sector && item.sector !== 'その他' ? `${item.sector} · ` : ''}{marketRegionLabel(item.market).replace(/株$/, '')}
+                          · {item.sector && item.sector !== 'その他' ? `${item.sector} · ` : ''}{newsRegionLabel(item)}
                         </span>
                       </div>
-                      <div className="mb-0.5 text-[1.375rem] font-bold tracking-tight" style={{ fontFamily: "'Zen Kaku Gothic New', sans-serif", color: dark ? '#fff' : themeInk }}>
-                        {item.ticker}
-                      </div>
                       <div className="mb-2.5 text-[10px]" style={{ color: dark ? 'rgba(255,255,255,0.35)' : themeMuted }}>
-                        {item.companyName} · {exchangeHint(item)}
+                        {item.companyName}{hasNewsStockDetail(item) ? ` · ${item.ticker}` : ''}
                       </div>
                       <div className="mb-2.5 h-px" style={{ background: dark ? 'rgba(255,255,255,0.1)' : themeBorder }} aria-hidden />
-                      <h3 className="mb-2.5 text-[15px] font-bold leading-snug tracking-tight" style={{ fontFamily: "'Zen Kaku Gothic New', sans-serif", color: dark ? '#fff' : themeInk }}>
+                      <h3 className="mb-2.5 text-[17px] font-bold leading-snug tracking-tight" style={{ fontFamily: "'Zen Kaku Gothic New', sans-serif", color: dark ? '#fff' : themeInk }}>
                         {item.headline}
                       </h3>
                       <p className="line-clamp-4 flex-1 text-[11px] leading-[1.7]" style={{ color: dark ? 'rgba(255,255,255,0.55)' : themeMuted }}>
@@ -840,12 +819,11 @@ function NewsPage({ session = null }) {
                         <ExposureLevelBadge level={scoreNewsExposure(layout.wideMain, exposureProfile).level} compact />
                       ) : null}
                       <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: themeMuted }}>
-                        {layout.wideMain.sector && layout.wideMain.sector !== 'その他' ? `${layout.wideMain.sector} · ` : ''}{marketRegionLabel(layout.wideMain.market)}
+                        {layout.wideMain.sector && layout.wideMain.sector !== 'その他' ? `${layout.wideMain.sector} · ` : ''}{newsRegionLabel(layout.wideMain)}
                       </span>
                     </div>
-                    <div className="mb-1 text-[2.1rem] font-bold leading-none tracking-tight" style={{ fontFamily: "'Zen Kaku Gothic New', sans-serif", color: themeInk }}>
-                      {layout.wideMain.ticker}{' '}
-                      <span className="text-[15px] font-normal" style={{ color: themeMuted }}>{layout.wideMain.companyName}</span>
+                    <div className="mb-1 text-xs" style={{ color: themeMuted }}>
+                      {layout.wideMain.companyName}{hasNewsStockDetail(layout.wideMain) ? ` · ${layout.wideMain.ticker}` : ''}
                     </div>
                     <div className="my-3 h-px" style={{ background: themeBorder }} aria-hidden />
                     <h2 className="mb-3 text-[1.25rem] font-bold leading-snug tracking-tight" style={{ fontFamily: "'Zen Kaku Gothic New', sans-serif", color: themeInk }}>
@@ -966,7 +944,7 @@ function NewsPage({ session = null }) {
                               元記事 <ExternalLink size={12} aria-hidden />
                             </a>
                           ) : null}
-                          {item.ticker ? (
+                          {hasNewsStockDetail(item) ? (
                             <Link to={`/stocks?symbol=${encodeURIComponent(stockPageSymbolQuery(item))}`} className="rounded-sm px-3 py-2 text-[11px] font-black text-white no-underline hover:opacity-90" style={{ background: isDark ? '#475569' : '#111110' }}>
                               株式詳細へ
                             </Link>

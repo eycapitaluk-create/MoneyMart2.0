@@ -57,10 +57,12 @@ export function isCrmInternalEmail(emailRaw) {
 }
 
 export function isCrmInternalUser(row) {
+  // Email wins over the SQL flag. admin_crm_users marks only @moneymart.co.jp
+  // and test aliases, so @community.seed rows arrive with is_internal = false.
+  if (isCrmInternalEmail(row?.email)) return true
   if (row?.is_internal != null) return Boolean(row.is_internal)
   const email = String(row?.email || '').trim().toLowerCase()
   if (!email) return false
-  if (isCrmInternalEmail(email)) return true
   if (isInternalReferrerDomain(row?.signup_referrer_domain)) return true
   const landQ = String(row?.signup_landing_query || '')
   const landPath = String(row?.signup_landing_path || '')
@@ -86,14 +88,61 @@ export function isSmartNewsSignup(row) {
   return ref.includes('smartnews') || utm.includes('smartnews')
 }
 
-export function isUnknownSignup(row) {
-  return !(
+const JST = 'Asia/Tokyo'
+
+/** Calendar date in Japan. Signup charts must not use the UTC date prefix. */
+export function jstDateKey(value) {
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return ''
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: JST,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(d)
+}
+
+export function formatCrmJst(value) {
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return '—'
+  return new Intl.DateTimeFormat('sv-SE', {
+    timeZone: JST,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(d)
+}
+
+/** Referrer, UTM, or ref code. A landing path alone is not a source. */
+export function hasSignupSource(row) {
+  return Boolean(
     String(row?.signup_referrer_domain || '').trim()
     || String(row?.signup_utm_source || '').trim()
     || String(row?.signup_utm_medium || '').trim()
     || String(row?.signup_utm_campaign || '').trim()
-    || String(row?.signup_ref || '').trim()
+    || String(row?.signup_ref || '').trim(),
   )
+}
+
+export function signupSourceText(row) {
+  if (hasSignupSource(row)) {
+    return [
+      row?.signup_referrer_domain,
+      row?.signup_utm_source,
+      row?.signup_utm_medium,
+      row?.signup_ref,
+    ].map((v) => String(v || '').trim()).filter(Boolean).join(' · ')
+  }
+  const landing = String(row?.signup_landing_path || '').trim()
+  if (landing) return `Not captured · first page ${landing}`
+  return 'Not captured'
+}
+
+export function isUnknownSignup(row) {
+  return !hasSignupSource(row)
 }
 
 export function isActivatedSignup(row) {

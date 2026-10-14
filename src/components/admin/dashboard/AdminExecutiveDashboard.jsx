@@ -11,7 +11,7 @@ import {
 import { CalendarDays, Crown, Percent, Users } from 'lucide-react'
 import CampaignLaunchCohortCard from './CampaignLaunchCohortCard'
 import CampaignEntriesAdminCard from './CampaignEntriesAdminCard'
-import { isCrmInternalUser } from '../../../lib/crmInternalUsers'
+import { formatCrmJst, isCrmInternalUser, signupSourceText } from '../../../lib/crmInternalUsers'
 import {
   activityStatus,
   buildActiveUsersKpi,
@@ -512,7 +512,7 @@ export default function AdminExecutiveDashboard({
                   </div>
                 </div>
                 <span className="whitespace-nowrap text-right tabular-nums text-slate-500">
-                  {fmtInt(c.value)} · {fmtPct(c.share)}
+                  {fmtInt(c.value)} · {formatSharePct(c.share)}
                 </span>
               </div>
             ))}
@@ -599,13 +599,14 @@ export default function AdminExecutiveDashboard({
               <tr>
                 <th className="pb-2 font-medium">User</th>
                 <th className="pb-2 font-medium">Payment / activity</th>
-                <th className="pb-2 font-medium">Signed up</th>
+                <th className="pb-2 font-medium">Signed up (JST)</th>
+                <th className="pb-2 font-medium">Source</th>
                 <th className="pb-2 font-medium">Last active</th>
               </tr>
             </thead>
             <tbody>
               {recent.length === 0 ? (
-                <tr><td colSpan={4} className="py-8 text-center text-slate-400">No sign-ups in this period</td></tr>
+                <tr><td colSpan={5} className="py-8 text-center text-slate-400">No sign-ups in this period</td></tr>
               ) : recent.map((u) => {
                 const pay = paymentStatus(u)
                 const act = activityStatus(u)
@@ -616,7 +617,8 @@ export default function AdminExecutiveDashboard({
                       <span className={`rounded-full px-2 py-0.5 text-[10px] ${pay.cls}`}>{pay.label}</span>
                       <span className={`ml-1 rounded-full px-2 py-0.5 text-[10px] ${act.cls}`}>{act.label}</span>
                     </td>
-                    <td className="py-2.5 tabular-nums text-slate-400">{String(u.user_created_at || '').slice(5, 10).replace('-', '/')}</td>
+                    <td className="py-2.5 tabular-nums text-slate-400">{u.user_created_at ? formatCrmJst(u.user_created_at) : '—'}</td>
+                    <td className="py-2.5 text-slate-500">{signupSourceText(u)}</td>
                     <td className="py-2.5 text-slate-400">{relativeTime(u.last_seen_at || u.last_sign_in_at)}</td>
                   </tr>
                 )

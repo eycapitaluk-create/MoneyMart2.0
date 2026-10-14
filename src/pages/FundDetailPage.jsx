@@ -8,6 +8,7 @@ import {
 import { supabase } from '../lib/supabase'
 import { ETF_LIST_FROM_XLSX, ETF_SYMBOLS_FROM_XLSX } from '../data/etfListFromXlsx'
 import { FUND_ISIN_BY_SYMBOL } from '../data/fundIsinBySymbol'
+import { formatTrustFeePercent, parseTrustFeePercent } from '../lib/trustFee'
 
 const FUND_SYMBOL_SET = new Set(ETF_SYMBOLS_FROM_XLSX.map((s) => String(s || '').toUpperCase()))
 import { trackAnalyticsEvent } from '../lib/analytics'
@@ -17,7 +18,13 @@ import {
   resolveFundDisplayName,
   resolveFundNisaCategory,
 } from '../lib/fundDisplayUtils'
-import { findBaseCloseByCalendarOffset, computeAnnualizedReturnPct, findFirstPositiveClose } from '../lib/calendarDateUtils'
+import {
+  computeOneYearPriceReturnPct,
+  formatOneYearPriceReturnPct,
+  hasOneYearPriceReturn,
+  ONE_YEAR_RETURN_MISSING_TEXT,
+  ONE_YEAR_RETURN_BASIS_TEXT,
+} from '../lib/calendarDateUtils'
 import {
   buildSplitAdjustedCloses,
   chartDownsampleIndices,
@@ -79,11 +86,7 @@ const formatMonthDay = (isoDate) => {
 }
 const fmtNum = (v) => (Number.isFinite(Number(v)) ? Number(v).toLocaleString('ja-JP') : '-')
 const fmtPrice = (v) => (Number.isFinite(Number(v)) ? `¥${Number(v).toLocaleString('ja-JP')}` : '-')
-const formatTrustFee = (value) => {
-  const n = Number(value)
-  if (!Number.isFinite(n)) return '-'
-  return `${n.toFixed(2)}%`
-}
+const formatTrustFee = (value) => formatTrustFeePercent(value)
 
 /** xlsx の aum_oku_yen（億円単位の数値）を表示用に整形。1兆円=1万億円換算で兆表記 */
 const formatAumOkuYen = (oku) => {
@@ -230,15 +233,11 @@ export default function FundDetailPage({ myWatchlist = [], toggleWatchlist }) {
         // 複数 source 同一日は「直前終値との連続性」で1行に潰す（manual_close は別途最優先）。
         const historyDedupeMode = 'continuity'
         const history = dedupeStockDailyPricesByTradeDate(historyRows || [], { mode: historyDedupeMode })
-        const trustFeeValue = Number.isFinite(Number(profile.trust_fee)) ? Number(profile.trust_fee) : Number(xlsxMeta?.trustFee)
+        const trustFeeValue = parseTrustFeePercent(profile.trust_fee) ?? parseTrustFeePercent(xlsxMeta?.trustFee)
         const normalizedNisaCategory = resolveFundNisaCategory(symbol, profile.nisa_category, xlsxMeta?.nisaCategory)
         const adjustedClosesRaw = buildSplitAdjustedCloses(history, {
           skipSplitHeuristic: skipEodSplitHeuristicForSymbol(symbol),
         })
-        const validCloseCount = adjustedClosesRaw.filter((v) => {
-          const n = Number(v)
-          return Number.isFinite(n) && n > 0
-        }).length
         const volumes = history.map((r) => Number(r.volume)).filter((v) => Number.isFinite(v) && v >= 0)
         const {
           close,
@@ -248,30 +247,7 @@ export default function FundDetailPage({ myWatchlist = [], toggleWatchlist }) {
           latestCloseNum,
         } = resolveSpotCloseAndSessionChange(history, adjustedClosesRaw, latest)
         const open = Number(latest.open || 0)
-        const oneYearBaseClose = findBaseCloseByCalendarOffset(history, { years: 1 }, adjustedClosesRaw)
-        const firstTradeDateRaw = history[0]?.trade_date
-        const latestTradeDateRaw = history[Math.max(0, history.length - 1)]?.trade_date
-        const firstTradeDate = firstTradeDateRaw ? new Date(firstTradeDateRaw) : null
-        const latestTradeDate = latestTradeDateRaw ? new Date(latestTradeDateRaw) : null
-        const historySpanDays = (
-          firstTradeDate
-          && latestTradeDate
-          && Number.isFinite(firstTradeDate.getTime())
-          && Number.isFinite(latestTradeDate.getTime())
-        )
-          ? Math.floor((latestTradeDate.getTime() - firstTradeDate.getTime()) / (1000 * 60 * 60 * 24))
-          : 0
-        const hasReliableOneYearHistory = validCloseCount >= 2 && historySpanDays >= 330
-        let return1y = hasReliableOneYearHistory && oneYearBaseClose != null && oneYearBaseClose > 0 ? ((close - oneYearBaseClose) / oneYearBaseClose) * 100 : null
-        if (!Number.isFinite(return1y)) {
-          const inceptionBase = findFirstPositiveClose(history, adjustedClosesRaw)
-          return1y = computeAnnualizedReturnPct({
-            close,
-            baseClose: inceptionBase,
-            spanDays: historySpanDays,
-            minSpanDays: 90,
-          })
-        }
+        const return1y = computeOneYearPriceReturnPct(history, adjustedClosesRaw, close)
         const vol = calculateRealizedVolatilityFromAscHistory(history, adjustedClosesRaw)
         const sharpe = (Number.isFinite(return1y) && Number.isFinite(vol) && vol > 0) ? (return1y / vol) : null
         const avgVol30 = volumes.length > 0
@@ -525,13 +501,16 @@ export default function FundDetailPage({ myWatchlist = [], toggleWatchlist }) {
         <div className="grid grid-cols-2 gap-3 mb-5 md:grid-cols-3 lg:grid-cols-7">
           <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3">
             <p className="text-[11px] text-slate-500 font-bold">1年リターン</p>
-            <p className="text-lg font-black text-slate-900 dark:text-white">
-              {Number.isFinite(Number(detail.return1y))
-                ? fmtPct(detail.return1y)
-                : (Number.isFinite(Number(detail.returnYTD))
-                  ? `YTD ${detail.returnYTD >= 0 ? '+' : ''}${Number(detail.returnYTD).toFixed(1)}%`
-                  : '-')}
+            <p className="text-[10px] font-bold text-slate-400">{ONE_YEAR_RETURN_BASIS_TEXT}</p>
+            <p
+              className={`text-lg font-black ${hasOneYearPriceReturn(detail.return1y) ? 'text-slate-900 dark:text-white' : 'text-slate-400'}`}
+              title={hasOneYearPriceReturn(detail.return1y) ? ONE_YEAR_RETURN_BASIS_TEXT : ONE_YEAR_RETURN_MISSING_TEXT}
+            >
+              {formatOneYearPriceReturnPct(detail.return1y)}
             </p>
+            {hasOneYearPriceReturn(detail.return1y) ? null : (
+              <p className="text-[10px] font-bold leading-snug text-slate-500">{ONE_YEAR_RETURN_MISSING_TEXT}</p>
+            )}
           </div>
           <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3">
             <p className="text-[11px] text-slate-500 font-bold">変動性</p>
@@ -593,6 +572,11 @@ export default function FundDetailPage({ myWatchlist = [], toggleWatchlist }) {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
           <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4">
             <h3 className="text-sm font-black text-slate-900 dark:text-white mb-3">価格推移 ({chartTimeline})</h3>
+            {chartTimeline === '1Y' && !hasOneYearPriceReturn(detail.return1y) ? (
+              <div className="flex h-[240px] items-center justify-center px-4 text-center text-sm font-bold text-slate-400">
+                {ONE_YEAR_RETURN_MISSING_TEXT}
+              </div>
+            ) : (
             <div className="h-[240px]">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={visibleChartData}>
@@ -625,6 +609,7 @@ export default function FundDetailPage({ myWatchlist = [], toggleWatchlist }) {
                 </AreaChart>
                 </ResponsiveContainer>
             </div>
+            )}
           </div>
 
           <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4">

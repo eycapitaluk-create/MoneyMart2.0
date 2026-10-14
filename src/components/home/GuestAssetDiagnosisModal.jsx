@@ -136,7 +136,7 @@ export default function GuestAssetDiagnosisModal({
             {step >= STEPS.length ? 'あなたの資産プロフィール診断' : '3つの質問で、いまの方向性をチェック'}
           </h2>
           <p className="mt-2 text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
-            口座・銀行の連携は不要です。回答は参考情報であり、投資助言ではありません。
+            口座・銀行の連携は不要です。この3問は好みの確認で、保有銘柄の重なりは見ていません。回答は参考情報であり、投資助言ではありません。
           </p>
 
           <div className="mt-4 h-1.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">

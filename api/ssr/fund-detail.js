@@ -12,6 +12,7 @@ import {
   resolveFundNisaCategory,
 } from '../../src/lib/fundDisplayUtils.js'
 import { buildHeadBlock, escapeHtml, getSiteOrigin, webApplicationLd } from './lib/seoHead.js'
+import { formatTrustFeePercent, parseTrustFeePercent } from '../../src/lib/trustFee.js'
 import { MM_PATH_PREFIXES_FUNDS_DETAIL, parseMmPathForSsr } from './lib/mmPathAllowlist.js'
 
 function sendHtml(res, status, html) {
@@ -62,11 +63,7 @@ function readFundDetailRoute(req) {
 }
 
 const fmtPrice = (v) => (Number.isFinite(Number(v)) && Number(v) > 0 ? `¥${Number(v).toLocaleString('ja-JP')}` : null)
-const fmtTrust = (v) => {
-  const n = Number(v)
-  if (!Number.isFinite(n)) return null
-  return `${n.toFixed(2)}%`
-}
+const fmtTrust = (v) => (parseTrustFeePercent(v) == null ? null : formatTrustFeePercent(v))
 
 export default async function handler(req, res) {
   const { symbol } = readFundDetailRoute(req)

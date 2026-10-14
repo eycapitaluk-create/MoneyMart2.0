@@ -2,8 +2,10 @@ import { useMemo, useState } from 'react'
 import {
   CRM_SEGMENT_LABELS,
   crmUserSegment,
+  formatCrmJst,
   hasPremiumIntent,
   isActivatedSignup,
+  signupSourceText,
 } from '../../../lib/crmInternalUsers'
 import { classifyReferrerChannel } from '../../../lib/referrerBuckets'
 import { fmt, labelClass, panelClass, panelPad, tdClass, thClass, titleClass } from './crmUi'
@@ -13,6 +15,7 @@ const signupChannelId = (row) => classifyReferrerChannel({
   utmSource: row?.signup_utm_source,
   utmMedium: row?.signup_utm_medium,
   utmCampaign: row?.signup_utm_campaign,
+  signupRef: row?.signup_ref,
 }).id
 
 export default function CrmCustomersPanel({
@@ -112,12 +115,14 @@ export default function CrmCustomersPanel({
             {filtered.map((r) => (
               <tr key={r.user_id} className="border-b border-gray-100 dark:border-gray-800">
                 <td className={`${tdClass} whitespace-nowrap`}>
-                  {r.user_created_at ? new Date(r.user_created_at).toLocaleString('en-GB') : '—'}
+                  {r.user_created_at ? formatCrmJst(r.user_created_at) : '—'}
                 </td>
                 <td className={`${tdClass} font-mono text-[11px] max-w-[200px] truncate`} title={r.email || ''}>
                   {r.email || '—'}
                 </td>
-                <td className={`${tdClass} max-w-[140px] truncate`}>{r.signup_referrer_domain || '—'}</td>
+                <td className={`${tdClass} max-w-[220px] truncate`} title={signupSourceText(r)}>
+                  {signupSourceText(r)}
+                </td>
                 <td className={`${tdClass} max-w-[160px] truncate`}>
                   {[r.signup_utm_source, r.signup_utm_medium].filter(Boolean).join(' · ') || '—'}
                 </td>

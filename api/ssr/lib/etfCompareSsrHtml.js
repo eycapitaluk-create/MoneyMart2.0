@@ -1,4 +1,5 @@
 import { ETF_UNIVERSE_COUNT } from '../../../src/data/etfUniverseLite.js'
+import { formatTrustFeePercent, parseTrustFeePercent } from '../../../src/lib/trustFee.js'
 import { breadcrumbListJsonLd, buildHeadBlock, escapeHtml, getSiteOrigin, webApplicationLd } from './seoHead.js'
 
 const TITLE = `国内上場ETF比較（${ETF_UNIVERSE_COUNT}本）｜信託報酬・NISA | MoneyMart`
@@ -29,10 +30,8 @@ function buildItemListJsonLd(rows, canonicalPath) {
 }
 
 function fmtTrust(v) {
-  if (v == null || v === '') return '—'
-  const n = Number(v)
-  if (!Number.isFinite(n)) return escapeHtml(String(v))
-  return escapeHtml(`${n.toFixed(n < 1 ? 3 : 2)}`)
+  if (parseTrustFeePercent(v) == null) return '—'
+  return escapeHtml(formatTrustFeePercent(v))
 }
 
 function fmtClose(v) {

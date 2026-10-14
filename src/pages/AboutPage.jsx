@@ -79,13 +79,15 @@ export default function AboutPage() {
   useEffect(() => {
     if (hash === '#about-careers') {
       navigate('/careers', { replace: true })
-      return
+      return undefined
     }
-    if (!hash) return
+    if (!hash) return undefined
     const id = hash.replace(/^#/, '')
-    const el = document.getElementById(id)
-    if (!el) return
-    el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    // App と Layout がパス変更時に先頭へ戻すため、その後にアンカーへ合わせる
+    const timer = window.setTimeout(() => {
+      document.getElementById(id)?.scrollIntoView({ behavior: 'auto', block: 'start' })
+    }, 0)
+    return () => window.clearTimeout(timer)
   }, [hash, navigate])
 
   return (
@@ -94,7 +96,7 @@ export default function AboutPage() {
         <title>運営会社 | MoneyMart</title>
         <meta
           name="description"
-          content="マネーラボ株式会社（MoneyLab Inc.）が運営するMoneyMartの会社概要・ミッション・チーム。お問い合わせは support@moneymart.co.jp です。"
+          content="マネーラボ株式会社（MoneyLab Inc.）が運営する独立系の金融プラットフォーム MoneyMart。資本提携に左右されない立場で、公平な比較と金融ツールへのアクセスを届けます。"
         />
       </Helmet>
 
@@ -115,8 +117,8 @@ export default function AboutPage() {
             プラットフォーム
           </h1>
           <p className="text-base md:text-lg text-slate-300 leading-relaxed max-w-2xl mx-auto">
-            {COMPANY_NAME_JA_EN}は、独立系の金融比較プラットフォーム「MoneyMart」を運営しています。
-            資本提携に左右されない立場で、データに基づく比較・確認の場をつくります。
+            {COMPANY_NAME_JA_EN}は、独立系の金融比較・資産管理プラットフォーム「MoneyMart」を運営しています。
+            資本提携に左右されない独立した立場から、利用者が金融商品を公平に比較し、自分で考え、納得して選べる情報とツールを届けます。
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-3 text-xs font-bold text-slate-400">
             <span className="inline-flex items-center gap-1.5"><Lock size={13} /> 通信の暗号化</span>
@@ -125,6 +127,7 @@ export default function AboutPage() {
           <nav className="mt-10 flex flex-wrap justify-center gap-2 text-xs font-bold">
             {[
               ['#about-mission', 'ミッション'],
+              ['#founding-team', '創業チーム'],
               ['#about-company', '会社概要'],
               ['#about-team', 'チーム'],
               ['#about-contact', 'お問い合わせ'],
@@ -148,8 +151,10 @@ export default function AboutPage() {
         <div className="max-w-3xl mx-auto text-center">
           <h2 className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white mb-4">なぜ独立性が重要なのか</h2>
           <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
-            金融機関と資本提携を持たない独立系として、比較に必要な情報を中立に並べます。
-            手数料や資本関係だけで順位を決めるのではなく、利用者が自分で確認できる表示を重視します。
+            金融商品を選ぶとき、利用者にとって大切なのは、自分の目的に合っているかを確かめられることです。MoneyMartは、金融機関と資本提携を持たない独立系として、比較に必要な情報を中立に並べることを大切にしています。
+          </p>
+          <p className="mt-4 text-slate-600 dark:text-slate-400 leading-relaxed">
+            リターンの対象期間、費用の範囲、投資対象など、数字の前提までわかる表示を重視します。利用者が根拠を確認し、自分の目的や状況に照らして判断できることが、公平な比較の出発点です。
           </p>
         </div>
       </section>
@@ -159,15 +164,15 @@ export default function AboutPage() {
           <p className="text-xs font-bold tracking-wide text-orange-600 mb-2">私たちのミッション</p>
           <h2 className="text-3xl font-black text-slate-900 dark:text-white mb-4">金融の力を、すべての人へ</h2>
           <p className="text-slate-600 dark:text-slate-400 max-w-2xl mx-auto leading-relaxed">
-            金融情報とツールへのアクセスをわかりやすくします。資産規模や経験に関わらず、
-            納得のいく選択を自分で行いやすい社会を目指します。
+            資産規模や投資経験に関わらず、金融情報とツールにアクセスし、自ら考え、判断できる社会を目指します。専門的な知識を日常の言葉で伝え、利用者の自立した資産形成を支えます。
           </p>
         </div>
-        <div className="grid md:grid-cols-3 gap-5">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
           {[
-            { icon: Globe, title: 'ユニバーサルアクセス', desc: '金融リテラシーと投資ツールへの障壁を下げ、誰でも使いやすくします。' },
-            { icon: Heart, title: 'エンパワーメント', desc: '自ら考え、判断できる「自立した資産形成」のための知識とツールを提供します。' },
-            { icon: Scale, title: '公平性', desc: 'プロも個人も関係なく、比較に必要な情報を公平に届けます。' },
+            { icon: Shield, title: '独立性', desc: '資本提携に左右されない立場で、利用者のための比較・確認の場をつくります。' },
+            { icon: Scale, title: '公平性', desc: '資産規模や経験に関わらず、判断に必要な情報をわかりやすく届けます。' },
+            { icon: Heart, title: 'エンパワーメント', desc: '利用者が自ら考え、納得して選ぶための知識とツールを提供します。' },
+            { icon: Globe, title: 'ユニバーサルアクセス', desc: '金融リテラシーと投資ツールへの障壁を下げ、誰もが使いやすい環境を目指します。' },
           ].map((item) => (
             <div key={item.title} className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 p-6">
               <item.icon className="text-orange-500 mb-3" size={22} />
@@ -180,16 +185,48 @@ export default function AboutPage() {
 
       <section className="bg-slate-900 text-white py-16 px-6">
         <div className="max-w-3xl mx-auto text-center">
-          <p className="text-xs font-bold tracking-wide text-orange-400 mb-2">AI搭載プラットフォーム</p>
-          <h2 className="text-2xl md:text-3xl font-black mb-4">私たちのビジョン</h2>
+          <p className="text-xs font-bold tracking-wide text-orange-400 mb-2">私たちのビジョン</p>
+          <h2 className="text-2xl md:text-3xl font-black mb-4 leading-snug">
+            富や人脈に関係なく、誰もがプロ級の金融ツールにアクセスできる日本を目指します。
+          </h2>
           <p className="text-slate-300 leading-relaxed">
-            ユーザーファーストのAI搭載プラットフォームとして、多様な金融商品を一目で比較し、
-            確認しやすい資産管理を目指します。
-          </p>
-          <p className="mt-6 text-sm text-slate-400 italic">
-            「富や人脈に関係なく、誰もがプロ級の金融ツールにアクセスできる日本を目指します。」
+            ユーザーファーストのAI搭載プラットフォームとして、多様な金融商品の比較と資産の整理をわかりやすくし、一人ひとりが自分の未来を考えるための選択肢を広げていきます。
           </p>
         </div>
+      </section>
+
+      <section id="founding-team" className="py-20 px-6 max-w-3xl mx-auto scroll-mt-24">
+        <div className="text-center mb-8">
+          <p className="text-xs font-bold tracking-wide text-orange-600 mb-2">創業チーム</p>
+          <h2 className="text-3xl font-black text-slate-900 dark:text-white mb-4">投資の専門性を、より多くの人へ</h2>
+        </div>
+        <div className="space-y-4 text-slate-600 dark:text-slate-400 leading-relaxed">
+          <p>
+            MoneyMartの創業チームには、英国の投資業界で18年以上、ファンド調査、資産配分、ポートフォリオ構築などに携わってきた実務経験があります。
+          </p>
+          <p>
+            Caliburn Capital Partnersでのヘッジファンド調査・定量分析、Rathbone Brothersでの資産配分モデリング・ファンド調査、Fidelity Internationalでのポートフォリオ構築・ファクターモデリング、Aegonでのファンド調査・資産配分・マクロ調査。こうした経験を背景に、MoneyMartは投資の実務で用いられる比較・検証の視点を、個人投資家にもわかりやすい情報とツールに生かしていきます。
+          </p>
+          <p>
+            専門性を一部の人だけのものにせず、誰もが自分で判断するための手がかりにする。この姿勢が、MoneyMartの独立性と公平性、そして金融ツールへのアクセスを広げるというビジョンを支えています。
+          </p>
+        </div>
+        <h3 className="mt-10 mb-4 text-lg font-black text-slate-900 dark:text-white">投資業界での主な経歴</h3>
+        <ol className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 divide-y divide-slate-200 dark:divide-slate-800">
+          {[
+            ['2008年6月〜2012年6月', 'Caliburn Capital Partners LLP', 'Analyst'],
+            ['2012年7月〜2014年2月', 'Newton Investment Management', 'Analyst'],
+            ['2014年3月〜2015年5月', 'Rathbone Brothers Plc', 'Analyst'],
+            ['2015年6月〜2022年3月', 'Fidelity International', 'Senior Manager'],
+            ['2022年4月〜2023年8月', 'Aegon', 'Senior Investment Analyst'],
+          ].map(([period, org, role]) => (
+            <li key={period} className="px-4 py-4 sm:px-5 grid grid-cols-1 sm:grid-cols-[11.5rem_minmax(0,1fr)_auto] gap-1 sm:gap-4 sm:items-baseline">
+              <p className="text-xs font-bold text-slate-500 dark:text-slate-400">{period}</p>
+              <p className="font-bold text-slate-900 dark:text-slate-100 break-words">{org}</p>
+              <p className="text-sm font-bold text-orange-600 dark:text-orange-400">{role}</p>
+            </li>
+          ))}
+        </ol>
       </section>
 
       <section className="py-20 px-6 max-w-6xl mx-auto">

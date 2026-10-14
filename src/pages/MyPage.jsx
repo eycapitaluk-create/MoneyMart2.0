@@ -18,6 +18,7 @@ import {
   AreaChart, Area, LabelList
 } from 'recharts'
 import { supabase } from '../lib/supabase'
+import { monthlyChange as portfolioMonthlyChange, splitRatioAfter } from '../lib/portfolioCalc'
 import { signedReturnTextClassStrong } from '../lib/marketDirectionColors'
 import {
   loadMyPageData,
@@ -95,7 +96,8 @@ import {
   migrateFundOptimizerSetsToDb,
 } from '../lib/fundOptimizerWatchsets'
 import { recordUserActivityEvent } from '../lib/userActivityApi'
-import { getCurrentMonthBudgetUsage } from '../lib/mypageBudgetAlerts'
+import { displayedMonthEndSpending, getCurrentMonthBudgetUsage, projectMonthEndSpending, samePeriodExpenseBounds, spentOnInBounds } from '../lib/mypageBudgetAlerts'
+import { householdMemoText } from '../lib/householdExpenseMemo'
 import { fetchEtfThreeMonthReturnPct, annualizeThreeMonthReturnPct, WEALTH_SIM_ETF_SYMBOL } from '../lib/wealthSimEtfReturns'
 import {
   ENFORCE_FREE_OWNED_DISTINCT_SYMBOL_CAPS,
@@ -338,6 +340,15 @@ const normalizeRealizedStockTrades = (rows = []) => (
         realizedPnlJpy: Number.isFinite(realizedPnlJpy) ? realizedPnlJpy : 0,
         sellFxRate: Number.isFinite(sellFxRate) && sellFxRate > 0 ? sellFxRate : null,
         sellFxDate: /^\d{4}-\d{2}-\d{2}$/.test(sellFxDate) ? sellFxDate : '',
+        buyLots: (Array.isArray(row?.buyLots) ? row.buyLots : Array.isArray(row?.buy_lots) ? row.buy_lots : [])
+          .map((lot) => {
+            const buyDate = String(lot?.buyDate || lot?.buy_date || '').slice(0, 10)
+            const lotQty = Number(lot?.qty)
+            const costJpy = Number(lot?.costJpy ?? lot?.cost_jpy)
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(buyDate) || !(lotQty > 0)) return null
+            return { buyDate, qty: lotQty, costJpy: Number.isFinite(costJpy) ? costJpy : 0 }
+          })
+          .filter(Boolean),
       }
     })
     .filter(Boolean)
@@ -907,11 +918,12 @@ const lotYenParts = (lot, qty, buyPrice, currentPrice, fxByDate, valuationUsdJpy
     const valueJpy = toJpy(qty * currentPrice, ccy)
     return { costJpy, valueJpy, pricePnlJpy: valueJpy - costJpy, fxPnlJpy: 0, included: true, costKnown: true, currency: ccy }
   }
-  const buyFx = resolveBuyFx(lot, fxByDate, currentPrice)
+  const storedBuyFx = Number(lot?.buyFxRate)
+  const buyRate = Number.isFinite(storedBuyFx) && storedBuyFx > 0 ? storedBuyFx : null
   const now = positiveUsdJpy(valuationUsdJpy)
-  const costKnown = buyFx.rate > 0
+  const costKnown = buyRate != null
   const valueKnown = now != null
-  const costJpy = costKnown ? qty * buyPrice * buyFx.rate : 0
+  const costJpy = costKnown ? qty * buyPrice * buyRate : 0
   const valueJpy = valueKnown ? qty * currentPrice * now : 0
   if (!costKnown || !valueKnown) {
     return { costJpy, valueJpy, pricePnlJpy: null, fxPnlJpy: null, included: valueKnown, costKnown, currency: 'USD' }
@@ -919,8 +931,8 @@ const lotYenParts = (lot, qty, buyPrice, currentPrice, fxByDate, valuationUsdJpy
   return {
     costJpy,
     valueJpy,
-    pricePnlJpy: (currentPrice - buyPrice) * qty * buyFx.rate,
-    fxPnlJpy: currentPrice * qty * (now - buyFx.rate),
+    pricePnlJpy: (currentPrice - buyPrice) * qty * buyRate,
+    fxPnlJpy: currentPrice * qty * (now - buyRate),
     included: true,
     costKnown: true,
     currency: 'USD',
@@ -1433,76 +1445,22 @@ const mergeMonthEndsAndLotBuysIntoAnchors = ({
 }
 
 /**
- * 過去月はその月の最終日、今月は「今日」まで。未来月は出さない。
- * 既定は元本→現在評価の線形補間。保有タブでは stock_daily_prices を読み、
- * 各日付時点の保有ロット×その日前の終値で再評価した系列に置き換える。
+ * 価格履歴が届くまでの仮表示。始点は取得元本、終点は今の評価額だけ。
+ * 月次の直線補間はしない。履歴が取れれば保有ロット×終値の系列に置き換わる。
  */
 const buildAssetGrowthTrendData = (totalInvested, totalCurrentValue, opts = {}) => {
   const base = Math.max(0, Number(totalInvested || 0))
   const end = Math.max(0, Number(totalCurrentValue || 0))
-  const simplified = opts.simplified === true
-  const nPoints = Math.max(2, Math.min(36, Number(opts.months) || 6))
   const earliestBuyRaw = opts.earliestBuyDate ? String(opts.earliestBuyDate).trim().slice(0, 10) : ''
-
   const now = new Date()
-  if (simplified || (base <= 0 && end <= 0)) {
-    const cst = Math.round(base)
-    return [
-      { month: trendChartStartLabel(earliestBuyRaw), value: base, costJpy: cst, pnlJpy: Math.round(base - cst) },
-      { month: formatAssetTrendMd(now), value: end, costJpy: cst, pnlJpy: Math.round(end - cst) },
-    ]
-  }
-
-  let earliestYm = null
-  if (earliestBuyRaw) {
-    const parsed = new Date(`${earliestBuyRaw}T12:00:00`)
-    if (Number.isFinite(parsed.getTime())) {
-      earliestYm = parsed.getFullYear() * 12 + parsed.getMonth()
-    }
-  }
-
-  const y = now.getFullYear()
-  const m = now.getMonth()
-  const monthEndAnchors = []
-  for (let k = nPoints - 1; k >= 1; k -= 1) {
-    const firstOfMonth = new Date(y, m - k, 1)
-    const lastDay = new Date(firstOfMonth.getFullYear(), firstOfMonth.getMonth() + 1, 0)
-    if (lastDay.getTime() > now.getTime()) continue
-    const lastYm = lastDay.getFullYear() * 12 + lastDay.getMonth()
-    if (earliestYm != null && lastYm < earliestYm) continue
-    monthEndAnchors.push(lastDay)
-  }
-
-  const merged = mergeMonthEndsAndLotBuysIntoAnchors({
-    monthEndAnchorDates: monthEndAnchors,
-    now,
-    lotBuyIsoDates: Array.isArray(opts.lotBuyIsoDates) ? opts.lotBuyIsoDates : [],
-    lotMonthlyLabelByYmd: opts.lotMonthlyLabelByYmd && typeof opts.lotMonthlyLabelByYmd === 'object' ? opts.lotMonthlyLabelByYmd : null,
-    earliestBuyRaw,
-  })
-  const anchors = merged ? merged.anchors : [...monthEndAnchors, now]
-  if (anchors.length < 2) {
-    const cst = Math.round(base)
-    return [
-      { month: trendChartStartLabel(earliestBuyRaw), value: base, costJpy: cst, pnlJpy: Math.round(base - cst) },
-      { month: formatAssetTrendMd(now), value: end, costJpy: cst, pnlJpy: Math.round(end - cst) },
-    ]
-  }
-
-  const diff = end - base
-  const len = anchors.length
-  const costFlat = Math.round(base)
-  return anchors.map((d, idx) => {
-    const t = len > 1 ? idx / (len - 1) : 1
-    const value = Math.max(0, Math.round(base + diff * t))
-    const label = merged
-      ? merged.labels[idx]
-      : (idx === len - 1 ? formatAssetTrendMd(now) : formatAssetTrendMd(d))
-    return { month: label, value, costJpy: costFlat, pnlJpy: Math.round(value - costFlat) }
-  })
+  const cst = Math.round(base)
+  return [
+    { month: trendChartStartLabel(earliestBuyRaw), value: base, costJpy: cst, pnlJpy: Math.round(base - cst) },
+    { month: formatAssetTrendMd(now), value: end, costJpy: cst, pnlJpy: Math.round(end - cst) },
+  ]
 }
 
-/** 資産タブ: 合算と同じ日付軸で株式・ファンドを積み上げ（補間モード時は各系列を元本→現在を同じtで補間） */
+/** 価格履歴が無いときの株式・ファンド内訳。両端だけ（取得元本と今の評価）。 */
 const buildAssetGrowthTrendSplitData = (stockInvested, stockCurrent, fundInvested, fundCurrent, opts = {}) => {
   const si = Math.max(0, Number(stockInvested || 0))
   const se = Math.max(0, Number(stockCurrent || 0))
@@ -1632,9 +1590,9 @@ const ownedStockLotCostJpy = (lot, sym, fxByDate) => {
   const ccy = resolveLotCurrency(row, lot?.price)
   if (!ccy) return 0
   if (ccy === 'USD') {
-    const fx = resolveBuyFx(row, fxByDate, lot?.price)
-    if (!(fx.rate > 0)) return 0
-    return q * buy * fx.rate
+    const stored = Number(row?.buyFxRate)
+    if (!(stored > 0)) return 0
+    return q * buy * stored
   }
   if (ccy === 'JPY') return q * buy
   return toJpy(q * buy, ccy)
@@ -1646,10 +1604,9 @@ const ownedFundLotCostJpy = (lot, fxByDate) => {
   const sym = String(lot.symbol || '').trim().toUpperCase()
   const fundCurrency = inferStockCurrency(sym)
   if (fundCurrency === 'USD') {
-    const buyDateIso = toIsoDate(lot.buyDate || lot.buy_date || '')
-    const found = fxOnOrBefore(buyDateIso, fxByDate)
-    if (!(found?.rate > 0)) return 0
-    return invest * found.rate
+    const stored = Number(lot?.buyFxRate)
+    if (!(stored > 0)) return 0
+    return invest * stored
   }
   return toJpy(invest, fundCurrency)
 }
@@ -1883,6 +1840,43 @@ const collectTrendAnchorsFromOpts = (opts = {}) => {
  * 各アンカー: 買付日≦アンカーのロットのみ × その日以前の終値で円換算。
  * 最終アンカーは一覧の最新評価（ライブ）に合わせる。
  */
+const realizedPnlThrough = (trades, iso) => {
+  let pnl = 0
+  for (const trade of Array.isArray(trades) ? trades : []) {
+    const sell = toIsoDate(trade?.sellDate || '')
+    if (!sell || sell > iso) continue
+    pnl += Number(trade?.realizedPnlJpy || 0)
+  }
+  return pnl
+}
+
+const addSoldLotsStillHeld = (trades, anchorIso, priceBySymbol, fxByDate, bucket) => {
+  for (const trade of Array.isArray(trades) ? trades : []) {
+    const sell = toIsoDate(trade?.sellDate || '')
+    if (!sell || anchorIso >= sell) continue
+    const sym = String(trade?.symbol || '').trim().toUpperCase()
+    if (!sym) continue
+    for (const lot of Array.isArray(trade?.buyLots) ? trade.buyLots : []) {
+      const buy = toIsoDate(lot?.buyDate || '')
+      if (!buy || buy > anchorIso) continue
+      const qty = Number(lot?.qty || 0)
+      if (!(qty > 0)) continue
+      const series = priceBySymbol.get(sym)
+      const px = series ? closeOnOrBeforeSorted(series, anchorIso) : null
+      if (!(px > 0)) continue
+      const cur = inferStockCurrency(sym)
+      if (cur === 'USD') {
+        const rate = lookupFxUsdJpyOn(anchorIso, fxByDate)
+        if (!(rate > 0)) continue
+        bucket.value += qty * px * rate
+      } else {
+        bucket.value += toJpy(qty * px, cur)
+      }
+      bucket.cost += Number(lot?.costJpy || 0)
+    }
+  }
+}
+
 const computeHistoricalWealthTrendSeries = ({
   anchorPack,
   ownedStockItems,
@@ -1892,6 +1886,9 @@ const computeHistoricalWealthTrendSeries = ({
   valuationUsdJpy,
   liveStockJpy,
   liveFundJpy,
+  realizedStockTrades = [],
+  realizedFundTrades = [],
+  splits = [],
 }) => {
   const { anchors, labels } = anchorPack
   const stockRows = Array.isArray(ownedStockItems) ? ownedStockItems : []
@@ -1917,6 +1914,7 @@ const computeHistoricalWealthTrendSeries = ({
         fundJpy: lf,
         stockCostJpy: Math.round(stockCostJpy),
         fundCostJpy: Math.round(fundCostJpy),
+        realizedPnlJpy: realizedPnlThrough(realizedStockTrades, anchorIso) + realizedPnlThrough(realizedFundTrades, anchorIso),
       }
     }
     let stockJpy = 0
@@ -1929,7 +1927,9 @@ const computeHistoricalWealthTrendSeries = ({
       if (!buyIso || buyIso > anchorIso) continue
       const sym = String(lot.symbol || '').trim().toUpperCase()
       if (!sym) continue
-      const qty = Math.max(0, Number(lot.qty || 0))
+      const rawQty = Math.max(0, Number(lot.qty || 0))
+      const ratio = splitRatioAfter(buyIso, sym, splits)
+      const qty = rawQty * ratio
       if (qty <= 0) continue
       const series = priceBySymbol.get(sym)
       const px = resolveStockPriceOnDate({ lot, series, asOfIso: anchorIso })
@@ -1937,13 +1937,19 @@ const computeHistoricalWealthTrendSeries = ({
       const cur = inferStockCurrency(sym)
       const nativeVal = qty * px
       if (cur === 'USD') {
-        const r = lookupFxUsdJpyOn(anchorIso, fxByDate, valuationUsdJpy)
+        if (!(Number(lot?.buyFxRate) > 0)) continue
+        const r = lookupFxUsdJpyOn(anchorIso, fxByDate)
+        if (!(r > 0)) continue
         stockJpy += nativeVal * r
       } else {
         stockJpy += toJpy(nativeVal, cur)
       }
       stockCostJpy += ownedStockLotCostJpy(lot, sym, fxByDate)
     }
+    const soldStock = { value: 0, cost: 0 }
+    addSoldLotsStillHeld(realizedStockTrades, anchorIso, priceBySymbol, fxByDate, soldStock)
+    stockJpy += soldStock.value
+    stockCostJpy += soldStock.cost
 
     for (const lot of fundRows) {
       const buyIso = toIsoDate(lot.buyDate || lot.buy_date || '')
@@ -1952,7 +1958,8 @@ const computeHistoricalWealthTrendSeries = ({
       if (!sym) continue
       const invest = Math.max(0, Number(lot.investAmount || lot.invest_amount || 0))
       const buyPx = Math.max(0, Number(lot.buyPrice || lot.buy_price || 0))
-      const units = buyPx > 0 ? invest / buyPx : 0
+      const ratio = splitRatioAfter(buyIso, sym, splits)
+      const units = (buyPx > 0 ? invest / buyPx : 0) * ratio
       if (units <= 0) continue
       const series = priceBySymbol.get(sym)
       const px = series ? closeOnOrBeforeSorted(series, anchorIso) : null
@@ -1960,20 +1967,28 @@ const computeHistoricalWealthTrendSeries = ({
       const cur = inferStockCurrency(sym)
       const nativeVal = units * px
       if (cur === 'USD') {
-        const r = lookupFxUsdJpyOn(anchorIso, fxByDate, valuationUsdJpy)
+        if (!(Number(lot?.buyFxRate) > 0)) continue
+        const r = lookupFxUsdJpyOn(anchorIso, fxByDate)
+        if (!(r > 0)) continue
         fundJpy += nativeVal * r
       } else {
         fundJpy += toJpy(nativeVal, cur)
       }
       fundCostJpy += ownedFundLotCostJpy(lot, fxByDate)
     }
+    const soldFund = { value: 0, cost: 0 }
+    addSoldLotsStillHeld(realizedFundTrades, anchorIso, priceBySymbol, fxByDate, soldFund)
+    fundJpy += soldFund.value
+    fundCostJpy += soldFund.cost
 
+    const realizedPnlJpy = realizedPnlThrough(realizedStockTrades, anchorIso) + realizedPnlThrough(realizedFundTrades, anchorIso)
     return {
       month: labels[idx],
       stockJpy: Math.max(0, Math.round(stockJpy)),
       fundJpy: Math.max(0, Math.round(fundJpy)),
       stockCostJpy: Math.round(stockCostJpy),
       fundCostJpy: Math.round(fundCostJpy),
+      realizedPnlJpy,
     }
   })
 
@@ -1981,7 +1996,7 @@ const computeHistoricalWealthTrendSeries = ({
     const sv = Math.max(0, Math.round((r.stockJpy || 0) + (r.fundJpy || 0)))
     const sc = Number.isFinite(r.stockCostJpy) ? Number(r.stockCostJpy) : 0
     const fc = Number.isFinite(r.fundCostJpy) ? Number(r.fundCostJpy) : 0
-    const pnlJpy = (r.stockJpy || 0) - sc + (r.fundJpy || 0) - fc
+    const pnlJpy = (r.stockJpy || 0) - sc + (r.fundJpy || 0) - fc + Number(r.realizedPnlJpy || 0)
     return {
       month: r.month,
       value: sv,
@@ -1999,7 +2014,7 @@ const computeHistoricalWealthTrendSeries = ({
       month: r.month,
       value: v,
       costJpy: ci,
-      pnlJpy: Math.round(v - ci),
+      pnlJpy: Math.round(v - ci + Number(r.realizedPnlJpy || 0)),
     }
   })
 
@@ -2013,7 +2028,7 @@ const computeHistoricalWealthTrendSeries = ({
       month: r.month,
       value: v,
       costJpy: ci,
-      pnlJpy: Math.round(v - ci),
+      pnlJpy: Math.round(v - ci + Number(r.realizedPnlJpy || 0)),
     }
   })
 
@@ -3898,6 +3913,16 @@ const WealthSection = ({
   const [wealthMonthlyFundRealizedOpen, setWealthMonthlyFundRealizedOpen] = useState(false)
   /** stock_daily_prices から再評価した推移。取得できないときは null（補間フォールバック） */
   const [historicalWealthTrend, setHistoricalWealthTrend] = useState(null)
+  const [portfolioMonthChange, setPortfolioMonthChange] = useState(null)
+  const [stockSplits, setStockSplits] = useState([])
+  useEffect(() => {
+    let alive = true
+    supabase.from('stock_splits').select('symbol,ex_date,ratio').then(({ data, error }) => {
+      if (!alive || error) return
+      setStockSplits(Array.isArray(data) ? data : [])
+    })
+    return () => { alive = false }
+  }, [])
   const [portfolioDropSnapshot, setPortfolioDropSnapshot] = useState(null)
   const [portfolioDropThresholdPct, setPortfolioDropThresholdPct] = useState(DEFAULT_PORTFOLIO_DROP_ALERT_THRESHOLD_PCT)
   const [portfolioRiseThresholdPct, setPortfolioRiseThresholdPct] = useState(DEFAULT_PORTFOLIO_RISE_ALERT_THRESHOLD_PCT)
@@ -4257,7 +4282,12 @@ const WealthSection = ({
     }, 0)
     const stockCurrency = inferStockCurrency(group.symbol)
     const price = Math.max(0, Number(group.price || 0))
-    const currentValue = totalQty * price
+    const adjustedQty = group.lots.reduce((sum, lot) => {
+      const storedQty = Math.max(0, Number(lot.qty || 0))
+      const ratio = splitRatioAfter(toIsoDate(lot.buyDate || ''), group.symbol, stockSplits)
+      return sum + storedQty * ratio
+    }, 0)
+    const currentValue = adjustedQty * price
     let totalCostJpy = 0
     let currentValueJpy = 0
     let pricePnlJpy = 0
@@ -4266,8 +4296,11 @@ const WealthSection = ({
     let fxSplitReady = true
     let hideFxSplit = false
     for (const lot of group.lots) {
-      const q = Math.max(0, Number(lot.qty || 0))
-      const buy = Math.max(0, Number(lot.buyPrice || 0))
+      const storedQty = Math.max(0, Number(lot.qty || 0))
+      const storedBuy = Math.max(0, Number(lot.buyPrice || 0))
+      const ratio = splitRatioAfter(toIsoDate(lot.buyDate || ''), group.symbol, stockSplits)
+      const q = storedQty * ratio
+      const buy = ratio > 0 ? storedBuy / ratio : storedBuy
       const parts = lotYenParts(lot, q, buy, price, fxRatesByDate, valuationUsdJpy)
       if (parts.currency === 'USD') sawUsd = true
       if (parts.hideFxSplit) hideFxSplit = true
@@ -4387,18 +4420,16 @@ const WealthSection = ({
       const buyPrice = Math.max(0, Number(row.buyPrice || 0))
       const latestPrice = Math.max(0, Number(row.latestPrice || 0))
       const effectiveLatestPrice = latestPrice > 0 ? latestPrice : buyPrice
-      const units = buyPrice > 0 ? totalCost / buyPrice : 0
+      const ratio = splitRatioAfter(toIsoDate(row.buyDate || ''), row.symbol, stockSplits)
+      const units = (buyPrice > 0 ? totalCost / buyPrice : 0) * ratio
       const currentValue = units > 0 && effectiveLatestPrice > 0 ? units * effectiveLatestPrice : 0
+      const storedFundFx = Number(row.buyFxRate)
       const totalCostJpy = (fundCurrency === 'USD')
-        ? (() => {
-          const found = fxOnOrBefore(toIsoDate(row.buyDate || ''), fxRatesByDate)
-          if (!(found?.rate > 0)) return 0
-          return totalCost * found.rate
-        })()
+        ? (storedFundFx > 0 ? totalCost * storedFundFx : 0)
         : toJpy(totalCost, fundCurrency)
       const liveUsd = positiveUsdJpy(valuationUsdJpy)
       const currentValueJpy = (fundCurrency === 'USD')
-        ? (liveUsd != null ? currentValue * liveUsd : 0)
+        ? (storedFundFx > 0 && liveUsd != null ? currentValue * liveUsd : 0)
         : toJpy(currentValue, fundCurrency)
       return {
         id: row.id,
@@ -4668,6 +4699,7 @@ const WealthSection = ({
         if (!alive) return
         setHistoricalWealthTrend(null)
         setPortfolioDropSnapshot(null)
+        setPortfolioMonthChange(null)
         return
       }
       const buyDates = [
@@ -4678,6 +4710,7 @@ const WealthSection = ({
         if (!alive) return
         setHistoricalWealthTrend(null)
         setPortfolioDropSnapshot(null)
+        setPortfolioMonthChange(null)
         return
       }
 
@@ -4697,6 +4730,7 @@ const WealthSection = ({
         if (!alive) return
         setHistoricalWealthTrend(null)
         setPortfolioDropSnapshot(null)
+        setPortfolioMonthChange(null)
         return
       }
       const startFetchStr = shiftIsoDateByDays(startStr, -10) || startStr
@@ -4715,6 +4749,7 @@ const WealthSection = ({
         if (!alive) return
         setHistoricalWealthTrend(null)
         setPortfolioDropSnapshot(null)
+        setPortfolioMonthChange(null)
         return
       }
 
@@ -4787,6 +4822,9 @@ const WealthSection = ({
           valuationUsdJpy,
           liveStockJpy: Number(live.stock || 0),
           liveFundJpy: Number(live.fund || 0),
+          realizedStockTrades,
+          realizedFundTrades,
+          splits: stockSplits,
         })
         const seriesS = computeHistoricalWealthTrendSeries({
           anchorPack: packS,
@@ -4797,6 +4835,9 @@ const WealthSection = ({
           valuationUsdJpy,
           liveStockJpy: Number(live.stock || 0),
           liveFundJpy: 0,
+          realizedStockTrades,
+          realizedFundTrades: [],
+          splits: stockSplits,
         })
         const seriesF = computeHistoricalWealthTrendSeries({
           anchorPack: packF,
@@ -4807,9 +4848,60 @@ const WealthSection = ({
           valuationUsdJpy,
           liveStockJpy: 0,
           liveFundJpy: Number(live.fund || 0),
+          realizedStockTrades: [],
+          realizedFundTrades,
+          splits: stockSplits,
         })
 
         if (!alive) return
+        const priceBook = {}
+        for (const [sym, rows] of priceBySymbol) {
+          priceBook[sym] = (rows || [])
+            .map((row) => [String(row?.trade_date || '').slice(0, 10), Number(row?.close)])
+            .filter((row) => /^\d{4}-\d{2}-\d{2}$/.test(row[0]) && row[1] > 0)
+        }
+        const calcLots = [
+          ...stocks.map((lot) => ({
+            ticker: lot.symbol,
+            listing: inferStockCurrency(lot.symbol) === 'JPY' ? 'JPY' : 'USD',
+            buy_date: toIsoDate(lot.buyDate || ''),
+            qty: Number(lot.qty || 0),
+            buy_price: Number(lot.buyPrice || 0),
+            buy_fx_rate: Number(lot.buyFxRate) > 0 ? Number(lot.buyFxRate) : undefined,
+          })),
+          ...funds.map((lot) => {
+            const buy = Number(lot.buyPrice || 0)
+            const invest = Number(lot.investAmount || 0)
+            return {
+              ticker: lot.symbol,
+              listing: inferStockCurrency(lot.symbol) === 'JPY' ? 'JPY' : 'USD',
+              buy_date: toIsoDate(lot.buyDate || ''),
+              qty: buy > 0 ? invest / buy : 0,
+              buy_price: buy,
+              invest_amount: invest > 0 ? invest : undefined,
+              buy_fx_rate: Number(lot.buyFxRate) > 0 ? Number(lot.buyFxRate) : undefined,
+            }
+          }),
+        ]
+        const calcTrades = [...(realizedStockTrades || []), ...(realizedFundTrades || [])].map((trade) => ({
+          symbol: trade.symbol,
+          sell_date: toIsoDate(trade.sellDate || ''),
+          realized_pnl_jpy: Number(trade.realizedPnlJpy || 0),
+          cost_basis_jpy: Number(trade.costBasisJpy || 0),
+          buy_lots: (trade.buyLots || []).map((lot) => ({
+            buy_date: lot.buyDate,
+            qty: lot.qty,
+            cost_jpy: lot.costJpy,
+          })),
+        }))
+        setPortfolioMonthChange(portfolioMonthlyChange({
+          today: todayIso,
+          lots: calcLots,
+          trades: calcTrades,
+          prices: priceBook,
+          splits: stockSplits,
+          fx_latest: valuationUsdJpy,
+        }, { includeBuyLots: true }))
         setHistoricalWealthTrend({
           assetGrowthData: seriesC.assetGrowthData,
           assetGrowthSplitData: seriesC.assetGrowthSplitData,
@@ -4827,6 +4919,7 @@ const WealthSection = ({
         if (alive) {
           setHistoricalWealthTrend(null)
           setPortfolioDropSnapshot(null)
+          setPortfolioMonthChange(null)
         }
       }
     }
@@ -4857,6 +4950,9 @@ const WealthSection = ({
     wealthChartMonths,
     valuationUsdJpy,
     fxRatesByDate,
+    realizedStockTrades,
+    realizedFundTrades,
+    stockSplits,
     stockEarliestBuy,
     fundEarliestBuy,
     assetEarliestBuy,
@@ -7498,48 +7594,42 @@ const WealthSection = ({
             </h3>
             <div className="mt-4 flex flex-col min-h-0 xl:flex-1 xl:min-h-0">
             <div className="space-y-3 text-sm">
-              {totalInvested > 0 && Number.isFinite(totalPnL) ? (
+              {accountCostWithRealizedDenom > 0 && accountReturnWithRealizedPct != null && Number.isFinite(accountPnlWithRealizedJpy) ? (
                 <div className="rounded-xl border border-emerald-200/80 dark:border-emerald-900/50 bg-emerald-50/50 dark:bg-emerald-950/20 px-3 py-3">
                   <div className="flex items-start justify-between gap-2.5">
                     <div className="min-w-0 pr-1">
                       <span className="text-slate-600 dark:text-slate-300 text-xs sm:text-[13px] block leading-snug font-bold">
-                        合計の含み損益（現在評価合計 − 取得元本合計）
+                        総損益（評価額 − 保有原価 + 実現損益）
                       </span>
                       <span className="mt-1 block text-[11px] sm:text-xs font-semibold leading-snug text-emerald-800/80 dark:text-emerald-300/80">
-                        累計：元本に利益を繰り入れません。（評価−元本）÷元本＝括弧の%。
+                        元本は保有原価に、売却した分の取得原価を足したもの。括弧の%は総損益÷元本。
                       </span>
-                    </div>
-                    <div className={`shrink-0 font-black tabular-nums text-right leading-tight ${signedReturnTextClassStrong(totalPnL)}`}>
-                      <div className="text-lg sm:text-xl">{totalPnL >= 0 ? '+' : ''}¥{Math.round(totalPnL).toLocaleString('ja-JP')}</div>
-                      {Number.isFinite(totalReturnRate) ? (
-                        <div className="text-xs sm:text-sm font-bold mt-0.5">
-                          ({totalReturnRate >= 0 ? '+' : ''}{totalReturnRate.toFixed(2)}%)
-                        </div>
+                      {(stockRealizedPnlSum !== 0 || fundRealizedPnlSum !== 0) ? (
+                        <span className="mt-1 block text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                          うち含み {totalPnL >= 0 ? '+' : ''}¥{Math.round(totalPnL).toLocaleString('ja-JP')}
+                          {' '}／ 実現 {(stockRealizedPnlSum + fundRealizedPnlSum) >= 0 ? '+' : ''}¥{Math.round(stockRealizedPnlSum + fundRealizedPnlSum).toLocaleString('ja-JP')}
+                        </span>
                       ) : null}
                     </div>
-                  </div>
-                </div>
-              ) : null}
-              {accountCostWithRealizedDenom > 0 && accountReturnWithRealizedPct != null && Number.isFinite(accountReturnWithRealizedPct) && (stockRealizedPnlSum !== 0 || stockRealizedCostSum !== 0 || fundRealizedPnlSum !== 0 || fundRealizedCostSum !== 0) ? (
-                <div className="rounded-xl border border-indigo-200/80 dark:border-indigo-900/50 bg-indigo-50/50 dark:bg-indigo-950/20 px-3 py-3">
-                  <div className="flex items-start justify-between gap-2.5">
-                    <div className="min-w-0 pr-1">
-                      <span className="text-slate-600 dark:text-slate-300 text-xs sm:text-[13px] block leading-snug font-bold">
-                        口座全体・総損益（含み + 株式・ファンドの実現）
-                      </span>
-                      <span className="mt-1 block text-[11px] sm:text-xs font-semibold leading-snug text-indigo-900/80 dark:text-indigo-200/85">
-                        株式・ファンドの確定損益を上の含み損益に加算。分母は保有元本合計に、売却した株式・ファンドの取得原価（累計）を加えたもの。
-                      </span>
-                    </div>
                     <div className={`shrink-0 font-black tabular-nums text-right leading-tight ${signedReturnTextClassStrong(accountPnlWithRealizedJpy)}`}>
-                      <div className="text-lg sm:text-xl">
-                        {accountPnlWithRealizedJpy >= 0 ? '+' : ''}¥{Math.round(accountPnlWithRealizedJpy).toLocaleString('ja-JP')}
-                      </div>
+                      <div className="text-lg sm:text-xl">{accountPnlWithRealizedJpy >= 0 ? '+' : ''}¥{Math.round(accountPnlWithRealizedJpy).toLocaleString('ja-JP')}</div>
                       <div className="text-xs sm:text-sm font-bold mt-0.5">
                         ({accountReturnWithRealizedPct >= 0 ? '+' : ''}{accountReturnWithRealizedPct.toFixed(2)}%)
                       </div>
                     </div>
                   </div>
+                  {portfolioMonthChange && Number.isFinite(portfolioMonthChange.monthly_delta) ? (
+                    <div className="mt-2 pt-2 border-t border-emerald-200/80 dark:border-emerald-900/60 flex items-baseline justify-between gap-2">
+                      <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300">
+                        今月の変化
+                        {portfolioMonthChange.base_date ? `（${portfolioMonthChange.base_date} 比）` : ''}
+                      </span>
+                      <span className={`font-black tabular-nums text-sm ${signedReturnTextClassStrong(portfolioMonthChange.monthly_delta)}`}>
+                        {portfolioMonthChange.monthly_delta >= 0 ? '+' : ''}¥{Math.round(portfolioMonthChange.monthly_delta).toLocaleString('ja-JP')}
+                        {portfolioMonthChange.monthly_pct != null ? ` (${portfolioMonthChange.monthly_pct >= 0 ? '+' : ''}${portfolioMonthChange.monthly_pct.toFixed(2)}%)` : ''}
+                      </span>
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
               {totalCurrentValue <= 0 && monthlyUnrealizedPnlSplit.mode === 'bar' ? (
@@ -9083,9 +9173,7 @@ const BudgetSection = ({
   })()
   const topPredictiveAlerts = predictivePurchaseRows.filter((row) => row.daysUntilNext !== null).slice(0, 3)
   const today = new Date()
-  const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate()
-  const monthProgressDays = Math.max(1, today.getDate())
-  const spendingRunRateYen = Math.round((thisMonthTotal / monthProgressDays) * daysInMonth)
+  const spendingRunRateYen = projectMonthEndSpending(expenses, today)
   const projectedFreeCashYen = Math.max(0, Number(budgetTargetYen || 0) - spendingRunRateYen)
   const projectedDeficitYen = Math.max(0, spendingRunRateYen - Number(budgetTargetYen || 0))
   const freeCashProgressPct = Number(budgetTargetYen || 0) > 0
@@ -9544,7 +9632,7 @@ const BudgetSection = ({
                           {tx.category === '食費' ? <Smartphone size={16} /> : <FileText size={16} />}
                         </div>
                         <div className="min-w-0">
-                          <p className="font-bold text-slate-800 dark:text-slate-200 text-xs truncate">{tx.merchant}</p>
+                          <p className="font-bold text-slate-800 dark:text-slate-200 text-xs truncate">{householdMemoText(tx) || tx.category}</p>
                           <p className="text-[10px] text-slate-400 font-bold truncate">
                             {tx.spent_on} • {tx.category} {tx.payment_method ? `• ${tx.payment_method}` : ''}
                           </p>
@@ -9552,7 +9640,7 @@ const BudgetSection = ({
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
                         <span className="font-black text-slate-900 dark:text-white text-xs">¥{Number(tx.amount || 0).toLocaleString('ja-JP')}</span>
-                        <button onClick={() => { setExpenseForm({ category: tx.category || '食費', merchant: tx.merchant || '', amount: String(tx.amount || ''), payment_method: tx.payment_method || '', spent_on: (tx.spent_on || '').slice(0, 10), notes: tx.notes || '' }); setEditingExpenseId(tx.id) }} className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-blue-500" title="編集"><Pencil size={13} /></button>
+                        <button onClick={() => { setExpenseForm({ category: tx.category || '食費', merchant: householdMemoText(tx), amount: String(tx.amount || ''), payment_method: tx.payment_method || '', spent_on: (tx.spent_on || '').slice(0, 10), notes: tx.notes || '' }); setEditingExpenseId(tx.id) }} className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-blue-500" title="編集"><Pencil size={13} /></button>
                         <button onClick={() => onDeleteExpense?.(tx.id)} className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-red-500">
                           <Trash2 size={13} />
                         </button>
@@ -10054,11 +10142,13 @@ const BudgetSectionV2 = ({
         date: String(row.spent_on || '').slice(0, 10),
         category: dbLabelToCategory(row.category, row.merchant),
         name: (() => {
-          const baseName = String(row.merchant || row.category || '支出')
+          const baseName = householdMemoText(row) || String(row.category || '支出')
           const isRecurringRow = Boolean(row.recurring_type || row.recurring_parent_id)
           return isRecurringRow ? `${baseName} · 定期` : baseName
         })(),
         amount: Math.max(0, Number(row.amount || 0)),
+        merchant: row.merchant || '',
+        notes: row.notes || '',
         payment_method: row.payment_method || '',
         payment_method_key: toPaymentMethodKey(row.payment_method),
         recurring_type: row.recurring_type || null,
@@ -10288,15 +10378,7 @@ const BudgetSectionV2 = ({
   /** 暦「今月」〜今日 vs 前月同日まで。カテゴリは取引一覧と同じ dbLabelToCategory ルール。 */
   const householdInsightMetrics = useMemo(() => {
     const rows = Array.isArray(expenses) ? expenses : []
-    const now = new Date()
-    const y = now.getFullYear()
-    const mo = now.getMonth()
-    const day = now.getDate()
-    const curStart = new Date(y, mo, 1)
-    const todayEnd = new Date(y, mo, day, 23, 59, 59, 999)
-    const prevStart = new Date(y, mo - 1, 1)
-    const lastDayPrev = new Date(y, mo, 0).getDate()
-    const prevEnd = new Date(y, mo - 1, Math.min(day, lastDayPrev), 23, 59, 59, 999)
+    const { curStart, todayEnd, prevStart, prevEnd } = samePeriodExpenseBounds(new Date())
 
     const curByCat = {}
     const prevSamePeriodByCat = {}
@@ -10305,15 +10387,16 @@ const BudgetSectionV2 = ({
       if (Number.isNaN(dt.getTime())) continue
       const amt = Math.max(0, Number(row?.amount || 0))
       const catKey = dbLabelToCategory(row.category, row.merchant)
-      if (dt >= curStart && dt <= todayEnd) {
+      if (spentOnInBounds(row?.spent_on, curStart, todayEnd)) {
         curByCat[catKey] = (curByCat[catKey] || 0) + amt
       }
-      if (dt >= prevStart && dt <= prevEnd) {
+      if (spentOnInBounds(row?.spent_on, prevStart, prevEnd)) {
         prevSamePeriodByCat[catKey] = (prevSamePeriodByCat[catKey] || 0) + amt
       }
     }
 
     const totalCur = Object.values(curByCat).reduce((s, v) => s + v, 0)
+    const totalPrev = Object.values(prevSamePeriodByCat).reduce((s, v) => s + v, 0)
     const topCategories = Object.entries(curByCat)
       .map(([id, amount]) => ({
         id,
@@ -10344,6 +10427,7 @@ const BudgetSectionV2 = ({
     return {
       hasAnySlice: totalCur > 0 || Object.keys(prevSamePeriodByCat).length > 0,
       totalCur,
+      totalPrev,
       topCategories,
       momIncreases,
     }
@@ -10390,28 +10474,16 @@ const BudgetSectionV2 = ({
     })
   }, [expenses, expenseTrendMonths])
 
-  const prevMonthYm = useMemo(() => {
-    if (!selectedTxMonth) return ''
-    const [y, m] = selectedTxMonth.split('-').map(Number)
-    if (!y || !m) return ''
-    const pm = m === 1 ? 12 : m - 1
-    const py = m === 1 ? y - 1 : y
-    return `${py}-${String(pm).padStart(2, '0')}`
-  }, [selectedTxMonth])
-
-  const prevMonthTotalSameCalendar = useMemo(() => {
-    if (!prevMonthYm) return 0
-    return (Array.isArray(expenses) ? expenses : []).reduce((sum, row) => {
-      const ym = String(row?.spent_on || '').slice(0, 7)
-      if (ym !== prevMonthYm) return sum
-      return sum + Math.max(0, Number(row?.amount || 0))
-    }, 0)
-  }, [expenses, prevMonthYm])
-
   const momVsPrevMonthPct = useMemo(() => {
-    if (prevMonthTotalSameCalendar <= 0) return null
-    return ((summaryData.totalSpent - prevMonthTotalSameCalendar) / prevMonthTotalSameCalendar) * 100
-  }, [summaryData.totalSpent, prevMonthTotalSameCalendar])
+    const previous = householdInsightMetrics.totalPrev
+    if (!(previous > 0)) return null
+    return ((householdInsightMetrics.totalCur - previous) / previous) * 100
+  }, [householdInsightMetrics])
+
+  const monthEndProjectionYen = useMemo(
+    () => displayedMonthEndSpending(expenses, selectedTxMonth, new Date()),
+    [expenses, selectedTxMonth],
+  )
 
   const estimatedNetMonthlyIncomeYen = useMemo(
     () => Math.max(0, Number(annualIncomeManwon || 0)) * 10000 / 12,
@@ -10522,7 +10594,7 @@ const BudgetSectionV2 = ({
     setExpenseCategory(categories[tx.category] ? tx.category : 'misc')
     setExpensePaymentMethod(tx.payment_method_key || toPaymentMethodKey(tx.payment_method))
     setExpenseDate(tx.date || new Date().toISOString().split('T')[0])
-    setExpenseName(String(tx.name || '').replace(/\s·\s定期$/, ''))
+    setExpenseName(householdMemoText(tx) || String(tx.name || '').replace(/\s·\s定期$/, ''))
     setExpenseRecurringType(recurringMeta.recurringType || 'none')
     setExpenseRecurringEndOn(recurringMeta.recurringEndOn || '')
     setEditingRecurringLocked(Boolean(recurringMeta.locked))
@@ -10771,6 +10843,7 @@ const BudgetSectionV2 = ({
           <div className="rounded-2xl border-[1.5px] border-[#1A1714] bg-[#1A1714] px-4 py-3.5 md:px-5 md:py-4 shadow-[0_4px_24px_rgba(0,0,0,0.1)] text-white">
             <p className="text-xs font-bold uppercase tracking-wider text-white/40 mb-1">月内支出</p>
             <p className="text-[22px] sm:text-[26px] font-black tabular-nums leading-none">{formatCurrency(summaryData.totalSpent)}</p>
+            <p className="text-xs text-white/55 mt-2 tabular-nums">月末支出見込み {formatCurrency(monthEndProjectionYen)}</p>
             <p className="text-xs text-white/40 mt-1.5">
               先月比{' '}
               {momVsPrevMonthPct == null ? (
@@ -14226,24 +14299,6 @@ export default function MyPage({
       .catch(() => { if (alive) setFxRatesByDate({}) })
     return () => { alive = false }
   }, [ownedStockItems])
-
-  useEffect(() => {
-    if (!fxRatesByDate || Object.keys(fxRatesByDate).length === 0) return
-    setOwnedStocks((prev) => {
-      let changed = false
-      const next = prev.map((lot) => {
-        if (String(lot?.currency || '').toUpperCase() !== 'USD') return lot
-        if (Number(lot?.buyFxRate) > 0) return lot
-        const found = fxOnOrBefore(lot?.buyDate, fxRatesByDate)
-        if (!(found?.rate > 0)) return lot
-        changed = true
-        return { ...lot, buyFxRate: found.rate, buyFxDate: found.asOf }
-      })
-      if (!changed) return prev
-      ownedStockCloudTouchedRef.current = true
-      return next
-    })
-  }, [fxRatesByDate])
 
   useEffect(() => {
     let alive = true

@@ -35,7 +35,7 @@ export default function HomeMobileSignupCta({
       <div className="pointer-events-auto mx-auto max-w-lg rounded-2xl border border-orange-200/90 dark:border-orange-800/80 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md shadow-[0_-8px_32px_rgba(15,23,42,0.12)] px-4 py-3">
         <p className="text-[10px] font-black tracking-wide text-orange-600 dark:text-orange-400 flex items-center gap-1.5 mb-2">
           <ShieldCheck size={12} />
-          口座連携不要 · 30秒でかんたん診断
+          口座連携不要 · 3つの質問で方向性チェック
         </p>
         <button
           type="button"

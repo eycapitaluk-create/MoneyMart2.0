@@ -14,6 +14,8 @@ import {
 } from '../../lib/dividendCalendar'
 import { isHighYieldDetailSymbol } from '../../lib/dividendCalendarDetailLookup'
 
+import VerifiedDividendPayments from '../../components/dividends/VerifiedDividendPayments'
+
 const MONTHS_JP_MP = ["1月","2月","3月","4月","5月","6月","7月","8月","9月","10月","11月","12月"]
 
 /** 配当ウォッチ・モーダルと保有株数の小数桁（MyPage の株式保有と揃える） */
@@ -244,6 +246,8 @@ export default function DividendCalendarSection({
         </button>
       </div>
 
+      <VerifiedDividendPayments symbols={watchlist.map(item => item.stock_id)} />
+
       {status && (
         <p className="text-xs font-bold text-orange-500">{status}</p>
       )}
@@ -257,7 +261,7 @@ export default function DividendCalendarSection({
           {/* 年間サマリー */}
           <div className="flex items-center justify-between bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl px-6 py-4">
             <div>
-              <p className="text-xs text-slate-300 font-bold mb-1.5">年間予想配当受取額（円換算・税引前）</p>
+              <p className="text-xs text-slate-300 font-bold mb-1.5">登録した月別参考額の合計（円換算・税引前）</p>
               <p className="font-mono text-4xl font-black text-green-400">¥{Math.round(yearTotalJpy).toLocaleString('ja-JP')}</p>
               {isPaidMember ? (
                 <p className="mt-2 text-sm font-black text-emerald-300">
@@ -350,7 +354,7 @@ export default function DividendCalendarSection({
                   })}
                 </div>
                 {hasUsdDiv ? (
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-3 font-bold leading-relaxed">※ 配当予定・金額は各企業の発表に基づく参考値であり、変更・取消される場合があります。表示金額は税引前です。実際の受取額は課税状況により異なります。</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-3 font-bold leading-relaxed">※ 登録月には過去の権利落ち月・決算月や手入力が含まれ、確定した支払月とは限りません。公式発表の支払日と金額は上の一覧で確認してください。参考額の合計は年間受取額の保証ではありません。</p>
                 ) : null}
               </div>
 
@@ -359,7 +363,7 @@ export default function DividendCalendarSection({
                 <div className="flex items-center justify-between mb-3 gap-3">
                   <div>
                     <p className="text-lg font-black text-slate-800 dark:text-white">{MONTHS_JP_MP[selMonth - 1]}の配当</p>
-                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">選択した銘柄のうち、{MONTHS_JP_MP[selMonth - 1]}に支払予定の項目を表示</p>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">選択した銘柄のうち、{MONTHS_JP_MP[selMonth - 1]}に登録された参考項目を表示（公式支払日は上の一覧）</p>
                   </div>
                   {(monthlyTotalsJpy[selMonth] || 0) > 0 && (
                     <p className="font-mono text-xl font-black text-green-500 tabular-nums shrink-0">

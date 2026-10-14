@@ -6,6 +6,7 @@ import {
   ScatterChart, Scatter, ZAxis, Cell,
 } from 'recharts'
 import { supabase } from '../lib/supabase'
+import { trackAnalyticsEvent } from '../lib/analytics'
 import MarketDataEodFreshnessNote from '../components/MarketDataEodFreshnessNote'
 import { ETF_LIST_FROM_XLSX, ETF_SYMBOLS_FROM_XLSX } from '../data/etfListFromXlsx'
 import { getEtfListedJaName } from '../data/etfListedJaNameMap'
@@ -213,6 +214,16 @@ const calcPortfolioMetrics = (funds, weightPctVector) => {
     efficiency,
     weightsPct: weights.map((w) => w * 100),
   }
+}
+
+function compareLoadErrorMessage(err) {
+  const raw = String(err?.message || err || '')
+  const hasJapanese = /[\u3040-\u30ff\u4e00-\u9faf]/.test(raw)
+  const networkFailed = !hasJapanese || /failed to fetch|network|load failed|offline|timeout|abort/i.test(raw)
+  if (networkFailed) {
+    return '通信に失敗しました。通信状況を確認して、もう一度お試しください。(無料お試しは消費していません)'
+  }
+  return raw
 }
 
 export default function FundComparePage({
@@ -497,8 +508,13 @@ export default function FundComparePage({
         if (!isLoggedIn && compareSymbols.length >= 2) {
           const key = [...compareSymbols].sort().join(',')
           if (!isGuestEtfCompareTrialConsumed()) {
-            consumeGuestEtfCompareTrial(key)
+            const consumed = consumeGuestEtfCompareTrial(key)
             setGrantedGuestKey(key)
+            if (consumed) {
+              trackAnalyticsEvent('guest_etf_compare_trial_consumed', {
+                source: embeddedMode ? 'fund_page' : 'etf_compare',
+              })
+            }
             setGuestTrialNotice('無料お試しは1回です。信託報酬とリターンはこの画面で確認できます。次の比較と保存はログイン後です。')
           } else if (getGuestEtfCompareGrantedKey() === key) {
             setGuestTrialNotice('無料お試しは1回です。信託報酬とリターンはこの画面で確認できます。次の比較と保存はログイン後です。')
@@ -506,7 +522,7 @@ export default function FundComparePage({
         }
       } catch (e) {
         if (!cancelled) {
-          setError(e.message || '比較データの取得に失敗しました。')
+          setError(compareLoadErrorMessage(e))
           setFunds([])
           setChartData([])
         }

@@ -32,7 +32,8 @@
     "gh:triage:ci": "node scripts/gh-ai-triage.mjs ci",
     "gh:triage:cron": "node scripts/gh-ai-triage.mjs cron",
     "seed:community-hourly": "node scripts/seed-community-hourly.mjs",
-    "seed:community-hourly:dry": "node scripts/seed-community-hourly.mjs --dry-run"
+    "seed:community-hourly:dry": "node scripts/seed-community-hourly.mjs --dry-run",
+    "prebuild": "node scripts/check-price-crons.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.82.0",

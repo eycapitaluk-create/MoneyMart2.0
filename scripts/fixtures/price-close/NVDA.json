@@ -1,0 +1,102 @@
+{
+  "chart": {
+    "result": [
+      {
+        "meta": {
+          "currency": "USD",
+          "symbol": "NVDA",
+          "exchangeName": "NMS",
+          "fullExchangeName": "NasdaqGS",
+          "instrumentType": "EQUITY",
+          "firstTradeDate": 917015400,
+          "regularMarketTime": 1791921600,
+          "hasPrePostMarketData": true,
+          "gmtoffset": -14400,
+          "timezone": "EDT",
+          "exchangeTimezoneName": "America/New_York",
+          "regularMarketPrice": 228.52,
+          "regularMarketChangePercent": 0.972,
+          "fulldayPrice": 229.16,
+          "fulldayChange": 2.64,
+          "fulldayChangePercent": 1.166,
+          "fiftyTwoWeekHigh": 243.37,
+          "fiftyTwoWeekLow": 164.27,
+          "regularMarketDayHigh": 228.64,
+          "regularMarketDayLow": 223.06,
+          "regularMarketVolume": 83671511,
+          "longName": "NVIDIA Corporation",
+          "shortName": "NVIDIA Corporation",
+          "chartPreviousClose": 217.55,
+          "priceHint": 2,
+          "currentTradingPeriod": {
+            "pre": {
+              "timezone": "EDT",
+              "end": 1791898200,
+              "start": 1791878400,
+              "gmtoffset": -14400
+            },
+            "regular": {
+              "timezone": "EDT",
+              "end": 1791921600,
+              "start": 1791898200,
+              "gmtoffset": -14400
+            },
+            "post": {
+              "timezone": "EDT",
+              "end": 1791936000,
+              "start": 1791921600,
+              "gmtoffset": -14400
+            }
+          },
+          "dataGranularity": "1d",
+          "range": "",
+          "validRanges": [
+            "1d",
+            "5d",
+            "1mo",
+            "3mo",
+            "6mo",
+            "1y",
+            "2y",
+            "5y",
+            "10y",
+            "ytd",
+            "max"
+          ]
+        },
+        "timestamp": [
+          1791811800,
+          1791898200
+        ],
+        "events": {},
+        "indicators": {
+          "quote": [
+            {
+              "close": [
+                226.32000732421875,
+                null
+              ],
+              "open": [
+                228.72999572753906,
+                224.27000427246094
+              ],
+              "low": [
+                224.89999389648438,
+                223.06019592285156
+              ],
+              "volume": [
+                70690300,
+                83671511
+              ],
+              "high": [
+                228.86000061035156,
+                228.63999938964844
+              ]
+            }
+          ]
+        }
+      }
+    ],
+    "error": null
+  }
+}

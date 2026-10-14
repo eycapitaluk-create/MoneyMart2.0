@@ -1,10 +1,14 @@
+import { priceScheduleGate, scopedDashboardTargets, incompleteBatchAlreadyAttempted } from '../_lib/priceSchedule.js'
 import { createClient } from '@supabase/supabase-js'
 import {
   assessUnadjustedBar,
   barsFromChart,
   fetchYahooChart,
   PRICE_BASIS,
-  shouldRetryYahoo,
+  YAHOO_MIN_GAP_MS,
+  mapUntilYahooLimit,
+  yahooCooldownActive,
+  yahooResponseHalt,
 } from '../_lib/yahooUnadjustedBar.js'
 import { writePriceQuarantine } from '../_lib/price-ingest-guard.js'
 import {
@@ -17,6 +21,7 @@ import {
   decidePriceWrite,
   equityTargets,
   jobOutcome,
+  marketstackAllowed,
 } from '../_lib/yahooPricePlan.js'
 import {
   CHUNK_SIZE,
@@ -52,58 +57,60 @@ async function mapPool(items, limit, worker) {
   return out
 }
 
-async function classifyTarget(target, deadline) {
+function limitedAssessment(target, note) {
+  return {
+    ...target,
+    assessment: {
+      status: 'yahoo_access_limited',
+      trade_date: null,
+      expected_trade_date: target.expectedDate || null,
+      expected_previous_date: target.expectedPreviousDate || null,
+      price_basis: PRICE_BASIS,
+      note,
+    },
+  }
+}
+
+async function classifyTarget(target, deadline, breaker) {
+  if (breaker.tripped) return limitedAssessment(target, 'Yahoo 제한이 이미 열려 이 실행에서는 더 호출하지 않습니다.')
   if (target.held) return { ...target, assessment: { status: 'held', trade_date: null, price_basis: PRICE_BASIS } }
   if (!target.expectedDate) {
     return { ...target, assessment: { status: 'calendar_hold', trade_date: null, price_basis: PRICE_BASIS, note: '거래일 달력에 확정 세션이 없습니다.' } }
   }
-  let lastError = null
-  let lastAssessment = null
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    if (Date.now() > deadline) {
-      lastError = 'time_budget'
-      break
-    }
-    try {
-      const fetched = await fetchYahooChart(target.yahoo)
-      if (!fetched.ok) {
-        lastError = `http_${fetched.status}`
-      } else {
-        const parsed = barsFromChart(fetched.payload, 'UTC')
-        if (parsed.error) {
-          lastError = parsed.error
-        } else {
-          const assessment = assessUnadjustedBar({
-            bars: parsed.bars,
-            events: parsed.events,
-            timeZone: parsed.timeZone,
-            expectedDate: target.expectedDate,
-            expectedPreviousDate: target.expectedPreviousDate,
-            requireOhlc: target.requireOhlc,
-          })
-          if (!shouldRetryYahoo(assessment.status)) return { ...target, assessment }
-          lastAssessment = assessment
-          lastError = assessment.note
-        }
-      }
-    } catch (error) {
-      lastError = error.message
-    }
-    if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 400))
+  if (Date.now() > deadline) {
+    return { ...target, assessment: { status: 'pending_yahoo', trade_date: null, expected_trade_date: target.expectedDate, price_basis: PRICE_BASIS, note: 'time_budget' } }
   }
-  if (lastAssessment && shouldRetryYahoo(lastAssessment.status)) {
-    return { ...target, assessment: { ...lastAssessment, note: lastError || 'retry_exhausted' } }
-  }
-  return {
-    ...target,
-    assessment: {
-      status: 'pending_yahoo',
-      trade_date: null,
-      expected_trade_date: target.expectedDate,
-      expected_previous_date: target.expectedPreviousDate || null,
-      price_basis: PRICE_BASIS,
-      note: lastError || 'retry_exhausted',
-    },
+  try {
+    const fetched = await fetchYahooChart(target.yahoo)
+    const halt = yahooResponseHalt(fetched.status)
+    if (halt) {
+      breaker.tripped = halt
+      return limitedAssessment(target, `Yahoo HTTP ${fetched.status}. 같은 실행과 다음 배치의 호출을 멈춥니다.`)
+    }
+    if (Number(fetched.status) === 404) {
+      return { ...target, assessment: { status: 'symbol_missing', trade_date: null, expected_trade_date: target.expectedDate, expected_previous_date: target.expectedPreviousDate || null, price_basis: PRICE_BASIS, note: 'http_404' } }
+    }
+    if (!fetched.ok) {
+      return { ...target, assessment: { status: 'pending_yahoo', trade_date: null, expected_trade_date: target.expectedDate, expected_previous_date: target.expectedPreviousDate || null, price_basis: PRICE_BASIS, note: `http_${fetched.status}` } }
+    }
+    const parsed = barsFromChart(fetched.payload, 'UTC', { expectedDate: target.expectedDate, now: new Date() })
+    if (parsed.error) {
+      return { ...target, assessment: { status: 'pending_yahoo', trade_date: null, expected_trade_date: target.expectedDate, expected_previous_date: target.expectedPreviousDate || null, price_basis: PRICE_BASIS, note: parsed.error } }
+    }
+    return {
+      ...target,
+      assessment: assessUnadjustedBar({
+        bars: parsed.bars,
+        events: parsed.events,
+        timeZone: parsed.timeZone,
+        expectedDate: target.expectedDate,
+        expectedPreviousDate: target.expectedPreviousDate,
+        requireOhlc: target.requireOhlc,
+      }),
+    }
+  } catch (error) {
+    breaker.tripped = yahooResponseHalt(null, error)
+    return limitedAssessment(target, `Yahoo ${error?.name || 'network'}. 같은 실행과 다음 배치의 호출을 멈춥니다.`)
   }
 }
 
@@ -205,6 +212,37 @@ function summaryOf(rows) {
   return { counts, failures }
 }
 
+async function presentPriceKeys(supabase, targets) {
+  const dates = [...new Set(targets.flatMap((target) => [target.expectedDate, target.expectedPreviousDate]).filter(Boolean))]
+  const symbols = [...new Set(targets.map((target) => target.symbol).filter(Boolean))]
+  const items = [...new Set(targets.filter((target) => !target.symbol).map((target) => target.item).filter(Boolean))]
+  const keys = new Set()
+  for (let index = 0; index < symbols.length; index += 100) {
+    const chunk = symbols.slice(index, index + 100)
+    const { data, error } = await supabase.from('stock_daily_prices').select('symbol,trade_date').in('symbol', chunk).in('trade_date', dates)
+    if (error) throw error
+    for (const row of data || []) keys.add(`${row.symbol}|${String(row.trade_date).slice(0, 10)}`)
+  }
+  if (items.length && dates.length) {
+    const { data, error } = await supabase.from('market_dashboard_daily').select('item,trade_date').in('item', items).in('trade_date', dates)
+    if (error) throw error
+    const dashboard = new Set((data || []).map((row) => `${row.item}|${String(row.trade_date).slice(0, 10)}`))
+    let fxDates = new Set()
+    if (items.includes('USD/JPY')) {
+      const { data: fxRows, error: fxErr } = await supabase.from('fx_daily_usdjpy').select('as_of_date').in('as_of_date', dates)
+      if (fxErr) throw fxErr
+      fxDates = new Set((fxRows || []).map((row) => String(row.as_of_date).slice(0, 10)))
+    }
+    for (const item of items) {
+      for (const date of dates) {
+        const listed = dashboard.has(`${item}|${date}`)
+        if (item === 'USD/JPY' ? listed && fxDates.has(date) : listed) keys.add(`${item}|${date}`)
+      }
+    }
+  }
+  return keys
+}
+
 export default async function handler(req, res) {
   const cronSecret = process.env.CRON_SECRET
   if (!cronSecret) return res.status(500).json({ ok: false, error: 'CRON_SECRET is required' })
@@ -214,38 +252,191 @@ export default async function handler(req, res) {
   const requestUrl = new URL(req.url || '/api/cron/yahoo-unadjusted-daily', 'http://localhost')
   const scope = requestUrl.searchParams.get('scope') || ''
   const dryRun = requestUrl.searchParams.get('dry_run') === '1'
+  const gate = priceScheduleGate(requestUrl.searchParams, new Date())
+  if (!gate.run) return res.status(200).json({ ok: true, schedule_skipped: gate.reason, yahoo_called: false, marketstack_called: false, completed_write: false })
+  const catchup = requestUrl.searchParams.get('catchup') === '1'
+  if (catchup) {
+    return res.status(200).json({
+      ok: false,
+      catchup: 'disabled',
+      yahoo_called: false,
+      marketstack_called: false,
+      completed_write: false,
+      manual: 'Yahoo를 반복 호출하면 차단될 수 있습니다. 자동 catch-up은 꺼 두었고, 누락 종목은 같은 확정 거래일을 수동으로 확인하는 편이 안전합니다.',
+    })
+  }
+  const batchSpecified = requestUrl.searchParams.has('batch')
   const batch = Number(requestUrl.searchParams.get('batch') || '0')
   const batches = Number(requestUrl.searchParams.get('batches') || '1')
   const now = new Date()
-  const targets = scope === 'dashboard'
-    ? dashboardTargets(now)
-    : ['us', 'jp', 'etf'].includes(scope)
-      ? equityTargets(scope, batch, batches, now)
-      : []
-  if (!targets.length) return res.status(400).json({ ok: false, error: 'scope must be us, jp, etf, or dashboard' })
+  const supabaseUrl = process.env.SUPABASE_URL
+  const serviceRoleKey = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY
+  const supabase = supabaseUrl && serviceRoleKey ? createClient(supabaseUrl, serviceRoleKey) : null
+  let targets = []
+  const isDashboardScope = ['dashboard', 'fx'].includes(scope)
+  if (isDashboardScope) targets = requestUrl.searchParams.get('only_date') === '2026-10-10' && scope === 'dashboard' ? dashboardTargets(now) : scopedDashboardTargets(scope, now)
+  else if (['us', 'jp', 'etf'].includes(scope)) {
+    const batchList = catchup && !batchSpecified ? Array.from({ length: batches }, (_, index) => index) : [batch]
+    targets = batchList.flatMap((index) => equityTargets(scope, index, batches, now))
+  }
+  if (!targets.length) return res.status(400).json({ ok: false, error: 'scope must be us, jp, etf, dashboard, or fx' })
+  if (!supabase) {
+    return res.status(200).json({ ok: false, dry_run: dryRun, completed_write: false, yahoo_called: false, marketstack_called: false, yahoo_access_limited: 'unconfirmed', note: '제한 상태를 확인하지 못해 Yahoo를 호출하지 않습니다.' })
+  }
+  const { data: recentJobs, error: recentErr } = await supabase.from('ingestion_jobs').select('meta').eq('source', PROVIDER).order('id', { ascending: false }).limit(50)
+  const { data: manualJobs, error: manualErr } = await supabase.from('ingestion_jobs').select('meta').eq('source', PROVIDER).filter('meta->>yahoo_manual_review_required', 'eq', 'true').order('id', { ascending: false }).limit(5)
+  if (recentErr || manualErr) {
+    return res.status(200).json({ ok: false, dry_run: dryRun, completed_write: false, yahoo_called: false, marketstack_called: false, yahoo_access_limited: 'unconfirmed', note: '제한 상태를 확인하지 못해 Yahoo를 호출하지 않습니다.' })
+  }
+  const cooldown = yahooCooldownActive([...(manualJobs || []), ...(recentJobs || [])], now.getTime())
+  if (cooldown.active) {
+    return res.status(200).json({
+      ok: false,
+      dry_run: dryRun,
+      completed_write: false,
+      yahoo_called: false,
+      marketstack_called: false,
+      yahoo_access_limited: true,
+      yahoo_manual_review_required: cooldown.manual,
+      yahoo_cooldown_until: cooldown.until,
+      note: cooldown.manual
+        ? '401/403은 수동 검토 전까지 자동 수집하지 않습니다. 누락은 수동 확인이 안전합니다.'
+        : '429 이후 최소 24시간은 다음 배치도 Yahoo를 호출하지 않습니다. 누락은 수동 확인이 안전합니다.',
+    })
+  }
+  const { data: activeJobs, error: activeErr } = await supabase
+    .from('ingestion_jobs')
+    .select('id,meta')
+    .eq('source', PROVIDER)
+    .eq('status', 'started')
+    .order('id', { ascending: false })
+    .limit(20)
+  if (activeErr) {
+    return res.status(200).json({ ok: false, dry_run: dryRun, completed_write: false, yahoo_called: false, marketstack_called: false, yahoo_access_limited: 'unconfirmed', note: '진행 중 작업을 확인하지 못해 Yahoo를 호출하지 않습니다.' })
+  }
+  if ((activeJobs || []).length) {
+    return res.status(200).json({
+      ok: false,
+      dry_run: dryRun,
+      completed_write: false,
+      yahoo_called: false,
+      marketstack_called: false,
+      yahoo_manual_review_required: true,
+      note: '끝나지 않은 Yahoo 작업이 있습니다. 20분이 지나도 자동으로 풀지 않습니다. 수동 점검 전까지 호출하지 않습니다.',
+    })
+  }
+  let storedKeys
+  try {
+    storedKeys = await presentPriceKeys(supabase, targets)
+  } catch (error) {
+    return res.status(200).json({ ok: false, dry_run: dryRun, completed_write: false, yahoo_called: false, marketstack_called: false, error: error.message, note: '기존 가격을 확인하지 못해 Yahoo를 호출하지 않습니다.' })
+  }
+  const fetchTargets = targets.filter((target) => {
+    if (target.held || !target.expectedDate) return true
+    const id = target.symbol || target.item
+    return !(id && storedKeys.has(`${id}|${target.expectedDate}`))
+  })
+  const alreadyStored = targets.length - fetchTargets.filter((target) => !target.held && target.expectedDate).length
+  const uncollected = fetchTargets.filter(target => !target.held && target.expectedDate).length
+  if (uncollected && incompleteBatchAlreadyAttempted(recentJobs, targets, scope, batch)) {
+    return res.status(200).json({
+      ok: false, dry_run: dryRun, completed_write: false,
+      yahoo_called: false, marketstack_called: false,
+      scope, batch, already_stored: alreadyStored,
+      already_attempted_same_session: true,
+      held_remaining: uncollected, would_fetch: 0, wrote: 0,
+      completeness: 'partial',
+      note: '같은 확정 거래일 배치는 이미 수집했습니다. 불완전한 원본은 검토 전까지 재호출하지 않습니다.',
+    })
+  }
+  if (dryRun) {
+    return res.status(200).json({
+      ok: true,
+      dry_run: true,
+      completed_write: false,
+      yahoo_called: false,
+      marketstack_called: false,
+      marketstack_would_request: 0,
+      scope,
+      batch,
+      already_stored: alreadyStored,
+      would_fetch: fetchTargets.filter((target) => !target.held && target.expectedDate).length,
+      note: 'dry-run은 Yahoo와 Marketstack를 호출하지 않습니다.',
+    })
+  }
+  const yahooTargets = fetchTargets.filter((target) => !target.held && target.expectedDate)
+  if (!yahooTargets.length) {
+    return res.status(200).json({
+      ok: false,
+      completed_write: false,
+      yahoo_called: false,
+      marketstack_called: false,
+      scope,
+      batch,
+      already_stored: alreadyStored,
+      wrote: 0,
+      note: '확정 거래일 가격이 이미 있어 Yahoo를 호출하지 않았습니다.',
+    })
+  }
+  const startMeta = {
+    provider: PROVIDER,
+    price_basis: PRICE_BASIS,
+    storage_source_key: STORAGE_SOURCE,
+    scope,
+    batch,
+    catchup: false,
+    universe: UNIVERSE_COUNTS,
+    completeness: 'pending',
+    yahoo_called: false,
+    marketstack_billed_symbols: 0,
+  }
+  const { data: startedJob, error: startErr } = await supabase.from('ingestion_jobs').insert([{
+    source: PROVIDER,
+    dataset: 'stock_daily_prices',
+    status: 'started',
+    rows_processed: 0,
+    meta: startMeta,
+  }]).select('id').single()
+  if (startErr || !startedJob?.id) {
+    return res.status(200).json({ ok: false, completed_write: false, yahoo_called: false, marketstack_called: false, error: startErr?.message || 'ingestion job start failed' })
+  }
 
   const deadline = Date.now() + 240000
-  const classified = await mapPool(targets, 5, (target) => classifyTarget(target, deadline))
+  const yahooRun = await mapUntilYahooLimit(yahooTargets, 1, async (target, breaker) => {
+    const row = await classifyTarget(target, deadline, breaker)
+    if (breaker.tripped && !breaker.persist) {
+      breaker.persist = supabase.from('ingestion_jobs').update({
+        status: 'failed',
+        finished_at: new Date().toISOString(),
+        error_message: `yahoo_${breaker.tripped.yahoo_limit_status}`,
+        meta: { ...startMeta, ...breaker.tripped, yahoo_called: true },
+      }).eq('id', startedJob.id)
+    }
+    if (breaker.persist) {
+      try { await breaker.persist } catch { /* 호출은 이미 멈춤. 기록 실패로 다시 호출하지 않습니다. */ }
+    }
+    return row
+  }, { gapMs: YAHOO_MIN_GAP_MS, deadline })
+  const classified = [
+    ...fetchTargets.filter((target) => target.held || !target.expectedDate).map((target) => (
+      target.held
+        ? { ...target, assessment: { status: 'held', trade_date: null, price_basis: PRICE_BASIS } }
+        : { ...target, assessment: { status: 'calendar_hold', trade_date: null, price_basis: PRICE_BASIS, note: '거래일 달력에 확정 세션이 없습니다.' } }
+    )),
+    ...yahooRun.rows,
+  ]
+  const yahooBreaker = yahooRun.breaker
   const supplementPlan = marketstackCandidates(classified)
   const needed = requestsForSymbols(supplementPlan.eligible.length)
   const hasMarketstackKey = Boolean(process.env.MARKETSTACK_ACCESS_KEY || process.env.MARKETSTACK_APIKEY || process.env.MARKETSTACK_API_KEY)
   const monthlyBudget = enforcedQuota(process.env.MARKETSTACK_MONTHLY_BUDGET_REQUESTS)
-  const supabaseUrl = process.env.SUPABASE_URL
-  const serviceRoleKey = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY
-  if (!dryRun && (!supabaseUrl || !serviceRoleKey)) {
-    return res.status(500).json({ ok: false, completed_write: false, error: 'SUPABASE_URL is required' })
-  }
   let usage = {
     used: null,
     reason: 'usage_unconfirmed',
     baseline_used: VERIFIED_MARKETSTACK_USAGE.usedRequests,
     extra: null,
   }
-  let supabase = null
-  if (supabaseUrl && serviceRoleKey) {
-    supabase = createClient(supabaseUrl, serviceRoleKey)
-    usage = await readReservedUsage(supabase, now)
-  }
+  usage = await readReservedUsage(supabase, now)
   const marketstackHold = marketstackHoldReason({
     needed,
     classifiedCount: classified.length,
@@ -254,79 +445,8 @@ export default async function handler(req, res) {
     now,
     budget: monthlyBudget,
   })
-  const usageReport = {
-    usage_reason: usage.reason,
-    usage_baseline: usage.baseline_used,
-    usage_extra_after_baseline: usage.extra,
-    usage_total: usage.used,
-    usage_quota: monthlyBudget,
-    usage_period_end: VERIFIED_MARKETSTACK_USAGE.periodEnd,
-  }
-  if (dryRun) {
-    return res.status(200).json({
-      ok: true,
-      dry_run: true,
-      completed_write: false,
-      provider: PROVIDER,
-      price_basis: PRICE_BASIS,
-      storage_source_key: STORAGE_SOURCE,
-      marketstack_called: false,
-      marketstack_would_request: needed,
-      marketstack_hold: marketstackHold,
-      marketstack_skipped: supplementPlan.skipped.slice(0, 40),
-      ...usageReport,
-      scope,
-      batch,
-      universe: UNIVERSE_COUNTS,
-      held_not_written: HELD_REPORT,
-      fx_table: 'untouched',
-      ...summaryOf(classified.map((row) => ({ ...row, decision: { action: 'dry_run', reason: row.assessment.status } }))),
-      sample: classified.slice(0, 8).map((row) => ({
-        item: row.item,
-        expected: row.expectedDate,
-        status: row.assessment.status,
-        trade_date: row.assessment.trade_date || null,
-        ohlc_ok: row.assessment.ohlc_ok || false,
-      })),
-    })
-  }
-
-  const activeSince = new Date(Date.now() - 20 * 60 * 1000).toISOString()
-  const { data: activeJobs, error: activeErr } = await supabase
-    .from('ingestion_jobs')
-    .select('id,meta')
-    .eq('source', PROVIDER)
-    .eq('status', 'started')
-    .gte('started_at', activeSince)
-    .limit(20)
-  if (activeErr) return res.status(500).json({ ok: false, completed_write: false, error: activeErr.message })
-  if ((activeJobs || []).some((job) => job.meta?.scope === scope && Number(job.meta?.batch) === batch)) {
-    return res.status(409).json({ ok: false, completed_write: false, error: '같은 배치가 이미 진행 중입니다.' })
-  }
-
   const marketstackKey = process.env.MARKETSTACK_ACCESS_KEY || process.env.MARKETSTACK_APIKEY || process.env.MARKETSTACK_API_KEY
-  const willCallMarketstack = needed > 0 && !marketstackHold
-  const { data: startedJob, error: startErr } = await supabase.from('ingestion_jobs').insert([{
-    source: PROVIDER,
-    dataset: 'stock_daily_prices',
-    status: 'started',
-    rows_processed: 0,
-    meta: {
-      provider: PROVIDER,
-      price_basis: PRICE_BASIS,
-      storage_source_key: STORAGE_SOURCE,
-      scope,
-      batch,
-      universe: UNIVERSE_COUNTS,
-      completeness: 'pending',
-      marketstack_billed_symbols: willCallMarketstack ? needed : 0,
-      marketstack_hold: marketstackHold,
-    },
-  }]).select('id').single()
-  if (startErr || !startedJob?.id) {
-    return res.status(500).json({ ok: false, completed_write: false, error: startErr?.message || 'ingestion job start failed' })
-  }
-
+  const willCallMarketstack = !yahooBreaker.tripped && marketstackAllowed({ catchup: false, needed, hold: marketstackHold })
   let classifiedAfter = classified
   let marketstackBilled = willCallMarketstack ? needed : 0
   if (willCallMarketstack) {
@@ -342,14 +462,14 @@ export default async function handler(req, res) {
     : { data: [], error: null }
   if (existingErr) {
     await supabase.from('ingestion_jobs').update({ status: 'failed', finished_at: new Date().toISOString(), error_message: existingErr.message }).eq('id', startedJob.id)
-    return res.status(500).json({ ok: false, completed_write: false, error: existingErr.message })
+    return res.status(200).json({ ok: false, completed_write: false, yahoo_called: true, error: existingErr.message })
   }
   const { data: previousRows, error: previousErr } = symbols.length && previousDates.length
     ? await supabase.from('stock_daily_prices').select('symbol,trade_date,close,raw').in('symbol', symbols).in('trade_date', previousDates)
     : { data: [], error: null }
   if (previousErr) {
     await supabase.from('ingestion_jobs').update({ status: 'failed', finished_at: new Date().toISOString(), error_message: previousErr.message }).eq('id', startedJob.id)
-    return res.status(500).json({ ok: false, completed_write: false, error: previousErr.message })
+    return res.status(200).json({ ok: false, completed_write: false, yahoo_called: true, error: previousErr.message })
   }
   const dashboardDates = [...new Set([...dates, ...previousDates])]
   const { data: dashboardExisting, error: dashboardReadErr } = dashboardDates.length
@@ -357,7 +477,7 @@ export default async function handler(req, res) {
     : { data: [], error: null }
   if (dashboardReadErr) {
     await supabase.from('ingestion_jobs').update({ status: 'failed', finished_at: new Date().toISOString(), error_message: dashboardReadErr.message }).eq('id', startedJob.id)
-    return res.status(500).json({ ok: false, completed_write: false, error: dashboardReadErr.message })
+    return res.status(200).json({ ok: false, completed_write: false, yahoo_called: true, error: dashboardReadErr.message })
   }
 
   const existingByKey = new Map((existingRows || []).map((row) => [`${row.symbol}|${row.trade_date}`, row]))
@@ -403,7 +523,7 @@ export default async function handler(req, res) {
       }
     })
   const dashboardBackup = dashboardExisting || []
-  const fxDates = scope === 'dashboard' ? dashboardDates : []
+  const fxDates = isDashboardScope ? dashboardDates : []
   const { data: fxExisting, error: fxReadErr } = fxDates.length
     ? await supabase.from('fx_daily_usdjpy').select('as_of_date,usd_jpy,provider,updated_at').in('as_of_date', fxDates)
     : { data: [], error: null }
@@ -422,6 +542,7 @@ export default async function handler(req, res) {
     marketstack_called: marketstackBilled > 0,
     marketstack_billed_symbols: marketstackBilled,
     marketstack_hold: marketstackHold,
+    ...(yahooBreaker.tripped || {}),
     held_not_written: HELD_REPORT,
     backup,
     dashboard_backup: dashboardBackup,
@@ -456,6 +577,7 @@ export default async function handler(req, res) {
       price_basis: PRICE_BASIS,
       yahoo_symbol: row.yahoo,
       adjusted_close: 'not_used',
+      close_evidence: row.assessment.close_evidence || null,
     }
     if (row.decision.action === 'insert') {
       const { error } = await supabase.from('stock_daily_prices').insert([{
@@ -500,7 +622,7 @@ export default async function handler(req, res) {
 
   let dashboardRows = []
   let fxTableRows = []
-  if (scope === 'dashboard') {
+  if (isDashboardScope) {
     const { data: currentDashboard, error: currentDashErr } = dashboardDates.length
       ? await supabase.from('market_dashboard_daily').select('*').in('trade_date', dashboardDates)
       : { data: [], error: null }
@@ -608,19 +730,19 @@ export default async function handler(req, res) {
     if (!committed.ok) {
       const message = committed.restoreError?.message || committed.error?.message || 'fx pair commit failed'
       await supabase.from('ingestion_jobs').update({ status: 'failed', finished_at: new Date().toISOString(), error_message: message, meta: { ...baseMeta, fx_compensated: committed.compensated } }).eq('id', startedJob.id)
-      return res.status(500).json({ ok: false, completed_write: false, error: message, fx_compensated: committed.compensated, wrote })
+      return res.status(200).json({ ok: false, completed_write: false, yahoo_called: true, error: message, fx_compensated: committed.compensated, wrote })
     }
   }
 
-  const outcome = jobOutcome(decided)
+  const outcome = yahooBreaker.tripped ? { status: 'failed', completeness: 'partial' } : jobOutcome(decided)
   const { error: finishErr } = await supabase.from('ingestion_jobs').update({
     status: outcome.status,
     finished_at: new Date().toISOString(),
     rows_processed: wrote,
-    error_message: outcome.completeness === 'partial' ? 'incomplete price collection' : null,
+    error_message: yahooBreaker.tripped ? `yahoo_${yahooBreaker.tripped.yahoo_limit_status}` : (outcome.completeness === 'partial' ? 'incomplete price collection' : null),
     meta: { ...baseMeta, completeness: outcome.completeness },
   }).eq('id', startedJob.id)
-  if (finishErr) return res.status(500).json({ ok: false, completed_write: false, error: finishErr.message, wrote })
+  if (finishErr) return res.status(200).json({ ok: false, completed_write: false, yahoo_called: true, error: finishErr.message, wrote })
 
   return res.status(200).json({
     ok: outcome.status === 'success',
@@ -632,6 +754,8 @@ export default async function handler(req, res) {
     marketstack_called: marketstackBilled > 0,
     marketstack_billed_symbols: marketstackBilled,
     marketstack_hold: marketstackHold,
+    yahoo_access_limited: Boolean(yahooBreaker.tripped),
+    yahoo_cooldown_until: yahooBreaker.tripped?.yahoo_cooldown_until || null,
     scope,
     wrote,
     quarantined: quarantined.length,

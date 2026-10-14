@@ -1,0 +1,14 @@
+{
+  "reviewed_at": "2026-10-14T00:29:20.837803+00:00",
+  "decision": "allow_one_recovery_after_source_review",
+  "parser_version": "regular_session_quote_close_v2",
+  "trade_date": "2026-10-13",
+  "evidence_url": "https://www.google.com/finance/quote/MSFT:NASDAQ",
+  "provider_sample_close": 543.45,
+  "provider_sample_regular_market_time": 1791921601,
+  "provider_sample_regular_period_end": 1791921600,
+  "excluded_extended_hours_price": 541.81,
+  "scope": "us",
+  "reason": "closing_auction_regular_quote_reported_seconds_after_end_and_independently_verified",
+  "maximum_closing_report_offset_seconds": 60
+}

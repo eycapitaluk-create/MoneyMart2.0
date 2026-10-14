@@ -78,6 +78,31 @@ export function equityTargets(scope, batch, batches, now = new Date()) {
   }))
 }
 
+export function marketstackAllowed({ catchup = false, needed = 0, hold = null } = {}) {
+  if (catchup) return false
+  return needed > 0 && !hold
+}
+
+/** Same confirmed session, plus only the immediately previous session when that row is absent. */
+export function selectCatchupTargets(targets, presentKeys, previousOf) {
+  const present = presentKeys instanceof Set ? presentKeys : new Set(presentKeys || [])
+  const selected = []
+  for (const target of targets || []) {
+    const id = target?.symbol || target?.item
+    const expected = target?.expectedDate
+    if (!id || !expected) continue
+    if (!present.has(`${id}|${expected}`)) selected.push(target)
+    const previous = target?.expectedPreviousDate
+    if (!previous || present.has(`${id}|${previous}`)) continue
+    selected.push({
+      ...target,
+      expectedDate: previous,
+      expectedPreviousDate: typeof previousOf === 'function' ? previousOf(target.calendar, previous) : null,
+    })
+  }
+  return selected
+}
+
 export function dashboardTargets(now = new Date()) {
   return DASHBOARD_SPECS.map((spec) => ({
     ...spec,

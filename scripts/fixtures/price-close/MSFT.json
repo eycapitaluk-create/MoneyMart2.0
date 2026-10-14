@@ -1,0 +1,102 @@
+{
+  "chart": {
+    "result": [
+      {
+        "meta": {
+          "currency": "USD",
+          "symbol": "MSFT",
+          "exchangeName": "NMS",
+          "fullExchangeName": "NasdaqGS",
+          "instrumentType": "EQUITY",
+          "firstTradeDate": 511108200,
+          "regularMarketTime": 1791921601,
+          "hasPrePostMarketData": true,
+          "gmtoffset": -14400,
+          "timezone": "EDT",
+          "exchangeTimezoneName": "America/New_York",
+          "regularMarketPrice": 543.45,
+          "regularMarketChangePercent": 0.425,
+          "fulldayPrice": 541.81,
+          "fulldayChange": 0.0,
+          "fulldayChangePercent": 0.0,
+          "fiftyTwoWeekHigh": 553.72,
+          "fiftyTwoWeekLow": 349.2,
+          "regularMarketDayHigh": 551.15,
+          "regularMarketDayLow": 543.06,
+          "regularMarketVolume": 23799223,
+          "longName": "Microsoft Corporation",
+          "shortName": "Microsoft Corporation",
+          "chartPreviousClose": 513.53,
+          "priceHint": 2,
+          "currentTradingPeriod": {
+            "pre": {
+              "timezone": "EDT",
+              "start": 1791878400,
+              "end": 1791898200,
+              "gmtoffset": -14400
+            },
+            "regular": {
+              "timezone": "EDT",
+              "start": 1791898200,
+              "end": 1791921600,
+              "gmtoffset": -14400
+            },
+            "post": {
+              "timezone": "EDT",
+              "start": 1791921600,
+              "end": 1791936000,
+              "gmtoffset": -14400
+            }
+          },
+          "dataGranularity": "1d",
+          "range": "",
+          "validRanges": [
+            "1d",
+            "5d",
+            "1mo",
+            "3mo",
+            "6mo",
+            "1y",
+            "2y",
+            "5y",
+            "10y",
+            "ytd",
+            "max"
+          ]
+        },
+        "timestamp": [
+          1791811800,
+          1791898200
+        ],
+        "indicators": {
+          "quote": [
+            {
+              "low": [
+                535.7000122070312,
+                543.0599975585938
+              ],
+              "open": [
+                537.530029296875,
+                544.625
+              ],
+              "volume": [
+                18314900,
+                23799223
+              ],
+              "high": [
+                542.739990234375,
+                551.1500244140625
+              ],
+              "close": [
+                541.1500244140625,
+                null
+              ]
+            }
+          ]
+        },
+        "events": {}
+      }
+    ],
+    "error": null
+  }
+}

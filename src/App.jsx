@@ -1180,7 +1180,7 @@ const App = () => {
               <ToolLandingPage
                 subtitle="MONEYMART TOOLS"
                 title="配当カレンダー"
-                description="配当月・銘柄・保有数量を整理して、入金見込みを見える化するツールです。ログインするとマイページで配当カレンダーをそのまま利用できます。"
+                description="配当月・銘柄・保有数量を整理して、入金の試算を見える化するツールです。ログインするとマイページで配当カレンダーをそのまま利用できます。"
                 ctaLabel="ログインして開く"
                 ctaTo="/login"
                 secondaryLabel="マーケットを見る"

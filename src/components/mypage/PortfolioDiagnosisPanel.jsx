@@ -285,7 +285,7 @@ export default function PortfolioDiagnosisPanel({
               AIポートフォリオ分析
             </h3>
             <p className="mt-1 text-xs font-bold text-slate-500 dark:text-slate-400">
-              {scopeLabel}の保有資産をもとにAIが分散・リスク・改善案を分析します
+              保有データから確認ポイントを自動抽出します（投資助言ではありません）
             </p>
             <p className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">
               {userId

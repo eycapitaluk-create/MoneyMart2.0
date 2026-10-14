@@ -102,7 +102,7 @@ export default function RiskReview({ c }) {
             </div>
           </div>
           <div className="text-right">
-            <Pill bg="#dcfce7" color="#10b981">リスク低下見込み</Pill>
+            <Pill bg="#dcfce7" color="#10b981">リスクの変化</Pill>
             <div className="mt-1 text-[8px]" style={{ color: '#94a3b8' }}>AI 原案 (上限 20%)</div>
           </div>
         </div>

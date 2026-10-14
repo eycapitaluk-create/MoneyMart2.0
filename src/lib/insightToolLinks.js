@@ -9,7 +9,7 @@ const TOOL_ROUTE_ENTRIES = [
   ['市場インジケーター', '/market-indicator'],
   ['NISAチェックリスト', '/tools/nisa-etf-checklist'],
   ['NISA・ETF', '/tools/nisa-etf-checklist'],
-  ['ポートフォリオ最適化', '/tools'],
+  ['配分シミュレーション', '/tools'],
   ['ファンド', '/funds'],
   ['分散', '/funds'],
   ['金融商品', '/products'],
@@ -19,7 +19,7 @@ const TOOL_ROUTE_ENTRIES = [
 
 const PATH_LABEL_ENTRIES = [
   ['/', 'ホーム'],
-  ['/tools', 'ポートフォリオ最適化'],
+  ['/tools', '配分シミュレーション'],
   ['/tools/nisa-etf-checklist', 'NISA・ETFチェックリスト'],
   ['/etf-compare', 'ETF比較'],
   ['/market', '市場動向'],

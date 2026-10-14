@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Card from '../components/ui/Card'
 import Button from '../components/ui/Button'
 import AppleSignInButton from '../components/auth/AppleSignInButton'
@@ -20,6 +20,10 @@ export default function Login() {
   const emailInputRef = useRef(null)
   const passwordInputRef = useRef(null)
   const redirectTo = sanitizeInternalRedirectPath(location.state?.from, '/')
+
+  useEffect(() => {
+    document.title = 'ログイン | MoneyMart'
+  }, [])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -110,7 +114,7 @@ export default function Login() {
               {showPassword ? 'パスワードを隠す' : 'パスワードを表示'}
             </button>
             <p className="mt-1 text-right">
-              <Link to="/forgot-password" className="text-xs text-primary-blue hover:underline">パスワードを忘れた</Link>
+              <Link to="/forgot-password" className="text-xs text-orange-600 hover:underline">パスワードを忘れた</Link>
             </p>
           </div>
           {message && <p className="text-sm text-red-500">{message}</p>}
@@ -119,19 +123,19 @@ export default function Login() {
             <button
               type="button"
               onClick={handleResendVerification}
-              className="text-sm text-primary-blue hover:underline"
+              className="text-sm text-orange-600 hover:underline"
               disabled={loading}
             >
               確認メールを再送
             </button>
           )}
-          <Button type="submit" className="w-full" disabled={loading}>
+          <Button type="submit" variant="secondary" className="w-full" disabled={loading}>
             {loading ? 'ログイン中...' : 'メールでログイン'}
           </Button>
         </form>
         <p className="mt-4 text-center text-sm text-gray-600 dark:text-gray-400">
           アカウントをお持ちでないですか？{' '}
-          <Link to="/signup" state={{ from: redirectTo }} className="text-primary-blue hover:underline">会員登録</Link>
+          <Link to="/signup" state={{ from: redirectTo }} className="text-orange-600 hover:underline">会員登録</Link>
         </p>
       </Card>
     </div>

@@ -157,10 +157,10 @@ function scoreFromDistribution(distribution, targetEffectiveCount) {
 }
 
 function getDeterministicSummary(score, top1Weight) {
-  if (score >= 80) return '分散バランスは良好です'
-  if (score >= 65) return top1Weight >= 40 ? '概ね良好だが集中注意' : '改善余地はあるが安定'
-  if (score >= 50) return '集中リスクの改善が必要'
-  return '集中リスクが高い構成です'
+  if (score >= 80) return '保有先が複数に分かれています'
+  if (score >= 65) return top1Weight >= 40 ? '一部の保有に比率が寄っています' : '大きな偏りは少なめです'
+  if (score >= 50) return '一部の保有に比率が寄っています'
+  return '特定の保有に比率が集中しています'
 }
 
 function buildDeterministicDiagnosis({ holdings, scopeLabel }) {
@@ -207,8 +207,8 @@ function buildDeterministicDiagnosis({ holdings, scopeLabel }) {
       desc: '最大保有銘柄の値動きがポートフォリオ全体を大きく左右します。',
     })
     actions.push({
-      priority: '即時',
-      action: '最大保有銘柄の比率が高い場合、比率を引き下げて他銘柄へ配分を広げることで、個別銘柄集中リスクの低減につながる可能性があります。',
+      priority: '確認',
+      action: `最大保有の比率は${top1Weight.toFixed(1)}%です。この比率が全体の値動きに占める割合を確認できます。`,
     })
   }
 
@@ -220,8 +220,8 @@ function buildDeterministicDiagnosis({ holdings, scopeLabel }) {
       desc: '同一業種の悪材料が同時に効くと、下落幅が拡大しやすくなります。',
     })
     actions.push({
-      priority: '短期',
-      action: '相関の低いセクターを組み入れると、業種分散の観点で選択肢が広がる場合があります。',
+      priority: '確認',
+      action: `登録されているセクターは${sectorDist.length}件です。業種ごとの比率を見比べられます。`,
     })
   }
 
@@ -233,8 +233,8 @@ function buildDeterministicDiagnosis({ holdings, scopeLabel }) {
       desc: '単一地域の金利・為替・景気イベントにパフォーマンスが偏ります。',
     })
     actions.push({
-      priority: '短期',
-      action: '日本株や新興国株などを組み入れると、地域分散の観点で選択肢が広がります。',
+      priority: '確認',
+      action: '登録データ上、地域は1つに集まっています。地域ごとの比率を確認できます。',
     })
   }
 
@@ -246,24 +246,24 @@ function buildDeterministicDiagnosis({ holdings, scopeLabel }) {
       desc: '同じ資産クラスの下落局面で逃げ場が少なくなる可能性があります。',
     })
     actions.push({
-      priority: '長期',
-      action: '債券やREITなど異なる資産クラスを加えることで、値動きの異なる資産による分散効果が期待される場合があります。',
+      priority: '確認',
+      action: '登録データ上、資産カテゴリは1つに集まっています。カテゴリごとの比率を確認できます。',
     })
   }
 
-  if (strengths.length === 0) strengths.push('保有データを継続的に更新している点は、改善サイクル構築に有効です。')
-  if (weaknesses.length === 0) weaknesses.push('大きな偏りは見えませんが、相場変化に応じた定期リバランスが必要です。')
+  if (strengths.length === 0) strengths.push('保有データが登録されているため、現在の比率を確認できます。')
+  if (weaknesses.length === 0) weaknesses.push('大きな偏りは見当たりません。比率は価格の変動で変わります。')
   if (risks.length === 0) {
     risks.push({
-      type: 'リバランス遅延',
+      type: '比率の変化',
       level: '低',
-      desc: '相場上昇局面では意図せず比率が偏るため、定期的な再配分が必要です。',
+      desc: '価格が動くと、登録した保有の比率も変わります。',
     })
   }
   if (actions.length === 0) {
     actions.push({
-      priority: '長期',
-      action: '四半期ごとに比率を点検し、目標配分からの乖離を柔らかく補正することも、検討しうる選択肢のひとつです。',
+      priority: '確認',
+      action: '登録した保有比率は、価格の変動で変わります。同じ画面で後から見比べられます。',
     })
   }
 
@@ -304,10 +304,11 @@ Important:
 - Do NOT change numeric scores, grade, or diversification numbers.
 - Rewrite only user-facing qualitative text so it is clearer and practical.
 - Tone: informational only (not investment advice). Avoid imperatives like 「〜しなさい」「〜してください」「must」「immediately」.
-  Prefer: 可能性があります / 場合があります / 選択肢として考えられます / 検討しうる / 〜の観点で、など.
+  Describe the current holdings. Do not tell the user to buy, sell, add, reduce, or rebalance.
+- Do not use these words: 改善, 改善案, 改善余地, 最適, 推奨, おすすめ, 検討してください, 見通し, 見込み.
 - Never instruct the user to buy or sell a specific security. No promises of returns.
 - If you mention a company or ticker (e.g. from holdings), do so only to describe the current allocation, not to tell the user to buy or sell.
-- For "actions", treat each item as a hypothetical option or perspective (想定される選択肢), not a directive.
+- For "actions", each item is a checkpoint about the current data (確認ポイント), not a directive. priority must be 「確認」.
 
 Scope: ${diagnosis.scopeLabel}
 Portfolio: ${summary}
@@ -334,7 +335,7 @@ Return exactly this shape:
     {"type": "リスク名", "level": "高/中/低", "desc": "説明1文"}
   ],
   "actions": [
-    {"priority": "即時/短期/長期", "action": "命令ではなく、検討しうる観点・想定される選択肢を1文（婉曲表現）"}
+    {"priority": "確認", "action": "売買の指示ではなく、現在の保有データから読み取れる確認ポイントを1文"}
   ],
   "comment": "2-3文の総評"
 }
@@ -348,7 +349,7 @@ function sanitizeQualitative(payload) {
     desc: String(row?.desc || '').slice(0, 140),
   })) : []
   const actions = Array.isArray(payload?.actions) ? payload.actions.slice(0, 4).map((row) => ({
-    priority: ['即時', '短期', '長期'].includes(String(row?.priority || '')) ? String(row.priority) : '短期',
+    priority: '確認',
     action: String(row?.action || '').slice(0, 220),
   })) : []
 
@@ -380,10 +381,20 @@ function softenTone(value = '') {
     s = s.replace(pattern, (m) => {
       if (/urgent|至急|今すぐ|immediately/i.test(m)) return '優先'
       if (/danger|危険|catastrophic/i.test(m)) return '注意'
-      if (/must|必須/i.test(m)) return '検討余地があります'
+      if (/must|必須/i.test(m)) return '確認できます'
       return m
     })
   })
+  s = s
+    .replace(/改善案/g, '確認ポイント')
+    .replace(/改善余地/g, '確認ポイント')
+    .replace(/改善/g, '確認')
+    .replace(/おすすめ/g, '')
+    .replace(/推奨/g, '')
+    .replace(/検討してください/g, '確認できます')
+    .replace(/見通し/g, '記録')
+    .replace(/見込み/g, '記録')
+    .replace(/最適/g, '比較上の')
   return s
 }
 

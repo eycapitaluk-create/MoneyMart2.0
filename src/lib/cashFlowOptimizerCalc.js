@@ -50,7 +50,7 @@ export function evaluateCashFlowOptimizer({
   } else if (idleCashYen > 0) {
     tasks.push(`余剰現金 ¥${idleCashYen.toLocaleString('ja-JP')} の移動余地があります。`)
   } else {
-    tasks.push('現金配分は概ね最適化されています。')
+    tasks.push('現金配分は登録した範囲に収まっています。')
   }
   if (rateGap > 0) {
     tasks.push(`高金利口座との差分は年 ${(rateGap * 100).toFixed(2)}% です。`)

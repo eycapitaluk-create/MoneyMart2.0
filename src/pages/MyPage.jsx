@@ -7452,15 +7452,9 @@ const WealthSection = ({
               <h3 className="font-black text-slate-900 dark:text-white flex items-center gap-2">
                 <PieChart size={16} className="text-indigo-500" /> 構成比アラート
               </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                目標比率は参考値（株式 {TARGET_STOCK_RATIO_PCT}% / ファンド {100 - TARGET_STOCK_RATIO_PCT}%）です。
-              </p>
               <div className="mt-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 p-4">
                 <p className="text-sm font-black text-slate-900 dark:text-white">
                   現在 株式 {currentStockRatioPct.toFixed(0)}% / ファンド {currentFundRatioPct.toFixed(0)}%
-                </p>
-                <p className={`mt-2 text-sm font-bold ${Math.abs(stockRatioGapPct) >= 15 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-600 dark:text-slate-300'}`}>
-                  株式比率ギャップ {stockRatioGapPct >= 0 ? '+' : ''}{stockRatioGapPct.toFixed(1)}%
                 </p>
                 <button
                   type="button"
@@ -7471,66 +7465,9 @@ const WealthSection = ({
                 </button>
               </div>
               {(() => {
-                const targetStockW = Math.max(0, Math.min(100, Number(TARGET_STOCK_RATIO_PCT) || 0))
-                const curStockW = Math.max(0, Math.min(100, Number(currentStockRatioPct) || 0))
-                const curFundW = Math.max(0, Math.min(100, Number(currentFundRatioPct) || 0))
-                const norm = curStockW + curFundW
-                const curStockBar = norm > 0 ? (curStockW / norm) * 100 : 0
-                const curFundBar = norm > 0 ? (curFundW / norm) * 100 : 0
-                const targetStockJpy = totalCurrentValue * (targetStockW / 100)
-                const stockDeltaJpy = targetStockJpy - Number(stockTotalCurrentJpy || 0)
-                const showYenHint = totalCurrentValue > 0 && Math.abs(Number(stockRatioGapPct) || 0) >= 1
-                const yenHint =
-                  showYenHint && Number.isFinite(stockDeltaJpy) && Math.abs(stockDeltaJpy) >= 1
-                    ? `評価額ベースで目標の株式比率に近づける目安は、株式をおおよそ ${
-                        stockDeltaJpy >= 0 ? '+' : '−'
-                      }¥${Math.round(Math.abs(stockDeltaJpy)).toLocaleString('ja-JP')}（売買・手数料・税は含みません）。`
-                    : null
                 return (
                   <div className="mt-4 flex flex-col min-h-0 xl:flex-1 xl:min-h-0">
                     <div className="space-y-3">
-                      <div>
-                        <p className="text-[10px] font-black uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-2">
-                          目標と現在（棒は左＝株式 / 右＝ファンド）
-                        </p>
-                        <div className="space-y-2.5">
-                          <div>
-                            <div className="flex items-center justify-between gap-2 mb-1">
-                              <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300">目標</span>
-                              <span className="text-[10px] font-mono font-bold tabular-nums text-slate-500 dark:text-slate-400">
-                                株 {targetStockW.toFixed(0)}% / ファ {Math.max(0, 100 - targetStockW).toFixed(0)}%
-                              </span>
-                            </div>
-                            <div
-                              className="flex h-2 w-full overflow-hidden rounded-full bg-slate-200/80 dark:bg-slate-700/80"
-                              role="img"
-                              aria-label={`目標 株式${targetStockW.toFixed(0)}パーセント、ファンド${Math.max(0, 100 - targetStockW).toFixed(0)}パーセント`}
-                            >
-                              <div className="h-full bg-emerald-500 dark:bg-emerald-500/90" style={{ width: `${targetStockW}%` }} />
-                              <div className="h-full bg-blue-500 dark:bg-blue-500/90" style={{ width: `${100 - targetStockW}%` }} />
-                            </div>
-                          </div>
-                          <div>
-                            <div className="flex items-center justify-between gap-2 mb-1">
-                              <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300">現在</span>
-                              <span className="text-[10px] font-mono font-bold tabular-nums text-slate-500 dark:text-slate-400">
-                                株 {curStockW.toFixed(0)}% / ファ {curFundW.toFixed(0)}%
-                              </span>
-                            </div>
-                            <div
-                              className="flex h-2 w-full overflow-hidden rounded-full bg-slate-200/80 dark:bg-slate-700/80"
-                              role="img"
-                              aria-label={`現在 株式${curStockW.toFixed(0)}パーセント、ファンド${curFundW.toFixed(0)}パーセント`}
-                            >
-                              <div className="h-full bg-emerald-500 dark:bg-emerald-500/90" style={{ width: `${curStockBar}%` }} />
-                              <div className="h-full bg-blue-500 dark:bg-blue-500/90" style={{ width: `${curFundBar}%` }} />
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      {yenHint ? (
-                        <p className="text-[11px] font-semibold leading-relaxed text-slate-600 dark:text-slate-300">{yenHint}</p>
-                      ) : null}
                       {monthlyUnrealizedPnlSplit.mode === 'bar' ? (
                         <div className="mt-3 pt-3 border-t border-slate-200/90 dark:border-slate-700/80">
                           <div className="rounded-xl border border-slate-200/90 dark:border-slate-600/80 bg-slate-50/90 dark:bg-slate-800/50 px-3 py-2.5">
@@ -7538,7 +7475,7 @@ const WealthSection = ({
                               含み損益の寄与度（合計損益に占める割合）
                             </p>
                             <p className="mt-1 text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">
-                              ※ 上の「目標／現在」バー（評価額の構成比）とは別指標です（損益の大きさの分け合い）。
+                              ※ 評価額の構成比とは別指標です（損益の大きさの分け合い）。
                             </p>
                             <div
                               className="mt-2 flex h-2.5 w-full overflow-hidden rounded-full bg-slate-200/80 dark:bg-slate-700/80"
@@ -7575,14 +7512,6 @@ const WealthSection = ({
                       ) : null}
                     </div>
                     <div className="min-h-3 shrink-0 xl:flex-1" aria-hidden="true" />
-                    <div className="space-y-3 pt-3 border-t border-slate-200/90 dark:border-slate-700/80">
-                      <p className="text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">
-                        株式比率のズレが <span className="font-black">±15%</span> を超えると、上のギャップ表示を強調します。
-                      </p>
-                      <p className="text-[10px] leading-relaxed text-slate-400 dark:text-slate-500">
-                        目標比率と目安金額は参考情報です。投資助言ではありません。
-                      </p>
-                    </div>
                   </div>
                 )
               })()}
@@ -7983,7 +7912,7 @@ const WealthSection = ({
                       <strong className="text-slate-600 dark:text-slate-300">前営業日</strong>の基準額、または<strong className="text-slate-600 dark:text-slate-300">約1週間前</strong>の基準額（いずれもその時点の終値ベース推計）に対して、
                       下がり幅 / 上がり幅が条件を満たしたときに出ます。条件を満たす<strong className="text-slate-600 dark:text-slate-300">前日比</strong>と<strong className="text-slate-600 dark:text-slate-300">前週比</strong>は別々に数えるため、
                       最大<strong className="text-slate-600 dark:text-slate-300">2件</strong>が同時に表示されることがあります。
-                      左の「株式比率ギャップ」等の<strong className="text-slate-600 dark:text-slate-300">構成比アラート</strong>は別の仕組みです。
+                      左の<strong className="text-slate-600 dark:text-slate-300">構成比アラート</strong>は別の仕組みです。
                     </p>
                   ) : null}
                   {(hasVisiblePortfolioDropAlert || hasVisiblePortfolioRiseAlert) ? (

@@ -184,7 +184,7 @@ export default function Layout({
       )}
       {!isChromeLess && !hideEmailBanner && authReady && session ? <EmailVerificationBanner session={session} /> : null}
       <main className="flex-1">
-        <ErrorBoundary key={`${location.pathname}${location.search || ''}`}>
+        <ErrorBoundary key={location.pathname}>
           <Outlet />
         </ErrorBoundary>
       </main>

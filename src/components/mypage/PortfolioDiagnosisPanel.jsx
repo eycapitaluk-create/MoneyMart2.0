@@ -76,6 +76,7 @@ function DistributionBars({ title, rows = [] }) {
 }
 
 const ALLOCATION_BAR_COLORS = ['#F97316', '#1e3a5f', '#fb923c', '#334155', '#fdba74']
+const COUNTRY_BAR_COLORS = ['#1e3a5f', '#F97316', '#fb923c', '#334155', '#fdba74']
 
 const RISK_META = {
   '高': 'text-red-600 bg-red-50 border-red-200 dark:text-red-300 dark:bg-red-950/30 dark:border-red-900',
@@ -122,7 +123,7 @@ export default function PortfolioDiagnosisPanel({
       .map(([name, pct], idx) => ({
         name,
         pct,
-        color: ALLOCATION_BAR_COLORS[idx % ALLOCATION_BAR_COLORS.length],
+        color: COUNTRY_BAR_COLORS[idx % COUNTRY_BAR_COLORS.length],
       }))
       .sort((a, b) => b.pct - a.pct)
   }, [holdingsWithWeight])

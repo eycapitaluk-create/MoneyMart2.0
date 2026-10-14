@@ -237,6 +237,18 @@ export function assessUnadjustedBar({ bars, events, timeZone, expectedDate, expe
   const high = positive(bar.high)
   const low = positive(bar.low)
   const rangeOk = open != null && high != null && low != null && ohlcIsConsistent(open, high, low, close)
+  // Flat quotes without positive volume can be provider-carried marks.
+  // They do not establish a new execution date; a one-unit trade remains valid.
+  if (requireOhlc && rangeOk && open === close && high === close && low === close && !(Number(bar.volume) > 0)) {
+    return {
+      status: 'unverified_carried_price',
+      trade_date: null,
+      expected_trade_date: expectedDate,
+      expected_previous_date: expectedPreviousDate || null,
+      price_basis: PRICE_BASIS,
+      note: '동일 OHLC와 거래량 공백만으로 새 체결일을 확인할 수 없습니다. 원문 확인 전 날짜를 갱신하지 않습니다.',
+    }
+  }
   if (requireOhlc && !rangeOk) {
     return {
       status: 'invalid_price',

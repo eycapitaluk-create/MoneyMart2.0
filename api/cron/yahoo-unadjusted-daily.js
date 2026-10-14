@@ -41,7 +41,7 @@ import {
   previousFxAlign,
 } from '../_lib/fxYahooSync.js'
 
-const HELD_REPORT = ['VXTLT', 'Gold', 'Silver', 'WTI', 'Brent', 'Risk-On/Off Score']
+const HELD_REPORT = ['TOPIX', 'VXTLT', 'Gold', 'Silver', 'WTI', 'Brent', 'Risk-On/Off Score']
 
 async function mapPool(items, limit, worker) {
   const out = new Array(items.length)

@@ -6,7 +6,7 @@ import { PRICE_BASIS, sameBasisClose } from './yahooUnadjustedBar.js'
 export const STORAGE_SOURCE = 'marketstack'
 export const PROVIDER = 'yahoo'
 
-const HELD_ITEMS = new Set(['VXTLT', 'Gold', 'Silver', 'WTI', 'Brent', 'Risk-On/Off Score'])
+const HELD_ITEMS = new Set(['TOPIX', 'VXTLT', 'Gold', 'Silver', 'WTI', 'Brent', 'Risk-On/Off Score'])
 
 export const DASHBOARD_SPECS = [
   { item: '日経225', yahoo: '^N225', symbol: '^N225', calendar: 'XTKS', category: 'index' },

@@ -317,23 +317,17 @@ export default function FundComparePage({
     && grantedGuestKey !== guestCompareKey
 
   useEffect(() => {
-    if (embeddedMode || isLoggedIn || requestedSymbols.length < 2) {
+    if (isLoggedIn || requestedSymbols.length < 2) {
       setGuestTrialNotice('')
       return
     }
     const key = [...requestedSymbols].sort().join(',')
-    if (!isGuestEtfCompareTrialConsumed()) {
-      consumeGuestEtfCompareTrial(key)
-      setGrantedGuestKey(key)
-      setGuestTrialNotice('無料お試しは1回です。信託報酬とリターンはこの画面で確認できます。次の比較と保存はログイン後です。')
-      return
-    }
     if (getGuestEtfCompareGrantedKey() === key || grantedGuestKey === key) {
       setGuestTrialNotice('無料お試しは1回です。信託報酬とリターンはこの画面で確認できます。次の比較と保存はログイン後です。')
       return
     }
     setGuestTrialNotice('')
-  }, [embeddedMode, grantedGuestKey, isLoggedIn, requestedSymbols])
+  }, [grantedGuestKey, isLoggedIn, requestedSymbols])
 
   useEffect(() => {
     let cancelled = false
@@ -500,6 +494,16 @@ export default function FundComparePage({
         if (cancelled) return
         setFunds(rows)
         setChartData(series)
+        if (!isLoggedIn && compareSymbols.length >= 2) {
+          const key = [...compareSymbols].sort().join(',')
+          if (!isGuestEtfCompareTrialConsumed()) {
+            consumeGuestEtfCompareTrial(key)
+            setGrantedGuestKey(key)
+            setGuestTrialNotice('無料お試しは1回です。信託報酬とリターンはこの画面で確認できます。次の比較と保存はログイン後です。')
+          } else if (getGuestEtfCompareGrantedKey() === key) {
+            setGuestTrialNotice('無料お試しは1回です。信託報酬とリターンはこの画面で確認できます。次の比較と保存はログイン後です。')
+          }
+        }
       } catch (e) {
         if (!cancelled) {
           setError(e.message || '比較データの取得に失敗しました。')

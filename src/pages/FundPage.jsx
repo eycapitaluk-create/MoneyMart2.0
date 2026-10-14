@@ -1,4 +1,6 @@
 import { useState, useMemo, useEffect, useLayoutEffect, useRef, useId, lazy, Suspense } from 'react'
+import { lazyWithRetry } from '../lib/lazyWithRetry'
+import ErrorBoundary from '../components/ErrorBoundary'
 import { useDocumentTitle } from '../hooks/useDocumentTitle'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { createPortal } from 'react-dom'
@@ -25,7 +27,7 @@ import {
 import MyPageDemoShowcase from '../components/mypage/MyPageDemoShowcase'
 import GuestEtfCompareTrialWall from '../components/funds/GuestEtfCompareTrialWall'
 import {
-  consumeGuestEtfCompareTrial,
+  getGuestEtfCompareGrantedKey,
   isGuestEtfCompareTrialConsumed,
 } from '../lib/guestEtfCompareTrial'
 import { supabase } from '../lib/supabase'
@@ -65,7 +67,7 @@ import LazyFundPageBottomA8Ad from '../components/LazyFundPageBottomA8Ad'
 import MarketDataEodFreshnessNote from '../components/MarketDataEodFreshnessNote'
 import { signedReturnBarHex, signedReturnTextClassStrong } from '../lib/marketDirectionColors'
 const PortfolioOptimizer3D = lazy(() => import('../components/funds/PortfolioOptimizer3D'))
-const FundComparePage = lazy(() => import('./FundComparePage'))
+const FundComparePage = lazyWithRetry(() => import('./FundComparePage'))
 
 function Optimizer3DLoadingCard() {
   return (
@@ -1997,15 +1999,13 @@ export default function FundPage({
       return
     }
     if (!isLoggedIn) {
-      if (isGuestEtfCompareTrialConsumed()) {
+      const guestCompareKey = [...selectedFundIds].map((id) => String(id || '').trim().toUpperCase()).filter(Boolean).sort().join(',')
+      const sameGranted = getGuestEtfCompareGrantedKey() === guestCompareKey
+      if (isGuestEtfCompareTrialConsumed() && !sameGranted) {
         trackAnalyticsEvent('guest_etf_compare_trial_blocked', { source: 'fund_page' })
         setIsCompareTrialLimitModalOpen(true)
         return
       }
-      consumeGuestEtfCompareTrial(
-        [...selectedFundIds].map((id) => String(id || '').trim().toUpperCase()).filter(Boolean).sort().join(','),
-      )
-      trackAnalyticsEvent('guest_etf_compare_trial_consumed', { source: 'fund_page' })
     }
     setIsCompareModalOpen(true)
     recordUserActivityEvent(_user?.id, 'fund_compare_open', {
@@ -3336,18 +3336,25 @@ export default function FundPage({
               className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
               onClick={(e) => e.stopPropagation()}
             >
-              <Suspense fallback={<CompareModalLoadingCard />}>
-                <FundComparePage
-                  user={_user || null}
-                  userProfile={userProfile}
-                  myWatchlist={effectiveWatchlist}
-                  toggleWatchlist={toggleWatchlist}
-                  onUiMessage={onUiMessage}
-                  embeddedMode
-                  initialSymbols={selectedFundIds}
-                  onClose={() => setIsCompareModalOpen(false)}
-                />
-              </Suspense>
+              <ErrorBoundary
+                key={[...selectedFundIds].map((id) => String(id || '').trim().toUpperCase()).filter(Boolean).sort().join(',')}
+                boundaryScope="fund_compare_modal"
+                heading="表示中に問題が発生しました"
+                hint="通信状況を確認のうえ再読み込みしてください。比較結果を表示できなかった場合、無料お試しは消費していません。"
+              >
+                <Suspense fallback={<CompareModalLoadingCard />}>
+                  <FundComparePage
+                    user={_user || null}
+                    userProfile={userProfile}
+                    myWatchlist={effectiveWatchlist}
+                    toggleWatchlist={toggleWatchlist}
+                    onUiMessage={onUiMessage}
+                    embeddedMode
+                    initialSymbols={selectedFundIds}
+                    onClose={() => setIsCompareModalOpen(false)}
+                  />
+                </Suspense>
+              </ErrorBoundary>
             </div>
           </div>
         </div>

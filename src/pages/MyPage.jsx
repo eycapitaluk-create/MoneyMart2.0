@@ -1875,6 +1875,7 @@ const computeHistoricalWealthTrendSeries = ({
       }
       return {
         month: labels[idx],
+        asOf: anchorIso,
         stockJpy: ls,
         fundJpy: lf,
         stockCostJpy: Math.round(stockCostJpy),
@@ -1967,13 +1968,14 @@ const computeHistoricalWealthTrendSeries = ({
       }
     }
 
-    return {
-      month: labels[idx],
-      stockJpy: Math.max(0, Math.round(stockJpy)),
-      fundJpy: Math.max(0, Math.round(fundJpy)),
-      stockCostJpy: Math.round(stockCostJpy),
-      fundCostJpy: Math.round(fundCostJpy),
-    }
+      return {
+        month: labels[idx],
+        asOf: anchorIso,
+        stockJpy: Math.max(0, Math.round(stockJpy)),
+        fundJpy: Math.max(0, Math.round(fundJpy)),
+        stockCostJpy: Math.round(stockCostJpy),
+        fundCostJpy: Math.round(fundCostJpy),
+      }
   })
 
   const assetGrowthData = split.map((r) => {
@@ -1983,6 +1985,7 @@ const computeHistoricalWealthTrendSeries = ({
     const pnlJpy = (r.stockJpy || 0) - sc + (r.fundJpy || 0) - fc
     return {
       month: r.month,
+      asOf: r.asOf,
       value: sv,
       pnlJpy: Math.round(pnlJpy),
     }
@@ -1996,6 +1999,7 @@ const computeHistoricalWealthTrendSeries = ({
     const ci = Math.round(c)
     return {
       month: r.month,
+      asOf: r.asOf,
       value: v,
       costJpy: ci,
       pnlJpy: Math.round(v - ci),
@@ -2010,6 +2014,7 @@ const computeHistoricalWealthTrendSeries = ({
     const ci = Math.round(c)
     return {
       month: r.month,
+      asOf: r.asOf,
       value: v,
       costJpy: ci,
       pnlJpy: Math.round(v - ci),
@@ -3812,6 +3817,21 @@ const TREND_PERIODS = [
   [12, '1Y'],
 ]
 
+function trendCutoffIso(months) {
+  const now = new Date()
+  const start = new Date(now.getFullYear(), now.getMonth() - Number(months || 6), now.getDate())
+  return toLocalYmd(start)
+}
+
+function rowsForTrendWindow(rows, months) {
+  const list = (Array.isArray(rows) ? rows : []).filter((row) => row && row.month != null)
+  const dated = list.filter((row) => /^\d{4}-\d{2}-\d{2}$/.test(String(row.asOf || '')))
+  if (dated.length === 0) return list
+  const cutoff = trendCutoffIso(months)
+  const sliced = dated.filter((row) => row.asOf >= cutoff)
+  return sliced.length >= 2 ? sliced : dated.slice(-2)
+}
+
 function sparseLabelIndexes(count, max = 5) {
   if (count <= 0) return new Set()
   if (count <= max) return new Set(Array.from({ length: count }, (_, i) => i))
@@ -3824,8 +3844,11 @@ function sparseLabelIndexes(count, max = 5) {
 }
 
 function WealthValueLineCard({ title, rows, months, onMonths, noteOpen, onToggleNote, className = '' }) {
-  const data = (Array.isArray(rows) ? rows : []).filter((row) => row && row.month != null)
+  const data = rowsForTrendWindow(rows, months)
   const labelIndexes = sparseLabelIndexes(data.length, 5)
+  const labelIndexList = [...labelIndexes].sort((a, b) => a - b)
+  const firstLabelIndex = labelIndexList[0]
+  const lastLabelIndex = labelIndexList[labelIndexList.length - 1]
   return (
     <div className={`bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 p-5 ${className}`}>
       <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
@@ -3863,19 +3886,20 @@ function WealthValueLineCard({ title, rows, months, onMonths, noteOpen, onToggle
           <div className="h-full flex items-center justify-center text-sm font-bold text-slate-500">表示できる評価額の推移がありません。</div>
         ) : (
           <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+            <ComposedChart data={data} margin={{ top: 8, right: 18, left: 4, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
               <XAxis
                 dataKey="month"
                 interval={0}
-                height={28}
+                height={32}
                 axisLine={false}
                 tickLine={false}
                 tick={(props) => {
                   const { x, y, payload, index } = props
                   if (!labelIndexes.has(index)) return <g />
+                  const textAnchor = index === firstLabelIndex ? 'start' : index === lastLabelIndex ? 'end' : 'middle'
                   return (
-                    <text x={x} y={y + 12} textAnchor="middle" fill="#64748b" fontSize={11}>
+                    <text x={x} y={y + 14} textAnchor={textAnchor} fill="#64748b" fontSize={11}>
                       {payload?.value}
                     </text>
                   )
@@ -3925,7 +3949,7 @@ function AllocationShareCard({ title, rows, anchorId }) {
     .filter((row) => row.name && row.value > 0)
   const total = slices.reduce((sum, row) => sum + row.value, 0)
   return (
-    <div id={anchorId} className="xl:col-span-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 p-5 flex flex-col min-h-0">
+    <div id={anchorId} className={`xl:col-span-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 p-5 ${slices.length <= 1 ? 'self-start h-auto' : 'flex flex-col min-h-0'}`}>
       <h3 className="font-black text-slate-900 dark:text-white">{title}</h3>
       {slices.length === 0 ? (
         <p className="mt-3 text-sm font-bold text-slate-500 dark:text-slate-400">表示できる配分がありません。</p>
@@ -5123,7 +5147,6 @@ const WealthSection = ({
     rawStockSlots,
     rawFundSlots,
     assetLotBuyIsoKey,
-    wealthChartMonths,
     valuationUsdJpy,
     fxRatesByDate,
     stockEarliestBuy,
@@ -13009,7 +13032,7 @@ export default function MyPage({
   const userId = user?.id || null
   const { profile: exposureProfile, loading: exposureLoading } = usePortfolioExposureProfile(userId)
   const [relatedNewsRows, setRelatedNewsRows] = useState([])
-  const [activeTab, setActiveTab] = useState(() => {
+  const [paintedTab, setPaintedTab] = useState(() => {
     try {
       const tabFromUrl = typeof window !== 'undefined'
         ? new URLSearchParams(window.location.search).get('tab')
@@ -13023,6 +13046,15 @@ export default function MyPage({
       return 'wealth'
     }
   })
+  const [activeTab, setActiveTab] = useState(paintedTab)
+  const tabSwitchMarkRef = useRef(0)
+  useEffect(() => {
+    if (!tabSwitchMarkRef.current) return undefined
+    const elapsed = Math.round(performance.now() - tabSwitchMarkRef.current)
+    window.__mmTabContentMs = elapsed
+    tabSwitchMarkRef.current = 0
+    return undefined
+  }, [activeTab])
   useEffect(() => {
     if (activeTab !== 'analysis') return undefined
     let cancelled = false
@@ -13039,27 +13071,39 @@ export default function MyPage({
 
   const handleTabChange = (nextTab) => {
     const normalizedTab = MYPAGE_ALLOWED_TABS.includes(nextTab) ? normalizeMyPageTab(nextTab) : 'wealth'
-    setActiveTab(normalizedTab)
-    recordUserActivityEvent(user?.id, 'mypage_tab_open', { tab: normalizedTab })
-    try {
-      const params = new URLSearchParams(location.search || '')
-      params.set('tab', normalizedTab)
-      const search = params.toString()
-      navigate(
-        {
-          pathname: '/mypage',
-          search: search ? `?${search}` : '',
-        },
-        { replace: true },
-      )
-    } catch {
-      // ignore
+    const startedAt = typeof performance !== 'undefined' ? performance.now() : 0
+    tabSwitchMarkRef.current = startedAt
+    setPaintedTab(normalizedTab)
+    if (startedAt && typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(() => {
+        window.__mmTabPaintMs = Math.round(performance.now() - startedAt)
+      })
     }
-    try {
-      localStorage.setItem(MYPAGE_TAB_STORAGE_KEY, normalizedTab)
-    } catch {
-      // ignore storage failures
-    }
+    window.setTimeout(() => {
+      startTransition(() => {
+        setActiveTab(normalizedTab)
+      })
+      recordUserActivityEvent(user?.id, 'mypage_tab_open', { tab: normalizedTab })
+      try {
+        const params = new URLSearchParams(location.search || '')
+        params.set('tab', normalizedTab)
+        const search = params.toString()
+        navigate(
+          {
+            pathname: '/mypage',
+            search: search ? `?${search}` : '',
+          },
+          { replace: true },
+        )
+      } catch {
+        // ignore
+      }
+      try {
+        localStorage.setItem(MYPAGE_TAB_STORAGE_KEY, normalizedTab)
+      } catch {
+        // ignore storage failures
+      }
+    }, 0)
   }
 
   /** 資産タブの保有一覧へ移動して、該当セクションまでスクロール */
@@ -13078,6 +13122,7 @@ export default function MyPage({
       const normalized = tabFromUrl ? normalizeMyPageTab(tabFromUrl) : null
       if (!normalized || !MYPAGE_ALLOWED_TABS.includes(normalized)) return
       setActiveTab((prev) => (prev === normalized ? prev : normalized))
+      setPaintedTab((prev) => (prev === normalized ? prev : normalized))
       try {
         localStorage.setItem(MYPAGE_TAB_STORAGE_KEY, normalized)
       } catch {
@@ -16761,7 +16806,7 @@ export default function MyPage({
                 type="button"
                 onClick={() => handleTabChange(tab.id)}
                 className={`pointer-events-auto inline-flex items-center px-4 py-2.5 rounded-full text-xs md:text-sm font-bold whitespace-nowrap transition shrink-0 ${
-                  activeTab === tab.id || (tab.id === 'point' && activeTab === 'debt')
+                  paintedTab === tab.id || (tab.id === 'point' && paintedTab === 'debt')
                     ? 'bg-orange-500 text-white'
                     : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400'
                 }`}

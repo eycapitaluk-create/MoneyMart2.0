@@ -281,7 +281,7 @@ export default function PortfolioDiagnosisPanel({
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between lg:gap-4">
           <div className="min-w-0 lg:max-w-[38%]">
             <h3 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
-              <Sparkles size={18} className="text-violet-500" />
+              <Sparkles size={18} className="text-orange-500" />
               AIポートフォリオ分析
             </h3>
             <p className="mt-1 text-xs font-bold text-slate-500 dark:text-slate-400">
@@ -302,7 +302,7 @@ export default function PortfolioDiagnosisPanel({
             type="button"
             onClick={diagnose}
             disabled={!hasHoldings || loading || usageCount >= DIAG_DAILY_LIMIT || cooldownUntilTs > Date.now()}
-            className="shrink-0 self-start lg:self-start px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white text-sm font-black shadow-sm transition flex items-center gap-2"
+            className="shrink-0 self-start lg:self-start px-4 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white text-sm font-black shadow-sm transition flex items-center gap-2"
           >
             {loading ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
             {loading ? '分析中...' : 'AIで分析'}
@@ -313,7 +313,7 @@ export default function PortfolioDiagnosisPanel({
       {/* 分析ボタン直下：結果・エラー・ステータス（スクロールしなくてもすぐ見える） */}
       <div className="px-5 pt-4 pb-5 space-y-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-900/30">
         {loading ? (
-          <div className="flex items-center gap-2 rounded-xl border border-violet-200 dark:border-violet-900/50 bg-violet-50/80 dark:bg-violet-950/20 px-4 py-3 text-sm font-bold text-violet-700 dark:text-violet-300">
+          <div className="flex items-center gap-2 rounded-xl border border-orange-200 dark:border-orange-900/50 bg-orange-50/80 dark:bg-orange-950/20 px-4 py-3 text-sm font-bold text-orange-700 dark:text-orange-300">
             <Loader2 size={16} className="animate-spin shrink-0" />
             分析中です…
           </div>
@@ -482,7 +482,7 @@ export default function PortfolioDiagnosisPanel({
                                 <span className="text-[11px] text-slate-400 dark:text-slate-500 block">{row.ticker}</span>
                               ) : null}
                             </div>
-                            <span className="shrink-0 text-lg sm:text-xl font-mono font-black tabular-nums tracking-tight text-violet-700 dark:text-violet-200">
+                            <span className="shrink-0 text-lg sm:text-xl font-mono font-black tabular-nums tracking-tight text-[#1e3a5f] dark:text-orange-200">
                               {row.weight.toFixed(1)}%
                             </span>
                           </div>

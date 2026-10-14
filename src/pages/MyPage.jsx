@@ -1,4 +1,4 @@
-import { Fragment, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, lazy, Suspense, startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useLocation, Link } from 'react-router-dom'
 import {
   PieChart, Wallet, CreditCard, TrendingUp, TrendingDown,
@@ -10,6 +10,7 @@ import {
   ForkKnifeCrossed, Gamepad2, Stethoscope, GraduationCap, Plane, Shirt, Dog, MoreHorizontal,
   ChevronDown,
   HelpCircle,
+  Info,
 } from 'lucide-react'
 import {
   Cell, Pie, ResponsiveContainer, Tooltip,
@@ -18,7 +19,7 @@ import {
   AreaChart, Area, LabelList
 } from 'recharts'
 import { supabase } from '../lib/supabase'
-import { monthlyChange as portfolioMonthlyChange, splitRatioAfter } from '../lib/portfolioCalc'
+import { monthlyChange, splitRatioAfter } from '../lib/portfolioCalc'
 import { signedReturnTextClassStrong } from '../lib/marketDirectionColors'
 import {
   loadMyPageData,
@@ -398,17 +399,15 @@ const getFundWatchlistMemoStorageKey = (userId) =>
   (userId ? `${FUND_WATCHLIST_MEMO_STORAGE_KEY_PREFIX}_${userId}` : `${FUND_WATCHLIST_MEMO_STORAGE_KEY_PREFIX}_guest`)
 const AI_REPORT_DRAFT_STORAGE_KEY = 'mm_ai_report_draft_v1'
 const MYPAGE_TAB_STORAGE_KEY = 'mm_mypage_active_tab_v1'
-const MYPAGE_ALLOWED_TABS = ['wealth', 'stock', 'fund', 'related', 'sellhistory', 'point', 'debt', 'coach', 'dividend']
+const MYPAGE_ALLOWED_TABS = ['wealth', 'analysis', 'watch', 'stock', 'fund', 'related', 'sellhistory', 'point', 'debt', 'coach', 'dividend']
 const normalizeMyPageTab = (value = '') => {
   const raw = String(value || '').trim().toLowerCase()
   if (!raw) return 'wealth'
-  if (raw === 'summary') return 'wealth'
+  if (raw === 'summary' || raw === 'stock' || raw === 'stocks' || raw === 'fund' || raw === 'funds') return 'wealth'
   if (raw === 'budget') return 'point'
-  if (raw === 'stocks') return 'stock'
-  if (raw === 'funds') return 'fund'
   if (raw === 'coach') return 'debt'
   if (raw === 'history' || raw === 'sell-history' || raw === 'sell_history') return 'sellhistory'
-  if (raw === 'impact' || raw === 'exposure' || raw === 'kanren') return 'related'
+  if (raw === 'related' || raw === 'impact' || raw === 'exposure' || raw === 'kanren') return 'analysis'
   return raw
 }
 /** App の通知バッジのみ更新。家計の保存成功時だけ呼ぶ（レンダー連動の useEffect では呼ばない）。 */
@@ -425,7 +424,6 @@ const PORTFOLIO_QUOTES_HYDRATE_TIMEOUT_MS = 25_000
 const OWNED_ASSET_SYNC_TIMEOUT_MS = 20_000
 const POINT_EXPIRY_ALERT_DAYS = 30
 const PRICE_STALE_ALERT_DAYS = 3
-const TARGET_STOCK_RATIO_PCT = 60
 const PORTFOLIO_DROP_ALERT_THRESHOLD_OPTIONS = [
   { value: null, label: 'オフ' },
   { value: -3, label: '-3%' },
@@ -669,7 +667,7 @@ const ownedPortfolioTableScrollWrapClass =
   'hidden lg:block overflow-x-auto touch-pan-x rounded-xl border border-slate-200/90 dark:border-slate-700/90 bg-white dark:bg-slate-900 shadow-md shadow-slate-900/[0.06] dark:shadow-none ring-1 ring-slate-900/[0.04] dark:ring-white/[0.06]'
 const ownedPortfolioTableBaseClass = 'w-full text-base lg:text-sm tabular-nums'
 const ownedPortfolioTheadRowClass =
-  'bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 dark:from-slate-950 dark:via-slate-900 dark:to-indigo-950 text-white shadow-[inset_0_-1px_0_rgba(255,255,255,0.07)]'
+  'bg-[#1e3a5f] dark:bg-slate-900 text-white shadow-[inset_0_-1px_0_rgba(255,255,255,0.07)]'
 const ownedPortfolioThBaseClass =
   'px-3 py-3.5 lg:px-5 lg:py-3.5 font-extrabold text-[11px] sm:text-xs text-white/95 tracking-wide align-bottom whitespace-nowrap'
 const ownedPortfolioTbodyRowClass =
@@ -778,9 +776,6 @@ const normalizeOwnedDisplayPrice = (symbol, value) => {
 
 const FX_RATES_TO_JPY = {
   JPY: 1,
-  USD: 150,
-  EUR: 160,
-  GBP: 190,
 }
 
 const isJpListedCode = (symbol = '') => {
@@ -923,11 +918,11 @@ const lotYenParts = (lot, qty, buyPrice, currentPrice, fxByDate, valuationUsdJpy
   const now = positiveUsdJpy(valuationUsdJpy)
   const costKnown = buyRate != null
   const valueKnown = now != null
-  const costJpy = costKnown ? qty * buyPrice * buyRate : 0
   const valueJpy = valueKnown ? qty * currentPrice * now : 0
   if (!costKnown || !valueKnown) {
-    return { costJpy, valueJpy, pricePnlJpy: null, fxPnlJpy: null, included: valueKnown, costKnown, currency: 'USD' }
+    return { costJpy: 0, valueJpy, pricePnlJpy: null, fxPnlJpy: null, included: valueKnown, costKnown: false, currency: 'USD' }
   }
+  const costJpy = qty * buyPrice * buyRate
   return {
     costJpy,
     valueJpy,
@@ -1019,8 +1014,8 @@ const inferFundCountryLabel = (symbol = '', name = '') => {
 const toJpy = (value, currency = 'JPY') => {
   const n = Number(value)
   if (!Number.isFinite(n)) return 0
-  const rate = Number(FX_RATES_TO_JPY[currency] || 1)
-  return n * rate
+  if (String(currency || 'JPY').toUpperCase() !== 'JPY') return 0
+  return n
 }
 
 const formatStockNativePrice = (value, currency = 'JPY') => {
@@ -1245,7 +1240,7 @@ const buildAiSummaryReport = ({ totalReturnRate, dti, concentration, bestReturn 
       : '負債比率は許容範囲です。積立比率の見直し余地を確認できます。',
     bestReturn >= 20
       ? '高リターン銘柄の比率が大きくなっていないか、事前ルールと照らして確認できます。'
-      : 'リターン改善余地があります。コストや分散の観点から積立条件を確認できます。',
+      : '登録したコストと保有の散らばりを、あとから見比べる材料になります。',
   ]
 
   const confidence = riskScoreResult.score >= 70 ? '高' : riskScoreResult.score >= 40 ? '中' : '中'
@@ -1445,8 +1440,9 @@ const mergeMonthEndsAndLotBuysIntoAnchors = ({
 }
 
 /**
- * 価格履歴が届くまでの仮表示。始点は取得元本、終点は今の評価額だけ。
- * 月次の直線補間はしない。履歴が取れれば保有ロット×終値の系列に置き換わる。
+ * 過去月はその月の最終日、今月は「今日」まで。未来月は出さない。
+ * 既定は元本→現在評価の線形補間。保有タブでは stock_daily_prices を読み、
+ * 各日付時点の保有ロット×その日前の終値で再評価した系列に置き換える。
  */
 const buildAssetGrowthTrendData = (totalInvested, totalCurrentValue, opts = {}) => {
   const base = Math.max(0, Number(totalInvested || 0))
@@ -1460,7 +1456,6 @@ const buildAssetGrowthTrendData = (totalInvested, totalCurrentValue, opts = {}) 
   ]
 }
 
-/** 価格履歴が無いときの株式・ファンド内訳。両端だけ（取得元本と今の評価）。 */
 const buildAssetGrowthTrendSplitData = (stockInvested, stockCurrent, fundInvested, fundCurrent, opts = {}) => {
   const si = Math.max(0, Number(stockInvested || 0))
   const se = Math.max(0, Number(stockCurrent || 0))
@@ -1653,6 +1648,7 @@ const fifoStockSellFromLots = ({ symbol, sellQty, ownedLots, fxByDate }) => {
   })
   let remaining = want
   let costBasisJpy = 0
+  const buyLots = []
   const updatedSymLots = []
   for (const lot of sorted) {
     const q = Math.max(0, Number(lot.qty || 0))
@@ -1663,7 +1659,10 @@ const fifoStockSellFromLots = ({ symbol, sellQty, ownedLots, fxByDate }) => {
     }
     const take = Math.min(remaining, q)
     const frac = q > 0 ? take / q : 0
-    costBasisJpy += ownedStockLotCostJpy(lot, symU, fxByDate) * frac
+    const portionCost = ownedStockLotCostJpy(lot, symU, fxByDate) * frac
+    costBasisJpy += portionCost
+    const buyDate = toIsoDate(lot.buyDate || lot.buy_date || '')
+    if (buyDate && take > 0) buyLots.push({ buyDate, qty: take, costJpy: portionCost })
     remaining -= take
     const left = q - take
     if (left > 1e-9) {
@@ -1677,7 +1676,7 @@ const fifoStockSellFromLots = ({ symbol, sellQty, ownedLots, fxByDate }) => {
     (l) => String(l?.symbol || '').trim().toUpperCase() !== symU,
   )
   const updatedOwned = normalizeOwnedLots([...otherLots, ...updatedSymLots])
-  return { ok: true, updatedOwned, costBasisJpy, sellQty: want }
+  return { ok: true, updatedOwned, costBasisJpy, sellQty: want, buyLots }
 }
 
 /**
@@ -1714,6 +1713,7 @@ const fifoFundSellFromLots = ({ symbol, sellUnits, ownedFundLots, fxByDate }) =>
   })
   let remaining = want
   let costBasisJpy = 0
+  const buyLots = []
   const updatedSymLots = []
   for (const lot of sorted) {
     const q = lotUnits(lot)
@@ -1727,7 +1727,10 @@ const fifoFundSellFromLots = ({ symbol, sellUnits, ownedFundLots, fxByDate }) =>
     }
     const take = Math.min(remaining, q)
     const frac = q > 0 ? take / q : 0
-    costBasisJpy += ownedFundLotCostJpy(lot, fxByDate) * frac
+    const portionCost = ownedFundLotCostJpy(lot, fxByDate) * frac
+    costBasisJpy += portionCost
+    const buyDate = toIsoDate(lot.buyDate || lot.buy_date || '')
+    if (buyDate && take > 0) buyLots.push({ buyDate, qty: take, costJpy: portionCost })
     remaining -= take
     const invest = Math.max(0, Number(lot.investAmount ?? lot.invest_amount ?? 0))
     const buyP = Math.max(0, Number(lot.buyPrice ?? lot.buy_price ?? 0))
@@ -1749,7 +1752,7 @@ const fifoFundSellFromLots = ({ symbol, sellUnits, ownedFundLots, fxByDate }) =>
     (l) => String(l?.symbol || '').trim().toUpperCase() !== symU,
   )
   const updatedOwned = normalizeOwnedFundAmounts([...otherLots, ...updatedSymLots])
-  return { ok: true, updatedOwned, costBasisJpy, sellUnits: want }
+  return { ok: true, updatedOwned, costBasisJpy, sellUnits: want, buyLots }
 }
 
 /** buildAssetGrowthTrendData と同じ日付軸（アンカー + ラベル） */
@@ -1840,43 +1843,6 @@ const collectTrendAnchorsFromOpts = (opts = {}) => {
  * 各アンカー: 買付日≦アンカーのロットのみ × その日以前の終値で円換算。
  * 最終アンカーは一覧の最新評価（ライブ）に合わせる。
  */
-const realizedPnlThrough = (trades, iso) => {
-  let pnl = 0
-  for (const trade of Array.isArray(trades) ? trades : []) {
-    const sell = toIsoDate(trade?.sellDate || '')
-    if (!sell || sell > iso) continue
-    pnl += Number(trade?.realizedPnlJpy || 0)
-  }
-  return pnl
-}
-
-const addSoldLotsStillHeld = (trades, anchorIso, priceBySymbol, fxByDate, bucket) => {
-  for (const trade of Array.isArray(trades) ? trades : []) {
-    const sell = toIsoDate(trade?.sellDate || '')
-    if (!sell || anchorIso >= sell) continue
-    const sym = String(trade?.symbol || '').trim().toUpperCase()
-    if (!sym) continue
-    for (const lot of Array.isArray(trade?.buyLots) ? trade.buyLots : []) {
-      const buy = toIsoDate(lot?.buyDate || '')
-      if (!buy || buy > anchorIso) continue
-      const qty = Number(lot?.qty || 0)
-      if (!(qty > 0)) continue
-      const series = priceBySymbol.get(sym)
-      const px = series ? closeOnOrBeforeSorted(series, anchorIso) : null
-      if (!(px > 0)) continue
-      const cur = inferStockCurrency(sym)
-      if (cur === 'USD') {
-        const rate = lookupFxUsdJpyOn(anchorIso, fxByDate)
-        if (!(rate > 0)) continue
-        bucket.value += qty * px * rate
-      } else {
-        bucket.value += toJpy(qty * px, cur)
-      }
-      bucket.cost += Number(lot?.costJpy || 0)
-    }
-  }
-}
-
 const computeHistoricalWealthTrendSeries = ({
   anchorPack,
   ownedStockItems,
@@ -1886,9 +1852,8 @@ const computeHistoricalWealthTrendSeries = ({
   valuationUsdJpy,
   liveStockJpy,
   liveFundJpy,
-  realizedStockTrades = [],
-  realizedFundTrades = [],
   splits = [],
+  trades = [],
 }) => {
   const { anchors, labels } = anchorPack
   const stockRows = Array.isArray(ownedStockItems) ? ownedStockItems : []
@@ -1910,11 +1875,11 @@ const computeHistoricalWealthTrendSeries = ({
       }
       return {
         month: labels[idx],
+        asOf: anchorIso,
         stockJpy: ls,
         fundJpy: lf,
         stockCostJpy: Math.round(stockCostJpy),
         fundCostJpy: Math.round(fundCostJpy),
-        realizedPnlJpy: realizedPnlThrough(realizedStockTrades, anchorIso) + realizedPnlThrough(realizedFundTrades, anchorIso),
       }
     }
     let stockJpy = 0
@@ -1932,24 +1897,19 @@ const computeHistoricalWealthTrendSeries = ({
       const qty = rawQty * ratio
       if (qty <= 0) continue
       const series = priceBySymbol.get(sym)
-      const px = resolveStockPriceOnDate({ lot, series, asOfIso: anchorIso })
+      const adjustedBuy = ratio > 0 ? Number(lot.buyPrice || 0) / ratio : Number(lot.buyPrice || 0)
+      const px = resolveStockPriceOnDate({ lot: { ...lot, buyPrice: adjustedBuy }, series, asOfIso: anchorIso })
       if (!px) continue
       const cur = inferStockCurrency(sym)
       const nativeVal = qty * px
       if (cur === 'USD') {
-        if (!(Number(lot?.buyFxRate) > 0)) continue
         const r = lookupFxUsdJpyOn(anchorIso, fxByDate)
-        if (!(r > 0)) continue
-        stockJpy += nativeVal * r
-      } else {
-        stockJpy += toJpy(nativeVal, cur)
+        if (r > 0) stockJpy += nativeVal * r
+      } else if (cur === 'JPY') {
+        stockJpy += nativeVal
       }
       stockCostJpy += ownedStockLotCostJpy(lot, sym, fxByDate)
     }
-    const soldStock = { value: 0, cost: 0 }
-    addSoldLotsStillHeld(realizedStockTrades, anchorIso, priceBySymbol, fxByDate, soldStock)
-    stockJpy += soldStock.value
-    stockCostJpy += soldStock.cost
 
     for (const lot of fundRows) {
       const buyIso = toIsoDate(lot.buyDate || lot.buy_date || '')
@@ -1958,8 +1918,7 @@ const computeHistoricalWealthTrendSeries = ({
       if (!sym) continue
       const invest = Math.max(0, Number(lot.investAmount || lot.invest_amount || 0))
       const buyPx = Math.max(0, Number(lot.buyPrice || lot.buy_price || 0))
-      const ratio = splitRatioAfter(buyIso, sym, splits)
-      const units = (buyPx > 0 ? invest / buyPx : 0) * ratio
+      const units = buyPx > 0 ? invest / buyPx : 0
       if (units <= 0) continue
       const series = priceBySymbol.get(sym)
       const px = series ? closeOnOrBeforeSorted(series, anchorIso) : null
@@ -1967,38 +1926,66 @@ const computeHistoricalWealthTrendSeries = ({
       const cur = inferStockCurrency(sym)
       const nativeVal = units * px
       if (cur === 'USD') {
-        if (!(Number(lot?.buyFxRate) > 0)) continue
         const r = lookupFxUsdJpyOn(anchorIso, fxByDate)
-        if (!(r > 0)) continue
-        fundJpy += nativeVal * r
-      } else {
-        fundJpy += toJpy(nativeVal, cur)
+        if (r > 0) fundJpy += nativeVal * r
+      } else if (cur === 'JPY') {
+        fundJpy += nativeVal
       }
       fundCostJpy += ownedFundLotCostJpy(lot, fxByDate)
     }
-    const soldFund = { value: 0, cost: 0 }
-    addSoldLotsStillHeld(realizedFundTrades, anchorIso, priceBySymbol, fxByDate, soldFund)
-    fundJpy += soldFund.value
-    fundCostJpy += soldFund.cost
 
-    const realizedPnlJpy = realizedPnlThrough(realizedStockTrades, anchorIso) + realizedPnlThrough(realizedFundTrades, anchorIso)
-    return {
-      month: labels[idx],
-      stockJpy: Math.max(0, Math.round(stockJpy)),
-      fundJpy: Math.max(0, Math.round(fundJpy)),
-      stockCostJpy: Math.round(stockCostJpy),
-      fundCostJpy: Math.round(fundCostJpy),
-      realizedPnlJpy,
+    for (const trade of Array.isArray(trades) ? trades : []) {
+      const sell = toIsoDate(trade.sellDate || trade.sell_date || '')
+      if (!sell || anchorIso >= sell) continue
+      const sym = String(trade.symbol || '').trim().toUpperCase()
+      const soldLots = Array.isArray(trade.buyLots) ? trade.buyLots : []
+      for (const sold of soldLots) {
+        const buy = toIsoDate(sold.buyDate || sold.buy_date || '')
+        if (!buy || buy > anchorIso) continue
+        const soldQty = Number(sold.qty)
+        const soldCost = Number(sold.costJpy ?? sold.cost_jpy)
+        if (!(soldQty > 0)) continue
+        const series = priceBySymbol.get(sym)
+        const px = series ? closeOnOrBeforeSorted(series, anchorIso) : null
+        const price = px || (Number.isFinite(soldCost) && soldCost > 0 ? soldCost / soldQty : 0)
+        if (!(price > 0)) continue
+        const cur = inferStockCurrency(sym)
+        let value = soldQty * price
+        if (cur === 'USD') {
+          const r = lookupFxUsdJpyOn(anchorIso, fxByDate)
+          if (!(r > 0)) continue
+          value *= r
+        } else if (cur !== 'JPY') {
+          continue
+        }
+        if (trade.kind === 'fund') {
+          fundJpy += value
+          fundCostJpy += Number.isFinite(soldCost) ? soldCost : 0
+        } else {
+          stockJpy += value
+          stockCostJpy += Number.isFinite(soldCost) ? soldCost : 0
+        }
+      }
     }
+
+      return {
+        month: labels[idx],
+        asOf: anchorIso,
+        stockJpy: Math.max(0, Math.round(stockJpy)),
+        fundJpy: Math.max(0, Math.round(fundJpy)),
+        stockCostJpy: Math.round(stockCostJpy),
+        fundCostJpy: Math.round(fundCostJpy),
+      }
   })
 
   const assetGrowthData = split.map((r) => {
     const sv = Math.max(0, Math.round((r.stockJpy || 0) + (r.fundJpy || 0)))
     const sc = Number.isFinite(r.stockCostJpy) ? Number(r.stockCostJpy) : 0
     const fc = Number.isFinite(r.fundCostJpy) ? Number(r.fundCostJpy) : 0
-    const pnlJpy = (r.stockJpy || 0) - sc + (r.fundJpy || 0) - fc + Number(r.realizedPnlJpy || 0)
+    const pnlJpy = (r.stockJpy || 0) - sc + (r.fundJpy || 0) - fc
     return {
       month: r.month,
+      asOf: r.asOf,
       value: sv,
       pnlJpy: Math.round(pnlJpy),
     }
@@ -2012,9 +1999,10 @@ const computeHistoricalWealthTrendSeries = ({
     const ci = Math.round(c)
     return {
       month: r.month,
+      asOf: r.asOf,
       value: v,
       costJpy: ci,
-      pnlJpy: Math.round(v - ci + Number(r.realizedPnlJpy || 0)),
+      pnlJpy: Math.round(v - ci),
     }
   })
 
@@ -2026,9 +2014,10 @@ const computeHistoricalWealthTrendSeries = ({
     const ci = Math.round(c)
     return {
       month: r.month,
+      asOf: r.asOf,
       value: v,
       costJpy: ci,
-      pnlJpy: Math.round(v - ci + Number(r.realizedPnlJpy || 0)),
+      pnlJpy: Math.round(v - ci),
     }
   })
 
@@ -2898,7 +2887,7 @@ const LoanApprovalDiagnosisModal = ({ isOpen, onClose }) => {
 
     if (prob >= 80) return { prob, label: '高め', color: 'text-emerald-500', confidenceLow, confidenceHigh, reasons }
     if (prob >= 60) return { prob, label: '標準', color: 'text-amber-500', confidenceLow, confidenceHigh, reasons }
-    return { prob, label: '要改善', color: 'text-red-500', confidenceLow, confidenceHigh, reasons }
+    return { prob, label: '低め', color: 'text-red-500', confidenceLow, confidenceHigh, reasons }
   }
 
   const handleAnswer = (option) => {
@@ -3406,7 +3395,7 @@ const SummarySection = ({
           <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 p-4 mt-4">
             <h4 className="text-sm font-black text-slate-900 dark:text-white mb-2">クイックインサイト</h4>
             <p className="text-xs text-slate-500 leading-relaxed">
-              現在はファンド中心の構成です。リスクを抑えたい場合は、値動きの異なる資産の比率を高めると変動幅の平準化が期待できます。
+              表示中の数値は登録データに基づきます。特定の金融商品の売買を勧誘するものではありません。
             </p>
           </div>
 
@@ -3528,7 +3517,7 @@ const WealthAccumulationSimCard = () => {
     if (typeof window === 'undefined') return true
     try {
       const v = window.localStorage.getItem(WEALTH_ACCUM_SIM_EXPANDED_KEY)
-      if (v === null) return true
+      if (v === null) return false
       return v === '1'
     } catch {
       return true
@@ -3597,11 +3586,11 @@ const WealthAccumulationSimCard = () => {
   const summaryOneLine = `毎月${fmt(monthlyNum)}・${years}年・${indexShortJa}ベースの試算 → 評価額 ${fmt(fv)}（積立合計 ${fmt(contributed)}）`
 
   return (
-    <div className="rounded-2xl border border-indigo-200/80 dark:border-indigo-900/50 bg-gradient-to-br from-indigo-50/90 to-white dark:from-indigo-950/40 dark:to-slate-900 px-3 py-3 sm:px-4 sm:py-4 shadow-sm">
+    <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-gradient-to-br from-orange-50/80 to-white dark:from-slate-900 dark:to-slate-900 px-3 py-3 sm:px-4 sm:py-4 shadow-sm">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3 lg:mb-0">
         <div className="flex items-start gap-2 min-w-0 sm:flex-1">
-          <div className="rounded-lg bg-indigo-500/15 dark:bg-indigo-400/10 p-1.5 shrink-0">
-            <PiggyBank className="text-indigo-600 dark:text-indigo-400" size={20} aria-hidden />
+          <div className="rounded-lg bg-orange-500/15 p-1.5 shrink-0">
+            <PiggyBank className="text-orange-600" size={20} aria-hidden />
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-start gap-2">
@@ -3613,7 +3602,7 @@ const WealthAccumulationSimCard = () => {
                 onClick={() => persistSimExpanded(!simExpanded)}
                 aria-expanded={simExpanded}
                 aria-controls={simExpanded ? 'wealth-accum-sim-details' : undefined}
-                className="shrink-0 rounded-xl border border-indigo-200/90 dark:border-indigo-800/60 bg-white/90 dark:bg-slate-800/80 p-1.5 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 transition-colors touch-manipulation"
+                className="shrink-0 rounded-xl border border-orange-200 dark:border-orange-800/60 bg-white/90 dark:bg-slate-800/80 p-1.5 text-orange-700 dark:text-orange-300 hover:bg-orange-50 dark:hover:bg-orange-950/50 transition-colors touch-manipulation"
                 title={simExpanded ? '折りたたむ' : '開いて詳細を表示'}
               >
                 <ChevronDown className={`w-5 h-5 transition-transform duration-200 ${simExpanded ? 'rotate-180' : ''}`} aria-hidden />
@@ -3633,7 +3622,7 @@ const WealthAccumulationSimCard = () => {
         </div>
         <Link
           to="/funds"
-          className="shrink-0 text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline inline-flex items-center gap-1 self-start sm:pt-0.5"
+          className="shrink-0 text-[11px] font-bold text-[#1e3a5f] dark:text-orange-300 hover:underline inline-flex items-center gap-1 self-start sm:pt-0.5"
         >
           ファンド一覧 <ChevronRight size={14} className="opacity-80" aria-hidden />
         </Link>
@@ -3653,7 +3642,7 @@ const WealthAccumulationSimCard = () => {
                 onClick={() => setIndexLabel(opt.id)}
                 className={`px-2.5 py-1 rounded-full text-[11px] font-bold border transition ${
                   indexLabel === opt.id
-                    ? 'bg-indigo-600 text-white border-indigo-600'
+                    ? 'bg-orange-500 text-white border-orange-500'
                     : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600'
                 }`}
               >
@@ -3720,20 +3709,23 @@ const WealthAccumulationSimCard = () => {
             </label>
           </div>
 
-          <div className="rounded-xl border border-indigo-200/60 dark:border-indigo-900/40 bg-white/90 dark:bg-slate-800/50 px-3 py-2.5 flex-1 flex flex-col lg:min-h-0">
-            <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 leading-snug">試算の結果（月次・複利・税・手数料・インフレは含みません）</p>
-            <p className="text-[10px] text-slate-600 dark:text-slate-400 mt-0.5 leading-snug">
-              仮定の年率{' '}
-              <span className="font-black text-slate-800 dark:text-slate-100">{simAnnualPct.toFixed(1)}%</span>
-              {realized3mLoading
-                ? '（取得中は暫定で年率5%）'
-                : rateFromRealized
-                  ? `（直近約3か月 ${realized3m.pct >= 0 ? '+' : ''}${realized3m.pct.toFixed(2)}% を (1+その数)^4−1 で年換算した参考値）`
-                  : '（実績が使えないため参考として年率5%）'}
-            </p>
-            <p className="text-[10px] text-slate-500 dark:text-slate-500 mt-1 leading-snug">
-              月利率は (1+参考年率)^(1/12)−1 とし、毎月「前月末評価額＋当月積立」に当月末まで複利（先積立・社内検算Excelと同じ手順）です。
-            </p>
+          <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-800/50 px-3 py-2.5 flex-1 flex flex-col lg:min-h-0">
+            <details className="text-[10px] text-slate-500 dark:text-slate-400">
+              <summary className="font-bold cursor-pointer text-slate-400">計算の前提</summary>
+              <p className="mt-1 leading-snug">試算の結果（月次・複利・税・手数料・インフレは含みません）</p>
+              <p className="mt-0.5 leading-snug">
+                仮定の年率{' '}
+                <span className="font-black text-slate-800 dark:text-slate-100">{simAnnualPct.toFixed(1)}%</span>
+                {realized3mLoading
+                  ? '（取得中は暫定で年率5%）'
+                  : rateFromRealized
+                    ? `（直近約3か月 ${realized3m.pct >= 0 ? '+' : ''}${realized3m.pct.toFixed(2)}% を (1+その数)^4−1 で年換算した参考値）`
+                    : '（実績が使えないため参考として年率5%）'}
+              </p>
+              <p className="mt-1 leading-snug">
+                月利率は (1+参考年率)^(1/12)−1 とし、毎月「前月末評価額＋当月積立」に当月末まで複利（先積立・社内検算Excelと同じ手順）です。
+              </p>
+            </details>
             <div className="mt-2 grid grid-cols-2 gap-3 items-end">
               <div className="min-w-0">
                 <p className="text-[10px] font-bold text-slate-400 truncate">積立合計（元本）</p>
@@ -3741,7 +3733,7 @@ const WealthAccumulationSimCard = () => {
               </div>
               <div className="min-w-0 text-right">
                 <p className="text-[10px] font-bold text-slate-400">試算の評価額</p>
-                <p className="text-lg sm:text-xl font-black text-indigo-600 dark:text-indigo-400 tabular-nums">{fmt(fv)}</p>
+                <p className="text-lg sm:text-xl font-black text-orange-600 dark:text-orange-400 tabular-nums">{fmt(fv)}</p>
               </div>
             </div>
           </div>
@@ -3815,6 +3807,219 @@ const calcAveragingDownPlan = ({ avgBuyPrice, currentPrice, currentQty, targetAv
 /** 保有ロット削除の確認（実際の売却・実現損益とは別経路） */
 const CONFIRM_DELETE_OWNED_LOT_JA =
   'この取引（ロット）を削除しますか？誤入力の取り消しであり、「売却記録」とは別です。実現損益の集計・売却履歴には影響しません。'
+
+const TREND_ORANGE = '#F97316'
+const ALLOCATION_COLORS = ['#F97316', '#1e3a5f', '#64748b', '#fb923c', '#334155']
+const TREND_PERIODS = [
+  [1, '1M'],
+  [3, '3M'],
+  [6, '6M'],
+  [12, '1Y'],
+]
+
+function trendCutoffIso(months) {
+  const now = new Date()
+  const start = new Date(now.getFullYear(), now.getMonth() - Number(months || 6), now.getDate())
+  return toLocalYmd(start)
+}
+
+function rowsForTrendWindow(rows, months) {
+  const list = (Array.isArray(rows) ? rows : []).filter((row) => row && row.month != null)
+  const dated = list.filter((row) => /^\d{4}-\d{2}-\d{2}$/.test(String(row.asOf || '')))
+  if (dated.length === 0) return list
+  const cutoff = trendCutoffIso(months)
+  const sliced = dated.filter((row) => row.asOf >= cutoff)
+  return sliced.length >= 2 ? sliced : dated.slice(-2)
+}
+
+function niceManStep(raw) {
+  const steps = raw < 1 ? [0.1, 0.2, 0.5, 1] : [1, 2, 5, 10, 20, 50, 100]
+  return steps.find((step) => step + 1e-9 >= raw) || steps[steps.length - 1]
+}
+
+function trendYAxisSpec(rows) {
+  const values = (Array.isArray(rows) ? rows : []).map((row) => Number(row?.value)).filter((value) => Number.isFinite(value))
+  const fallback = { domain: ['auto', 'auto'], ticks: undefined, width: 48, format: (value) => `${Math.round(Number(value) / 10000)}万` }
+  if (values.length === 0) return fallback
+  const min = Math.min(...values)
+  const max = Math.max(...values)
+  const span = Math.max(1, max - min)
+  const pad = Math.max(span * 0.12, 1)
+  const lo = Math.max(0, min - pad)
+  const hi = max + pad
+  const stepMan = niceManStep(((hi - lo) / 10000) / 4)
+  const step = stepMan * 10000
+  const start = Math.floor(lo / step) * step
+  const ticks = []
+  for (let value = start; value <= hi + step * 0.01 && ticks.length < 6; value += step) {
+    if (value + step * 0.001 >= lo) ticks.push(Math.round(value))
+  }
+  if (ticks.length === 0) ticks.push(Math.round(lo), Math.round(hi))
+  if (ticks[0] > min) ticks.unshift(Math.max(0, ticks[0] - step))
+  if (ticks[ticks.length - 1] < max) ticks.push(ticks[ticks.length - 1] + step)
+  const format = (value) => {
+    const man = Number(value) / 10000
+    const text = stepMan < 1 ? man.toFixed(1) : String(Math.round(man))
+    return `${text}万`
+  }
+  return { domain: [ticks[0], ticks[ticks.length - 1]], ticks, width: stepMan < 1 ? 56 : 44, format }
+}
+
+function sparseLabelIndexes(count, max = 5) {
+  if (count <= 0) return new Set()
+  if (count <= max) return new Set(Array.from({ length: count }, (_, i) => i))
+  const indexes = new Set([0, count - 1])
+  const slots = max - 2
+  for (let i = 1; i <= slots; i += 1) {
+    indexes.add(Math.round((i * (count - 1)) / (slots + 1)))
+  }
+  return indexes
+}
+
+function WealthValueLineCard({ title, rows, months, onMonths, noteOpen, onToggleNote, className = '' }) {
+  const data = rowsForTrendWindow(rows, months)
+  const labelIndexes = sparseLabelIndexes(data.length, 5)
+  const labelIndexList = [...labelIndexes].sort((a, b) => a - b)
+  const firstLabelIndex = labelIndexList[0]
+  const lastLabelIndex = labelIndexList[labelIndexList.length - 1]
+  const yAxis = trendYAxisSpec(data)
+  return (
+    <div className={`bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 p-5 ${className}`}>
+      <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+        <h3 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
+          <TrendingUp size={18} className="text-orange-500" aria-hidden />
+          {title}
+        </h3>
+        <div className="flex items-center gap-2">
+          <div className="flex gap-1" role="group" aria-label="表示期間">
+            {TREND_PERIODS.map(([value, label]) => (
+              <button
+                key={label}
+                type="button"
+                onClick={() => onMonths(value)}
+                aria-pressed={Number(months) === value}
+                className={`px-2 py-1 rounded-lg text-[11px] font-black ${Number(months) === value ? 'bg-orange-500 text-white' : 'bg-white dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-600'}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={onToggleNote}
+            aria-expanded={noteOpen}
+            aria-label="グラフの読み方"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 dark:border-slate-600 text-slate-500 hover:text-orange-600"
+          >
+            <Info size={14} aria-hidden />
+          </button>
+        </div>
+      </div>
+      <div className="h-56">
+        {data.length === 0 ? (
+          <div className="h-full flex items-center justify-center text-sm font-bold text-slate-500">表示できる評価額の推移がありません。</div>
+        ) : (
+          <ResponsiveContainer width="100%" height="100%">
+            <ComposedChart data={data} margin={{ top: 8, right: 18, left: 4, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+              <XAxis
+                dataKey="month"
+                interval={0}
+                height={32}
+                axisLine={false}
+                tickLine={false}
+                tick={(props) => {
+                  const { x, y, payload, index } = props
+                  if (!labelIndexes.has(index)) return <g />
+                  const textAnchor = index === firstLabelIndex ? 'start' : index === lastLabelIndex ? 'end' : 'middle'
+                  return (
+                    <text x={x} y={y + 14} textAnchor={textAnchor} fill="#64748b" fontSize={11}>
+                      {payload?.value}
+                    </text>
+                  )
+                }}
+              />
+              <YAxis
+                tick={{ fontSize: 11, fill: '#64748b' }}
+                axisLine={false}
+                tickLine={false}
+                width={yAxis.width}
+                ticks={yAxis.ticks}
+                domain={yAxis.domain}
+                tickFormatter={yAxis.format}
+              />
+              <Tooltip formatter={(v) => `¥${Math.round(Number(v) || 0).toLocaleString('ja-JP')}`} />
+              <Line type="monotone" dataKey="value" name="評価額" stroke={TREND_ORANGE} strokeWidth={2.5} dot={false} activeDot={{ r: 4 }} />
+            </ComposedChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+      {noteOpen ? (
+        <div className="mt-3 space-y-1.5 text-[11px] font-semibold leading-relaxed text-slate-500 dark:text-slate-400">
+          <p>
+            <span className="font-black text-slate-600 dark:text-slate-300">読み方：</span>
+            折れ線は、その時点の保有を終値（取引の無い日は直近終値）で円換算した評価額です。横軸の日付は最大5個です。
+          </p>
+          <p>
+            <span className="font-black text-slate-600 dark:text-slate-300">評価額：</span>
+            線の高さは評価額です。取得原価との差（含み益・損）は、画面上の損益の数字で確認します。
+          </p>
+          <p>
+            売却記録の<span className="font-black text-slate-600 dark:text-slate-300">実現損益</span>
+            はこのグラフには入りません。売却で保有が減ると、その後の評価額も下がって見えます。売却した分は、買付日から売却日の前日まで推移に含めます。
+          </p>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function AllocationShareCard({ title, rows, anchorId }) {
+  const slices = (Array.isArray(rows) ? rows : [])
+    .map((row, idx) => ({
+      name: row?.name || '',
+      value: Number(row?.value || 0),
+      color: ALLOCATION_COLORS[idx % ALLOCATION_COLORS.length],
+    }))
+    .filter((row) => row.name && row.value > 0)
+  const total = slices.reduce((sum, row) => sum + row.value, 0)
+  return (
+    <div id={anchorId} className={`xl:col-span-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 p-5 ${slices.length <= 1 ? 'self-start h-auto' : 'flex flex-col min-h-0'}`}>
+      <h3 className="font-black text-slate-900 dark:text-white">{title}</h3>
+      {slices.length === 0 ? (
+        <p className="mt-3 text-sm font-bold text-slate-500 dark:text-slate-400">表示できる配分がありません。</p>
+      ) : slices.length === 1 ? (
+        <p className="mt-3 text-base font-black text-slate-900 dark:text-white">{slices[0].name} 100%</p>
+      ) : (
+        <>
+          <div className="mt-3 h-40">
+            <ResponsiveContainer width="100%" height="100%">
+              <RechartsPieChart>
+                <Pie data={slices} dataKey="value" nameKey="name" outerRadius={68} innerRadius={40} paddingAngle={2} stroke="none">
+                  {slices.map((entry) => (
+                    <Cell key={`${title}-${entry.name}`} fill={entry.color} />
+                  ))}
+                </Pie>
+                <Tooltip formatter={(value) => `¥${Number(value).toLocaleString('ja-JP')}`} />
+              </RechartsPieChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="mt-3 space-y-1.5">
+            {slices.map((row) => (
+              <div key={`${title}-legend-${row.name}`} className="flex items-center justify-between text-sm">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: row.color }} />
+                  <span className="font-semibold text-slate-700 dark:text-slate-300 truncate">{row.name}</span>
+                </div>
+                <span className="font-black text-slate-900 dark:text-white">{((row.value / Math.max(1, total)) * 100).toFixed(0)}%</span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
 
 const WealthSection = ({
   stockWatchlistItems = [],
@@ -3890,6 +4095,8 @@ const WealthSection = ({
   const [ownedStockDrafts, setOwnedStockDrafts] = useState({})
   const [fundWatchMemoById, setFundWatchMemoById] = useState({})
   const [wealthChartMonths, setWealthChartMonths] = useState(6)
+  const [assetTrendNoteOpen, setAssetTrendNoteOpen] = useState(false)
+  const [fundTrendNoteOpen, setFundTrendNoteOpen] = useState(false)
   const [avgDownModalOpen, setAvgDownModalOpen] = useState(false)
   const [avgDownMode, setAvgDownMode] = useState('target')
   const [avgDownTargetPriceInput, setAvgDownTargetPriceInput] = useState('')
@@ -3913,8 +4120,8 @@ const WealthSection = ({
   const [wealthMonthlyFundRealizedOpen, setWealthMonthlyFundRealizedOpen] = useState(false)
   /** stock_daily_prices から再評価した推移。取得できないときは null（補間フォールバック） */
   const [historicalWealthTrend, setHistoricalWealthTrend] = useState(null)
-  const [portfolioMonthChange, setPortfolioMonthChange] = useState(null)
   const [stockSplits, setStockSplits] = useState([])
+  const [monthlyPnlBase, setMonthlyPnlBase] = useState(null)
   useEffect(() => {
     let alive = true
     supabase.from('stock_splits').select('symbol,ex_date,ratio').then(({ data, error }) => {
@@ -3936,11 +4143,27 @@ const WealthSection = ({
 
   const [stockTabHelpOpen, setStockTabHelpOpen] = useState(false)
   const [fundTabHelpOpen, setFundTabHelpOpen] = useState(false)
+  const [holdingAddSheet, setHoldingAddSheet] = useState(null)
+  const openHoldingAddSheet = (kind) => {
+    window.setTimeout(() => {
+      startTransition(() => setHoldingAddSheet(kind))
+    }, 0)
+  }
 
   useEffect(() => {
     if (tabMode !== 'stock') setStockTabHelpOpen(false)
     if (tabMode !== 'fund') setFundTabHelpOpen(false)
+    setHoldingAddSheet(null)
   }, [tabMode])
+
+  useEffect(() => {
+    if (!holdingAddSheet) return undefined
+    const onKey = (e) => {
+      if (e.key === 'Escape') setHoldingAddSheet(null)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [holdingAddSheet])
 
   useEffect(() => {
     if (!stockTabHelpOpen && !fundTabHelpOpen) return undefined
@@ -4282,12 +4505,7 @@ const WealthSection = ({
     }, 0)
     const stockCurrency = inferStockCurrency(group.symbol)
     const price = Math.max(0, Number(group.price || 0))
-    const adjustedQty = group.lots.reduce((sum, lot) => {
-      const storedQty = Math.max(0, Number(lot.qty || 0))
-      const ratio = splitRatioAfter(toIsoDate(lot.buyDate || ''), group.symbol, stockSplits)
-      return sum + storedQty * ratio
-    }, 0)
-    const currentValue = adjustedQty * price
+    const currentValue = totalQty * price
     let totalCostJpy = 0
     let currentValueJpy = 0
     let pricePnlJpy = 0
@@ -4295,6 +4513,7 @@ const WealthSection = ({
     let sawUsd = false
     let fxSplitReady = true
     let hideFxSplit = false
+    let pnlValueJpy = 0
     for (const lot of group.lots) {
       const storedQty = Math.max(0, Number(lot.qty || 0))
       const storedBuy = Math.max(0, Number(lot.buyPrice || 0))
@@ -4306,7 +4525,10 @@ const WealthSection = ({
       if (parts.hideFxSplit) hideFxSplit = true
       if (!parts.costKnown) fxSplitReady = false
       if (parts.included) currentValueJpy += parts.valueJpy
-      if (parts.costKnown) totalCostJpy += parts.costJpy
+      if (parts.costKnown) {
+        totalCostJpy += parts.costJpy
+        pnlValueJpy += parts.valueJpy
+      }
       if (parts.pricePnlJpy != null) pricePnlJpy += parts.pricePnlJpy
       if (parts.fxPnlJpy != null) fxPnlJpy += parts.fxPnlJpy
     }
@@ -4323,6 +4545,7 @@ const WealthSection = ({
       totalCostJpy,
       currentValue,
       currentValueJpy,
+      pnlValueJpy,
       pnlRate,
       pricePnlJpy: sawUsd && fxSplitReady && !hideFxSplit ? pricePnlJpy : null,
       fxPnlJpy: sawUsd && fxSplitReady && !hideFxSplit ? fxPnlJpy : null,
@@ -4420,17 +4643,25 @@ const WealthSection = ({
       const buyPrice = Math.max(0, Number(row.buyPrice || 0))
       const latestPrice = Math.max(0, Number(row.latestPrice || 0))
       const effectiveLatestPrice = latestPrice > 0 ? latestPrice : buyPrice
-      const ratio = splitRatioAfter(toIsoDate(row.buyDate || ''), row.symbol, stockSplits)
-      const units = (buyPrice > 0 ? totalCost / buyPrice : 0) * ratio
+      const units = buyPrice > 0 ? totalCost / buyPrice : 0
       const currentValue = units > 0 && effectiveLatestPrice > 0 ? units * effectiveLatestPrice : 0
       const storedFundFx = Number(row.buyFxRate)
-      const totalCostJpy = (fundCurrency === 'USD')
-        ? (storedFundFx > 0 ? totalCost * storedFundFx : 0)
-        : toJpy(totalCost, fundCurrency)
       const liveUsd = positiveUsdJpy(valuationUsdJpy)
-      const currentValueJpy = (fundCurrency === 'USD')
-        ? (storedFundFx > 0 && liveUsd != null ? currentValue * liveUsd : 0)
-        : toJpy(currentValue, fundCurrency)
+      let totalCostJpy = 0
+      let currentValueJpy = 0
+      let costKnown = false
+      if (fundCurrency === 'USD') {
+        currentValueJpy = liveUsd != null ? currentValue * liveUsd : 0
+        if (storedFundFx > 0 && liveUsd != null) {
+          totalCostJpy = totalCost * storedFundFx
+          costKnown = true
+        }
+      } else if (fundCurrency === 'JPY') {
+        totalCostJpy = totalCost
+        currentValueJpy = currentValue
+        costKnown = true
+      }
+      const pnlValueJpy = costKnown ? currentValueJpy : 0
       return {
         id: row.id,
         symbol: row.symbol,
@@ -4446,11 +4677,13 @@ const WealthSection = ({
         currentValue,
         totalCostJpy,
         currentValueJpy,
+        pnlValueJpy,
         raw: row,
       }
     })
     const totalCostJpy = lotCalcs.reduce((s, x) => s + x.totalCostJpy, 0)
     const currentValueJpy = lotCalcs.reduce((s, x) => s + x.currentValueJpy, 0)
+    const pnlValueJpy = lotCalcs.reduce((s, x) => s + Number(x.pnlValueJpy || 0), 0)
     const totalCostNative = lotCalcs.reduce((s, x) => s + x.totalCost, 0)
     const totalUnits = lotCalcs.reduce((s, x) => s + x.units, 0)
     const pnlRate = totalCostJpy > 0 ? ((currentValueJpy - totalCostJpy) / totalCostJpy) * 100 : null
@@ -4477,6 +4710,7 @@ const WealthSection = ({
       currentValue,
       totalCostJpy,
       currentValueJpy,
+      pnlValueJpy,
       pnlRate,
     }
   })
@@ -4582,7 +4816,9 @@ const WealthSection = ({
   const totalInvested = stockTotalInvestedJpy + fundTotalInvestedJpy
   const totalCurrentValue = stockTotalCurrentJpy + fundTotalCurrentJpy
   liveWealthTotalsRef.current = { stock: stockTotalCurrentJpy, fund: fundTotalCurrentJpy }
-  const totalPnL = totalCurrentValue - totalInvested
+  const stockPnlValueJpy = groupedOwnedStocks.reduce((sum, stock) => sum + Number(stock.pnlValueJpy || 0), 0)
+  const fundPnlValueJpy = groupedOwnedFunds.reduce((sum, row) => sum + Number(row.pnlValueJpy || 0), 0)
+  const totalPnL = (stockPnlValueJpy + fundPnlValueJpy) - totalInvested
   const totalReturnRate = totalInvested > 0 ? (totalPnL / totalInvested) * 100 : 0
   const stockRealizedPnlSum = (Array.isArray(realizedStockTrades) ? realizedStockTrades : []).reduce(
     (s, t) => s + Number(t.realizedPnlJpy || 0),
@@ -4611,7 +4847,7 @@ const WealthSection = ({
       : null
   const stockOpenAndRealizedCostDenom = stockTotalInvestedJpy + stockRealizedCostSum
   const stockPnlWithRealizedJpy =
-    Number(stockTotalCurrentJpy || 0) - Number(stockTotalInvestedJpy || 0) + stockRealizedPnlSum
+    stockPnlValueJpy - Number(stockTotalInvestedJpy || 0) + stockRealizedPnlSum
   const stockReturnWithRealizedPct =
     stockOpenAndRealizedCostDenom > 0 && Number.isFinite(stockPnlWithRealizedJpy)
       ? (stockPnlWithRealizedJpy / stockOpenAndRealizedCostDenom) * 100
@@ -4649,7 +4885,7 @@ const WealthSection = ({
       : null
   const fundOpenAndRealizedCostDenom = fundTotalInvestedJpy + fundRealizedCostSum
   const fundPnlWithRealizedJpy =
-    Number(fundTotalCurrentJpy || 0) - Number(fundTotalInvestedJpy || 0) + fundRealizedPnlSum
+    fundPnlValueJpy - Number(fundTotalInvestedJpy || 0) + fundRealizedPnlSum
   const fundReturnWithRealizedPct =
     fundOpenAndRealizedCostDenom > 0 && Number.isFinite(fundPnlWithRealizedJpy)
       ? (fundPnlWithRealizedJpy / fundOpenAndRealizedCostDenom) * 100
@@ -4660,6 +4896,12 @@ const WealthSection = ({
     accountCostWithRealizedDenom > 0 && Number.isFinite(accountPnlWithRealizedJpy)
       ? (accountPnlWithRealizedJpy / accountCostWithRealizedDenom) * 100
       : null
+  const monthlyDeltaJpy = monthlyPnlBase
+    ? accountPnlWithRealizedJpy - Number(monthlyPnlBase.basePnl || 0)
+    : null
+  const monthlyDeltaPct = monthlyDeltaJpy != null && accountCostWithRealizedDenom > 0
+    ? (monthlyDeltaJpy / accountCostWithRealizedDenom) * 100
+    : null
   const totalHoldingsCount = groupedOwnedStocks.length + effectiveFundRows.length
   const assetEarliestBuy = (() => {
     const stockDates = []
@@ -4699,7 +4941,6 @@ const WealthSection = ({
         if (!alive) return
         setHistoricalWealthTrend(null)
         setPortfolioDropSnapshot(null)
-        setPortfolioMonthChange(null)
         return
       }
       const buyDates = [
@@ -4710,13 +4951,24 @@ const WealthSection = ({
         if (!alive) return
         setHistoricalWealthTrend(null)
         setPortfolioDropSnapshot(null)
-        setPortfolioMonthChange(null)
         return
       }
 
-      const packC = collectTrendAnchorsFromOpts(assetGrowthOpts)
-      const packS = collectTrendAnchorsFromOpts(stockGrowthOpts)
-      const packF = collectTrendAnchorsFromOpts(fundGrowthOpts)
+      const endForPack = toLocalYmd(new Date())
+      let startForPack = [...buyDates].sort()[0]
+      const minStart = shiftIsoDateByDays(endForPack, -399)
+      if (minStart && startForPack < minStart) startForPack = minStart
+      const dailyAnchors = []
+      for (let day = startForPack, n = 0; day && day <= endForPack && n < 400; day = shiftIsoDateByDays(day, 1), n += 1) {
+        dailyAnchors.push(new Date(`${day}T12:00:00`))
+      }
+      const dailyPack = {
+        anchors: dailyAnchors,
+        labels: dailyAnchors.map((d, idx) => (idx === dailyAnchors.length - 1 ? formatAssetTrendLatestLabel(d) : formatAssetTrendMd(d))),
+      }
+      const packC = dailyPack.anchors.length >= 2 ? dailyPack : collectTrendAnchorsFromOpts(assetGrowthOpts)
+      const packS = packC
+      const packF = packC
 
       const endStr = toLocalYmd(new Date())
       const startCandidates = [
@@ -4730,7 +4982,6 @@ const WealthSection = ({
         if (!alive) return
         setHistoricalWealthTrend(null)
         setPortfolioDropSnapshot(null)
-        setPortfolioMonthChange(null)
         return
       }
       const startFetchStr = shiftIsoDateByDays(startStr, -10) || startStr
@@ -4749,7 +5000,6 @@ const WealthSection = ({
         if (!alive) return
         setHistoricalWealthTrend(null)
         setPortfolioDropSnapshot(null)
-        setPortfolioMonthChange(null)
         return
       }
 
@@ -4813,6 +5063,8 @@ const WealthSection = ({
         })
 
         const live = liveWealthTotalsRef.current
+        const stockTrades = (Array.isArray(realizedStockTrades) ? realizedStockTrades : []).map((t) => ({ ...t, kind: 'stock' }))
+        const fundTrades = (Array.isArray(realizedFundTrades) ? realizedFundTrades : []).map((t) => ({ ...t, kind: 'fund' }))
         const seriesC = computeHistoricalWealthTrendSeries({
           anchorPack: packC,
           ownedStockItems: stocks,
@@ -4822,9 +5074,8 @@ const WealthSection = ({
           valuationUsdJpy,
           liveStockJpy: Number(live.stock || 0),
           liveFundJpy: Number(live.fund || 0),
-          realizedStockTrades,
-          realizedFundTrades,
           splits: stockSplits,
+          trades: [...stockTrades, ...fundTrades],
         })
         const seriesS = computeHistoricalWealthTrendSeries({
           anchorPack: packS,
@@ -4835,9 +5086,8 @@ const WealthSection = ({
           valuationUsdJpy,
           liveStockJpy: Number(live.stock || 0),
           liveFundJpy: 0,
-          realizedStockTrades,
-          realizedFundTrades: [],
           splits: stockSplits,
+          trades: stockTrades,
         })
         const seriesF = computeHistoricalWealthTrendSeries({
           anchorPack: packF,
@@ -4848,60 +5098,46 @@ const WealthSection = ({
           valuationUsdJpy,
           liveStockJpy: 0,
           liveFundJpy: Number(live.fund || 0),
-          realizedStockTrades: [],
-          realizedFundTrades,
           splits: stockSplits,
+          trades: fundTrades,
         })
-
-        if (!alive) return
         const priceBook = {}
         for (const [sym, rows] of priceBySymbol) {
-          priceBook[sym] = (rows || [])
-            .map((row) => [String(row?.trade_date || '').slice(0, 10), Number(row?.close)])
-            .filter((row) => /^\d{4}-\d{2}-\d{2}$/.test(row[0]) && row[1] > 0)
+          priceBook[sym] = (rows || []).map((r) => [String(r.trade_date || ''), Number(r.close)])
         }
-        const calcLots = [
-          ...stocks.map((lot) => ({
-            ticker: lot.symbol,
-            listing: inferStockCurrency(lot.symbol) === 'JPY' ? 'JPY' : 'USD',
-            buy_date: toIsoDate(lot.buyDate || ''),
-            qty: Number(lot.qty || 0),
-            buy_price: Number(lot.buyPrice || 0),
-            buy_fx_rate: Number(lot.buyFxRate) > 0 ? Number(lot.buyFxRate) : undefined,
-          })),
-          ...funds.map((lot) => {
-            const buy = Number(lot.buyPrice || 0)
-            const invest = Number(lot.investAmount || 0)
-            return {
-              ticker: lot.symbol,
-              listing: inferStockCurrency(lot.symbol) === 'JPY' ? 'JPY' : 'USD',
-              buy_date: toIsoDate(lot.buyDate || ''),
-              qty: buy > 0 ? invest / buy : 0,
-              buy_price: buy,
-              invest_amount: invest > 0 ? invest : undefined,
-              buy_fx_rate: Number(lot.buyFxRate) > 0 ? Number(lot.buyFxRate) : undefined,
-            }
-          }),
-        ]
-        const calcTrades = [...(realizedStockTrades || []), ...(realizedFundTrades || [])].map((trade) => ({
-          symbol: trade.symbol,
-          sell_date: toIsoDate(trade.sellDate || ''),
-          realized_pnl_jpy: Number(trade.realizedPnlJpy || 0),
-          cost_basis_jpy: Number(trade.costBasisJpy || 0),
-          buy_lots: (trade.buyLots || []).map((lot) => ({
-            buy_date: lot.buyDate,
-            qty: lot.qty,
-            cost_jpy: lot.costJpy,
-          })),
-        }))
-        setPortfolioMonthChange(portfolioMonthlyChange({
-          today: todayIso,
-          lots: calcLots,
-          trades: calcTrades,
-          prices: priceBook,
-          splits: stockSplits,
+        const month = monthlyChange({
+          today: toLocalYmd(new Date()),
           fx_latest: valuationUsdJpy,
-        }, { includeBuyLots: true }))
+          splits: stockSplits,
+          prices: priceBook,
+          lots: [
+            ...stocks.map((lot) => ({
+              ticker: lot.symbol,
+              buy_date: toIsoDate(lot.buyDate || ''),
+              qty: Number(lot.qty),
+              buy_price: Number(lot.buyPrice),
+              buy_fx_rate: Number(lot.buyFxRate) > 0 ? Number(lot.buyFxRate) : null,
+            })),
+            ...funds.map((lot) => ({
+              ticker: lot.symbol,
+              buy_date: toIsoDate(lot.buyDate || lot.buy_date || ''),
+              qty: Number(lot.buyPrice || lot.buy_price) > 0 ? Number(lot.investAmount || lot.invest_amount) / Number(lot.buyPrice || lot.buy_price) : 0,
+              buy_price: Number(lot.buyPrice || lot.buy_price),
+              invest_amount: Number(lot.investAmount || lot.invest_amount),
+              buy_fx_rate: Number(lot.buyFxRate) > 0 ? Number(lot.buyFxRate) : null,
+            })),
+          ],
+          trades: [...stockTrades, ...fundTrades].map((t) => ({
+            symbol: t.symbol,
+            sell_date: toIsoDate(t.sellDate || ''),
+            realized_pnl_jpy: Number(t.realizedPnlJpy || 0),
+            cost_basis_jpy: Number(t.costBasisJpy || 0),
+            buy_lots: t.buyLots || [],
+          })),
+        })
+        if (alive) setMonthlyPnlBase({ baseDate: month.base_date, basePnl: month.base_pnl })
+
+        if (!alive) return
         setHistoricalWealthTrend({
           assetGrowthData: seriesC.assetGrowthData,
           assetGrowthSplitData: seriesC.assetGrowthSplitData,
@@ -4919,7 +5155,6 @@ const WealthSection = ({
         if (alive) {
           setHistoricalWealthTrend(null)
           setPortfolioDropSnapshot(null)
-          setPortfolioMonthChange(null)
         }
       }
     }
@@ -4947,12 +5182,8 @@ const WealthSection = ({
     rawStockSlots,
     rawFundSlots,
     assetLotBuyIsoKey,
-    wealthChartMonths,
     valuationUsdJpy,
     fxRatesByDate,
-    realizedStockTrades,
-    realizedFundTrades,
-    stockSplits,
     stockEarliestBuy,
     fundEarliestBuy,
     assetEarliestBuy,
@@ -4961,6 +5192,9 @@ const WealthSection = ({
     effectiveFundRows.length,
     stockTotalInvestedJpy,
     fundTotalInvestedJpy,
+    stockSplits,
+    realizedStockTrades,
+    realizedFundTrades,
   ])
 
   const stockGrowthData = historicalWealthTrend?.stockGrowthData ?? stockGrowthDataFb
@@ -5044,11 +5278,19 @@ const WealthSection = ({
     return acc
   }, {})).sort((a, b) => Number(b.value || 0) - Number(a.value || 0)).map((row, idx) => ({
     ...row,
-    color: ['#2563eb', '#0ea5e9', '#14b8a6', '#f59e0b', '#8b5cf6', '#ec4899'][idx % 6],
+    color: ALLOCATION_COLORS[idx % ALLOCATION_COLORS.length],
   }))
   const isWealthTab = tabMode === 'wealth'
   const isStockTab = tabMode === 'stock'
   const isFundTab = tabMode === 'fund'
+  const isAnalysisTab = tabMode === 'analysis'
+  const isWatchTab = tabMode === 'watch'
+  const isAssetHome = isWealthTab
+  const showOverview = isAnalysisTab
+  const showStockHoldings = isAssetHome || isStockTab
+  const showFundHoldings = isAssetHome || isFundTab
+  const showStockWatch = isWatchTab || isStockTab
+  const showFundWatch = isWatchTab || isFundTab
   const stockHasInputs = groupedOwnedStocks.length > 0
   /** ownedStockItems は v_stock_latest / プロファイル取得より遅れる。raw の保有ロットがあれば「未登録」バナーを出さない */
   const stockReportHasData =
@@ -5098,9 +5340,6 @@ const WealthSection = ({
   ]
     .filter((row) => Number.isFinite(Number(row.staleDays)) && Number(row.staleDays) >= PRICE_STALE_ALERT_DAYS)
     .sort((a, b) => Number(b.staleDays || 0) - Number(a.staleDays || 0))
-  const currentStockRatioPct = totalCurrentValue > 0 ? (stockTotalCurrentJpy / totalCurrentValue) * 100 : 0
-  const currentFundRatioPct = totalCurrentValue > 0 ? (fundTotalCurrentJpy / totalCurrentValue) * 100 : 0
-  const stockRatioGapPct = currentStockRatioPct - TARGET_STOCK_RATIO_PCT
   const prevDayPortfolioValue = Number(portfolioDropSnapshot?.prevDayValue || 0)
   const prevWeekPortfolioValue = Number(portfolioDropSnapshot?.prevWeekValue || 0)
   // 0.01% 単位（centis）に量子化 — 評価額の微変動で useMemo→履歴 effect→dispatch が連鎖しないようにする
@@ -5362,8 +5601,8 @@ const WealthSection = ({
     }
   }, [portfolioAlertHistoryKey])
   /** 株式／ファンドを分けた累計（評価−元本）と収益率（月次変動サマリー・合計の定義は totalPnL／totalReturnRate と一致） */
-  const aggStockPnLJpy = Number(stockTotalCurrentJpy || 0) - Number(stockTotalInvestedJpy || 0)
-  const aggFundPnLJpy = Number(fundTotalCurrentJpy || 0) - Number(fundTotalInvestedJpy || 0)
+  const aggStockPnLJpy = stockPnlValueJpy - Number(stockTotalInvestedJpy || 0)
+  const aggFundPnLJpy = fundPnlValueJpy - Number(fundTotalInvestedJpy || 0)
   const aggStockReturnPct = stockTotalInvestedJpy > 0 && Number.isFinite(aggStockPnLJpy)
     ? (aggStockPnLJpy / stockTotalInvestedJpy) * 100
     : null
@@ -5484,9 +5723,16 @@ const WealthSection = ({
     : isFundTab
       ? fundDiagnosisHoldings
       : [...stockDiagnosisHoldings, ...fundDiagnosisHoldings]
-  const showFreeHoldingsBanner = ENFORCE_FREE_OWNED_DISTINCT_SYMBOL_CAPS && !isPaidMember && (isStockTab || isFundTab || tabMode === 'wealth')
+  const showFreeHoldingsBanner = ENFORCE_FREE_OWNED_DISTINCT_SYMBOL_CAPS && !isPaidMember && (isStockTab || isFundTab || tabMode === 'wealth' || isAssetHome)
+  const assetStockCount = groupedOwnedStocks.length
+  const assetFundCount = groupedOwnedFunds.length
+  const assetStocksBeforeFunds = assetStockCount > 0 || assetFundCount === 0
+  const assetStockOrder = isAssetHome ? (assetStocksBeforeFunds ? 'order-2' : 'order-3') : ''
+  const assetFundOrder = isAssetHome ? (assetStocksBeforeFunds ? 'order-3' : 'order-2') : ''
+  const assetStockEmptyLine = Boolean(isAssetHome && assetStockCount === 0)
+  const assetFundEmptyLine = Boolean(isAssetHome && assetFundCount === 0)
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-6">
       {avgDownModalOpen && avgDownSelectedStock ? (
         <div className="fixed inset-0 z-[120] flex items-center justify-center px-4">
           <button
@@ -5745,7 +5991,7 @@ const WealthSection = ({
                     setStockSellBusy(false)
                   }
                 }}
-                className="mt-2 w-full min-h-[48px] rounded-xl bg-slate-900 dark:bg-indigo-600 text-white text-sm font-black hover:opacity-90 disabled:opacity-50"
+                className="mt-2 w-full min-h-[48px] rounded-xl bg-orange-500 text-white text-sm font-black hover:opacity-90 disabled:opacity-50"
               >
                 {stockSellBusy ? '保存中…' : '記録する（ロットを FIFO で減算）'}
               </button>
@@ -5845,7 +6091,7 @@ const WealthSection = ({
                     setFundSellBusy(false)
                   }
                 }}
-                className="mt-2 w-full min-h-[48px] rounded-xl bg-slate-900 dark:bg-indigo-600 text-white text-sm font-black hover:opacity-90 disabled:opacity-50"
+                className="mt-2 w-full min-h-[48px] rounded-xl bg-orange-500 text-white text-sm font-black hover:opacity-90 disabled:opacity-50"
               >
                 {fundSellBusy ? '保存中…' : '記録する（口数を FIFO で減算）'}
               </button>
@@ -5865,7 +6111,8 @@ const WealthSection = ({
           </p>
         </div>
       ) : null}
-      {tabMode === 'wealth' ? <WealthAccumulationSimCard /> : null}
+      {isAssetHome ? <div className="order-last"><WealthAccumulationSimCard /></div> : null}
+      {showOverview ? (
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
         {(isStockTab && !stockReportHasData) ? (
           <div className="xl:col-span-12 rounded-2xl border border-dashed border-orange-300 dark:border-orange-700 bg-orange-50/50 dark:bg-orange-950/25 px-6 py-10 text-center shadow-sm">
@@ -5876,7 +6123,7 @@ const WealthSection = ({
             <button
               type="button"
               onClick={() => document.getElementById('mypage-stock-holdings')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-              className="mt-6 inline-flex items-center justify-center rounded-xl bg-slate-900 dark:bg-orange-500 text-white text-sm font-black px-6 py-3 hover:opacity-90 shadow-md"
+              className="mt-6 inline-flex items-center justify-center rounded-xl bg-orange-500 text-white text-sm font-black px-6 py-3 hover:opacity-90 shadow-md"
             >
               保有株式を追加する（入力へスクロール）
             </button>
@@ -5890,7 +6137,7 @@ const WealthSection = ({
             <button
               type="button"
               onClick={() => document.getElementById('mypage-owned-fund-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-              className="mt-6 inline-flex items-center justify-center rounded-xl bg-slate-900 dark:bg-indigo-600 text-white text-sm font-black px-6 py-3 hover:opacity-90 shadow-md"
+              className="mt-6 inline-flex items-center justify-center rounded-xl bg-orange-500 text-white text-sm font-black px-6 py-3 hover:opacity-90 shadow-md"
             >
               保有ファンドを追加する（入力へスクロール）
             </button>
@@ -5924,7 +6171,7 @@ const WealthSection = ({
           <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/60">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <h3 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
-                <TrendingUp size={18} className="text-indigo-500" /> {isStockTab ? '株式レポート' : isFundTab ? 'ファンドレポート' : '総合レポート'}
+                <TrendingUp size={18} className="text-orange-500" /> {isStockTab ? '株式レポート' : isFundTab ? 'ファンドレポート' : '総合レポート'}
               </h3>
               {(isStockTab || isWealthTab || isFundTab) ? (
                 <label className="flex items-center gap-2 text-[11px] font-bold text-slate-600 dark:text-slate-300 shrink-0">
@@ -6270,7 +6517,7 @@ const WealthSection = ({
         </div>
         <div className="xl:col-span-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 p-5">
           <h4 className="font-black text-slate-900 dark:text-white flex items-center gap-2 mb-3">
-            <TrendingUp size={16} className="text-indigo-500" /> {isStockTab ? '株式レポート' : isFundTab ? 'ファンドレポート' : '資産運用サマリー'}
+            <TrendingUp size={16} className="text-orange-500" /> {isStockTab ? '株式レポート' : isFundTab ? 'ファンドレポート' : '資産運用サマリー'}
           </h4>
           <div className="space-y-2 text-sm">
             <div className="flex justify-between">
@@ -6308,8 +6555,9 @@ const WealthSection = ({
           </>
         )}
       </div>
+      ) : null}
 
-      {isPaidMember ? (
+      {showOverview ? (isPaidMember ? (
         <Suspense
           fallback={(
             <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/40 p-6 animate-pulse min-h-[140px]" aria-hidden />
@@ -6331,18 +6579,18 @@ const WealthSection = ({
             if (typeof onUiMessage === 'function') onUiMessage('資産AIレポートはプレミアム限定です。', 'premium')
             navigate('/premium')
           }}
-          className="w-full rounded-2xl border border-indigo-200 dark:border-indigo-900/50 bg-gradient-to-r from-indigo-50 to-white dark:from-indigo-950/30 dark:to-slate-900 p-5 text-left shadow-sm hover:border-indigo-300"
+          className="w-full rounded-2xl border border-orange-200 dark:border-slate-700 bg-gradient-to-r from-orange-50 to-white dark:from-slate-900 dark:to-slate-900 p-5 text-left shadow-sm hover:border-orange-300"
         >
-          <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-300">
+          <div className="flex items-center gap-2 text-orange-600 dark:text-orange-300">
             <Sparkles size={16} />
             <p className="text-xs font-black tracking-wide uppercase">AI ASSET REPORT (PREMIUM)</p>
           </div>
           <p className="mt-2 text-base font-black text-slate-900 dark:text-white">資産AIレポートはプレミアム限定でご利用いただけます。</p>
-          <p className="mt-1.5 text-sm text-slate-600 dark:text-slate-300">例: 現在の比率では「高ボラ資産が+12%」のため、分散改善余地があります。</p>
-          <p className="mt-3 inline-flex items-center rounded-full bg-indigo-100 dark:bg-indigo-900/40 px-3 py-1 text-xs font-black text-indigo-700 dark:text-indigo-200">クリックしてプレミアムで確認</p>
+          <p className="mt-1.5 text-sm text-slate-600 dark:text-slate-300">保有データから確認ポイントを自動抽出します（投資助言ではありません）。</p>
+          <p className="mt-3 inline-flex items-center rounded-full bg-orange-100 dark:bg-orange-950/40 px-3 py-1 text-xs font-black text-orange-700 dark:text-orange-200">クリックしてプレミアムで確認</p>
         </button>
         </div>
-      )}
+      )) : null}
 
       {isStockTab && Boolean(globalThis?.__MM_DEV__) && (
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 overflow-hidden">
@@ -6404,100 +6652,15 @@ const WealthSection = ({
         </div>
       )}
 
-      {isFundTab && fundHasInputs && (
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
-          <div className="xl:col-span-5 bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/60">
-              <h3 className="font-black text-slate-900 dark:text-white">ファンド 国別配分 (円換算)</h3>
-            </div>
-            <div className="p-5">
-              <div className="h-52">
-                <ResponsiveContainer width="100%" height="100%">
-                  <RechartsPieChart>
-                    <Pie
-                      data={fundCountryData}
-                      dataKey="value"
-                      nameKey="name"
-                      outerRadius={84}
-                      innerRadius={48}
-                      paddingAngle={2}
-                      minAngle={MY_PAGE_PIE_MIN_ANGLE}
-                    >
-                      {fundCountryData.map((entry) => (
-                        <Cell key={`fund-split-top-${entry.name}`} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip formatter={(value) => `¥${Number(value).toLocaleString('ja-JP')}`} />
-                  </RechartsPieChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {fundCountryData.map((row) => {
-                  const base = Math.max(1, fundTotalPieJpy)
-                  const weight = (Number(row.value || 0) / base) * 100
-                  return (
-                    <div key={`fund-split-top-legend-${row.name}`} className="flex items-center justify-between rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2 text-sm">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: row.color || '#94a3b8' }} />
-                        <span className="font-semibold text-slate-700 dark:text-slate-300 truncate">{row.name}</span>
-                      </div>
-                      <span className="font-black text-slate-900 dark:text-white">{weight.toFixed(0)}%</span>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          </div>
-
-          <div className="xl:col-span-7 bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 p-5">
-            <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
-              <h3 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
-                <PieChart size={18} className="text-indigo-500" /> ファンドパフォーマンス推移 ({wealthChartMonths}ヶ月)
-              </h3>
-              <select value={wealthChartMonths} onChange={(e) => setWealthChartMonths(Number(e.target.value))} className="px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-[12px] font-bold text-slate-600 dark:text-slate-300">
-                <option value={6}>6ヶ月</option>
-                <option value={12}>12ヶ月</option>
-                <option value={24}>24ヶ月</option>
-                <option value={36}>36ヶ月</option>
-              </select>
-            </div>
-            <div className="space-y-2">
-              <div className="h-52">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={fundPerformanceBarRows} margin={{ top: 8, right: 8, left: 8, bottom: 4 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                    <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} interval={0} angle={-28} textAnchor="end" height={46} />
-                    <YAxis
-                      tick={{ fontSize: 11, fill: '#64748b' }}
-                      axisLine={false}
-                      tickLine={false}
-                      domain={getStockPerformanceYAxisDomain(fundPerformanceBarRows)}
-                      tickFormatter={(v) => `${Math.round(v / 10000)}万`}
-                    />
-                    <Tooltip content={StockPerformanceStackTooltip} wrapperStyle={{ outline: 'none' }} cursor={{ fill: 'rgba(148, 163, 184, 0.1)' }} />
-                    <Legend wrapperStyle={{ fontSize: 10 }} />
-                    <Bar name="ベース" dataKey="basisJpy" stackId="fundperf" fill="#93c5fd" maxBarSize={44} />
-                    <Bar name="含み益" dataKey="gainJpy" stackId="fundperf" fill="#2563eb" maxBarSize={44} radius={[5, 5, 0, 0]} />
-                    <Bar name="含み損" dataKey="lossJpy" stackId="fundperf" fill="#60a5fa" maxBarSize={44} radius={[5, 5, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="space-y-1.5 text-[10px] font-semibold leading-relaxed text-slate-500 dark:text-slate-400 px-0.5">
-                <p>
-                  <span className="font-black text-slate-600 dark:text-slate-300">読み方：</span>
-                  各柱は、その日時点の<span className="font-black">保有ロット</span>について、終値（取引無い日は直近終値）で円換算した<span className="font-black">評価額</span>と<span className="font-black">取得原価</span>（投資元本ベース）を積み上げたものです。最後の柱は画面と同じ最新のファンド評価です。
-                </p>
-                <p>
-                  <span className="font-black text-slate-600 dark:text-slate-300">ベース／含み益・損：</span>
-                  評価が原価以上のとき → 灰＝<span className="font-black">取得原価</span>、その上の青＝<span className="font-black">含み益</span>（柱の合計高さ＝評価額）。評価が原価を下回るとき → 灰＝<span className="font-black">評価額</span>、その上の薄青＝<span className="font-black">含み損</span>の分（合計高さ＝原価）。「ベース」が常に原価だけではありません。
-                </p>
-                <p>
-                  売却記録の<span className="font-black">実現損益</span>はこのグラフには入りません（上部レポートの「実現」）。売却でロットが減ると、以降の柱は評価・原価ともに下がって見えます。日足がDBに無い区間は補間になることがあります。
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
+      {isAnalysisTab && fundHasInputs && (
+        <WealthValueLineCard
+          title="ファンドパフォーマンス推移"
+          rows={fundGrowthData}
+          months={wealthChartMonths}
+          onMonths={setWealthChartMonths}
+          noteOpen={fundTrendNoteOpen}
+          onToggleNote={() => setFundTrendNoteOpen((open) => !open)}
+        />
       )}
 
       {isFundTab && !fundHasInputs && (
@@ -6508,12 +6671,35 @@ const WealthSection = ({
         </div>
       )}
 
-      {isFundTab && (
-        <div className="space-y-4">
-          <div id="mypage-owned-fund-section" className="scroll-mt-24 bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 overflow-hidden">
+      {showFundHoldings && (
+        <div id="mypage-owned-fund-section" className={`scroll-mt-24 ${assetFundEmptyLine ? '' : 'space-y-4'} ${assetFundOrder}`}>
+          {assetFundEmptyLine ? (
+            <div className="flex items-center justify-between gap-3 rounded-2xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3 shadow-md shadow-slate-900/10 dark:shadow-black/30">
+              <p className="text-sm font-bold text-slate-600 dark:text-slate-300">保有ファンドはまだありません</p>
+              <button
+                type="button"
+                onClick={() => openHoldingAddSheet('fund')}
+                className="inline-flex items-center gap-1 rounded-xl bg-orange-500 text-white px-3 py-2 text-xs font-black hover:opacity-90 shrink-0"
+              >
+                <Plus size={14} aria-hidden />
+                追加
+              </button>
+            </div>
+          ) : null}
+          {(!assetFundEmptyLine || holdingAddSheet === 'fund') && (
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 overflow-hidden">
             <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/60">
               <div className="flex items-start justify-between gap-3">
-                <h3 id="fund-performance-heading" className="font-black text-slate-900 dark:text-white shrink-0">ファンドパフォーマンス</h3>
+                <h3 id="fund-performance-heading" className="font-black text-slate-900 dark:text-white shrink-0">保有ファンド</h3>
+                <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => openHoldingAddSheet('fund')}
+                  className="inline-flex items-center gap-1 rounded-xl bg-orange-500 text-white px-3 py-2 text-xs font-black hover:opacity-90"
+                >
+                  <Plus size={14} aria-hidden />
+                  追加
+                </button>
                 <button
                   type="button"
                   onClick={() => setFundTabHelpOpen(true)}
@@ -6524,9 +6710,20 @@ const WealthSection = ({
                 >
                   <HelpCircle className="w-5 h-5" aria-hidden />
                 </button>
+                </div>
               </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">実際に買ったファンドを追加して、取引別・合算損益率を管理できます。</p>
-              <div className="mt-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-[2.1fr_1fr_1fr_1fr_auto] gap-3 md:gap-2 xl:items-end">
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">実際に買ったファンドを「＋追加」から登録し、取引別・合算損益率を管理できます。</p>
+              {holdingAddSheet === 'fund' ? (
+              <div className="fixed inset-0 z-[130] flex items-end sm:items-center justify-center px-0 sm:px-4 pointer-events-auto">
+                <button type="button" className="absolute inset-0 bg-slate-900/55" aria-label="閉じる" onClick={() => setHoldingAddSheet(null)} />
+                <div className="relative z-[131] w-full max-w-lg max-h-[min(90vh,760px)] overflow-y-auto rounded-t-2xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex items-center justify-between gap-3 mb-3">
+                    <h4 className="text-base font-black text-slate-900 dark:text-white">保有ファンドを追加</h4>
+                    <button type="button" onClick={() => setHoldingAddSheet(null)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800" aria-label="閉じる">
+                      <X size={18} aria-hidden />
+                    </button>
+                  </div>
+              <div className="grid grid-cols-1 gap-3">
                 {(() => {
                   const submitOwnedFund = async () => {
                     const ok = await onAddOwnedFund?.({
@@ -6543,6 +6740,7 @@ const WealthSection = ({
                       setOwnedFundSymbolOptions([])
                     setFundSuggestOpen(false)
                     setFundSuggestIndex(-1)
+                    setHoldingAddSheet(null)
                     }
                   }
                   const onFundInputKeyDown = async (e) => {
@@ -6586,7 +6784,7 @@ const WealthSection = ({
                   return (
                     <>
                       <div className="relative md:col-span-2 xl:col-span-1">
-                        <span className={ownedMobileFieldLabelClass}>ファンドコード / 名称</span>
+                        <span className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">ファンド</span>
                         <input
                           type="text"
                           value={newOwnedFundSymbol}
@@ -6665,7 +6863,7 @@ const WealthSection = ({
                         </div>
                       )}
                       <div>
-                        <span className={ownedMobileFieldLabelClass}>投資元本</span>
+                        <span className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">投資元本(円)</span>
                         <input
                           type="text"
                           inputMode="decimal"
@@ -6677,7 +6875,7 @@ const WealthSection = ({
                         />
                       </div>
                       <div>
-                        <span className={ownedMobileFieldLabelClass}>買付日</span>
+                        <span className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">買付日</span>
                         <OwnedBuyDateTextInput
                           value={newOwnedFundBuyDate}
                           onCommit={(iso) => setNewOwnedFundBuyDate(iso)}
@@ -6686,7 +6884,7 @@ const WealthSection = ({
                         />
                       </div>
                       <div>
-                        <span className={ownedMobileFieldLabelClass}>買付価格 (基準価格)</span>
+                        <span className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">買付価格</span>
                         <input
                           type="text"
                           inputMode="decimal"
@@ -6700,7 +6898,7 @@ const WealthSection = ({
                       <button
                         type="button"
                         onClick={submitOwnedFund}
-                        className="w-full md:col-span-2 xl:col-span-1 min-h-[48px] xl:min-h-0 px-4 py-3 xl:px-3 xl:py-2 rounded-xl xl:rounded-lg bg-slate-900 dark:bg-orange-500 text-white text-sm xl:text-xs font-black hover:opacity-90 whitespace-nowrap"
+                        className="w-full md:col-span-2 xl:col-span-1 min-h-[48px] xl:min-h-0 px-4 py-3 xl:px-3 xl:py-2 rounded-xl xl:rounded-lg bg-orange-500 text-white text-sm xl:text-xs font-black hover:opacity-90 whitespace-nowrap"
                       >
                         保有ファンドを追加
                       </button>
@@ -6708,13 +6906,16 @@ const WealthSection = ({
                   )
                 })()}
               </div>
+                </div>
+              </div>
+              ) : null}
             </div>
             <p className="lg:hidden px-4 pt-3 pb-1 text-xs font-semibold text-slate-500 dark:text-slate-400 leading-snug">
               スマホではカードで縦スクロールのみ。表は横幅のある画面（PC）で表示されます。
             </p>
             <div className="lg:hidden px-3 pb-3 space-y-3">
               {groupedOwnedFunds.length === 0 ? (
-                <p className="text-center text-sm text-slate-500 dark:text-slate-400 py-6">保有ファンドがまだありません。上のフォームから追加してください。</p>
+                <p className="text-center text-sm text-slate-500 dark:text-slate-400 py-6">保有ファンドがまだありません。右上の「＋追加」から登録してください。</p>
               ) : (
                 groupedOwnedFunds.map((fund) => {
                   const pnlYen = fund.currentValueJpy - fund.totalCostJpy
@@ -6885,7 +7086,7 @@ const WealthSection = ({
                     <span>投資元本合計（円換算）</span>
                     <span className="tabular-nums shrink-0">¥{Math.round(fundTotalInvestedJpy).toLocaleString('ja-JP')}</span>
                   </div>
-                  <div className="flex justify-between gap-3 font-black text-indigo-900 dark:text-indigo-200">
+                  <div className="flex justify-between gap-3 font-black text-slate-900 dark:text-white">
                     <span>現在評価額合計</span>
                     <span className="tabular-nums shrink-0">¥{Math.round(fundTotalCurrentJpy).toLocaleString('ja-JP')}</span>
                   </div>
@@ -6912,7 +7113,7 @@ const WealthSection = ({
                   {groupedOwnedFunds.length === 0 && (
                     <tr className="border-t border-slate-100 dark:border-slate-800">
                       <td colSpan={10} className="px-4 py-8 text-center text-sm text-slate-500 dark:text-slate-400">
-                        保有ファンドがまだありません。上のフォームから追加してください。
+                        保有ファンドがまだありません。右上の「＋追加」から登録してください。
                       </td>
                     </tr>
                   )}
@@ -6945,7 +7146,7 @@ const WealthSection = ({
                             {fund.latestPrice > 0 ? Number(fund.latestPrice).toLocaleString('ja-JP') : '--'}
                             <p className="text-xs lg:text-[11px] text-slate-400 whitespace-normal leading-tight">{fund.tradeDate ? formatDateJpSlash(fund.tradeDate) : ''}</p>
                           </td>
-                          <td className="px-3 py-2 sm:px-5 lg:py-2 text-right font-black text-indigo-900 dark:text-indigo-200 text-[15px] lg:text-sm whitespace-nowrap">
+                          <td className="px-3 py-2 sm:px-5 lg:py-2 text-right font-black text-slate-900 dark:text-white text-[15px] lg:text-sm whitespace-nowrap">
                             {fund.currentValueJpy > 0 ? `¥${Math.round(fund.currentValueJpy).toLocaleString('ja-JP')}` : '--'}
                           </td>
                           <td className={`px-3 py-2 sm:px-5 lg:py-2 text-right font-black text-[15px] lg:text-sm whitespace-nowrap tabular-nums ${pnlYen >= 0 ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'}`}>
@@ -7078,21 +7279,30 @@ const WealthSection = ({
                   </tr>
                   <tr>
                     <td colSpan={6} className="px-3 py-3.5 sm:px-5 sm:py-3 text-right font-black text-slate-800 dark:text-slate-100 text-sm lg:text-xs">現在評価額合計</td>
-                    <td className="px-3 py-3.5 sm:px-5 sm:py-3 text-right font-black text-indigo-900 dark:text-indigo-200 text-[15px] lg:text-sm whitespace-nowrap tabular-nums">¥{Math.round(fundTotalCurrentJpy).toLocaleString('ja-JP')}</td>
+                    <td className="px-3 py-3.5 sm:px-5 sm:py-3 text-right font-black text-slate-900 dark:text-white text-[15px] lg:text-sm whitespace-nowrap tabular-nums">¥{Math.round(fundTotalCurrentJpy).toLocaleString('ja-JP')}</td>
                     <td colSpan={3} className="px-3 sm:px-5 py-3" />
                   </tr>
                 </tfoot>
               </table>
             </div>
-            <p className="px-4 sm:px-5 py-3 text-xs sm:text-[11px] text-slate-500 dark:text-slate-400 border-t border-slate-100 dark:border-slate-800 leading-relaxed">
-              ※ 買付日入力後の「終値反映」は、その日以前の直近終値を買付価格に入れます（買付日は変えません）。
-              <span className="block mt-2">
-                投資元本・買付価格・買付日の編集は保存され損益に反映されます。誤追加した取引は各行から削除できます（
-                <span className="font-bold text-slate-700 dark:text-slate-200">削除は実現損益に影響しません</span>
-                ）。実売却で口数を減らす場合は「売却記録」を使ってください。
-              </span>
-            </p>
+            <details className="px-4 sm:px-5 py-2 text-xs sm:text-[11px] text-slate-500 dark:text-slate-400 border-t border-slate-100 dark:border-slate-800 leading-relaxed">
+              <summary className="cursor-pointer font-bold w-fit">注記</summary>
+              <p className="mt-1">
+                買付日入力後の「終値反映」は、その日以前の直近終値を買付価格に入れます（買付日は変えません）。
+                <span className="block mt-2">
+                  投資元本・買付価格・買付日の編集は保存され損益に反映されます。誤追加した取引は各行から削除できます（
+                  <span className="font-bold text-slate-700 dark:text-slate-200">削除は実現損益に影響しません</span>
+                  ）。実売却で口数を減らす場合は「売却記録」を使ってください。
+                </span>
+              </p>
+            </details>
           </div>
+          )}
+        </div>
+      )}
+
+      {showFundWatch && (
+        <div className="space-y-4">
           <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 overflow-hidden">
             <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/60">
               <div className="flex items-center justify-between gap-3">
@@ -7100,7 +7310,7 @@ const WealthSection = ({
                   <h3 className="font-black text-slate-900 dark:text-white">保存した配分セット</h3>
                   <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
                     {isPaidMember
-                      ? 'ファンド一覧のポートフォリオ最適化で保存した「ウォッチセット」と同じデータです（ここでは配分セットと表示）。銘柄と比率を保ったまま「最適化で開く」から比較・再調整に戻れます。'
+                      ? 'ファンド一覧の配分シミュレーションで保存した「ウォッチセット」と同じデータです（ここでは配分セットと表示）。銘柄と比率を保ったまま「シミュレーションで開く」から比較画面に戻れます。'
                       : '配分セットの保存/削除はプレミアム限定です。無料では閲覧のみ可能です。'}
                   </p>
                 </div>
@@ -7129,7 +7339,7 @@ const WealthSection = ({
                             onClick={() => navigate(buildFundOptimizerCompareUrl(set))}
                             className="px-2.5 py-1 rounded-md border border-indigo-200 dark:border-indigo-800 text-[11px] font-bold text-indigo-700 dark:text-indigo-200 hover:bg-white/80 dark:hover:bg-indigo-900/30"
                           >
-                            最適化で開く
+                            シミュレーションで開く
                           </button>
                           <button
                             type="button"
@@ -7164,7 +7374,7 @@ const WealthSection = ({
                   <h3 className="text-lg font-black text-slate-900 dark:text-white">ファンドウォッチリスト</h3>
                   <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
                     {isPaidMember
-                      ? 'ファンド一覧のハート登録と同じウォッチリストです。メモはブラウザに保存されます。配分セットに含まれる銘柄は、各カードの「配分セット」欄にセット名が表示されます。最適化でウォッチセットを保存・適用したとき、まだウォッチに無い構成銘柄は自動で追加されます。'
+                      ? 'ファンド一覧のハート登録と同じウォッチリストです。メモはブラウザに保存されます。配分セットに含まれる銘柄は、各カードの「配分セット」欄にセット名が表示されます。配分シミュレーションでウォッチセットを保存したとき、まだウォッチに無い構成銘柄は自動で追加されます。'
                       : `無料プランは最大${FREE_FUND_WATCHLIST_LIMIT}件まで表示されます。`}
                   </p>
                 </div>
@@ -7257,9 +7467,21 @@ const WealthSection = ({
         </div>
       )}
 
-      {!isFundTab && (
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
-        <div id={isWealthTab ? 'wealth-allocation-chart' : undefined} className={`${isStockTab || isWealthTab ? 'xl:col-span-5' : 'xl:col-span-7'} bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 overflow-hidden`}>
+      {isAssetHome && (
+        <WealthValueLineCard
+          className="order-1"
+          title="資産成長トレンド"
+          rows={assetGrowthData}
+          months={wealthChartMonths}
+          onMonths={setWealthChartMonths}
+          noteOpen={assetTrendNoteOpen}
+          onToggleNote={() => setAssetTrendNoteOpen((open) => !open)}
+        />
+      )}
+
+      {isStockTab && (
+      <div className={isAssetHome ? 'contents' : 'grid grid-cols-1 xl:grid-cols-12 gap-4'}>
+        <div id={isWealthTab ? 'wealth-allocation-chart' : undefined} className={`${isAssetHome ? 'order-4 ' : ''}${isStockTab || isWealthTab ? 'xl:col-span-5' : 'xl:col-span-7'} bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 overflow-hidden`}>
           <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/60">
             <h3 className="font-black text-slate-900 dark:text-white">{isWealthTab ? '株式/ファンド構成比' : isStockTab ? '株式 セクター別配分 (円換算)' : isFundTab ? 'ファンド 国別配分 (円換算)' : '資産成長トレンド (6ヶ月)'}</h3>
           </div>
@@ -7370,7 +7592,7 @@ const WealthSection = ({
           </div>
         </div>
 
-        <div className={`${isStockTab || isWealthTab ? 'xl:col-span-7' : 'xl:col-span-5'} bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 p-5`}>
+        <div className={`${isAssetHome ? 'order-1 ' : ''}${isStockTab || isWealthTab ? 'xl:col-span-7' : 'xl:col-span-5'} bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 p-5`}>
           <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
             <h3 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
               <PieChart size={18} className="text-indigo-500" /> {isWealthTab ? '資産成長トレンド' : isStockTab ? '株式パフォーマンス推移' : isFundTab ? 'ファンドパフォーマンス推移' : '株式/ファンド構成比'}
@@ -7436,7 +7658,7 @@ const WealthSection = ({
                   評価が原価以上のとき → 灰＝<span className="font-black">取得原価</span>、その上の緑＝<span className="font-black">含み益</span>（柱の合計高さ＝評価額）。評価が原価を下回るとき → 灰＝<span className="font-black">評価額</span>、その上の赤＝<span className="font-black">含み損</span>の分（合計高さ＝原価）。「ベース」が常に原価だけではありません。
                 </p>
                 <p>
-                  売却記録の<span className="font-black">実現損益</span>はこのグラフには入りません（上部レポートの「実現」）。売却でロットが減ると、以降の柱は評価・原価ともに下がって見えます。日足がDBに無い区間は補間になることがあります。
+                  売却記録の<span className="font-black">実現損益</span>はこのグラフには入りません（上部レポートの「実現」）。売却でロットが減ると、以降の柱は評価・原価ともに下がって見えます。売却した分は、買付日から売却日の前日まで推移に含めます。
                 </p>
               </div>
             </div>
@@ -7446,146 +7668,70 @@ const WealthSection = ({
       )}
 
       {isWealthTab && (
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 xl:items-stretch">
+        <div className="order-4 grid grid-cols-1 xl:grid-cols-12 gap-4 xl:items-stretch">
+          <AllocationShareCard
+            title="株式/ファンド構成比"
+            anchorId="wealth-allocation-chart"
+            rows={[
+              { name: '株式', value: stockTotalCurrentJpy },
+              { name: 'ファンド', value: fundTotalCurrentJpy },
+            ]}
+          />
+          {fundHasInputs ? (
+            <AllocationShareCard
+              title="国別配分"
+              rows={fundCountryData}
+            />
+          ) : null}
           {totalCurrentValue > 0 ? (
             <div className="xl:col-span-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 p-5 flex flex-col min-h-0 max-xl:h-auto xl:h-full">
               <h3 className="font-black text-slate-900 dark:text-white flex items-center gap-2">
-                <PieChart size={16} className="text-indigo-500" /> 構成比アラート
+                <PieChart size={16} className="text-orange-500" /> 構成比
               </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                目標比率は参考値（株式 {TARGET_STOCK_RATIO_PCT}% / ファンド {100 - TARGET_STOCK_RATIO_PCT}%）です。
+              <p className="mt-3 text-sm font-black text-slate-900 dark:text-white">
+                目標配分は未設定です
               </p>
-              <div className="mt-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 p-4">
-                <p className="text-sm font-black text-slate-900 dark:text-white">
-                  現在 株式 {currentStockRatioPct.toFixed(0)}% / ファンド {currentFundRatioPct.toFixed(0)}%
-                </p>
-                <p className={`mt-2 text-sm font-bold ${Math.abs(stockRatioGapPct) >= 15 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-600 dark:text-slate-300'}`}>
-                  株式比率ギャップ {stockRatioGapPct >= 0 ? '+' : ''}{stockRatioGapPct.toFixed(1)}%
-                </p>
-                <button
-                  type="button"
-                  onClick={() => document.getElementById('wealth-allocation-chart')?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
-                  className="mt-3 w-full px-3 py-2 rounded-lg bg-slate-900 dark:bg-orange-500 text-white text-xs font-black hover:opacity-90"
-                >
-                  構成比の内訳を見る
-                </button>
-              </div>
-              {(() => {
-                const targetStockW = Math.max(0, Math.min(100, Number(TARGET_STOCK_RATIO_PCT) || 0))
-                const curStockW = Math.max(0, Math.min(100, Number(currentStockRatioPct) || 0))
-                const curFundW = Math.max(0, Math.min(100, Number(currentFundRatioPct) || 0))
-                const norm = curStockW + curFundW
-                const curStockBar = norm > 0 ? (curStockW / norm) * 100 : 0
-                const curFundBar = norm > 0 ? (curFundW / norm) * 100 : 0
-                const targetStockJpy = totalCurrentValue * (targetStockW / 100)
-                const stockDeltaJpy = targetStockJpy - Number(stockTotalCurrentJpy || 0)
-                const showYenHint = totalCurrentValue > 0 && Math.abs(Number(stockRatioGapPct) || 0) >= 1
-                const yenHint =
-                  showYenHint && Number.isFinite(stockDeltaJpy) && Math.abs(stockDeltaJpy) >= 1
-                    ? `評価額ベースで目標の株式比率に近づける目安は、株式をおおよそ ${
-                        stockDeltaJpy >= 0 ? '+' : '−'
-                      }¥${Math.round(Math.abs(stockDeltaJpy)).toLocaleString('ja-JP')}（売買・手数料・税は含みません）。`
-                    : null
-                return (
-                  <div className="mt-4 flex flex-col min-h-0 xl:flex-1 xl:min-h-0">
-                    <div className="space-y-3">
-                      <div>
-                        <p className="text-[10px] font-black uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-2">
-                          目標と現在（棒は左＝株式 / 右＝ファンド）
-                        </p>
-                        <div className="space-y-2.5">
-                          <div>
-                            <div className="flex items-center justify-between gap-2 mb-1">
-                              <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300">目標</span>
-                              <span className="text-[10px] font-mono font-bold tabular-nums text-slate-500 dark:text-slate-400">
-                                株 {targetStockW.toFixed(0)}% / ファ {Math.max(0, 100 - targetStockW).toFixed(0)}%
-                              </span>
-                            </div>
-                            <div
-                              className="flex h-2 w-full overflow-hidden rounded-full bg-slate-200/80 dark:bg-slate-700/80"
-                              role="img"
-                              aria-label={`目標 株式${targetStockW.toFixed(0)}パーセント、ファンド${Math.max(0, 100 - targetStockW).toFixed(0)}パーセント`}
-                            >
-                              <div className="h-full bg-emerald-500 dark:bg-emerald-500/90" style={{ width: `${targetStockW}%` }} />
-                              <div className="h-full bg-blue-500 dark:bg-blue-500/90" style={{ width: `${100 - targetStockW}%` }} />
-                            </div>
-                          </div>
-                          <div>
-                            <div className="flex items-center justify-between gap-2 mb-1">
-                              <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300">現在</span>
-                              <span className="text-[10px] font-mono font-bold tabular-nums text-slate-500 dark:text-slate-400">
-                                株 {curStockW.toFixed(0)}% / ファ {curFundW.toFixed(0)}%
-                              </span>
-                            </div>
-                            <div
-                              className="flex h-2 w-full overflow-hidden rounded-full bg-slate-200/80 dark:bg-slate-700/80"
-                              role="img"
-                              aria-label={`現在 株式${curStockW.toFixed(0)}パーセント、ファンド${curFundW.toFixed(0)}パーセント`}
-                            >
-                              <div className="h-full bg-emerald-500 dark:bg-emerald-500/90" style={{ width: `${curStockBar}%` }} />
-                              <div className="h-full bg-blue-500 dark:bg-blue-500/90" style={{ width: `${curFundBar}%` }} />
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      {yenHint ? (
-                        <p className="text-[11px] font-semibold leading-relaxed text-slate-600 dark:text-slate-300">{yenHint}</p>
-                      ) : null}
-                      {monthlyUnrealizedPnlSplit.mode === 'bar' ? (
-                        <div className="mt-3 pt-3 border-t border-slate-200/90 dark:border-slate-700/80">
-                          <div className="rounded-xl border border-slate-200/90 dark:border-slate-600/80 bg-slate-50/90 dark:bg-slate-800/50 px-3 py-2.5">
-                            <p className="text-[11px] sm:text-xs font-bold text-slate-600 dark:text-slate-300">
-                              含み損益の寄与度（合計損益に占める割合）
-                            </p>
-                            <p className="mt-1 text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">
-                              ※ 上の「目標／現在」バー（評価額の構成比）とは別指標です（損益の大きさの分け合い）。
-                            </p>
-                            <div
-                              className="mt-2 flex h-2.5 w-full overflow-hidden rounded-full bg-slate-200/80 dark:bg-slate-700/80"
-                              role="img"
-                              aria-label={`含み損益の合計に対し、株式が${monthlyUnrealizedPnlSplit.stockPct.toFixed(0)}パーセント、ファンドが${monthlyUnrealizedPnlSplit.fundPct.toFixed(0)}パーセントを占めます`}
-                            >
-                              <div
-                                className="h-full bg-emerald-500 dark:bg-emerald-500/90"
-                                style={{ width: `${monthlyUnrealizedPnlSplit.stockBarW}%` }}
-                              />
-                              <div
-                                className="h-full bg-blue-500 dark:bg-blue-500/90"
-                                style={{ width: `${monthlyUnrealizedPnlSplit.fundBarW}%` }}
-                              />
-                            </div>
-                            <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[10px] sm:text-[11px] font-bold tabular-nums">
-                              <span className="text-emerald-700 dark:text-emerald-300">
-                                株式（損益シェア）{' '}
-                                {monthlyUnrealizedPnlSplit.stockPct >= 10
-                                  ? monthlyUnrealizedPnlSplit.stockPct.toFixed(0)
-                                  : monthlyUnrealizedPnlSplit.stockPct.toFixed(1)}
-                                %
-                              </span>
-                              <span className="text-blue-700 dark:text-blue-300">
-                                ファンド（損益シェア）{' '}
-                                {monthlyUnrealizedPnlSplit.fundPct >= 10
-                                  ? monthlyUnrealizedPnlSplit.fundPct.toFixed(0)
-                                  : monthlyUnrealizedPnlSplit.fundPct.toFixed(1)}
-                                %
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      ) : null}
-                    </div>
-                    <div className="min-h-3 shrink-0 xl:flex-1" aria-hidden="true" />
-                    <div className="space-y-3 pt-3 border-t border-slate-200/90 dark:border-slate-700/80">
-                      <p className="text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">
-                        株式比率のズレが <span className="font-black">±15%</span> を超えると、上のギャップ表示を強調します。
-                      </p>
-                      <p className="text-[10px] leading-relaxed text-slate-400 dark:text-slate-500">
-                        目標比率と目安金額は参考情報です。投資助言ではありません。
-                      </p>
-                    </div>
+              <p className="mt-2 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
+                特定の金融商品の売買を勧誘するものではありません。
+              </p>
+              <button
+                type="button"
+                onClick={() => document.getElementById('wealth-allocation-chart')?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
+                className="mt-4 w-full px-3 py-2 rounded-lg bg-orange-500 text-white text-xs font-black hover:opacity-90"
+              >
+                構成比の内訳を見る
+              </button>
+              {monthlyUnrealizedPnlSplit.mode === 'bar' ? (
+                <div className="mt-4 pt-3 border-t border-slate-200/90 dark:border-slate-700/80">
+                  <p className="text-[11px] sm:text-xs font-bold text-slate-600 dark:text-slate-300">
+                    含み損益の寄与度（合計損益に占める割合）
+                  </p>
+                  <div
+                    className="mt-2 flex h-2.5 w-full overflow-hidden rounded-full bg-slate-200/80 dark:bg-slate-700/80"
+                    role="img"
+                    aria-label={`含み損益の合計に対し、株式が${monthlyUnrealizedPnlSplit.stockPct.toFixed(0)}パーセント、ファンドが${monthlyUnrealizedPnlSplit.fundPct.toFixed(0)}パーセントを占めます`}
+                  >
+                    <div className="h-full bg-orange-500" style={{ width: `${monthlyUnrealizedPnlSplit.stockBarW}%` }} />
+                    <div className="h-full bg-[#1e3a5f]" style={{ width: `${monthlyUnrealizedPnlSplit.fundBarW}%` }} />
                   </div>
-                )
-              })()}
+                  <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[10px] sm:text-[11px] font-bold tabular-nums">
+                    <span className="text-orange-700 dark:text-orange-300">
+                      株式（損益シェア）{' '}
+                      {monthlyUnrealizedPnlSplit.stockPct >= 10
+                        ? monthlyUnrealizedPnlSplit.stockPct.toFixed(0)
+                        : monthlyUnrealizedPnlSplit.stockPct.toFixed(1)}
+                      %
+                    </span>
+                    <span className="text-[#1e3a5f] dark:text-slate-200">
+                      ファンド（損益シェア）{' '}
+                      {monthlyUnrealizedPnlSplit.fundPct >= 10
+                        ? monthlyUnrealizedPnlSplit.fundPct.toFixed(0)
+                        : monthlyUnrealizedPnlSplit.fundPct.toFixed(1)}
+                      %
+                    </span>
+                  </div>
+                </div>
+              ) : null}
             </div>
           ) : null}
           <div className="xl:col-span-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 p-5 flex flex-col min-h-0 max-xl:h-auto xl:h-full">
@@ -7594,42 +7740,54 @@ const WealthSection = ({
             </h3>
             <div className="mt-4 flex flex-col min-h-0 xl:flex-1 xl:min-h-0">
             <div className="space-y-3 text-sm">
-              {accountCostWithRealizedDenom > 0 && accountReturnWithRealizedPct != null && Number.isFinite(accountPnlWithRealizedJpy) ? (
+              {accountCostWithRealizedDenom > 0 && Number.isFinite(accountPnlWithRealizedJpy) ? (
                 <div className="rounded-xl border border-emerald-200/80 dark:border-emerald-900/50 bg-emerald-50/50 dark:bg-emerald-950/20 px-3 py-3">
                   <div className="flex items-start justify-between gap-2.5">
                     <div className="min-w-0 pr-1">
                       <span className="text-slate-600 dark:text-slate-300 text-xs sm:text-[13px] block leading-snug font-bold">
                         総損益（評価額 − 保有原価 + 実現損益）
                       </span>
-                      <span className="mt-1 block text-[11px] sm:text-xs font-semibold leading-snug text-emerald-800/80 dark:text-emerald-300/80">
-                        元本は保有原価に、売却した分の取得原価を足したもの。括弧の%は総損益÷元本。
-                      </span>
-                      {(stockRealizedPnlSum !== 0 || fundRealizedPnlSum !== 0) ? (
-                        <span className="mt-1 block text-[11px] font-semibold text-slate-500 dark:text-slate-400">
-                          うち含み {totalPnL >= 0 ? '+' : ''}¥{Math.round(totalPnL).toLocaleString('ja-JP')}
-                          {' '}／ 実現 {(stockRealizedPnlSum + fundRealizedPnlSum) >= 0 ? '+' : ''}¥{Math.round(stockRealizedPnlSum + fundRealizedPnlSum).toLocaleString('ja-JP')}
-                        </span>
-                      ) : null}
+                      <details className="mt-1 text-[11px] sm:text-xs font-semibold leading-snug text-slate-500">
+                        <summary className="cursor-pointer font-bold">計算方法</summary>
+                        <span className="mt-1 block">元本は保有原価に、売却した分の取得原価を足したもの。括弧の%は総損益÷元本。</span>
+                      </details>
                     </div>
                     <div className={`shrink-0 font-black tabular-nums text-right leading-tight ${signedReturnTextClassStrong(accountPnlWithRealizedJpy)}`}>
                       <div className="text-lg sm:text-xl">{accountPnlWithRealizedJpy >= 0 ? '+' : ''}¥{Math.round(accountPnlWithRealizedJpy).toLocaleString('ja-JP')}</div>
-                      <div className="text-xs sm:text-sm font-bold mt-0.5">
-                        ({accountReturnWithRealizedPct >= 0 ? '+' : ''}{accountReturnWithRealizedPct.toFixed(2)}%)
-                      </div>
+                      {accountReturnWithRealizedPct != null && Number.isFinite(accountReturnWithRealizedPct) ? (
+                        <div className="text-xs sm:text-sm font-bold mt-0.5">
+                          ({accountReturnWithRealizedPct >= 0 ? '+' : ''}{accountReturnWithRealizedPct.toFixed(1)}%)
+                        </div>
+                      ) : null}
                     </div>
                   </div>
-                  {portfolioMonthChange && Number.isFinite(portfolioMonthChange.monthly_delta) ? (
-                    <div className="mt-2 pt-2 border-t border-emerald-200/80 dark:border-emerald-900/60 flex items-baseline justify-between gap-2">
-                      <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300">
-                        今月の変化
-                        {portfolioMonthChange.base_date ? `（${portfolioMonthChange.base_date} 比）` : ''}
+                </div>
+              ) : null}
+              {monthlyDeltaJpy != null && Number.isFinite(monthlyDeltaJpy) ? (
+                <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-900/40 px-3 py-3">
+                  <div className="flex items-start justify-between gap-2.5">
+                    <div className="min-w-0 pr-1">
+                      <span className="text-slate-600 dark:text-slate-300 text-xs sm:text-[13px] block leading-snug font-bold">
+                        1ヶ月の変化
                       </span>
-                      <span className={`font-black tabular-nums text-sm ${signedReturnTextClassStrong(portfolioMonthChange.monthly_delta)}`}>
-                        {portfolioMonthChange.monthly_delta >= 0 ? '+' : ''}¥{Math.round(portfolioMonthChange.monthly_delta).toLocaleString('ja-JP')}
-                        {portfolioMonthChange.monthly_pct != null ? ` (${portfolioMonthChange.monthly_pct >= 0 ? '+' : ''}${portfolioMonthChange.monthly_pct.toFixed(2)}%)` : ''}
-                      </span>
+                      <details className="mt-1 text-[11px] sm:text-xs font-semibold leading-snug text-slate-500">
+                        <summary className="cursor-pointer font-bold">計算方法</summary>
+                        <span className="mt-1 block">
+                          今日の総損益から、1ヶ月前以前で最後に評価できた日{monthlyPnlBase?.baseDate ? `（${monthlyPnlBase.baseDate}）` : ''}の総損益を引いた差。括弧の%はその差÷今日の元本。
+                        </span>
+                      </details>
                     </div>
-                  ) : null}
+                    <div className={`shrink-0 font-black tabular-nums text-right leading-tight ${signedReturnTextClassStrong(monthlyDeltaJpy)}`}>
+                      <div className="text-lg sm:text-xl">
+                        {monthlyDeltaJpy >= 0 ? '+' : ''}¥{Math.round(monthlyDeltaJpy || 0).toLocaleString('ja-JP')}
+                      </div>
+                      {monthlyDeltaPct != null && Number.isFinite(monthlyDeltaPct) ? (
+                        <div className="text-xs sm:text-sm font-bold mt-0.5">
+                          ({monthlyDeltaPct >= 0 ? '+' : ''}{monthlyDeltaPct.toFixed(1)}%)
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
                 </div>
               ) : null}
               {totalCurrentValue <= 0 && monthlyUnrealizedPnlSplit.mode === 'bar' ? (
@@ -7646,23 +7804,23 @@ const WealthSection = ({
                     aria-label={`含み損益の合計に対し、株式が${monthlyUnrealizedPnlSplit.stockPct.toFixed(0)}パーセント、ファンドが${monthlyUnrealizedPnlSplit.fundPct.toFixed(0)}パーセントを占めます`}
                   >
                     <div
-                      className="h-full bg-emerald-500 dark:bg-emerald-500/90"
+                      className="h-full bg-orange-500"
                       style={{ width: `${monthlyUnrealizedPnlSplit.stockBarW}%` }}
                     />
                     <div
-                      className="h-full bg-blue-500 dark:bg-blue-500/90"
+                      className="h-full bg-[#1e3a5f]"
                       style={{ width: `${monthlyUnrealizedPnlSplit.fundBarW}%` }}
                     />
                   </div>
                   <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[10px] sm:text-[11px] font-bold tabular-nums">
-                    <span className="text-emerald-700 dark:text-emerald-300">
+                    <span className="text-orange-700 dark:text-orange-300">
                       株式（損益シェア）{' '}
                       {monthlyUnrealizedPnlSplit.stockPct >= 10
                         ? monthlyUnrealizedPnlSplit.stockPct.toFixed(0)
                         : monthlyUnrealizedPnlSplit.stockPct.toFixed(1)}
                       %
                     </span>
-                    <span className="text-blue-700 dark:text-blue-300">
+                    <span className="text-[#1e3a5f] dark:text-slate-200">
                       ファンド（損益シェア）{' '}
                       {monthlyUnrealizedPnlSplit.fundPct >= 10
                         ? monthlyUnrealizedPnlSplit.fundPct.toFixed(0)
@@ -7983,7 +8141,7 @@ const WealthSection = ({
                       <strong className="text-slate-600 dark:text-slate-300">前営業日</strong>の基準額、または<strong className="text-slate-600 dark:text-slate-300">約1週間前</strong>の基準額（いずれもその時点の終値ベース推計）に対して、
                       下がり幅 / 上がり幅が条件を満たしたときに出ます。条件を満たす<strong className="text-slate-600 dark:text-slate-300">前日比</strong>と<strong className="text-slate-600 dark:text-slate-300">前週比</strong>は別々に数えるため、
                       最大<strong className="text-slate-600 dark:text-slate-300">2件</strong>が同時に表示されることがあります。
-                      左の「株式比率ギャップ」等の<strong className="text-slate-600 dark:text-slate-300">構成比アラート</strong>は別の仕組みです。
+                      左の<strong className="text-slate-600 dark:text-slate-300">構成比</strong>（目標配分の有無）は、この上下アラートとは別の表示です。
                     </p>
                   ) : null}
                   {(hasVisiblePortfolioDropAlert || hasVisiblePortfolioRiseAlert) ? (
@@ -8033,11 +8191,35 @@ const WealthSection = ({
         </div>
       )}
 
-      {isStockTab && (
+      {showStockHoldings ? (
+      <div className={assetStockOrder}>
+      {assetStockEmptyLine ? (
+        <div id="mypage-stock-holdings" className="scroll-mt-24 flex items-center justify-between gap-3 rounded-2xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3 shadow-md shadow-slate-900/10 dark:shadow-black/30">
+          <p className="text-sm font-bold text-slate-600 dark:text-slate-300">保有株式はまだありません</p>
+          <button
+            type="button"
+            onClick={() => openHoldingAddSheet('stock')}
+            className="inline-flex items-center gap-1 rounded-xl bg-orange-500 text-white px-3 py-2 text-xs font-black hover:opacity-90 shrink-0"
+          >
+            <Plus size={14} aria-hidden />
+            追加
+          </button>
+        </div>
+      ) : null}
+      {(!assetStockEmptyLine || holdingAddSheet === 'stock') && (
       <div id="mypage-stock-holdings" className="scroll-mt-24 bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/60">
             <div className="flex items-start justify-between gap-3">
-              <h3 id="stock-performance-heading" className="font-black text-slate-900 dark:text-white shrink-0">株式パフォーマンス</h3>
+              <h3 id="stock-performance-heading" className="font-black text-slate-900 dark:text-white shrink-0">保有銘柄</h3>
+              <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => openHoldingAddSheet('stock')}
+                className="inline-flex items-center gap-1 rounded-xl bg-orange-500 text-white px-3 py-2 text-xs font-black hover:opacity-90"
+              >
+                <Plus size={14} aria-hidden />
+                追加
+              </button>
               <button
                 type="button"
                 onClick={() => setStockTabHelpOpen(true)}
@@ -8048,8 +8230,9 @@ const WealthSection = ({
               >
                 <HelpCircle className="w-5 h-5" aria-hidden />
               </button>
+              </div>
             </div>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">ウォッチリストとは別に、実際に買った銘柄を追加して損益率を管理できます。</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">実際に買った銘柄を「＋追加」から登録し、損益率を管理できます。</p>
             {userId ? (
               <div
                 className="mt-3 rounded-xl border-2 border-amber-400 dark:border-amber-500 bg-amber-50 dark:bg-amber-950/40 px-3 py-2.5 shadow-sm ring-1 ring-amber-200/80 dark:ring-amber-700/50"
@@ -8078,6 +8261,16 @@ const WealthSection = ({
                 </p>
               </div>
             )}
+            {holdingAddSheet === 'stock' ? (
+            <div className="fixed inset-0 z-[130] flex items-end sm:items-center justify-center px-0 sm:px-4 pointer-events-auto">
+              <button type="button" className="absolute inset-0 bg-slate-900/55" aria-label="閉じる" onClick={() => setHoldingAddSheet(null)} />
+              <div className="relative z-[131] w-full max-w-lg max-h-[min(90vh,760px)] overflow-y-auto rounded-t-2xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <h4 className="text-base font-black text-slate-900 dark:text-white">保有銘柄を追加</h4>
+                  <button type="button" onClick={() => setHoldingAddSheet(null)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800" aria-label="閉じる">
+                    <X size={18} aria-hidden />
+                  </button>
+                </div>
             <div className="mt-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white/70 dark:bg-slate-900/40 px-3 py-2">
               <p className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
                 例) 銘柄コード: `AAPL` または会社名: `Apple` / 買付日: `2026/01/15` / 保有数量: `10` または `12.345`（小数第3位まで） / 買付価格: `195.2` → 「保有銘柄を追加」
@@ -8103,7 +8296,7 @@ const WealthSection = ({
                 </li>
               </ul>
             </div>
-            <div className="mt-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-[2.2fr_1.1fr_1fr_1fr_auto] gap-3 md:gap-2 xl:items-end">
+            <div className="mt-3 grid grid-cols-1 gap-3">
               {/*
                 Enter key should submit from any input to make quick entry possible.
               */}
@@ -8126,6 +8319,7 @@ const WealthSection = ({
                     setOwnedSymbolOptions([])
                     setStockSuggestOpen(false)
                     setStockSuggestIndex(-1)
+                    setHoldingAddSheet(null)
                   }
                 }
                 const onInputKeyDown = async (e) => {
@@ -8293,7 +8487,7 @@ const WealthSection = ({
               <button
                 type="button"
                 onClick={submitOwnedStock}
-                className="w-full md:col-span-2 xl:col-span-1 min-h-[48px] xl:min-h-0 px-4 py-3 xl:px-3 xl:py-2 rounded-xl xl:rounded-lg bg-slate-900 dark:bg-orange-500 text-white text-sm xl:text-xs font-black hover:opacity-90 whitespace-nowrap"
+                className="w-full md:col-span-2 xl:col-span-1 min-h-[48px] xl:min-h-0 px-4 py-3 xl:px-3 xl:py-2 rounded-xl xl:rounded-lg bg-orange-500 text-white text-sm xl:text-xs font-black hover:opacity-90 whitespace-nowrap"
               >
                 保有銘柄を追加
               </button>
@@ -8301,13 +8495,16 @@ const WealthSection = ({
                 )
               })()}
             </div>
+              </div>
+            </div>
+            ) : null}
           </div>
           <p className="lg:hidden px-4 pt-3 pb-1 text-xs font-semibold text-slate-500 dark:text-slate-400 leading-snug">
             スマホではカードで縦スクロールのみ。表は横幅のある画面（PC）で表示されます。
           </p>
           <div className="lg:hidden px-3 pb-3 space-y-3">
             {groupedOwnedStocks.length === 0 ? (
-              <p className="text-center text-sm text-slate-500 dark:text-slate-400 py-6">保有銘柄がまだありません。上のフォームから追加してください。</p>
+              <p className="text-center text-sm text-slate-500 dark:text-slate-400 py-6">保有銘柄がまだありません。右上の「＋追加」から登録してください。</p>
             ) : (
               groupedOwnedStocks.map((stock) => {
                 const avgBuyPrice = stock.totalQty > 0 ? (stock.totalCost / stock.totalQty) : 0
@@ -8483,7 +8680,7 @@ const WealthSection = ({
                   <span>投資元本合計（円換算）</span>
                   <span className="tabular-nums shrink-0">¥{Math.round(stockTotalInvestedJpy).toLocaleString('ja-JP')}</span>
                 </div>
-                <div className="flex justify-between gap-3 font-black text-indigo-900 dark:text-indigo-200">
+                <div className="flex justify-between gap-3 font-black text-slate-900 dark:text-white">
                   <span>現在評価額合計</span>
                   <span className="tabular-nums shrink-0">¥{Math.round(stockTotalCurrentJpy).toLocaleString('ja-JP')}</span>
                 </div>
@@ -8509,7 +8706,7 @@ const WealthSection = ({
                 {groupedOwnedStocks.length === 0 && (
                   <tr className="border-t border-slate-100 dark:border-slate-800">
                     <td colSpan={9} className="px-4 py-8 text-center text-sm text-slate-500 dark:text-slate-400">
-                      保有銘柄がまだありません。上のフォームから追加してください。
+                      保有銘柄がまだありません。右上の「＋追加」から登録してください。
                     </td>
                   </tr>
                 )}
@@ -8538,7 +8735,7 @@ const WealthSection = ({
                           {Number(stock.price || 0) > 0 ? Number(stock.price).toLocaleString('ja-JP') : '--'}
                           <p className="text-xs lg:text-[11px] text-slate-400 whitespace-normal">{stock.tradeDate ? formatDateJpSlash(stock.tradeDate) : ''}</p>
                         </td>
-                        <td className="px-3 py-4 sm:px-5 text-right font-black text-indigo-900 dark:text-indigo-200 text-[15px] lg:text-sm whitespace-nowrap">
+                        <td className="px-3 py-4 sm:px-5 text-right font-black text-slate-900 dark:text-white text-[15px] lg:text-sm whitespace-nowrap">
                           {stock.currentValueJpy > 0 ? `¥${Math.round(stock.currentValueJpy).toLocaleString('ja-JP')}` : '--'}
                         </td>
                         <td className={`px-3 py-4 sm:px-5 text-right font-black text-[15px] lg:text-sm whitespace-nowrap tabular-nums ${stock.pnlRate == null ? 'text-slate-400' : stock.pnlRate >= 0 ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'}`}>
@@ -8690,25 +8887,30 @@ const WealthSection = ({
                 </tr>
                 <tr>
                   <td colSpan={6} className="px-3 py-3.5 sm:px-5 sm:py-3 text-right font-black text-slate-800 dark:text-slate-100 text-sm lg:text-xs">現在評価額合計</td>
-                  <td className="px-3 py-3.5 sm:px-5 sm:py-3 text-right font-black text-indigo-900 dark:text-indigo-200 text-[15px] lg:text-sm whitespace-nowrap tabular-nums">¥{Math.round(stockTotalCurrentJpy).toLocaleString('ja-JP')}</td>
+                  <td className="px-3 py-3.5 sm:px-5 sm:py-3 text-right font-black text-slate-900 dark:text-white text-[15px] lg:text-sm whitespace-nowrap tabular-nums">¥{Math.round(stockTotalCurrentJpy).toLocaleString('ja-JP')}</td>
                   <td className="px-3 sm:px-5 py-3" />
                   <td className="px-3 sm:px-5 py-3" />
                 </tr>
               </tfoot>
             </table>
           </div>
-          <p className="px-4 sm:px-5 py-3 text-xs sm:text-[11px] text-slate-500 dark:text-slate-400 border-t border-slate-100 dark:border-slate-800 leading-relaxed">
-            ※ 買付日を入力後「終値反映」を押すと、その日付以前の直近終値を買付価格として自動入力します（買付日そのものは変更しません。DBに当日行が無い場合は直近の取引日行の終値になり、ステータスに注意が出ます）。
-            <span className="block mt-2">
-              数量・買付価格・買付日の編集は保存され、損益率に反映されます。誤追加した取引は各行から削除できます（
-              <span className="font-bold text-slate-700 dark:text-slate-200">削除は売却記録ではなく実現損益に影響しません</span>
-              ）。実売却で减少させる場合は「売却を記録（実現損益）」を使ってください。
-            </span>
-          </p>
+          <details className="px-4 sm:px-5 py-2 text-xs sm:text-[11px] text-slate-500 dark:text-slate-400 border-t border-slate-100 dark:border-slate-800 leading-relaxed">
+            <summary className="cursor-pointer font-bold w-fit">注記</summary>
+            <p className="mt-1">
+              買付日を入力後「終値反映」を押すと、その日付以前の直近終値を買付価格として自動入力します（買付日そのものは変更しません。DBに当日行が無い場合は直近の取引日行の終値になり、ステータスに注意が出ます）。
+              <span className="block mt-2">
+                数量・買付価格・買付日の編集は保存され、損益率に反映されます。誤追加した取引は各行から削除できます（
+                <span className="font-bold text-slate-700 dark:text-slate-200">削除は売却記録ではなく実現損益に影響しません</span>
+                ）。実売却で減少させる場合は「売却を記録（実現損益）」を使ってください。
+              </span>
+            </p>
+          </details>
       </div>
       )}
+      </div>
+      ) : null}
 
-      {isStockTab && (
+      {showStockWatch && (
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-md shadow-slate-900/10 dark:shadow-black/30 overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/60">
             <h3 className="text-lg font-black text-slate-900 dark:text-white">株式ウォッチリスト</h3>
@@ -8821,7 +9023,7 @@ const WealthSection = ({
             <button
               type="button"
               onClick={() => setStockTabHelpOpen(false)}
-              className="mt-4 w-full min-h-[44px] rounded-xl bg-slate-900 dark:bg-indigo-600 text-white text-sm font-black hover:opacity-90"
+              className="mt-4 w-full min-h-[44px] rounded-xl bg-orange-500 text-white text-sm font-black hover:opacity-90"
             >
               閉じる
             </button>
@@ -8903,7 +9105,7 @@ const WealthSection = ({
             <button
               type="button"
               onClick={() => setFundTabHelpOpen(false)}
-              className="mt-4 w-full min-h-[44px] rounded-xl bg-slate-900 dark:bg-indigo-600 text-white text-sm font-black hover:opacity-90"
+              className="mt-4 w-full min-h-[44px] rounded-xl bg-orange-500 text-white text-sm font-black hover:opacity-90"
             >
               閉じる
             </button>
@@ -9699,8 +9901,8 @@ const BudgetSection = ({
           <div className="mt-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/60 p-3">
             <h5 className="text-[11px] font-black text-slate-700 dark:text-slate-200 mb-1.5">家計メモ</h5>
             <div className="space-y-1 text-[11px] text-slate-600 dark:text-slate-300">
-              <p>・ポイント/保険を登録すると、固定費の見込みと期限アラートの精度が上がります。</p>
-              <p>・今月の着地見込みは「シバの家計先読みアラート」で確認できます。</p>
+              <p>・ポイント/保険を登録すると、固定費の試算と期限アラートの材料が増えます。</p>
+              <p>・今月の着地は「シバの家計先読みアラート」で確認できます。</p>
             </div>
           </div>
         </div>
@@ -9734,14 +9936,14 @@ const BudgetSection = ({
                   <div className="min-w-0 flex-1">
                     <p className="text-[10px] font-black text-orange-500 tracking-wide">SHIBA LIVE REPORT</p>
                     <p className="text-sm font-black text-slate-800 dark:text-slate-100 leading-snug">{spendForecastHeadline}</p>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">見込み ¥{spendingRunRateYen.toLocaleString('ja-JP')} / 予算 ¥{Number(budgetTargetYen || 0).toLocaleString('ja-JP')}</p>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">試算 ¥{spendingRunRateYen.toLocaleString('ja-JP')} / 予算 ¥{Number(budgetTargetYen || 0).toLocaleString('ja-JP')}</p>
                   </div>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div className="rounded-xl border border-amber-200 dark:border-amber-900/50 bg-amber-50/60 dark:bg-amber-900/20 p-3">
-                  <p className="text-[10px] font-black text-amber-700 dark:text-amber-300">月末支出見込み</p>
+                  <p className="text-[10px] font-black text-amber-700 dark:text-amber-300">月末支出の試算</p>
                   <p className={`mt-1 text-sm font-black ${
                     spendForecastStatus === 'overspend'
                       ? 'text-rose-600 dark:text-rose-300'
@@ -9785,8 +9987,8 @@ const BudgetSection = ({
                   </div>
                   <p className="text-xs font-bold text-slate-700 dark:text-slate-200">
                     {projectedDeficitYen > 0
-                      ? `今月は ${projectedDeficitYen.toLocaleString('ja-JP')}円 の不足見込みです。`
-                      : `月末の余剰見込みは ${projectedFreeCashYen.toLocaleString('ja-JP')}円 です。`}
+                      ? `今月は ${projectedDeficitYen.toLocaleString('ja-JP')}円 の不足試算です。`
+                      : `月末の余剰試算は ${projectedFreeCashYen.toLocaleString('ja-JP')}円 です。`}
                   </p>
                   <div className="mt-2 h-2 rounded-full bg-emerald-100 dark:bg-emerald-900/40 overflow-hidden">
                     <div className="h-full rounded-full bg-emerald-500" style={{ width: `${freeCashProgressPct}%` }} />
@@ -10843,7 +11045,7 @@ const BudgetSectionV2 = ({
           <div className="rounded-2xl border-[1.5px] border-[#1A1714] bg-[#1A1714] px-4 py-3.5 md:px-5 md:py-4 shadow-[0_4px_24px_rgba(0,0,0,0.1)] text-white">
             <p className="text-xs font-bold uppercase tracking-wider text-white/40 mb-1">月内支出</p>
             <p className="text-[22px] sm:text-[26px] font-black tabular-nums leading-none">{formatCurrency(summaryData.totalSpent)}</p>
-            <p className="text-xs text-white/55 mt-2 tabular-nums">月末支出見込み {formatCurrency(monthEndProjectionYen)}</p>
+            <p className="text-xs text-white/55 mt-2 tabular-nums">月末支出の試算 {formatCurrency(monthEndProjectionYen)}</p>
             <p className="text-xs text-white/40 mt-1.5">
               先月比{' '}
               {momVsPrevMonthPct == null ? (
@@ -11789,7 +11991,7 @@ const DebtSection = ({
 
               <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight mt-3">
                 {dtiNumeric > DTI_THRESHOLD
-                  ? '⚠️ 返済負担が高まっています。借り換えを検討してください。'
+                  ? '返済負担率は登録した条件では高めです。数値は入力の整理であり、借り換えを勧めるものではありません。'
                   : '✅ 適正範囲内(35%以下)です。健全な家計状態です。'}
               </p>
             </div>
@@ -12012,7 +12214,7 @@ const DebtSection = ({
                   <p className="font-black">¥{baseTotalInterestYen.toLocaleString('ja-JP')}</p>
                 </div>
                 <div className="rounded-xl bg-white dark:bg-slate-900 p-3 border border-slate-200 dark:border-slate-700">
-                  <p className="text-xs text-slate-500 dark:text-slate-300">利息削減見込み</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-300">利息差額の試算</p>
                   <p className="font-black text-emerald-600 dark:text-emerald-300">¥{interestSavingYen.toLocaleString('ja-JP')}</p>
                 </div>
               </div>
@@ -12173,9 +12375,9 @@ const CoachSection = ({
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6">
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-5">
             <div>
-              <h2 className="text-2xl font-black text-slate-900 dark:text-white">家計最適化レポート</h2>
+              <h2 className="text-2xl font-black text-slate-900 dark:text-white">家計の試算</h2>
               <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                iDeCo・NISAの節税試算と、負債最適化シミュレーションを1画面で管理します。
+                iDeCo・NISAの節税試算と、負債の試算を1画面で整理します。特定の金融商品の売買を勧誘するものではありません。
               </p>
             </div>
             <div className="flex p-1 bg-slate-100 dark:bg-slate-800 rounded-xl w-full md:w-auto">
@@ -12201,7 +12403,7 @@ const CoachSection = ({
                 }`}
               >
                 <Wallet size={16} />
-                負債の最適化
+                負債の試算
               </button>
             </div>
           </div>
@@ -12435,7 +12637,7 @@ const CoachSection = ({
           <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 border border-slate-200 dark:border-slate-800">
             <div className="flex items-center justify-between gap-4 mb-5">
               <div>
-                <h3 className="text-2xl font-black text-slate-900 dark:text-white">負債最適化レポート</h3>
+                <h3 className="text-2xl font-black text-slate-900 dark:text-white">負債の試算</h3>
                 <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">このページ内で負債の追加・修正・削除ができます。</p>
               </div>
               <button
@@ -12865,7 +13067,7 @@ export default function MyPage({
   const userId = user?.id || null
   const { profile: exposureProfile, loading: exposureLoading } = usePortfolioExposureProfile(userId)
   const [relatedNewsRows, setRelatedNewsRows] = useState([])
-  const [activeTab, setActiveTab] = useState(() => {
+  const [paintedTab, setPaintedTab] = useState(() => {
     try {
       const tabFromUrl = typeof window !== 'undefined'
         ? new URLSearchParams(window.location.search).get('tab')
@@ -12879,8 +13081,17 @@ export default function MyPage({
       return 'wealth'
     }
   })
+  const [activeTab, setActiveTab] = useState(paintedTab)
+  const tabSwitchMarkRef = useRef(0)
   useEffect(() => {
-    if (activeTab !== 'related') return undefined
+    if (!tabSwitchMarkRef.current) return undefined
+    const elapsed = Math.round(performance.now() - tabSwitchMarkRef.current)
+    window.__mmTabContentMs = elapsed
+    tabSwitchMarkRef.current = 0
+    return undefined
+  }, [activeTab])
+  useEffect(() => {
+    if (activeTab !== 'analysis') return undefined
     let cancelled = false
     ;(async () => {
       try {
@@ -12895,33 +13106,45 @@ export default function MyPage({
 
   const handleTabChange = (nextTab) => {
     const normalizedTab = MYPAGE_ALLOWED_TABS.includes(nextTab) ? normalizeMyPageTab(nextTab) : 'wealth'
-    setActiveTab(normalizedTab)
-    recordUserActivityEvent(user?.id, 'mypage_tab_open', { tab: normalizedTab })
-    try {
-      const params = new URLSearchParams(location.search || '')
-      params.set('tab', normalizedTab)
-      const search = params.toString()
-      navigate(
-        {
-          pathname: '/mypage',
-          search: search ? `?${search}` : '',
-        },
-        { replace: true },
-      )
-    } catch {
-      // ignore
+    const startedAt = typeof performance !== 'undefined' ? performance.now() : 0
+    tabSwitchMarkRef.current = startedAt
+    setPaintedTab(normalizedTab)
+    if (startedAt && typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(() => {
+        window.__mmTabPaintMs = Math.round(performance.now() - startedAt)
+      })
     }
-    try {
-      localStorage.setItem(MYPAGE_TAB_STORAGE_KEY, normalizedTab)
-    } catch {
-      // ignore storage failures
-    }
+    window.setTimeout(() => {
+      startTransition(() => {
+        setActiveTab(normalizedTab)
+      })
+      recordUserActivityEvent(user?.id, 'mypage_tab_open', { tab: normalizedTab })
+      try {
+        const params = new URLSearchParams(location.search || '')
+        params.set('tab', normalizedTab)
+        const search = params.toString()
+        navigate(
+          {
+            pathname: '/mypage',
+            search: search ? `?${search}` : '',
+          },
+          { replace: true },
+        )
+      } catch {
+        // ignore
+      }
+      try {
+        localStorage.setItem(MYPAGE_TAB_STORAGE_KEY, normalizedTab)
+      } catch {
+        // ignore storage failures
+      }
+    }, 0)
   }
 
-  /** 資産運用タブの空状態などから、株式／ファンドタブへ切り替えつつ入力欄へスクロール */
+  /** 資産タブの保有一覧へ移動して、該当セクションまでスクロール */
   const switchPortfolioTabAndScroll = (mode) => {
     if (mode !== 'stock' && mode !== 'fund') return
-    handleTabChange(mode)
+    handleTabChange('wealth')
     const anchor = mode === 'stock' ? 'mypage-stock-holdings' : 'mypage-owned-fund-section'
     window.setTimeout(() => {
       document.getElementById(anchor)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -12934,6 +13157,7 @@ export default function MyPage({
       const normalized = tabFromUrl ? normalizeMyPageTab(tabFromUrl) : null
       if (!normalized || !MYPAGE_ALLOWED_TABS.includes(normalized)) return
       setActiveTab((prev) => (prev === normalized ? prev : normalized))
+      setPaintedTab((prev) => (prev === normalized ? prev : normalized))
       try {
         localStorage.setItem(MYPAGE_TAB_STORAGE_KEY, normalized)
       } catch {
@@ -13486,6 +13710,8 @@ export default function MyPage({
 
   useEffect(() => {
     if (!user?.id || !ownedAssetDbReady) return
+    // 読み込みで state が入っただけでは書き戻さない。売却・修正・削除のときだけ置換する。
+    if (!ownedRealizedCloudTouchedRef.current) return
     if (!realizedDbAvailable) {
       try {
         localStorage.setItem(
@@ -13495,13 +13721,14 @@ export default function MyPage({
       } catch {
         // ignore
       }
+      ownedRealizedCloudTouchedRef.current = false
       return
     }
     if (!ownedAssetDbAvailable) return
     const n = Array.isArray(realizedStockTrades) ? realizedStockTrades.length : 0
-    if (n === 0 && !ownedRealizedCloudTouchedRef.current) return
     let alive = true
     const timer = window.setTimeout(async () => {
+      ownedRealizedCloudTouchedRef.current = false
       try {
         await replaceOwnedAssetPositions({
           userId: user.id,
@@ -13511,7 +13738,7 @@ export default function MyPage({
           persistStocks: false,
           persistFunds: false,
           persistRealized: true,
-          allowEmptyRealizedReplace: n === 0 && ownedRealizedCloudTouchedRef.current,
+          allowEmptyRealizedReplace: n === 0,
         })
       } catch (err) {
         if (!alive) return
@@ -13526,6 +13753,7 @@ export default function MyPage({
 
   useEffect(() => {
     if (!user?.id || !ownedAssetDbReady) return
+    if (!ownedRealizedFundCloudTouchedRef.current) return
     if (!realizedFundDbAvailable) {
       try {
         localStorage.setItem(
@@ -13535,13 +13763,14 @@ export default function MyPage({
       } catch {
         // ignore
       }
+      ownedRealizedFundCloudTouchedRef.current = false
       return
     }
     if (!ownedAssetDbAvailable) return
     const n = Array.isArray(realizedFundTrades) ? realizedFundTrades.length : 0
-    if (n === 0 && !ownedRealizedFundCloudTouchedRef.current) return
     let alive = true
     const timer = window.setTimeout(async () => {
+      ownedRealizedFundCloudTouchedRef.current = false
       try {
         await replaceOwnedAssetPositions({
           userId: user.id,
@@ -13551,7 +13780,7 @@ export default function MyPage({
           persistStocks: false,
           persistFunds: false,
           persistRealizedFunds: true,
-          allowEmptyRealizedFundReplace: n === 0 && ownedRealizedFundCloudTouchedRef.current,
+          allowEmptyRealizedFundReplace: n === 0,
         })
       } catch (err) {
         if (!alive) return
@@ -15001,7 +15230,7 @@ export default function MyPage({
         status: result.status,
         resultJson: result,
       })
-      setTaxShieldStatus(`節税シミュレーションを保存しました。見込み節税額 ¥${Math.abs(Number(result.potentialTaxSavingYen || 0)).toLocaleString('ja-JP')}`)
+      setTaxShieldStatus(`節税シミュレーションを保存しました。試算額 ¥${Math.abs(Number(result.potentialTaxSavingYen || 0)).toLocaleString('ja-JP')}`)
     } catch (err) {
       setTaxShieldStatus(`シミュレーション保存に失敗: ${err?.message || 'unknown error'}`)
     }
@@ -15034,9 +15263,9 @@ export default function MyPage({
         ...prev,
         ...saved,
       }))
-      setCashFlowStatus('資金フロー最適化の入力を保存しました。')
+      setCashFlowStatus('資金フローの入力を保存しました。')
     } catch (err) {
-      setCashFlowStatus(`資金フロー最適化の保存に失敗: ${err?.message || 'unknown error'}`)
+      setCashFlowStatus(`資金フローの保存に失敗: ${err?.message || 'unknown error'}`)
     } finally {
       setCashFlowSaving(false)
     }
@@ -15062,7 +15291,7 @@ export default function MyPage({
           ...result,
         },
       })
-      setCashFlowStatus(`資金フロー試算を保存しました。追加利息見込み ¥${Math.abs(Number(result.additionalInterestYen || 0)).toLocaleString('ja-JP')}`)
+      setCashFlowStatus(`資金フロー試算を保存しました。追加利息の試算 ¥${Math.abs(Number(result.additionalInterestYen || 0)).toLocaleString('ja-JP')}`)
     } catch (err) {
       setCashFlowStatus(`資金フロー試算に失敗: ${err?.message || 'unknown error'}`)
     }
@@ -15205,7 +15434,7 @@ export default function MyPage({
   }
 
   const handleLogout = async () => {
-    await supabase.auth.signOut()
+    await supabase.auth.signOut({ scope: 'local' })
     navigate('/login')
   }
 
@@ -15241,7 +15470,7 @@ export default function MyPage({
       if (!res.ok || !payload?.ok) {
         throw new Error(payload?.error || '退会処理に失敗しました。')
       }
-      await supabase.auth.signOut()
+      await supabase.auth.signOut({ scope: 'local' })
       navigate('/')
     } catch (err) {
       setAccountActionError(err?.message || '退会処理に失敗しました。')
@@ -15966,6 +16195,7 @@ export default function MyPage({
       realizedPnlJpy,
       sellFxRate,
       sellFxDate,
+      buyLots: fifo.buyLots || [],
     }
     ownedStockCloudTouchedRef.current = true
     ownedRealizedCloudTouchedRef.current = true
@@ -16035,6 +16265,7 @@ export default function MyPage({
       costBasisJpy: fifo.costBasisJpy,
       proceedsJpy,
       realizedPnlJpy,
+      buyLots: fifo.buyLots || [],
     }
     ownedFundCloudTouchedRef.current = true
     ownedRealizedFundCloudTouchedRef.current = true
@@ -16124,9 +16355,15 @@ export default function MyPage({
   )
 
   const renderContent = () => {
-    switch (activeTab) {
+    const sectionTab = activeTab === 'related'
+      ? 'analysis'
+      : (activeTab === 'stock' || activeTab === 'fund' ? 'wealth' : activeTab)
+    switch (sectionTab) {
+      case 'analysis':
+      case 'watch':
       case 'wealth':
         return (
+          <div className="space-y-6">
           <WealthSection
             stockWatchlistItems={effectiveStockWatchlistItems}
             ownedStocks={ownedStocks}
@@ -16163,7 +16400,7 @@ export default function MyPage({
             onDeleteAsset={handleDeleteAsset}
             pointAccounts={effectivePointAccounts}
             insurances={effectiveInsurances}
-            tabMode="wealth"
+            tabMode={sectionTab}
             realizedStockTrades={realizedStockTrades}
             onRecordStockSale={handleRecordStockSale}
             realizedFundTrades={realizedFundTrades}
@@ -16172,6 +16409,14 @@ export default function MyPage({
             portfolioQuotesHydrating={stockPortfolioQuotesHydrating || fundPortfolioQuotesHydrating}
             onSwitchPortfolioTab={switchPortfolioTabAndScroll}
           />
+            {sectionTab === 'analysis' ? (
+              <PortfolioRelatedPanel
+                exposureProfile={exposureProfile}
+                loading={exposureLoading}
+                newsRows={relatedNewsRows}
+              />
+            ) : null}
+          </div>
         )
       case 'stock':
         return (
@@ -16271,6 +16516,11 @@ export default function MyPage({
         )
       case 'point':
         return (
+          <div className="space-y-4">
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={() => handleTabChange('point')} className="px-4 py-2 rounded-full text-xs md:text-sm font-bold bg-orange-500 text-white">家計の記録</button>
+              <button type="button" onClick={() => handleTabChange('debt')} className="px-4 py-2 rounded-full text-xs md:text-sm font-bold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400">ローン・負債</button>
+            </div>
           <BudgetSectionV2
             user={user}
             isPaidMember={isPaidMember}
@@ -16298,10 +16548,15 @@ export default function MyPage({
             insuranceSaving={insuranceSaving}
             pointSaving={pointSaving}
           />
+          </div>
         )
       case 'debt':
         return (
           <div className="space-y-8">
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={() => handleTabChange('point')} className="px-4 py-2 rounded-full text-xs md:text-sm font-bold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400">家計の記録</button>
+              <button type="button" onClick={() => handleTabChange('debt')} className="px-4 py-2 rounded-full text-xs md:text-sm font-bold bg-orange-500 text-white">ローン・負債</button>
+            </div>
             <DebtSection
               annualIncome={financeProfile.annual_income_manwon}
               debtRemainingYen={loanRemainingYen}
@@ -16434,8 +16689,8 @@ export default function MyPage({
               assetsReady={ownedAssetDbReady}
               stockRealizedDbReady={realizedDbAvailable}
               fundRealizedDbReady={realizedFundDbAvailable}
-              onGoStockTab={() => handleTabChange('stock')}
-              onGoFundTab={() => handleTabChange('fund')}
+              onGoStockTab={() => switchPortfolioTabAndScroll('stock')}
+              onGoFundTab={() => switchPortfolioTabAndScroll('fund')}
               onUpdateStockTrade={handleUpdateStockRealizedTrade}
               onDeleteStockTrade={handleDeleteStockRealizedTrade}
               onUpdateFundTrade={handleUpdateFundRealizedTrade}
@@ -16501,7 +16756,7 @@ export default function MyPage({
         <header className="relative flex flex-col md:flex-row md:items-start justify-between gap-4 mb-3">
           <div className="relative z-20 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between flex-1 min-w-0">
             <div className="flex items-center gap-4 min-w-0">
-              <div className="w-16 h-16 rounded-full bg-slate-900 dark:bg-orange-500 text-white flex items-center justify-center text-2xl font-black shadow-lg shrink-0">
+              <div className="w-16 h-16 rounded-full bg-orange-500 text-white flex items-center justify-center text-2xl font-black shadow-lg shrink-0">
                 {avatarInitial}
               </div>
               <div className="min-w-0">
@@ -16517,26 +16772,24 @@ export default function MyPage({
                   まずは保有資産の登録から
                 </p>
                 <p className="text-[11px] md:text-xs leading-relaxed text-slate-700 dark:text-slate-300 mb-3">
-                  株式や投資信託を登録すると、総資産や評価損益がまとめて確認できます。画面下の
-                  <span className="font-bold text-slate-900 dark:text-white">「株式」</span>
-                  または
-                  <span className="font-bold text-slate-900 dark:text-white">「ファンド」</span>
-                  タブを開き、銘柄・数量・取得単価などを入力してください。
+                  株式や投資信託を登録すると、総資産や評価損益がまとめて確認できます。資産タブの
+                  <span className="font-bold text-slate-900 dark:text-white">「＋追加」</span>
+                  から銘柄・数量・取得単価などを入力してください。
                 </p>
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
-                    onClick={() => handleTabChange('stock')}
-                    className="inline-flex items-center justify-center rounded-xl bg-slate-900 dark:bg-orange-500 px-3 py-2 text-[11px] font-black text-white hover:opacity-95 transition"
+                    onClick={() => switchPortfolioTabAndScroll('stock')}
+                    className="inline-flex items-center justify-center rounded-xl bg-orange-500 px-3 py-2 text-[11px] font-black text-white hover:opacity-95 transition"
                   >
-                    株式タブへ
+                    保有銘柄へ
                   </button>
                   <button
                     type="button"
-                    onClick={() => handleTabChange('fund')}
+                    onClick={() => switchPortfolioTabAndScroll('fund')}
                     className="inline-flex items-center justify-center rounded-xl border-2 border-orange-400 dark:border-orange-600 bg-white dark:bg-slate-900 px-3 py-2 text-[11px] font-black text-orange-800 dark:text-orange-200 hover:bg-orange-50 dark:hover:bg-orange-950/50 transition"
                   >
-                    ファンドタブへ
+                    保有ファンドへ
                   </button>
                 </div>
               </div>
@@ -16567,28 +16820,29 @@ export default function MyPage({
 
         <div className="sticky top-16 z-30 -mx-4 lg:-mx-8 px-4 lg:px-8 pt-1 pb-2 mb-3 bg-slate-100 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800">
           {dataStatus ? <p className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">{dataStatus}</p> : null}
-          <p className="text-[11px] leading-snug text-slate-500 dark:text-slate-400 mb-1.5">
-            ※ 株式・ファンドのUSD建て評価額は、最新価格に本日基準の為替（USD/JPY {Number(valuationUsdJpy || 0).toFixed(2)}、適用日: {valuationFxDate || '--'}）で円換算しています。取得原価は各買付日の為替を使用します。
-          </p>
+          <details className="mb-1.5 text-[11px] leading-snug text-slate-500 dark:text-slate-400">
+            <summary className="cursor-pointer font-bold w-fit">為替の換算</summary>
+            <p className="mt-1">
+              株式・ファンドのUSD建て評価額は、最新価格に本日基準の為替（USD/JPY {Number(valuationUsdJpy || 0).toFixed(2)}、適用日: {valuationFxDate || '--'}）で円換算しています。取得原価は各買付日の為替を使用します。
+            </p>
+          </details>
 
           <div className="flex overflow-x-auto gap-2 pb-0.5 scrollbar-hide pointer-events-auto">
             {[
-              { id: 'wealth', label: '資産運用' },
-              { id: 'stock', label: '株式' },
-              { id: 'fund', label: 'ファンド' },
-              { id: 'related', label: '保有との関連' },
+              { id: 'wealth', label: '資産' },
+              { id: 'analysis', label: '分析' },
               { id: 'sellhistory', label: '売却履歴' },
-              { id: 'dividend', label: '配当カレンダー' },
+              { id: 'dividend', label: '配当' },
+              { id: 'watch', label: 'ウォッチ' },
               { id: 'point', label: '家計簿' },
-              { id: 'debt', label: 'ローン・負債管理' },
             ].map((tab) => (
               <button
                 key={`primary-tab-${tab.id}`}
                 type="button"
                 onClick={() => handleTabChange(tab.id)}
                 className={`pointer-events-auto inline-flex items-center px-4 py-2.5 rounded-full text-xs md:text-sm font-bold whitespace-nowrap transition shrink-0 ${
-                  activeTab === tab.id
-                    ? 'bg-slate-900 dark:bg-orange-500 text-white'
+                  paintedTab === tab.id || (tab.id === 'point' && paintedTab === 'debt')
+                    ? 'bg-orange-500 text-white'
                     : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400'
                 }`}
               >

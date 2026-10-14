@@ -75,6 +75,9 @@ function DistributionBars({ title, rows = [] }) {
   )
 }
 
+const ALLOCATION_BAR_COLORS = ['#F97316', '#1e3a5f', '#fb923c', '#334155', '#fdba74']
+const COUNTRY_BAR_COLORS = ['#1e3a5f', '#F97316', '#fb923c', '#334155', '#fdba74']
+
 const RISK_META = {
   '高': 'text-red-600 bg-red-50 border-red-200 dark:text-red-300 dark:bg-red-950/30 dark:border-red-900',
   '中': 'text-amber-600 bg-amber-50 border-amber-200 dark:text-amber-300 dark:bg-amber-950/30 dark:border-amber-900',
@@ -120,7 +123,7 @@ export default function PortfolioDiagnosisPanel({
       .map(([name, pct], idx) => ({
         name,
         pct,
-        color: ['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#06b6d4', '#8b5cf6'][idx % 6],
+        color: COUNTRY_BAR_COLORS[idx % COUNTRY_BAR_COLORS.length],
       }))
       .sort((a, b) => b.pct - a.pct)
   }, [holdingsWithWeight])
@@ -135,7 +138,7 @@ export default function PortfolioDiagnosisPanel({
       .map(([name, pct], idx) => ({
         name,
         pct,
-        color: ['#3b82f6', '#22c55e', '#f97316', '#a855f7', '#64748b'][idx % 5],
+        color: ALLOCATION_BAR_COLORS[idx % ALLOCATION_BAR_COLORS.length],
       }))
       .sort((a, b) => b.pct - a.pct)
   }, [holdingsWithWeight])
@@ -277,15 +280,15 @@ export default function PortfolioDiagnosisPanel({
 
   return (
     <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-      <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 bg-gradient-to-r from-violet-50 to-indigo-50 dark:from-slate-900 dark:to-slate-900">
+      <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 bg-gradient-to-r from-orange-50 to-slate-50 dark:from-slate-900 dark:to-slate-900">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between lg:gap-4">
           <div className="min-w-0 lg:max-w-[38%]">
             <h3 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
-              <Sparkles size={18} className="text-violet-500" />
+              <Sparkles size={18} className="text-orange-500" />
               AIポートフォリオ分析
             </h3>
             <p className="mt-1 text-xs font-bold text-slate-500 dark:text-slate-400">
-              {scopeLabel}の保有資産をもとにAIが分散・リスク・改善案を分析します
+              保有データから確認ポイントを自動抽出します（投資助言ではありません）
             </p>
             <p className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">
               {userId
@@ -295,14 +298,14 @@ export default function PortfolioDiagnosisPanel({
           </div>
           <div className="flex-1 min-w-0 lg:px-2">
             <p className="text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">
-              本機能は情報整理・参考分析のみを目的としており、特定銘柄の特定の金融商品の売買を勧誘するものではありません。実際の投資判断はご自身の責任で行い、必要に応じて税理士・ファイナンシャルプランナー等の専門家へご相談ください。
+              特定の金融商品の売買を勧誘するものではありません。表示は保有データの整理です。
             </p>
           </div>
           <button
             type="button"
             onClick={diagnose}
             disabled={!hasHoldings || loading || usageCount >= DIAG_DAILY_LIMIT || cooldownUntilTs > Date.now()}
-            className="shrink-0 self-start lg:self-start px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white text-sm font-black shadow-sm transition flex items-center gap-2"
+            className="shrink-0 self-start lg:self-start px-4 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white text-sm font-black shadow-sm transition flex items-center gap-2"
           >
             {loading ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
             {loading ? '分析中...' : 'AIで分析'}
@@ -313,7 +316,7 @@ export default function PortfolioDiagnosisPanel({
       {/* 分析ボタン直下：結果・エラー・ステータス（スクロールしなくてもすぐ見える） */}
       <div className="px-5 pt-4 pb-5 space-y-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-900/30">
         {loading ? (
-          <div className="flex items-center gap-2 rounded-xl border border-violet-200 dark:border-violet-900/50 bg-violet-50/80 dark:bg-violet-950/20 px-4 py-3 text-sm font-bold text-violet-700 dark:text-violet-300">
+          <div className="flex items-center gap-2 rounded-xl border border-orange-200 dark:border-orange-900/50 bg-orange-50/80 dark:bg-orange-950/20 px-4 py-3 text-sm font-bold text-orange-700 dark:text-orange-300">
             <Loader2 size={16} className="animate-spin shrink-0" />
             分析中です…
           </div>
@@ -351,7 +354,7 @@ export default function PortfolioDiagnosisPanel({
 
             <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4">
               <p className="text-xs font-black text-slate-500 dark:text-slate-400 mb-3 flex items-center gap-2">
-                <Target size={14} className="text-indigo-500" />
+                <Target size={14} className="text-orange-500" />
                 分散スコア
               </p>
               <div className="space-y-3">
@@ -419,18 +422,18 @@ export default function PortfolioDiagnosisPanel({
             ) : null}
 
             {Array.isArray(result.actions) && result.actions.length > 0 ? (
-              <div className="rounded-2xl border border-indigo-200 dark:border-indigo-900/50 bg-indigo-50/70 dark:bg-indigo-950/20 p-4">
-                <p className="text-xs font-black text-indigo-600 dark:text-indigo-300 mb-1 flex items-center gap-2">
+              <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-900/40 p-4">
+                <p className="text-xs font-black text-[#1e3a5f] dark:text-orange-200 mb-1 flex items-center gap-2">
                   <ArrowRight size={14} />
-                  想定される選択肢
+                  確認ポイント
                 </p>
-                <p className="text-[10px] text-indigo-500/90 dark:text-indigo-400/80 mb-3 leading-relaxed">
-                  以下は一般的な観点の例であり、売買の指示や確約ではありません。実際の判断はご自身の責任で行ってください。
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 mb-3 leading-relaxed">
+                  保有データの整理です。特定の金融商品の売買を勧誘するものではありません。
                 </p>
                 <div className="space-y-2.5">
                   {result.actions.map((row, idx) => (
                     <div key={idx} className="flex gap-3 text-sm text-slate-800 dark:text-slate-200 leading-6">
-                      <span className="shrink-0 font-black text-indigo-600 dark:text-indigo-400">{row.priority}</span>
+                      <span className="shrink-0 font-black text-orange-600 dark:text-orange-300">{row.priority}</span>
                       <span>{row.action}</span>
                     </div>
                   ))}
@@ -482,12 +485,12 @@ export default function PortfolioDiagnosisPanel({
                                 <span className="text-[11px] text-slate-400 dark:text-slate-500 block">{row.ticker}</span>
                               ) : null}
                             </div>
-                            <span className="shrink-0 text-lg sm:text-xl font-mono font-black tabular-nums tracking-tight text-violet-700 dark:text-violet-200">
+                            <span className="shrink-0 text-lg sm:text-xl font-mono font-black tabular-nums tracking-tight text-[#1e3a5f] dark:text-orange-200">
                               {row.weight.toFixed(1)}%
                             </span>
                           </div>
                           <div className="h-2 mt-1 rounded-full bg-white dark:bg-slate-900 overflow-hidden">
-                            <div className="h-full rounded-full bg-gradient-to-r from-violet-500 to-indigo-500" style={{ width: `${row.weight}%` }} />
+                            <div className="h-full rounded-full bg-orange-500" style={{ width: `${row.weight}%` }} />
                           </div>
                         </div>
                       </div>

@@ -4901,6 +4901,7 @@ const WealthSection = ({
           prices: priceBook,
           splits: stockSplits,
           fx_latest: valuationUsdJpy,
+          fx_by_date: mergedFx,
         }, { includeBuyLots: true }))
         setHistoricalWealthTrend({
           assetGrowthData: seriesC.assetGrowthData,

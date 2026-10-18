@@ -142,7 +142,26 @@ function realizedThrough(trades, asOf) {
   return { realized, soldCost }
 }
 
-function soldLotsValueOn(trades, { asOf, prices, includeBuyLots }) {
+function usdJpyOn(asOf, fxByDate, fxLatest) {
+  const day = isoOk(asOf)
+  if (fxByDate && typeof fxByDate === 'object' && day) {
+    let bestDate = ''
+    let best = 0
+    for (const [rawKey, raw] of Object.entries(fxByDate)) {
+      const key = isoOk(rawKey)
+      if (!key || key > day) continue
+      const rate = Number(raw)
+      if (!(rate > 0) || key <= bestDate) continue
+      bestDate = key
+      best = rate
+    }
+    if (best > 0) return best
+  }
+  const latest = Number(fxLatest)
+  return latest > 0 ? latest : 0
+}
+
+function soldLotsValueOn(trades, { asOf, prices, includeBuyLots, fxLatest, fxByDate }) {
   if (!includeBuyLots) return { valueJpy: 0, costJpy: 0 }
   let valueJpy = 0
   let costJpy = 0
@@ -150,6 +169,7 @@ function soldLotsValueOn(trades, { asOf, prices, includeBuyLots }) {
     const sell = isoOk(trade?.sell_date || trade?.sellDate)
     if (!sell || asOf >= sell) continue
     const symbol = normSymbol(trade?.symbol || trade?.ticker)
+    const listing = listingOf({ ticker: symbol, symbol })
     for (const lot of buyLotsOf(trade)) {
       const buy = isoOk(lot?.buy_date || lot?.buyDate)
       if (!buy || buy > asOf) continue
@@ -157,8 +177,20 @@ function soldLotsValueOn(trades, { asOf, prices, includeBuyLots }) {
       const cost = Number(lot?.cost_jpy ?? lot?.costJpy)
       if (!(qty > 0)) continue
       const close = priceOnOrBefore(prices, symbol, asOf)
-      const px = close != null ? close : (Number.isFinite(cost) && cost > 0 ? cost / qty : 0)
-      valueJpy += qty * px
+      let lotValue = null
+      if (close != null) {
+        if (listing === 'USD') {
+          const fx = usdJpyOn(asOf, fxByDate, fxLatest)
+          if (!(fx > 0)) continue
+          lotValue = qty * close * fx
+        } else {
+          lotValue = qty * close
+        }
+      } else if (Number.isFinite(cost) && cost > 0) {
+        lotValue = cost
+      }
+      if (lotValue == null) continue
+      valueJpy += lotValue
       costJpy += Number.isFinite(cost) ? cost : 0
     }
   }
@@ -192,6 +224,8 @@ export function positionOnDate(input, asOf, { includeBuyLots = true } = {}) {
     asOf: day,
     prices: input?.prices,
     includeBuyLots,
+    fxLatest: input?.fx_latest ?? input?.fxLatest,
+    fxByDate: input?.fx_by_date ?? input?.fxByDate,
   })
   displayValue += sold.valueJpy
   pnlValue += sold.valueJpy

@@ -40,4 +40,10 @@ for (const row of doc.cases) {
   console.log('ok', row.id)
 }
 
+const usdSale = doc.cases.find((row) => row.id === 'monthly_change_usd_sale_buy_lots')
+const latestOnly = monthlyChange({ ...usdSale, fx_by_date: {} }, { includeBuyLots: true })
+near(latestOnly.base_pnl, 20500, 'usd sale falls back to fx_latest')
+near(latestOnly.monthly_delta, 15500, 'usd sale falls back to fx_latest delta')
+console.log('ok usd sale fx_latest fallback')
+
 console.log('portfolio calc cases passed')

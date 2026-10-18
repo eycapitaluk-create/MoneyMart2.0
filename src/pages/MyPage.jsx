@@ -5108,6 +5108,7 @@ const WealthSection = ({
         const month = monthlyChange({
           today: toLocalYmd(new Date()),
           fx_latest: valuationUsdJpy,
+          fx_by_date: mergedFx,
           splits: stockSplits,
           prices: priceBook,
           lots: [

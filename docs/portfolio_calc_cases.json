@@ -53,6 +53,39 @@
       "prices": { "1306.T": [["2026-08-01", 1000], ["2026-09-12", 1050], ["2026-10-01", 1200], ["2026-10-12", 1100]] },
       "expected": { "base_date": "2026-09-12", "base_pnl": 5000, "pnl": 14000, "monthly_delta": 9000, "monthly_pct": 9.00 },
       "without_buy_lots_expected": { "base_pnl": 3000, "monthly_delta": 11000, "monthly_pct": 11.00 }
+    },
+    {
+      "id": "monthly_change_usd_sale_buy_lots",
+      "today": "2026-10-12",
+      "fx_latest": 155,
+      "fx_by_date": { "2026-09-12": 150 },
+      "lots": [],
+      "trades": [{
+        "symbol": "VOO",
+        "kind": "stock",
+        "listing": "USD",
+        "sell_date": "2026-10-01",
+        "qty": 10,
+        "sell_price": 120,
+        "cost_basis_jpy": 150000,
+        "proceeds_jpy": 186000,
+        "realized_pnl_jpy": 36000,
+        "buy_lots": [{ "buy_date": "2026-08-01", "qty": 10, "cost_jpy": 150000 }]
+      }],
+      "prices": { "VOO": [["2026-08-01", 100], ["2026-09-12", 110], ["2026-10-01", 120], ["2026-10-12", 120]] },
+      "expected": {
+        "total_value": 0,
+        "total_cost": 0,
+        "realized_pnl": 36000,
+        "sold_cost": 150000,
+        "principal": 150000,
+        "pnl": 36000,
+        "pct": 24.00,
+        "base_date": "2026-09-12",
+        "base_pnl": 15000,
+        "monthly_delta": 21000,
+        "monthly_pct": 14.00
+      }
     }
   ]
 }

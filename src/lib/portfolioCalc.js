@@ -91,11 +91,40 @@ function storedBuyFx(lot) {
   return Number.isFinite(n) && n > 0 ? n : null
 }
 
+function usdJpyOn(asOf, fxByDate, fxLatest) {
+  const day = isoOk(asOf)
+  if (fxByDate && typeof fxByDate === 'object' && day) {
+    let bestDate = ''
+    let best = 0
+    for (const [rawKey, raw] of Object.entries(fxByDate)) {
+      const key = isoOk(rawKey)
+      if (!key || key > day) continue
+      const rate = Number(raw)
+      if (!(rate > 0) || key <= bestDate) continue
+      bestDate = key
+      best = rate
+    }
+    if (best > 0) return best
+  }
+  const latest = Number(fxLatest)
+  return latest > 0 ? latest : 0
+}
+
+/** 今日の評価はライブの USD/JPY。過去日は fx_by_date のその日以前のレート。 */
+function marketUsdJpy(asOf, today, fxByDate, fxLatest) {
+  const day = isoOk(asOf)
+  const liveDay = isoOk(today)
+  const latest = Number(fxLatest)
+  if (liveDay && day && day >= liveDay && latest > 0) return latest
+  return usdJpyOn(day, fxByDate, fxLatest)
+}
+
 /**
  * 1ロットの円評価。USD で buy_fx_rate が無いときは valued:false（固定レートで埋めない）。
  * 分割は数量×比率・単価÷比率。原価合計は変えない。
+ * 時価の為替は評価日の USD/JPY。原価は保存した buy_fx_rate のまま。
  */
-export function valueOpenLot(lot, { asOf, prices, fxLatest, splits }) {
+export function valueOpenLot(lot, { asOf, prices, fxLatest, fxByDate, today, splits }) {
   const symbol = normSymbol(lot?.ticker || lot?.symbol)
   const buyDate = isoOk(lot?.buy_date || lot?.buyDate)
   const rawQty = Number(lot?.qty)
@@ -119,7 +148,7 @@ export function valueOpenLot(lot, { asOf, prices, fxLatest, splits }) {
   const px = close != null ? close : rawBuy / ratio
   let valueFx = 1
   if (listing === 'USD') {
-    const now = Number(fxLatest)
+    const now = marketUsdJpy(asOf, today, fxByDate, fxLatest)
     if (!(now > 0)) return { valued: false, valueJpy: 0, costJpy: 0, qty, symbol }
     valueFx = now
   }
@@ -178,6 +207,8 @@ export function positionOnDate(input, asOf, { includeBuyLots = true } = {}) {
       asOf: day,
       prices: input?.prices,
       fxLatest: input?.fx_latest ?? input?.fxLatest,
+      fxByDate: input?.fx_by_date ?? input?.fxByDate,
+      today: input?.today,
       splits: input?.splits,
     })
     if (!priced.valued) {

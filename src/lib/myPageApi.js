@@ -8,6 +8,11 @@ import {
 import { decodeHtmlEntities } from './fundDisplayUtils'
 import { isMisclassifiedStockHeldAsFundSymbol } from './ownedFundSymbolGuard'
 import { insertRowsSkippingDuplicates } from './expenseChildInsert'
+import {
+  nextRealizedStockColumns,
+  realizedSchemaMiss,
+  serializeBuyLots,
+} from './realizedTradeBuyLots'
 
 const TABLE_NOT_FOUND_CODE = '42P01'
 const COLUMN_NOT_FOUND_CODE = '42703'
@@ -647,66 +652,74 @@ const stripOwnedFxColumns = (rows) => (Array.isArray(rows) ? rows : []).map((row
   return rest
 })
 
-const isMissingSellFxColumn = (error) => {
-  const msg = String(error?.message || '')
-  const code = String(error?.code || '')
-  return code === '42703' || code === 'PGRST204' || /sell_fx_rate|sell_fx_date/.test(msg)
-}
-
 const stripSellFxColumns = (rows) => (Array.isArray(rows) ? rows : []).map((row) => {
   const { sell_fx_rate, sell_fx_date, ...rest } = row || {}
   return rest
 })
 
-const isMissingBuyLotsColumn = (error) => {
-  const msg = String(error?.message || '')
-  const code = String(error?.code || '')
-  return code === '42703' || code === 'PGRST204' || /buy_lots/.test(msg)
+const stripBuyLotsColumn = (rows) => (Array.isArray(rows) ? rows : []).map((row) => {
+  const copy = { ...(row || {}) }
+  delete copy.buy_lots
+  return copy
+})
+
+const parseBuyLots = (raw) => {
+  const stored = serializeBuyLots(raw)
+  return (stored || []).map((lot) => ({
+    buyDate: lot.buy_date,
+    qty: lot.qty,
+    costJpy: lot.cost_jpy,
+  }))
 }
 
-const parseBuyLots = (raw) => (
-  (Array.isArray(raw) ? raw : [])
-    .map((lot) => {
-      const buyDate = String(lot?.buy_date || lot?.buyDate || '').slice(0, 10)
-      const qty = Number(lot?.qty)
-      const costJpy = Number(lot?.cost_jpy ?? lot?.costJpy)
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(buyDate) || !(qty > 0)) return null
-      return { buyDate, qty, costJpy: Number.isFinite(costJpy) ? costJpy : 0 }
-    })
-    .filter(Boolean)
+const REALIZED_STOCK_READ_COLUMNS = {
+  full: `${REALIZED_STOCK_SELECT},buy_lots`,
+  buyLotsOnly: `${REALIZED_STOCK_SELECT_BASE},buy_lots`,
+  sellFxOnly: REALIZED_STOCK_SELECT,
+  base: REALIZED_STOCK_SELECT_BASE,
+}
+
+const REALIZED_STOCK_BACKUP_COLUMNS = {
+  full: `${REALIZED_STOCK_WRITE_SELECT},buy_lots`,
+  buyLotsOnly: `${REALIZED_STOCK_WRITE_BASE},buy_lots`,
+  sellFxOnly: REALIZED_STOCK_WRITE_SELECT,
+  base: REALIZED_STOCK_WRITE_BASE,
+}
+
+const FUND_REALIZED_READ_COLUMNS = 'trade_id,symbol,sell_date,qty,sell_price,cost_basis_jpy,proceeds_jpy,realized_pnl_jpy,created_at'
+const FUND_REALIZED_BACKUP_COLUMNS = 'user_id,trade_id,symbol,sell_date,qty,sell_price,cost_basis_jpy,proceeds_jpy,realized_pnl_jpy'
+
+async function selectRealizedColumns(run, columns) {
+  let key = 'full'
+  let res = await run(columns[key])
+  while (res.error) {
+    const next = nextRealizedStockColumns(key, res.error)
+    if (!next) break
+    key = next
+    res = await run(columns[key])
+  }
+  return res
+}
+
+const selectRealizedStockRows = async (userId) => selectRealizedColumns(
+  (columns) => supabase
+    .from('user_stock_realized_trades')
+    .select(columns)
+    .eq('user_id', userId)
+    .order('created_at', { ascending: true }),
+  REALIZED_STOCK_READ_COLUMNS,
 )
-
-const selectRealizedStockRows = async (userId) => {
-  const withLots = await supabase
-    .from('user_stock_realized_trades')
-    .select(`${REALIZED_STOCK_SELECT},buy_lots`)
-    .eq('user_id', userId)
-    .order('created_at', { ascending: true })
-  if (!withLots.error) return withLots
-  if (!isMissingBuyLotsColumn(withLots.error) && !isMissingSellFxColumn(withLots.error)) return withLots
-  const full = await supabase
-    .from('user_stock_realized_trades')
-    .select(REALIZED_STOCK_SELECT)
-    .eq('user_id', userId)
-    .order('created_at', { ascending: true })
-  if (!full.error || !isMissingSellFxColumn(full.error)) return full
-  return supabase
-    .from('user_stock_realized_trades')
-    .select(REALIZED_STOCK_SELECT_BASE)
-    .eq('user_id', userId)
-    .order('created_at', { ascending: true })
-}
 
 const selectRealizedFundRows = async (userId) => {
   const withLots = await supabase
     .from('user_fund_realized_trades')
-    .select('trade_id,symbol,sell_date,qty,sell_price,cost_basis_jpy,proceeds_jpy,realized_pnl_jpy,created_at,buy_lots')
+    .select(`${FUND_REALIZED_READ_COLUMNS},buy_lots`)
     .eq('user_id', userId)
     .order('created_at', { ascending: true })
-  if (!withLots.error || !isMissingBuyLotsColumn(withLots.error)) return withLots
+  if (!withLots.error || !realizedSchemaMiss(withLots.error).buyLots) return withLots
   return supabase
     .from('user_fund_realized_trades')
-    .select('trade_id,symbol,sell_date,qty,sell_price,cost_basis_jpy,proceeds_jpy,realized_pnl_jpy,created_at')
+    .select(FUND_REALIZED_READ_COLUMNS)
     .eq('user_id', userId)
     .order('created_at', { ascending: true })
 }
@@ -1033,6 +1046,7 @@ export const replaceOwnedAssetPositions = async ({
         realized_pnl_jpy: Number.isFinite(realizedPnlJpy) ? realizedPnlJpy : 0,
         sell_fx_rate: Number.isFinite(sellFxRate) && sellFxRate > 0 ? sellFxRate : null,
         sell_fx_date: /^\d{4}-\d{2}-\d{2}$/.test(sellFxDate) ? sellFxDate : null,
+        buy_lots: serializeBuyLots(row?.buyLots ?? row?.buy_lots),
       }
     })
     .filter(Boolean)
@@ -1067,6 +1081,7 @@ export const replaceOwnedAssetPositions = async ({
         cost_basis_jpy: Number.isFinite(costBasisJpy) ? costBasisJpy : 0,
         proceeds_jpy: Number.isFinite(proceedsJpy) ? proceedsJpy : 0,
         realized_pnl_jpy: Number.isFinite(realizedPnlJpy) ? realizedPnlJpy : 0,
+        buy_lots: serializeBuyLots(row?.buyLots ?? row?.buy_lots),
       }
     })
     .filter(Boolean)
@@ -1251,16 +1266,13 @@ export const replaceOwnedAssetPositions = async ({
   if (shouldWriteRealized) {
     tasks.push(
       runSerializedOwnedStocksReplace(async () => {
-        let backupRes = await supabase
-          .from('user_stock_realized_trades')
-          .select(REALIZED_STOCK_WRITE_SELECT)
-          .eq('user_id', userId)
-        if (backupRes.error && isMissingSellFxColumn(backupRes.error)) {
-          backupRes = await supabase
+        const backupRes = await selectRealizedColumns(
+          (columns) => supabase
             .from('user_stock_realized_trades')
-            .select(REALIZED_STOCK_WRITE_BASE)
-            .eq('user_id', userId)
-        }
+            .select(columns)
+            .eq('user_id', userId),
+          REALIZED_STOCK_BACKUP_COLUMNS,
+        )
         const backupErr = backupRes.error
         const backupRows = backupRes.data
         if (backupErr && !isTableMissingError(backupErr)) throw backupErr
@@ -1279,8 +1291,11 @@ export const replaceOwnedAssetPositions = async ({
           let rowsToInsert = realizedRowsUnique
           const tryInsert = async () => supabase.from('user_stock_realized_trades').insert(rowsToInsert)
           let ins = await tryInsert()
-          if (ins.error && isMissingSellFxColumn(ins.error)) {
-            rowsToInsert = stripSellFxColumns(rowsToInsert)
+          for (let attempt = 0; attempt < 2 && ins.error; attempt += 1) {
+            const miss = realizedSchemaMiss(ins.error)
+            if (!miss.buyLots && !miss.sellFx) break
+            if (miss.buyLots) rowsToInsert = stripBuyLotsColumn(rowsToInsert)
+            if (miss.sellFx) rowsToInsert = stripSellFxColumns(rowsToInsert)
             ins = await tryInsert()
           }
           if (ins.error?.code === PG_UNIQUE_VIOLATION) {
@@ -1317,10 +1332,17 @@ export const replaceOwnedAssetPositions = async ({
   if (shouldWriteRealizedFunds) {
     tasks.push(
       runSerializedFundRealizedReplace(async () => {
-        const { data: backupRows, error: backupErr } = await supabase
+        let fundBackupRes = await supabase
           .from('user_fund_realized_trades')
-          .select('user_id,trade_id,symbol,sell_date,qty,sell_price,cost_basis_jpy,proceeds_jpy,realized_pnl_jpy')
+          .select(`${FUND_REALIZED_BACKUP_COLUMNS},buy_lots`)
           .eq('user_id', userId)
+        if (fundBackupRes.error && realizedSchemaMiss(fundBackupRes.error).buyLots) {
+          fundBackupRes = await supabase
+            .from('user_fund_realized_trades')
+            .select(FUND_REALIZED_BACKUP_COLUMNS)
+            .eq('user_id', userId)
+        }
+        const { data: backupRows, error: backupErr } = fundBackupRes
         if (backupErr && !isTableMissingError(backupErr)) throw backupErr
         const backup = !backupErr && Array.isArray(backupRows) ? backupRows : []
 
@@ -1334,8 +1356,13 @@ export const replaceOwnedAssetPositions = async ({
         }
 
         if (realizedFundRowsUnique.length > 0) {
-          const tryInsert = async () => supabase.from('user_fund_realized_trades').insert(realizedFundRowsUnique)
+          let fundRowsToInsert = realizedFundRowsUnique
+          const tryInsert = async () => supabase.from('user_fund_realized_trades').insert(fundRowsToInsert)
           let ins = await tryInsert()
+          if (ins.error && realizedSchemaMiss(ins.error).buyLots) {
+            fundRowsToInsert = stripBuyLotsColumn(fundRowsToInsert)
+            ins = await tryInsert()
+          }
           if (ins.error?.code === PG_UNIQUE_VIOLATION) {
             const { error: del2 } = await supabase.from('user_fund_realized_trades').delete().eq('user_id', userId)
             if (del2) {

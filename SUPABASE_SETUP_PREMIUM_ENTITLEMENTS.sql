@@ -33,6 +33,12 @@ create table if not exists public.user_premium_entitlements (
 create index if not exists idx_user_premium_entitlements_user
   on public.user_premium_entitlements (user_id);
 
+-- The per-user unique key still allows the same App Store original transaction
+-- on many accounts. This index is the database lock for that replay.
+create unique index if not exists user_premium_entitlements_apple_one_owner
+  on public.user_premium_entitlements (external_subscription_key)
+  where provider = 'apple';
+
 comment on table public.user_premium_entitlements is '課金ソース別の権利。複数ソースがあっても user_profiles は集約結果';
 
 create or replace function public.set_updated_at_user_premium_entitlements()

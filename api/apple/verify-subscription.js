@@ -21,6 +21,10 @@
  */
 import { createClient } from '@supabase/supabase-js'
 import crypto from 'node:crypto'
+import {
+  appleSubscriptionGrant,
+  foreignAppleSubscriptionOwner,
+} from '../_lib/appleSubscriptionBind.js'
 import { recomputeUserPremium } from '../_lib/premium-entitlements.js'
 
 function sendJson(res, status, payload) {
@@ -237,18 +241,35 @@ export default async function handler(req, res) {
     return sendJson(res, 400, { ok: false, error: 'originalTransactionId がありません。' })
   }
 
-  const expiresMs = Number(tx.expiresDate)
-  if (!Number.isFinite(expiresMs)) {
+  const grant = appleSubscriptionGrant(tx)
+  if (grant.expiresMs == null) {
     return sendJson(res, 400, {
       ok: false,
       error: 'サブスクリプションの expiresDate が無い取引です（消耗型など）。product を確認してください。',
     })
   }
 
-  const expiresAt = new Date(expiresMs)
-  const isActive = expiresAt.getTime() > Date.now()
+  const expiresAt = new Date(grant.expiresMs)
+  const isActive = grant.active
 
   const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } })
+
+  const { data: linkedRows, error: linkedErr } = await admin
+    .from('user_premium_entitlements')
+    .select('user_id')
+    .eq('provider', 'apple')
+    .eq('external_subscription_key', originalTransactionId)
+  if (linkedErr) {
+    console.error('[apple/verify-subscription] owner_lookup', linkedErr)
+    return sendJson(res, 500, { ok: false, error: '契約の紐づけを確認できませんでした。' })
+  }
+  if (foreignAppleSubscriptionOwner(linkedRows, userId)) {
+    return sendJson(res, 409, {
+      ok: false,
+      code: 'apple_subscription_already_linked',
+      error: 'この App Store の契約は別のアカウントに紐づいています。',
+    })
+  }
 
   const { error: upErr } = await admin.from('user_premium_entitlements').upsert(
     {
@@ -264,6 +285,13 @@ export default async function handler(req, res) {
   )
   if (upErr) {
     console.error('[apple/verify-subscription] entitlement_upsert', upErr)
+    if (upErr.code === '23505') {
+      return sendJson(res, 409, {
+        ok: false,
+        code: 'apple_subscription_already_linked',
+        error: 'この App Store の契約は別のアカウントに紐づいています。',
+      })
+    }
     return sendJson(res, 500, { ok: false, error: upErr.message || 'DB の更新に失敗しました。' })
   }
 

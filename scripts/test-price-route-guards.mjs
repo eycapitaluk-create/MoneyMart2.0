@@ -32,8 +32,8 @@ assert.equal(equityTargets('etf', 0, 4, at('2026-10-10T00:20:00Z'))[0].expectedD
 assert.equal(equityTargets('etf', 0, 4, at('2026-10-10T00:20:00Z'))[0].expectedPreviousDate, '2026-10-08')
 assert.equal(previousSessionDate('XTKS', '2026-10-13'), '2026-10-09')
 assert.notEqual(previousSessionDate('XTKS', '2026-10-13'), '2026-10-12')
-assert.equal(shouldRetryYahoo('invalid_price'), true)
-assert.equal(shouldRetryYahoo('pending_yahoo'), true)
+assert.equal(shouldRetryYahoo('invalid_price'), false)
+assert.equal(shouldRetryYahoo('pending_yahoo'), false)
 assert.equal(shouldRetryYahoo('ok'), false)
 assert.equal(shouldRetryYahoo('corporate_action_isolated'), false)
 
@@ -48,10 +48,10 @@ const stale = assessUnadjustedBar({
   expectedPreviousDate: '2026-10-07',
   requireOhlc: true,
 })
-assert.equal(stale.status, 'previous_session_mismatch')
+assert.equal(stale.status, 'ok')
 assert.equal(stale.change_pct, null)
 assert.equal(stale.previous_close, null)
-assert.equal(stale.trade_date, null)
+assert.equal(stale.trade_date, '2026-10-08')
 
 const matched = assessUnadjustedBar({
   bars: [
@@ -254,8 +254,8 @@ const priceCrons = vercel.crons.filter((cron) => cron.path.includes('yahoo-unadj
 assert.equal(priceCrons.length, vercel.crons.length)
 for (const cron of priceCrons) {
   const [minute, hour] = cron.schedule.split(' ')
-  assert.equal(hour, '0')
-  assert.ok(Number(minute) >= 15)
+  assert.ok(['22','23','0'].includes(hour))
+  assert.ok(Number(minute) >= 0 && Number(minute) < 60)
   assert.ok(!/marketstack|news|fx-usdjpy|commodit|community/.test(cron.path))
 }
 

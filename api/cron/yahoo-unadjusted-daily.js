@@ -1,3 +1,4 @@
+import { fetchNasdaqRegularClose } from '../_lib/nasdaqRegularClose.js'
 import { priceScheduleGate, scopedDashboardTargets, incompleteBatchAlreadyAttempted } from '../_lib/priceSchedule.js'
 import { createClient } from '@supabase/supabase-js'
 import {
@@ -71,7 +72,7 @@ function limitedAssessment(target, note) {
   }
 }
 
-async function classifyTarget(target, deadline, breaker) {
+async function classifyYahooTarget(target, deadline, breaker) {
   if (breaker.tripped) return limitedAssessment(target, 'Yahoo 제한이 이미 열려 이 실행에서는 더 호출하지 않습니다.')
   if (target.held) return { ...target, assessment: { status: 'held', trade_date: null, price_basis: PRICE_BASIS } }
   if (!target.expectedDate) {
@@ -107,10 +108,38 @@ async function classifyTarget(target, deadline, breaker) {
         expectedPreviousDate: target.expectedPreviousDate,
         requireOhlc: target.requireOhlc,
       }),
+      source_diagnostics: {
+        expected_bar: parsed.bars.find(bar => bar.date === target.expectedDate) || null,
+        exchange_timezone: parsed.timeZone,
+        regular_market_time: fetched.payload?.chart?.result?.[0]?.meta?.regularMarketTime || null,
+        regular_session_end: fetched.payload?.chart?.result?.[0]?.meta?.currentTradingPeriod?.regular?.end || null,
+      },
     }
   } catch (error) {
     breaker.tripped = yahooResponseHalt(null, error)
     return limitedAssessment(target, `Yahoo ${error?.name || 'network'}. 같은 실행과 다음 배치의 호출을 멈춥니다.`)
+  }
+}
+
+async function classifyTarget(target, deadline, breaker) {
+  const row = await classifyYahooTarget(target, deadline, breaker)
+  // Only missing US closes, once per regular run. Never retry Yahoo or use
+  // Marketstack credits. A source limit stops all later Nasdaq requests.
+  if (target.calendar !== 'XNYS' || target.category !== 'equity' ||
+      !['invalid_price','pending_yahoo','previous_session_mismatch'].includes(row.assessment.status) ||
+      breaker.tripped || breaker.nasdaqBlocked || Date.now() > deadline - 8000) return row
+  try {
+    const fallback = await fetchNasdaqRegularClose(target)
+    if ([401,403,429].includes(fallback.status) || fallback.status >= 500) {
+      breaker.nasdaqBlocked = true
+      breaker.nasdaqLimit = {status:fallback.status,at:new Date().toISOString(),until:new Date(Date.now()+86400000).toISOString()}
+    }
+    if (fallback.assessment) return { ...target, assessment: { ...fallback.assessment, original_yahoo_status:row.assessment.status } }
+    return {...row, assessment:{...row.assessment, nasdaq_status:fallback.status}}
+  } catch (error) {
+    breaker.nasdaqBlocked = true
+    breaker.nasdaqLimit = {status:'network',at:new Date().toISOString(),until:new Date(Date.now()+86400000).toISOString()}
+    return row
   }
 }
 
@@ -208,6 +237,10 @@ function summaryOf(rows) {
       reason: row.decision?.reason || null,
       expected: row.expectedDate,
       latest: row.assessment.latest_available_date || null,
+      note: row.assessment.note || null,
+      nasdaq_status: row.assessment.nasdaq_status || null,
+      evidence: row.assessment.close_evidence || null,
+      source_diagnostics: row.source_diagnostics || null,
     }))
   return { counts, failures }
 }
@@ -283,6 +316,7 @@ export default async function handler(req, res) {
   if (!supabase) {
     return res.status(200).json({ ok: false, dry_run: dryRun, completed_write: false, yahoo_called: false, marketstack_called: false, yahoo_access_limited: 'unconfirmed', note: '제한 상태를 확인하지 못해 Yahoo를 호출하지 않습니다.' })
   }
+  const { data: nasdaqManualJobs, error: nasdaqManualErr } = await supabase.from('ingestion_jobs').select('meta').eq('source', PROVIDER).filter('meta->nasdaq_limit->>status', 'in', '(401,403)').order('id', { ascending: false }).limit(1)
   const { data: recentJobs, error: recentErr } = await supabase.from('ingestion_jobs').select('meta').eq('source', PROVIDER).order('id', { ascending: false }).limit(50)
   const { data: manualJobs, error: manualErr } = await supabase.from('ingestion_jobs').select('meta').eq('source', PROVIDER).filter('meta->>yahoo_manual_review_required', 'eq', 'true').order('id', { ascending: false }).limit(5)
   if (recentErr || manualErr) {
@@ -401,8 +435,9 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: false, completed_write: false, yahoo_called: false, marketstack_called: false, error: startErr?.message || 'ingestion job start failed' })
   }
 
-  const deadline = Date.now() + 240000
+  const deadline = Date.now() + 260000
   const yahooRun = await mapUntilYahooLimit(yahooTargets, 1, async (target, breaker) => {
+    breaker.nasdaqBlocked ||= (nasdaqManualErr ? [{meta:{nasdaq_limit:{status:403}}}] : [...(nasdaqManualJobs || []), ...(recentJobs || [])]).some(job => { const limit=job.meta?.nasdaq_limit; return limit && ([401,403].includes(limit.status) || Date.parse(limit.until)>Date.now()) })
     const row = await classifyTarget(target, deadline, breaker)
     if (breaker.tripped && !breaker.persist) {
       breaker.persist = supabase.from('ingestion_jobs').update({
@@ -544,6 +579,9 @@ export default async function handler(req, res) {
     marketstack_hold: marketstackHold,
     ...(yahooBreaker.tripped || {}),
     held_not_written: HELD_REPORT,
+    collector_version: 'automatic-root-fix-2026-10-22',
+    verified_close_only_rows: classifiedAfter.filter(row => row.assessment.regular_close_verified && !row.assessment.ohlc_ok).map(row => row.symbol),
+    nasdaq_limit: yahooBreaker.nasdaqLimit || null,
     backup,
     dashboard_backup: dashboardBackup,
     fx_backup: fxBackup,
@@ -578,6 +616,7 @@ export default async function handler(req, res) {
       yahoo_symbol: row.yahoo,
       adjusted_close: 'not_used',
       close_evidence: row.assessment.close_evidence || null,
+      ohlcv_complete: Boolean(row.assessment.ohlc_ok),
     }
     if (row.decision.action === 'insert') {
       const { error } = await supabase.from('stock_daily_prices').insert([{

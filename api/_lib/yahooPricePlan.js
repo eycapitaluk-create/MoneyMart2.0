@@ -37,7 +37,7 @@ export function completedFxDate(now = new Date()) {
 export function yahooSymbolForStorage(symbol) {
   if (symbol === 'BRK.B' || symbol === 'BRK/B') return 'BRK-B'
   if (symbol === 'BF.B' || symbol === 'BF/B') return 'BF-B'
-  return symbol
+  return ({ EQR: 'VMRK', PSKY: 'SKYD', SATS: 'ECHO', '1553.T': '1553.N' })[symbol] || symbol
 }
 
 function sessionPair(calendar, now, indexBuffer) {
@@ -64,7 +64,10 @@ export function sliceBatch(symbols, batch, batches) {
 export function equityTargets(scope, batch, batches, now = new Date()) {
   const calendar = scope === 'us' ? 'XNYS' : 'XTKS'
   const { expectedDate, expectedPreviousDate } = sessionPair(calendar, now, false)
-  return sliceBatch(scopeSymbols(scope), batch, batches).map((symbol) => ({
+  // Existing official termination review, verified through 2026-10-21.
+  // Do not fetch or fabricate post-termination closes; preserve storage universe.
+  const ended = new Set(['AVB','CTRA','EA','QRVO','WBD','5202.T','2246.T','2643.T'])
+  return sliceBatch(scopeSymbols(scope), batch, batches).filter(symbol => !(expectedDate >= '2026-10-21' && ended.has(symbol))).map((symbol) => ({
     item: symbol,
     yahoo: yahooSymbolForStorage(symbol),
     symbol,
@@ -132,6 +135,10 @@ function verifiedSameSessionClose(assessment, dbPreviousClose, verifiedPrevious)
 export function decidePriceWrite({ existing, assessment, dbPreviousClose, verifiedPrevious = null }) {
   if (!assessment?.trade_date || HOLD_STATUSES.has(assessment.status)) {
     return { action: 'hold', reason: assessment?.status || 'pending_yahoo' }
+  }
+  if (assessment.regular_close_verified && !existing && (assessment.provider === 'Nasdaq' || !(Number(dbPreviousClose) > 0) || assessment.cash_distribution)) {
+    if (Number(dbPreviousClose) > 0 && isExtremeCloseMove(dbPreviousClose, assessment.close)) return { action: 'quarantine', reason: 'extreme_vs_prev_close' }
+    return { action: 'insert', reason: assessment.ohlc_ok ? 'verified_current_session' : 'verified_regular_close_only' }
   }
   if (!assessment.ohlc_ok) return { action: 'hold', reason: 'ohlc_unavailable' }
   const hasRange = existing && [existing.open, existing.high, existing.low].some((value) => value != null)

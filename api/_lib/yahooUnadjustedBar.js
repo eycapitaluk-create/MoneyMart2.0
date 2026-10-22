@@ -212,7 +212,7 @@ export function assessUnadjustedBar({ bars, events, timeZone, expectedDate, expe
       note: '예상 거래일 데이터 미도착. 날짜를 바꾸지 않습니다.',
     }
   }
-  if (eventDates(events, timeZone).has(expectedDate)) {
+  if (eventDates({ splits: events?.splits }, timeZone).has(expectedDate)) {
     return {
       status: 'corporate_action_isolated',
       trade_date: null,
@@ -222,6 +222,7 @@ export function assessUnadjustedBar({ bars, events, timeZone, expectedDate, expe
       note: '배당 또는 분할이 같은 세션에 있습니다. 종가를 섞지 않고 보류합니다.',
     }
   }
+  const cashDistribution = eventDates({ dividends: events?.dividends }, timeZone).has(expectedDate)
   const close = positive(bar.close)
   if (close == null) {
     return {
@@ -264,8 +265,11 @@ export function assessUnadjustedBar({ bars, events, timeZone, expectedDate, expe
     : null
   if (!prior) {
     return {
-      status: 'previous_session_mismatch',
-      trade_date: null,
+      status: requireOhlc && rangeOk && Number(bar.volume) > 0 ? 'ok' : 'previous_session_mismatch',
+      trade_date: requireOhlc && rangeOk && Number(bar.volume) > 0 ? expectedDate : null,
+      regular_close_verified: requireOhlc && rangeOk && Number(bar.volume) > 0,
+      close_evidence: requireOhlc && rangeOk && Number(bar.volume) > 0 ? { kind: 'dated_daily_ohlcv_without_previous_bar', trade_date: expectedDate, volume: bar.volume } : null,
+      volume: Number(bar.volume) > 0 ? Number(bar.volume) : null,
       expected_trade_date: expectedDate,
       expected_previous_date: expectedPreviousDate || null,
       previous_trade_date: null,
@@ -284,6 +288,8 @@ export function assessUnadjustedBar({ bars, events, timeZone, expectedDate, expe
   const changePct = (close / previousClose - 1) * 100
   return {
     status: 'ok',
+    regular_close_verified: requireOhlc && rangeOk && Number(bar.volume) > 0,
+    cash_distribution: cashDistribution,
     trade_date: expectedDate,
     expected_trade_date: expectedDate,
     expected_previous_date: expectedPreviousDate,
@@ -297,7 +303,7 @@ export function assessUnadjustedBar({ bars, events, timeZone, expectedDate, expe
     volume: rangeOk && Number.isFinite(Number(bar.volume)) && Number(bar.volume) > 0
       ? Math.round(Number(bar.volume))
       : null,
-    change_pct: changePct,
+    change_pct: cashDistribution ? null : changePct,
     price_basis: PRICE_BASIS,
     close_evidence: bar.close_evidence || null,
     note: '',

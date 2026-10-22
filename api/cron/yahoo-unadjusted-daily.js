@@ -123,6 +123,9 @@ async function classifyYahooTarget(target, deadline, breaker) {
 
 async function classifyTarget(target, deadline, breaker) {
   const row = await classifyYahooTarget(target, deadline, breaker)
+  if (target.symbol !== target.yahoo && ['EQR','PSKY','SATS','1553.T'].includes(target.symbol) && row.assessment.regular_close_verified) {
+    row.assessment.verified_symbol_transition = {storage_symbol:target.symbol,provider_symbol:target.yahoo}
+  }
   // Only missing US closes, once per regular run. Never retry Yahoo or use
   // Marketstack credits. A source limit stops all later Nasdaq requests.
   if (target.calendar !== 'XNYS' || target.category !== 'equity' ||

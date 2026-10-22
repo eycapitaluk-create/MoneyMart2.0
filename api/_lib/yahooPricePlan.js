@@ -136,7 +136,7 @@ export function decidePriceWrite({ existing, assessment, dbPreviousClose, verifi
   if (!assessment?.trade_date || HOLD_STATUSES.has(assessment.status)) {
     return { action: 'hold', reason: assessment?.status || 'pending_yahoo' }
   }
-  if (assessment.regular_close_verified && !existing && (assessment.provider === 'Nasdaq' || !(Number(dbPreviousClose) > 0) || assessment.cash_distribution)) {
+  if (assessment.regular_close_verified && !existing && (assessment.provider === 'Nasdaq' || !(Number(dbPreviousClose) > 0) || assessment.cash_distribution || assessment.verified_symbol_transition)) {
     if (Number(dbPreviousClose) > 0 && isExtremeCloseMove(dbPreviousClose, assessment.close)) return { action: 'quarantine', reason: 'extreme_vs_prev_close' }
     return { action: 'insert', reason: assessment.ohlc_ok ? 'verified_current_session' : 'verified_regular_close_only' }
   }

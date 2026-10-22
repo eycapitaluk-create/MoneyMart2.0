@@ -27,6 +27,7 @@ const sparse=assessUnadjustedBar(params)
 assert.equal(sparse.trade_date,'2026-10-21')
 assert.equal(sparse.previous_close,null)
 assert.equal(sparse.change_pct,null)
+assert.equal(decidePriceWrite({assessment:{...sparse,verified_symbol_transition:{storage_symbol:'SATS',provider_symbol:'ECHO'}},dbPreviousClose:100}).action,'insert')
 assert.equal(decidePriceWrite({assessment:sparse,dbPreviousClose:null}).action,'insert')
 assert.equal(assessUnadjustedBar({...params,bars:[{...bar,open:101,high:101,low:101,volume:0}]}).status,'unverified_carried_price')
 const ts=Date.parse('2026-10-21T00:00:00Z')/1000

@@ -136,7 +136,7 @@ export default function CrmOverviewPanel({
         <div className={`${panelClass} ${panelPad}`}>
           <h3 className={titleClass}>Signup trend · {Math.min(14, rangeDays)}d</h3>
           <div className="h-48 mt-3">
-            <ResponsiveContainer width="100%" height="100%">
+            {!analysis?.coverage?.customerReady ? <p className="text-sm text-gray-500">Signup trend unavailable until the customer source is confirmed.</p> : <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
                 <XAxis dataKey="day" tick={{ fontSize: 10 }} tickFormatter={(v) => (String(v).length >= 10 ? String(v).slice(5, 10) : v)} />
@@ -144,7 +144,7 @@ export default function CrmOverviewPanel({
                 <Tooltip formatter={(v) => [v, 'Signups']} />
                 <Bar dataKey="count" name="Signups" fill="#64748b" radius={[3, 3, 0, 0]} />
               </BarChart>
-            </ResponsiveContainer>
+            </ResponsiveContainer>}
           </div>
         </div>
       </div>

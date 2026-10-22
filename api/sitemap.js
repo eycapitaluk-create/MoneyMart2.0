@@ -34,6 +34,7 @@ const STATIC_PATHS = [
   '/about',
   '/careers',
   '/legal/privacy',
+  '/legal/account-deletion',
   '/legal/terms',
   '/legal/commerce',
   '/legal/disclaimer',

@@ -153,6 +153,7 @@ export default function Footer() {
               <ul className="space-y-2 text-xs font-medium">
                 <li><button onClick={() => navigate('/legal/terms')} className="hover:text-white transition flex items-center gap-2"><FileText size={12} /> 利用規約</button></li>
                 <li><button onClick={() => navigate('/legal/privacy')} className="hover:text-white transition flex items-center gap-2"><Lock size={12} /> プライバシーポリシー</button></li>
+                <li><button onClick={() => navigate('/legal/account-deletion')} className="hover:text-white transition">アカウントとデータの削除</button></li>
                 <li><button onClick={() => navigate('/legal/commerce')} className="hover:text-white transition flex items-center gap-2"><Scale size={12} aria-hidden /> 特定商取引法に基づく表記</button></li>
                 <li><button onClick={() => navigate('/legal/disclaimer')} className="hover:text-white transition flex items-center gap-2"><ShieldCheck size={12} /> 免責事項</button></li>
                 <li><button onClick={() => navigate('/legal/methodology')} className="hover:text-white transition flex items-center gap-2"><FileText size={12} /> 編集・データ方針</button></li>

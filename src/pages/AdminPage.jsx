@@ -60,6 +60,7 @@ import {
 
 import { MARKET_MAJOR_REGION_OPTIONS } from '../lib/marketMajorNewsBoard'
 import { buildCrmExecutiveSummary } from '../lib/crmExecutiveSummary'
+import { runCrmQuery } from '../lib/crmQueryDeadline'
 import { buildCrmAdvancedAnalysis, buildCrmDecisionMetrics } from '../lib/crmAdvancedAnalysis'
 import { buildSiteAdvancedAnalysis } from '../lib/siteAdvancedAnalysis'
 import CrmWorkbench from '../components/admin/crm/CrmWorkbench'
@@ -1391,6 +1392,7 @@ export default function AdminPage() {
   const [crmTrafficLoadedAt, setCrmTrafficLoadedAt] = useState(null)
   const [crmTrafficLoadedRange, setCrmTrafficLoadedRange] = useState(null)
   const crmTrafficRequestRef = useRef(0)
+  const crmCustomerRequestRef = useRef(0)
   const [crmRangeDays, setCrmRangeDays] = useState(30)
   const [crmTraffic, setCrmTraffic] = useState(emptyCrmTraffic())
   const [crmTrafficLoading, setCrmTrafficLoading] = useState(false)
@@ -2801,10 +2803,12 @@ export default function AdminPage() {
   }
 
   const loadCrm = async () => {
+    const requestId = ++crmCustomerRequestRef.current
     setCrmLoading(true)
     setCrmError('')
     try {
-      const { data, error } = await supabase.rpc('admin_crm_users', { p_limit: 300 })
+      const { data, error } = await runCrmQuery(signal => supabase.rpc('admin_crm_users', { p_limit: 300 }).abortSignal(signal), { label: 'Customer source' })
+      if (requestId !== crmCustomerRequestRef.current) return null
       if (error) throw error
       if (!Array.isArray(data)) throw new Error('Empty CRM customer response')
       const rows = data
@@ -2812,11 +2816,12 @@ export default function AdminPage() {
       setCrmLoadedAt(new Date().toISOString())
       return rows
     } catch (err) {
+      if (requestId !== crmCustomerRequestRef.current) return null
       setCrmError(formatCrmLoadError(err))
       setCrmRows([])
       return []
     } finally {
-      setCrmLoading(false)
+      if (requestId === crmCustomerRequestRef.current) setCrmLoading(false)
     }
   }
 
@@ -2826,7 +2831,7 @@ export default function AdminPage() {
     setCrmTrafficError('')
     const clamped = Math.max(1, Math.min(366, Number(rangeDays || 30)))
     try {
-      const { data, error } = await supabase.rpc('admin_crm_traffic_dashboard', { p_days: clamped })
+      const { data, error } = await runCrmQuery(signal => supabase.rpc('admin_crm_traffic_dashboard', { p_days: clamped }).abortSignal(signal), { label: 'Traffic source' })
       if (requestId !== crmTrafficRequestRef.current) return
       if (error) throw error
       if (data == null || typeof data !== 'object') throw new Error('Empty CRM traffic response')
@@ -2848,12 +2853,16 @@ export default function AdminPage() {
     const clamped = Math.max(1, Math.min(366, Number(rangeDays || 28)))
     const internalUserIds = buildInternalUserIdSet(crmRowsSnapshot)
     try {
-      const { data, error } = await supabase.rpc('admin_crm_audience_dashboard', { p_days: clamped })
+      const { data, error } = await runCrmQuery(signal => supabase.rpc('admin_crm_audience_dashboard', { p_days: clamped }).abortSignal(signal), { label: 'Audience source' })
       if (!error && data && typeof data === 'object') {
         setCrmAudience(mapAudienceRpcPayload(data))
         return
       }
 
+      // Only the existing missing-RPC fallback may read event rows. Timeouts are not missing functions.
+      if (!error || !['42883', 'PGRST202'].includes(String(error.code))) {
+        throw error || new Error('Audience source returned no confirmed result')
+      }
       const since = new Date(Date.now() - clamped * 86400000).toISOString()
       const events = await fetchAdminAnalyticsEventRows(since, internalUserIds, {
         eventName: 'page_view',
@@ -2893,11 +2902,10 @@ export default function AdminPage() {
   }
 
   const reloadCrmAll = async () => {
+    const traffic = loadCrmTraffic(crmRangeDays)
     const rows = await loadCrm()
-    await Promise.all([
-      loadCrmTraffic(crmRangeDays),
-      loadCrmAudience(crmRangeDays, rows),
-    ])
+    if (rows == null) return
+    await Promise.all([traffic, loadCrmAudience(crmRangeDays, rows)])
   }
 
   useEffect(() => {
@@ -2923,12 +2931,10 @@ export default function AdminPage() {
     if (activeTab !== 'crm' && activeTab !== 'dashboard') return
     let cancelled = false
     ;(async () => {
+      const traffic = loadCrmTraffic(crmRangeDays)
       const rows = await loadCrm()
-      if (cancelled) return
-      await Promise.all([
-        loadCrmTraffic(crmRangeDays),
-        loadCrmAudience(crmRangeDays, rows),
-      ])
+      if (cancelled || rows == null) return
+      await Promise.all([traffic, loadCrmAudience(crmRangeDays, rows)])
     })()
     return () => { cancelled = true }
   }, [activeTab, crmRangeDays])

@@ -132,12 +132,47 @@ function verifiedSameSessionClose(assessment, dbPreviousClose, verifiedPrevious)
   return sameBasisClose(dbPreviousClose, verifiedPrevious.close)
 }
 
-export function decidePriceWrite({ existing, assessment, dbPreviousClose, verifiedPrevious = null }) {
+function storedAnchorClose(dbPreviousClose, dbLatestClose, dbLatestDate, tradeDate) {
+  if (Number(dbPreviousClose) > 0) return Number(dbPreviousClose)
+  if (!(Number(dbLatestClose) > 0)) return 0
+  if (tradeDate && dbLatestDate && dbLatestDate >= tradeDate) return 0
+  return Number(dbLatestClose)
+}
+
+/** Split sessions are not stored. A later verified bar must not resume on the post-split scale. */
+function unappliedSplit(assessment, dbLatestDate) {
+  const tradeDate = assessment?.trade_date || assessment?.expected_trade_date
+  const dates = (Array.isArray(assessment?.split_dates) ? assessment.split_dates : [])
+    .filter((date) => date && (!tradeDate || date <= tradeDate))
+  if (!dates.length) return false
+  if (!dbLatestDate) return true
+  return dates.some((date) => date > dbLatestDate)
+}
+
+export function decidePriceWrite({
+  existing,
+  assessment,
+  dbPreviousClose,
+  verifiedPrevious = null,
+  dbLatestClose = null,
+  dbLatestDate = null,
+  latestAnchorKnown = null,
+}) {
   if (!assessment?.trade_date || HOLD_STATUSES.has(assessment.status)) {
     return { action: 'hold', reason: assessment?.status || 'pending_yahoo' }
   }
   if (assessment.regular_close_verified && !existing && (assessment.provider === 'Nasdaq' || !(Number(dbPreviousClose) > 0) || assessment.cash_distribution || assessment.verified_symbol_transition)) {
-    if (Number(dbPreviousClose) > 0 && isExtremeCloseMove(dbPreviousClose, assessment.close)) return { action: 'quarantine', reason: 'extreme_vs_prev_close' }
+    if (!(Number(dbPreviousClose) > 0) && latestAnchorKnown === false) {
+      return { action: 'hold', reason: 'missing_db_previous_session' }
+    }
+    if (!(Number(dbPreviousClose) > 0) && unappliedSplit(assessment, dbLatestDate)) {
+      return { action: 'hold', reason: 'prior_split_unapplied' }
+    }
+    const anchor = storedAnchorClose(dbPreviousClose, dbLatestClose, dbLatestDate, assessment.trade_date)
+    if (anchor > 0 && isExtremeCloseMove(anchor, assessment.close)) {
+      if (!(Number(dbPreviousClose) > 0)) return { action: 'hold', reason: 'missing_db_previous_session' }
+      return { action: 'quarantine', reason: 'extreme_vs_prev_close' }
+    }
     return { action: 'insert', reason: assessment.ohlc_ok ? 'verified_current_session' : 'verified_regular_close_only' }
   }
   if (!assessment.ohlc_ok) return { action: 'hold', reason: 'ohlc_unavailable' }

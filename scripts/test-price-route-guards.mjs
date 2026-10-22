@@ -178,6 +178,31 @@ const splitGap = decidePriceWrite({
 assert.equal(splitGap.action, 'hold')
 assert.equal(splitGap.reason, 'missing_db_previous_session')
 assert.notEqual(splitGap.action, 'insert')
+const verifiedSplitGap = decidePriceWrite({
+  existing: null,
+  assessment: { ...ok, regular_close_verified: true, previous_close: 20, close: 22, open: 21, high: 23, low: 20 },
+  dbPreviousClose: null,
+  dbLatestDate: '2026-10-06',
+  dbLatestClose: 100,
+})
+assert.equal(verifiedSplitGap.action, 'hold')
+assert.equal(verifiedSplitGap.reason, 'missing_db_previous_session')
+assert.equal(decidePriceWrite({
+  existing: null,
+  assessment: {
+    ...ok,
+    regular_close_verified: true,
+    previous_close: 67,
+    close: 67,
+    open: 66,
+    high: 68,
+    low: 65,
+    split_dates: ['2026-10-07'],
+  },
+  dbPreviousClose: null,
+  dbLatestDate: '2026-10-06',
+  dbLatestClose: 100,
+}).reason, 'prior_split_unapplied')
 assert.equal(decidePriceWrite({
   existing: { open: null, high: null, low: null, close: 22 },
   assessment: { ...ok, previous_close: 20, close: 22, open: 21, high: 23, low: 20 },

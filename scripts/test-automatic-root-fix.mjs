@@ -29,6 +29,27 @@ assert.equal(sparse.previous_close,null)
 assert.equal(sparse.change_pct,null)
 assert.equal(decidePriceWrite({assessment:{...sparse,verified_symbol_transition:{storage_symbol:'SATS',provider_symbol:'ECHO'}},dbPreviousClose:100}).action,'insert')
 assert.equal(decidePriceWrite({assessment:sparse,dbPreviousClose:null}).action,'insert')
+assert.equal(decidePriceWrite({assessment:{...sparse,regular_close_verified:true},dbPreviousClose:null,dbLatestClose:100,dbLatestDate:'2026-10-06'}).action,'insert')
+assert.equal(decidePriceWrite({assessment:{...sparse,regular_close_verified:true,close:22},dbPreviousClose:null,dbLatestClose:100,dbLatestDate:'2026-10-06'}).reason,'missing_db_previous_session')
+const splitTs=Date.parse('2026-10-20T16:00:00Z')/1000
+const afterSplit=assessUnadjustedBar({
+  bars:[
+    {date:'2026-10-20',open:20,high:22,low:19,close:20,volume:100},
+    {date:'2026-10-21',open:21,high:23,low:20,close:22,volume:100},
+  ],
+  events:{splits:{[splitTs]:{date:splitTs,numerator:2,denominator:1}}},
+  timeZone:'America/New_York',
+  expectedDate:'2026-10-21',
+  expectedPreviousDate:'2026-10-20',
+  requireOhlc:true,
+})
+assert.equal(afterSplit.status,'ok')
+assert.equal(afterSplit.regular_close_verified,true)
+assert.ok(afterSplit.split_dates.includes('2026-10-20'))
+assert.equal(decidePriceWrite({assessment:afterSplit,dbPreviousClose:null,dbLatestClose:40,dbLatestDate:'2026-10-17'}).reason,'prior_split_unapplied')
+assert.equal(decidePriceWrite({assessment:{...afterSplit,provider:'Nasdaq',ohlc_ok:false,open:null,high:null,low:null},dbPreviousClose:null,dbLatestClose:40,dbLatestDate:'2026-10-17'}).reason,'prior_split_unapplied')
+assert.equal(decidePriceWrite({assessment:afterSplit,dbPreviousClose:null,dbLatestClose:21,dbLatestDate:'2026-10-20'}).action,'insert')
+assert.equal(decidePriceWrite({assessment:afterSplit,dbPreviousClose:null,latestAnchorKnown:false}).reason,'missing_db_previous_session')
 assert.equal(assessUnadjustedBar({...params,bars:[{...bar,open:101,high:101,low:101,volume:0}]}).status,'unverified_carried_price')
 const ts=Date.parse('2026-10-21T00:00:00Z')/1000
 assert.equal(assessUnadjustedBar({...params,events:{splits:{[ts]:{date:ts}}}}).status,'corporate_action_isolated')

@@ -1,19 +1,19 @@
 import { labelClass, monoNum, panelClass, panelPad, fmt, pctOrDash } from './crmUi'
 
 export default function CrmKpiStrip({
-  sessions = 0,
-  signups = 0,
-  visitToSignupPct = 0,
-  activatedPct = 0,
-  attributionPct = 0,
-  premiumIntent = 0,
+  sessions = null,
+  signups = null,
+  visitToSignupPct = null,
+  activatedPct = null,
+  attributionPct = null,
+  premiumIntent = null,
   rangeDays = 30,
 }) {
   const items = [
     { label: 'Sessions', value: fmt(sessions), note: `${rangeDays}d` },
     { label: 'Signups', value: fmt(signups), note: 'customers' },
-    { label: 'Visit → signup', value: pctOrDash(visitToSignupPct), note: 'conversion' },
-    { label: 'Activated', value: pctOrDash(activatedPct), note: 'of signups' },
+    { label: 'Signup / session', value: pctOrDash(visitToSignupPct), note: 'directional ratio' },
+    { label: '7d activated', value: pctOrDash(activatedPct), note: 'fully observed signups' },
     { label: 'Attributed', value: pctOrDash(attributionPct), note: 'first-touch' },
     { label: 'Premium intent', value: fmt(premiumIntent), note: 'in cohort' },
   ]

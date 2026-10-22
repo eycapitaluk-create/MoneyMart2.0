@@ -1,78 +1,25 @@
-/** Rule-based CRM narrative driven by advanced analysis (no API). */
-
-export function buildCrmExecutiveSummary({
-  rangeDays = 30,
-  sales = {},
-  signupChannels = [],
-  trafficSummary = {},
-  analysis = null,
-} = {}) {
-  const range = Number(rangeDays) || 30
-  const signups = Number(sales.signups || analysis?.current?.n || 0)
-  const sessions = Number(trafficSummary.uniqueSessions || 0)
-  const bullets = []
-  const actions = []
-
-  if (signups === 0) {
-    return {
-      headline: `No customer signups in ${range}d`,
-      bullets: [
-        `${sessions.toLocaleString('en-US')} sessions in range — the gap is visit→signup, not traffic volume.`,
-      ],
-      actions: ['Trace the signup path from the top landing pages; do not scale untagged spend.'],
-      severity: 'warn',
-    }
+/** Evidence-led CRM narrative. No external API call or automatic spend decision. */
+export function buildCrmExecutiveSummary({ rangeDays = 30, analysis = null } = {}) {
+  if (!analysis?.coverage?.customerReady) return { headline: 'Customer data is not confirmed',
+    bullets: analysis?.coverage?.issues || ['Load CRM data before interpreting signup counts.'], actions: ['Refresh the failed or missing source; do not interpret it as zero customers.'], severity: 'warn' }
+  const c = analysis.current, cov = analysis.coverage, sessions = analysis.sessions
+  const partial = cov.currentComplete ? '' : 'at least '
+  const headline = `${partial}${c.n} signups in ${rangeDays}d · ${analysis.constraint === 'observation' ? '7-day observation in progress' : `review: ${analysis.constraint}`}`
+  const bullets = [analysis.constraintNote]
+  if (sessions != null) bullets.push(`${sessions.toLocaleString('en-US')} sessions and ${c.n} signups recorded. Session/signup ratios are directional, not matched-user conversion.`)
+  const m = c.matured
+  if (m.n) bullets.push(`7-day activation: ${m.activated}/${m.n} (${m.activationPct}%). ${c.pending} recent signups still observing.`)
+  if (m.activationWilson) bullets.push(`Activation 95% interval ${m.activationWilson.lowPct}–${m.activationWilson.highPct}%${m.n < analysis.minN ? '; sample too small for channel ranking' : ''}.`)
+  if (analysis.pop.comparable && analysis.pop.signups.deltaPct != null) bullets.push(`Signups ${analysis.pop.signups.deltaPct >= 0 ? '+' : ''}${analysis.pop.signups.deltaPct}% vs the prior ${rangeDays}d. Rate changes use percentage points.`)
+  const actionsByConstraint = {
+    measurement: ['Check source availability and loaded date coverage first; then confirm UTM and first-touch capture.'],
+    volume: ['Review the leading landing pages and tagged acquisition links; collect more observations before changing spend.'],
+    conversion: ['Walk through the leading mobile landing → registration path and record the exact step that fails.'],
+    observation: ['Recheck after the pending signups complete their 7-day window; compare eligible cohorts only.'],
+    activation: ['Inspect the first search, product view or watchlist action for eligible signups; test one onboarding improvement.'],
+    concentration: ['Check whether concentration reflects known sources or missing attribution; test one alternative channel with tagged links.'],
+    experiment: ['Run one small, tagged experiment and define its eligible cohort and success metric before changing spend.'],
   }
-
-  const pop = analysis?.pop
-  const signupDelta = pop?.signups?.deltaPct
-  const constraint = analysis?.constraint
-  const top = analysis?.concentration?.topChannel
-  const topShare = analysis?.concentration?.top1Share
-  const best = analysis?.bestReliable
-  const hhi = analysis?.concentration?.hhi
-  const act = analysis?.current?.activationWilson
-
-  const deltaBit = signupDelta == null ? '' : ` · ${signupDelta >= 0 ? '+' : ''}${signupDelta}% vs prior ${range}d`
-  const headline = constraint
-    ? `${signups} signups${deltaBit} · constraint: ${constraint}`
-    : `${signups} signups in ${range}d`
-
-  if (analysis?.constraintNote) bullets.push(analysis.constraintNote)
-  if (top && topShare != null) {
-    bullets.push(`Concentration: ${top} is ${topShare}% of signups (HHI ${hhi}).`)
-  }
-  if (act) {
-    bullets.push(
-      act.unreliable
-        ? `Activation ${act.ratePct}% but n=${analysis.current.n} < ${analysis.minN} — interval is wide (${act.lowPct}–${act.highPct}%).`
-        : `Activation ${act.ratePct}% (95% Wilson ${act.lowPct}–${act.highPct}%).`,
-    )
-  }
-  if (best) {
-    bullets.push(`Best reliable channel: ${best.label} (quality ${best.quality}, ${best.activationPct}% activated, n=${best.signups}).`)
-  }
-  if (pop?.truncated) {
-    bullets.push('Prior-period compare may be truncated — CRM load is a recent-user batch, not a full history.')
-  }
-
-  if (constraint === 'measurement') actions.push('Stop optimizing channel mix until UTM/first-touch coverage is above 60%.')
-  if (constraint === 'activation') actions.push('Hold acquisition spend; fix Day-0 onboarding on the largest signup channel.')
-  if (constraint === 'conversion') actions.push('Audit the mobile landing → signup path before buying more sessions.')
-  if (constraint === 'concentration' && analysis?.bestReliable && analysis.bestReliable.label !== top) {
-    actions.push(`Shift incremental spend toward ${analysis.bestReliable.label}, not the largest volume channel.`)
-  }
-  if (constraint === 'scale' && best) {
-    actions.push(`Scale ${best.label} with tagged links; keep Direct/unknown under 40%.`)
-  }
-  if (!actions.length) actions.push('Keep tagging every outbound link; re-read weekly cohorts before changing mix.')
-
-  return {
-    headline,
-    bullets: bullets.slice(0, 5),
-    actions: [...new Set(actions)].slice(0, 3),
-    severity: constraint === 'measurement' || constraint === 'activation' || (sales.attributionPct ?? 100) < 45
-      ? 'warn'
-      : 'ok',
-  }
+  return { headline, bullets: [...bullets, ...cov.issues].slice(0, 6), actions: actionsByConstraint[analysis.constraint] || actionsByConstraint.volume,
+    severity: ['measurement','conversion','activation'].includes(analysis.constraint) ? 'warn' : 'ok' }
 }

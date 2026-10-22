@@ -212,13 +212,17 @@ export function assessUnadjustedBar({ bars, events, timeZone, expectedDate, expe
       note: '예상 거래일 데이터 미도착. 날짜를 바꾸지 않습니다.',
     }
   }
-  if (eventDates({ splits: events?.splits }, timeZone).has(expectedDate)) {
+  const splitDates = [...eventDates({ splits: events?.splits }, timeZone)]
+    .filter((date) => date && (!expectedDate || date <= expectedDate))
+    .sort()
+  if (splitDates.includes(expectedDate)) {
     return {
       status: 'corporate_action_isolated',
       trade_date: null,
       expected_trade_date: expectedDate,
       expected_previous_date: expectedPreviousDate || null,
       price_basis: PRICE_BASIS,
+      split_dates: splitDates,
       note: '배당 또는 분할이 같은 세션에 있습니다. 종가를 섞지 않고 보류합니다.',
     }
   }
@@ -231,6 +235,7 @@ export function assessUnadjustedBar({ bars, events, timeZone, expectedDate, expe
       expected_trade_date: expectedDate,
       expected_previous_date: expectedPreviousDate || null,
       price_basis: PRICE_BASIS,
+      split_dates: splitDates,
       note: '종가가 없습니다.',
     }
   }
@@ -247,6 +252,7 @@ export function assessUnadjustedBar({ bars, events, timeZone, expectedDate, expe
       expected_trade_date: expectedDate,
       expected_previous_date: expectedPreviousDate || null,
       price_basis: PRICE_BASIS,
+      split_dates: splitDates,
       note: '동일 OHLC와 거래량 공백만으로 새 체결일을 확인할 수 없습니다. 원문 확인 전 날짜를 갱신하지 않습니다.',
     }
   }
@@ -257,6 +263,7 @@ export function assessUnadjustedBar({ bars, events, timeZone, expectedDate, expe
       expected_trade_date: expectedDate,
       expected_previous_date: expectedPreviousDate || null,
       price_basis: PRICE_BASIS,
+      split_dates: splitDates,
       note: 'OHLC가 없거나 범위가 맞지 않습니다.',
     }
   }
@@ -268,6 +275,7 @@ export function assessUnadjustedBar({ bars, events, timeZone, expectedDate, expe
       status: requireOhlc && rangeOk && Number(bar.volume) > 0 ? 'ok' : 'previous_session_mismatch',
       trade_date: requireOhlc && rangeOk && Number(bar.volume) > 0 ? expectedDate : null,
       regular_close_verified: requireOhlc && rangeOk && Number(bar.volume) > 0,
+      split_dates: splitDates,
       close_evidence: requireOhlc && rangeOk && Number(bar.volume) > 0 ? { kind: 'dated_daily_ohlcv_without_previous_bar', trade_date: expectedDate, volume: bar.volume } : null,
       volume: Number(bar.volume) > 0 ? Number(bar.volume) : null,
       expected_trade_date: expectedDate,
@@ -289,6 +297,7 @@ export function assessUnadjustedBar({ bars, events, timeZone, expectedDate, expe
   return {
     status: 'ok',
     regular_close_verified: requireOhlc && rangeOk && Number(bar.volume) > 0,
+    split_dates: splitDates,
     cash_distribution: cashDistribution,
     trade_date: expectedDate,
     expected_trade_date: expectedDate,

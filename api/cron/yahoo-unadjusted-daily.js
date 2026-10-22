@@ -137,7 +137,7 @@ async function classifyTarget(target, deadline, breaker) {
       breaker.nasdaqBlocked = true
       breaker.nasdaqLimit = {status:fallback.status,at:new Date().toISOString(),until:new Date(Date.now()+86400000).toISOString()}
     }
-    if (fallback.assessment) return { ...target, assessment: { ...fallback.assessment, original_yahoo_status:row.assessment.status } }
+    if (fallback.assessment) return { ...target, assessment: { ...fallback.assessment, original_yahoo_status: row.assessment.status, split_dates: row.assessment.split_dates || [] } }
     return {...row, assessment:{...row.assessment, nasdaq_status:fallback.status}}
   } catch (error) {
     breaker.nasdaqBlocked = true
@@ -246,6 +246,29 @@ function summaryOf(rows) {
       source_diagnostics: row.source_diagnostics || null,
     }))
   return { counts, failures }
+}
+
+async function latestStoredCloses(supabase, symbols) {
+  const latest = new Map()
+  if (!symbols.length) return { latest, known: true }
+  try {
+    for (let index = 0; index < symbols.length; index += 80) {
+      const chunk = symbols.slice(index, index + 80)
+      const { data, error } = await supabase.from('v_stock_latest').select('symbol,trade_date,close').in('symbol', chunk)
+      if (error) return { latest: new Map(), known: false }
+      for (const row of data || []) {
+        const symbol = String(row.symbol || '').trim()
+        if (!symbol) continue
+        latest.set(symbol, {
+          trade_date: String(row.trade_date || '').slice(0, 10),
+          close: row.close,
+        })
+      }
+    }
+    return { latest, known: true }
+  } catch {
+    return { latest: new Map(), known: false }
+  }
 }
 
 async function presentPriceKeys(supabase, targets) {
@@ -520,12 +543,14 @@ export default async function handler(req, res) {
 
   const existingByKey = new Map((existingRows || []).map((row) => [`${row.symbol}|${row.trade_date}`, row]))
   const previousByKey = new Map((previousRows || []).map((row) => [`${row.symbol}|${row.trade_date}`, row]))
+  const latestAnchor = await latestStoredCloses(supabase, symbols)
   let decided = classifiedAfter.map((row) => {
     if (!row.symbol || row.dashboardOnly) return { ...row, decision: { action: 'dashboard_only', reason: row.assessment.status } }
     const existing = existingByKey.get(`${row.symbol}|${row.expectedDate}`) || null
     const expectedPrev = row.expectedPreviousDate || row.assessment.expected_previous_date
     const previous = previousByKey.get(`${row.symbol}|${expectedPrev}`) || null
     const dbPreviousClose = previous ? previous.close : null
+    const latest = latestAnchor.latest.get(String(row.symbol || '').trim()) || null
     const verifiedPrevious = previous?.raw?.price_basis === PRICE_BASIS
       ? {
         trade_date: previous.trade_date,
@@ -536,7 +561,15 @@ export default async function handler(req, res) {
       : null
     return {
       ...row,
-      decision: decidePriceWrite({ existing, assessment: row.assessment, dbPreviousClose, verifiedPrevious }),
+      decision: decidePriceWrite({
+        existing,
+        assessment: row.assessment,
+        dbPreviousClose,
+        verifiedPrevious,
+        dbLatestClose: latest?.close ?? null,
+        dbLatestDate: latest?.trade_date || null,
+        latestAnchorKnown: latestAnchor.known,
+      }),
       existing,
     }
   })

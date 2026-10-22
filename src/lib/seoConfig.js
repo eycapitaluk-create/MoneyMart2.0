@@ -229,6 +229,14 @@ export function getSeoForRoute(pathname, search = '') {
       isTool: false,
     },
     {
+      match: (p) => p === '/legal/account-deletion',
+      title: 'アカウントとデータの削除 | MoneyMart',
+      description:
+        'MoneyMart（マネーラボ株式会社）のアカウントとデータの削除方法です。アプリ、ウェブ、メール（support@moneymart.co.jp）から依頼できます。',
+      path: '/legal/account-deletion',
+      isTool: false,
+    },
+    {
       match: (p) => p === '/legal/privacy',
       title: 'プライバシーポリシー | MoneyMart',
       description:

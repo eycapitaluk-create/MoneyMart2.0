@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { Shield, FileText, Lock, Building, ArrowLeft, Scale } from 'lucide-react'
+import { Shield, FileText, Lock, Building, ArrowLeft, Scale, Trash2 } from 'lucide-react'
 import {
   PREMIUM_ANNUAL_PRICE_INCL_TAX_YEN,
   PREMIUM_MONTHLY_PRICE_INCL_TAX_YEN,
@@ -498,6 +498,89 @@ const LEGAL_CONTENTS = {
       </div>
     ),
   },
+  'account-deletion': {
+    title: 'アカウントとデータの削除',
+    icon: Trash2,
+    updated: '2026年 10月 22日',
+    content: (
+      <div className="space-y-6 text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+        <p>
+          本ページは、{COMPANY_NAME_JA_EN} が提供するアプリ「MoneyMart」のアカウントおよび関連データの削除方法を説明するものです。ログインしていなくてもご覧いただけます。
+        </p>
+        <section>
+          <h2 className="font-bold text-slate-900 dark:text-white mb-2 text-base">アプリで削除する</h2>
+          <ul className="list-disc pl-5 space-y-2">
+            <li>iOS：マイページ › 設定 › アカウントを削除</li>
+            <li>Android：もっと › 設定（⚙） › アカウントを削除</li>
+          </ul>
+          <p className="mt-2">手続きを完了すると、アカウントと下記の対象データは直ちに削除されます。</p>
+        </section>
+        <section>
+          <h2 className="font-bold text-slate-900 dark:text-white mb-2 text-base">ウェブで削除する</h2>
+          <ol className="list-decimal pl-5 space-y-2">
+            <li>MoneyMart にログインし、マイページを開きます。</li>
+            <li>「資産運用」タブを選びます。</li>
+            <li>ページ下部の「アカウント詳細」で「詳細を開く」を選びます。</li>
+            <li>「退会オプションを表示」を選びます。</li>
+            <li>確認事項にチェックを入れ、登録メールアドレスと「退会する」を入力します。</li>
+            <li>「アカウントを削除する」を選びます。</li>
+          </ol>
+          <p className="mt-2">手続きを完了すると、アカウントと下記の対象データは直ちに削除されます。</p>
+        </section>
+        <section>
+          <h2 className="font-bold text-slate-900 dark:text-white mb-2 text-base">アプリを削除したあとにメールで依頼する</h2>
+          <p>端末からアプリを削除しただけでは、アカウントとサーバー上のデータは削除されません。</p>
+          <p className="mt-2">
+            <a href={`mailto:${COMPANY_SUPPORT_EMAIL}`} className="font-bold text-orange-600 underline underline-offset-2">{COMPANY_SUPPORT_EMAIL}</a>
+            {' '}まで、本文に登録メールアドレスを記載して送信してください。
+          </p>
+          <p className="mt-2">メールで依頼を受けた場合は、30日以内に削除します。</p>
+        </section>
+        <section>
+          <h2 className="font-bold text-slate-900 dark:text-white mb-2 text-base">削除されるデータ</h2>
+          <ul className="list-disc pl-5 space-y-2">
+            <li>アカウント情報（メールアドレス・ニックネーム）</li>
+            <li>保有資産・売却履歴・配当</li>
+            <li>家計簿（支出・予算・定期支出）</li>
+            <li>ポイント・保険</li>
+            <li>ウォッチリスト・保存した分析</li>
+            <li>資産推移</li>
+            <li>コミュニティの投稿・コメント・いいね・画像</li>
+            <li>通知設定・プッシュ通知用の端末トークン</li>
+          </ul>
+        </section>
+        <section>
+          <h2 className="font-bold text-slate-900 dark:text-white mb-2 text-base">削除されない、または残るデータ</h2>
+          <p>有料プランを利用していない場合：なし。</p>
+          <p className="mt-2">有料プランを利用した場合、次の記録は当社のアカウント削除後も各事業者に残ります。</p>
+          <ul className="list-disc pl-5 mt-2 space-y-2">
+            <li>ウェブのクレジットカード決済（PAY.JP）に関する決済記録</li>
+            <li>iOSアプリの App Store サブスクリプションに関する購入記録</li>
+          </ul>
+        </section>
+        <section>
+          <h2 className="font-bold text-slate-900 dark:text-white mb-2 text-base">処理の期限</h2>
+          <ul className="list-disc pl-5 space-y-2">
+            <li>アプリまたはウェブで削除手続きを完了した場合：直ちに削除します。</li>
+            <li>メールで依頼した場合：30日以内に削除します。</li>
+          </ul>
+        </section>
+        <section>
+          <h2 className="font-bold text-slate-900 dark:text-white mb-2 text-base">お問い合わせ</h2>
+          <p>{COMPANY_NAME_JA_EN}</p>
+          <p className="mt-2">アプリ名：MoneyMart</p>
+          <p className="mt-2">
+            メール：
+            <a href={`mailto:${COMPANY_SUPPORT_EMAIL}`} className="font-bold text-orange-600 underline underline-offset-2">{COMPANY_SUPPORT_EMAIL}</a>
+          </p>
+          <p className="mt-2">
+            関連：
+            <Link to="/legal/privacy" className="text-orange-600 underline underline-offset-2">プライバシーポリシー</Link>
+          </p>
+        </section>
+      </div>
+    ),
+  },
   antisocial: {
     title: '反社会的勢力への対応',
     icon: Shield,
@@ -551,7 +634,7 @@ export default function LegalPage() {
         <div className="px-8 pb-8 text-center border-t border-slate-100 dark:border-slate-800 pt-8">
           <p className="text-xs text-slate-400">
             本ページの内容は予告なく変更される場合があります。<br />
-            最終更新日: {type === 'privacy' ? '2026年 10月 14日' : '2026年 3月 31日'}
+            最終更新日: {data.updated || (type === 'privacy' ? '2026年 10月 14日' : '2026年 3月 31日')}
           </p>
         </div>
       </div>

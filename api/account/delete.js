@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import { getPayjpSecretKey, payjpRequest } from '../_lib/payjp-api.js'
+import { getPayjpSecretKey, isPayjpSubscriptionAlreadyGone, payjpRequest } from '../_lib/payjp-api.js'
 
 async function cancelPayjpSubscriptionOrThrow(subscriptionId) {
   const subId = String(subscriptionId || '').trim()
@@ -18,12 +18,10 @@ async function cancelPayjpSubscriptionOrThrow(subscriptionId) {
     })
     return { canceled: true, subscriptionId: subId }
   } catch (err) {
-    const msg = String(err?.message || '')
-    const alreadyGone = /no such subscription|already been canceled|already canceled|status is canceled/i.test(msg)
-    if (alreadyGone || Number(err?.status) === 404) {
+    if (isPayjpSubscriptionAlreadyGone(err)) {
       return { alreadyCanceled: true, subscriptionId: subId }
     }
-    const wrap = new Error(msg || 'PAY.JP 定期課金の解約に失敗したため、退会を中止しました。')
+    const wrap = new Error(err?.message || 'PAY.JP 定期課金の解約に失敗したため、退会を中止しました。')
     wrap.status = 502
     wrap.code = err?.code || 'payjp_cancel_failed'
     throw wrap

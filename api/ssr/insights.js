@@ -29,6 +29,10 @@ function topicKeywords(key) {
   return map[k] || []
 }
 
+function safeDecode(value) {
+  try { return decodeURIComponent(value) } catch { return '' }
+}
+
 function escapeHtml(value = '') {
   return String(value || '')
     .replace(/&/g, '&amp;')
@@ -251,7 +255,7 @@ function renderModernList(rows, { topicKey } = {}) {
   )).join('')
 
   const topicBanner = topicTitle
-    ? `<p style="margin:0 0 12px;font-size:13px;color:#475569;">カテゴリ <strong>${topicTitle}</strong> に関連する記事です。</p>`
+    ? `<p style="margin:0 0 12px;font-size:13px;color:#475569;">カテゴリ <strong>${escapeHtml(topicTitle)}</strong> に関連する記事です。</p>`
     : ''
 
   return `
@@ -364,7 +368,9 @@ export default async function handler(req, res) {
 
     const categoryMatch = String(pathname || '').match(/^\/insights\/category\/([^/]+)$/)
     const slugMatch = String(pathname || '').match(/^\/insights\/([^/]+)$/)
-    const topicKey = categoryMatch ? decodeURIComponent(categoryMatch[1]) : ''
+    // カテゴリは既知のキーだけ受け付ける (未知の値を HTML に出さない · XSS 対策)
+    const rawTopicKey = categoryMatch ? safeDecode(categoryMatch[1]) : ''
+    const topicKey = TOPIC_LINKS.some((t) => t.key === rawTopicKey) ? rawTopicKey : ''
     const slug = (!categoryMatch && slugMatch && slugMatch[1] !== 'category')
       ? decodeURIComponent(slugMatch[1])
       : ''

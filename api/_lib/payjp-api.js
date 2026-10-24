@@ -100,6 +100,20 @@ export function payjpEntitlementStatus(sub) {
   return 'expired'
 }
 
+/**
+ * Cancel is idempotent for account deletion.
+ * PAY.JP returns HTTP 400 with message
+ * "Subscription `sub_…` already has been canceled" (the word "has" is required).
+ * A missing subscription is HTTP 404, often "No such subscription: sub_…".
+ */
+export function isPayjpSubscriptionAlreadyGone(err) {
+  if (Number(err?.status) === 404) return true
+  const code = String(err?.code || err?.payjp?.error?.code || '').toLowerCase()
+  if (code === 'already_canceled') return true
+  const msg = String(err?.message || err?.payjp?.error?.message || '')
+  return /no such subscription|already has been canceled|already been canceled|already canceled/i.test(msg)
+}
+
 export async function fetchPayjpCustomer(customerId) {
   if (!customerId) return null
   return payjpRequest(`/customers/${encodeURIComponent(customerId)}`)

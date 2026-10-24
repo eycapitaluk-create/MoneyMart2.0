@@ -1368,6 +1368,26 @@ export default function HomePage({
         </section>
       ) : null}
 
+      <section className="max-w-7xl mx-auto px-4 mt-6" aria-label="重なりチェック">
+        <Link
+          to="/check"
+          onClick={() => trackAnalyticsEvent('overlap_check_home_entry', { source: 'home_card' })}
+          className="block rounded-3xl border border-orange-200 dark:border-orange-900/60 bg-gradient-to-br from-orange-50 to-white dark:from-slate-900 dark:to-slate-900 px-5 py-5 md:px-8 md:py-6 shadow-sm hover:shadow-md transition"
+        >
+          <p className="text-[11px] font-black tracking-[0.14em] text-orange-500">無料・登録不要</p>
+          <h2 className="mt-1 text-xl md:text-2xl font-black text-slate-900 dark:text-white leading-snug">
+            オルカンとS&amp;P500、どこまで重なる？
+          </h2>
+          <p className="mt-2 text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+            投資信託・ETFを選ぶだけで、連動指数の重なりを3秒で確認。金額の入力はいりません。
+          </p>
+          <span className="mt-3 inline-flex items-center gap-1.5 text-sm font-black text-orange-600 dark:text-orange-400">
+            重なりチェックを使う
+            <ArrowRight size={16} aria-hidden />
+          </span>
+        </Link>
+      </section>
+
       <section className="max-w-7xl mx-auto px-4 mt-6" aria-label="MoneyMartについて">
         <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-5 py-5 md:px-8 md:py-6 shadow-sm">
           <h2 className="text-xl md:text-2xl font-black text-slate-900 dark:text-white leading-snug">

@@ -128,6 +128,7 @@ export default function Footer() {
                     <li><button onClick={() => navigate('/products')} className="hover:text-orange-400 transition">保険見直し</button></li>
                   </>
                 )}
+                <li><Link to="/check" className="hover:text-orange-400 transition">重なりチェック</Link></li>
                 <li><button onClick={() => navigate('/mypage')} className="hover:text-orange-400 transition flex items-center gap-1"><span className="w-2 h-2 bg-green-500 rounded-full" /> AI資産診断</button></li>
                 <li><button onClick={() => navigate('/premium')} className="hover:text-amber-400 transition flex items-center gap-1.5"><Sparkles size={12} className="text-amber-400 shrink-0" aria-hidden /> プレミアム会員</button></li>
                 <li><CampaignCp2026NavLink variant="footer" /></li>
@@ -236,6 +237,7 @@ export default function Footer() {
             <Link to="/careers" className="hover:text-orange-400">採用</Link>
             <button onClick={() => navigate('/faq')} className="hover:text-orange-400">FAQ</button>
             <a href={`mailto:${COMPANY_SUPPORT_EMAIL}`} className="hover:text-orange-400">お問い合わせ</a>
+            <Link to="/check" className="hover:text-orange-400">重なりチェック</Link>
             <button onClick={() => navigate('/mypage')} className="hover:text-orange-400">AI診断</button>
             <button onClick={() => navigate('/premium')} className="hover:text-amber-400">プレミアム</button>
             <button onClick={() => navigate('/legal/terms')} className="hover:text-orange-400">利用規約</button>

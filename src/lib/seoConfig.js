@@ -139,6 +139,15 @@ export function getSeoForRoute(pathname, search = '') {
       toolName: 'MoneyMart ツール',
     },
     {
+      match: (p) => p === '/check' || p.startsWith('/check/'),
+      title: 'オルカンとS&P500、どこまで重なる？ 重なりチェック | MoneyMart',
+      description:
+        '持っている（気になる）投資信託・ETFを選ぶだけで、連動指数の重なりを3秒で確認。オルカン・S&P500・全米株式・NASDAQ100・TOPIXなど。登録不要・無料。',
+      path: '/check',
+      isTool: true,
+      toolName: '重なりチェック',
+    },
+    {
       match: (p) => p === '/tools/nisa-etf-checklist',
       title: 'NISA・ETFを選ぶ前の初心者チェックリスト | MoneyMart',
       description:

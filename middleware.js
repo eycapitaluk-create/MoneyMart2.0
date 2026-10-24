@@ -25,6 +25,8 @@ export const config = {
     '/funds/:path*',
     '/tools',
     '/tools/:path*',
+    '/check',
+    '/check/:path*',
     '/dividend-calendar',
     '/budget-tracker',
     '/insights',
@@ -57,6 +59,12 @@ function resolveBotSsrInvoke(url) {
   if (pathname.startsWith('/insights')) {
     const invoke = new URL('/api/ssr/insights', url.origin)
     invoke.searchParams.set('__mm_path', `${pathname}${url.search}`)
+    return invoke
+  }
+
+  if (pathname === '/check' || pathname.startsWith('/check/')) {
+    const invoke = new URL('/api/ssr/check', url.origin)
+    invoke.searchParams.set('__mm_path', pathname)
     return invoke
   }
 

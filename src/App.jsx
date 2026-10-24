@@ -113,6 +113,7 @@ const CareersPage = lazyWithRetry(() => import('./pages/CareersPage'))
 const ToolsHubPage = lazyWithRetry(() => import('./pages/ToolsHubPage'))
 const ToolLandingPage = lazyWithRetry(() => import('./pages/ToolLandingPage'))
 const NisaEtfChecklistPage = lazyWithRetry(() => import('./pages/NisaEtfChecklistPage'))
+const OverlapCheckPage = lazyWithRetry(() => import('./pages/OverlapCheckPage'))
 const InsightPage = lazyWithRetry(() => import('./pages/InsightPage'))
 const InsightResearchMockPage = lazyWithRetry(() => import('./pages/InsightResearchMockPage'))
 const NotFoundPage = lazyWithRetry(() => import('./pages/NotFoundPage'))
@@ -1210,6 +1211,8 @@ const App = () => {
           <Route path="/careers" element={<CareersPage />} />
           <Route path="/tools" element={<ToolsHubPage session={session} />} />
           <Route path="/tools/nisa-etf-checklist" element={<NisaEtfChecklistPage />} />
+          <Route path="/check" element={<OverlapCheckPage />} />
+          <Route path="/check/:pair" element={<OverlapCheckPage />} />
           <Route path="/nisa-etf-checklist" element={<Navigate to="/tools/nisa-etf-checklist" replace />} />
           <Route
             path="/admin"

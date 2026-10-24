@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { ETF_SYMBOLS_FROM_XLSX } from '../src/data/etfListFromXlsx.js'
 import { collectIndexableStockSymbols } from '../src/lib/indexableStockSymbolsForSeo.js'
 import { getSiteOrigin } from './ssr/lib/seoHead.js'
+import { POPULAR_PAIRS, pairSlug } from '../src/lib/overlapCheck.js'
 
 function sendXml(res, status, body) {
   res.statusCode = status
@@ -17,6 +18,8 @@ const STATIC_PATHS = [
   '/stocks',
   '/tools',
   '/tools/nisa-etf-checklist',
+  '/check',
+  ...POPULAR_PAIRS.map(([a, b]) => `/check/${pairSlug(a, b)}`),
   '/dividend-calendar',
   '/budget-tracker',
   '/market',

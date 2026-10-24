@@ -12,6 +12,7 @@ export const MM_PATH_PREFIXES_INSIGHTS = ['/insights']
 export const MM_PATH_PREFIXES_STOCKS = ['/stocks']
 export const MM_PATH_PREFIXES_FUNDS_DETAIL = ['/funds']
 export const MM_PATH_PREFIXES_TOOLS = ['/tools']
+export const MM_PATH_PREFIXES_CHECK = ['/check']
 export const MM_PATH_PREFIXES_STATIC_PUBLIC = ['/about', '/faq', '/careers', '/legal', '/premium', '/products']
 export const MM_PATH_PREFIXES_PUBLIC = MM_PATH_PREFIXES_STATIC_PUBLIC
 

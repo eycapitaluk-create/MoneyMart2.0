@@ -86,7 +86,7 @@ export function buildHeadBlock(opts) {
 
   const ldScripts = (opts.jsonLd || [])
     .filter(Boolean)
-    .map((obj) => `<script type="application/ld+json">${JSON.stringify(obj)}</script>`)
+    .map((obj) => `<script type="application/ld+json">${JSON.stringify(obj).replace(/</g, '\\u003c')}</script>`)
     .join('\n    ')
 
   return `

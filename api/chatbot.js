@@ -137,11 +137,15 @@ function readJsonBody(req) {
   })
 }
 
+// 入力の上限 (AI 呼び出しコストの悪用を防ぐ)
+const MAX_MESSAGE_CHARS = 1000
+const MAX_HISTORY = 10
+
 function toAnthropicMessages(history, latestUserText) {
   const out = []
-  const list = Array.isArray(history) ? history.slice(-24) : []
+  const list = Array.isArray(history) ? history.slice(-MAX_HISTORY) : []
   for (const m of list) {
-    const text = String(m?.text ?? '').trim()
+    const text = String(m?.text ?? '').trim().slice(0, MAX_MESSAGE_CHARS)
     if (!text) continue
     const sender = String(m?.sender || m?.role || 'user').toLowerCase()
     const role = sender === 'bot' || sender === 'assistant' ? 'assistant' : 'user'
@@ -250,6 +254,9 @@ export default async function handler(req, res) {
   const message = String(body?.message || '').trim()
   if (!message) {
     return sendJson(res, 400, { error: 'message is required' })
+  }
+  if (message.length > MAX_MESSAGE_CHARS) {
+    return sendJson(res, 400, { error: `メッセージは${MAX_MESSAGE_CHARS}文字以内で入力してください。` })
   }
   if (isHighRiskAdviceRequest(message)) {
     return sendJson(res, 200, { reply: HIGH_RISK_ADVICE_REPLY, provider: 'rule', model: 'risk-guard-v1' })

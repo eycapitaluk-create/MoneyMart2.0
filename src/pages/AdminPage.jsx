@@ -60,7 +60,8 @@ import {
 
 import { MARKET_MAJOR_REGION_OPTIONS } from '../lib/marketMajorNewsBoard'
 import { buildCrmExecutiveSummary } from '../lib/crmExecutiveSummary'
-import { buildCrmAdvancedAnalysis } from '../lib/crmAdvancedAnalysis'
+import { runCrmQuery } from '../lib/crmQueryDeadline'
+import { buildCrmAdvancedAnalysis, buildCrmDecisionMetrics } from '../lib/crmAdvancedAnalysis'
 import { buildSiteAdvancedAnalysis } from '../lib/siteAdvancedAnalysis'
 import CrmWorkbench from '../components/admin/crm/CrmWorkbench'
 import AnalyticsWorkbench from '../components/admin/analytics/AnalyticsWorkbench'
@@ -570,7 +571,7 @@ const mapCrmTrafficPayload = (payload) => {
     dataSource: 'rpc',
     summary: {
       pageViews: n(s.page_views),
-      uniqueSessions: n(s.unique_sessions),
+      uniqueSessions: s.unique_sessions == null ? null : n(s.unique_sessions),
       anonymousSessions: n(s.anonymous_sessions),
       loggedInSessions: n(s.logged_in_sessions),
       attributedSessions: n(s.attributed_sessions),
@@ -1387,6 +1388,11 @@ export default function AdminPage() {
   const [crmLoading, setCrmLoading] = useState(false)
   const [crmError, setCrmError] = useState('')
   const [crmRows, setCrmRows] = useState([])
+  const [crmLoadedAt, setCrmLoadedAt] = useState(null)
+  const [crmTrafficLoadedAt, setCrmTrafficLoadedAt] = useState(null)
+  const [crmTrafficLoadedRange, setCrmTrafficLoadedRange] = useState(null)
+  const crmTrafficRequestRef = useRef(0)
+  const crmCustomerRequestRef = useRef(0)
   const [crmRangeDays, setCrmRangeDays] = useState(30)
   const [crmTraffic, setCrmTraffic] = useState(emptyCrmTraffic())
   const [crmTrafficLoading, setCrmTrafficLoading] = useState(false)
@@ -2797,37 +2803,47 @@ export default function AdminPage() {
   }
 
   const loadCrm = async () => {
+    const requestId = ++crmCustomerRequestRef.current
     setCrmLoading(true)
     setCrmError('')
     try {
-      const { data, error } = await supabase.rpc('admin_crm_users', { p_limit: 300 })
+      const { data, error } = await runCrmQuery(signal => supabase.rpc('admin_crm_users', { p_limit: 300 }).abortSignal(signal), { label: 'Customer source' })
+      if (requestId !== crmCustomerRequestRef.current) return null
       if (error) throw error
-      const rows = Array.isArray(data) ? data : []
+      if (!Array.isArray(data)) throw new Error('Empty CRM customer response')
+      const rows = data
       setCrmRows(rows)
+      setCrmLoadedAt(new Date().toISOString())
       return rows
     } catch (err) {
+      if (requestId !== crmCustomerRequestRef.current) return null
       setCrmError(formatCrmLoadError(err))
       setCrmRows([])
       return []
     } finally {
-      setCrmLoading(false)
+      if (requestId === crmCustomerRequestRef.current) setCrmLoading(false)
     }
   }
 
   const loadCrmTraffic = async (rangeDays = crmRangeDays) => {
+    const requestId = ++crmTrafficRequestRef.current
     setCrmTrafficLoading(true)
     setCrmTrafficError('')
     const clamped = Math.max(1, Math.min(366, Number(rangeDays || 30)))
     try {
-      const { data, error } = await supabase.rpc('admin_crm_traffic_dashboard', { p_days: clamped })
+      const { data, error } = await runCrmQuery(signal => supabase.rpc('admin_crm_traffic_dashboard', { p_days: clamped }).abortSignal(signal), { label: 'Traffic source' })
+      if (requestId !== crmTrafficRequestRef.current) return
       if (error) throw error
       if (data == null || typeof data !== 'object') throw new Error('Empty CRM traffic response')
       setCrmTraffic(mapCrmTrafficPayload(data))
+      setCrmTrafficLoadedAt(new Date().toISOString())
+      setCrmTrafficLoadedRange(clamped)
     } catch (err) {
+      if (requestId !== crmTrafficRequestRef.current) return
       setCrmTrafficError(formatCrmLoadError(err))
       setCrmTraffic(emptyCrmTraffic())
     } finally {
-      setCrmTrafficLoading(false)
+      if (requestId === crmTrafficRequestRef.current) setCrmTrafficLoading(false)
     }
   }
 
@@ -2837,12 +2853,16 @@ export default function AdminPage() {
     const clamped = Math.max(1, Math.min(366, Number(rangeDays || 28)))
     const internalUserIds = buildInternalUserIdSet(crmRowsSnapshot)
     try {
-      const { data, error } = await supabase.rpc('admin_crm_audience_dashboard', { p_days: clamped })
+      const { data, error } = await runCrmQuery(signal => supabase.rpc('admin_crm_audience_dashboard', { p_days: clamped }).abortSignal(signal), { label: 'Audience source' })
       if (!error && data && typeof data === 'object') {
         setCrmAudience(mapAudienceRpcPayload(data))
         return
       }
 
+      // Only the existing missing-RPC fallback may read event rows. Timeouts are not missing functions.
+      if (!error || !['42883', 'PGRST202'].includes(String(error.code))) {
+        throw error || new Error('Audience source returned no confirmed result')
+      }
       const since = new Date(Date.now() - clamped * 86400000).toISOString()
       const events = await fetchAdminAnalyticsEventRows(since, internalUserIds, {
         eventName: 'page_view',
@@ -2882,11 +2902,10 @@ export default function AdminPage() {
   }
 
   const reloadCrmAll = async () => {
+    const traffic = loadCrmTraffic(crmRangeDays)
     const rows = await loadCrm()
-    await Promise.all([
-      loadCrmTraffic(crmRangeDays),
-      loadCrmAudience(crmRangeDays, rows),
-    ])
+    if (rows == null) return
+    await Promise.all([traffic, loadCrmAudience(crmRangeDays, rows)])
   }
 
   useEffect(() => {
@@ -2912,12 +2931,10 @@ export default function AdminPage() {
     if (activeTab !== 'crm' && activeTab !== 'dashboard') return
     let cancelled = false
     ;(async () => {
+      const traffic = loadCrmTraffic(crmRangeDays)
       const rows = await loadCrm()
-      if (cancelled) return
-      await Promise.all([
-        loadCrmTraffic(crmRangeDays),
-        loadCrmAudience(crmRangeDays, rows),
-      ])
+      if (cancelled || rows == null) return
+      await Promise.all([traffic, loadCrmAudience(crmRangeDays, rows)])
     })()
     return () => { cancelled = true }
   }, [activeTab, crmRangeDays])
@@ -2929,7 +2946,7 @@ export default function AdminPage() {
     return crmRows.filter((r) => {
       if (isCrmInternalUser(r)) return false
       const createdMs = r.user_created_at ? new Date(r.user_created_at).getTime() : 0
-      return createdMs >= sinceMs
+      return createdMs >= sinceMs && createdMs <= Date.now()
     })
   }, [crmRows, crmRangeDays])
 
@@ -2984,51 +3001,16 @@ export default function AdminPage() {
     }
   }, [crmCustomerSignupsInRange])
 
+  const crmDataStatus = useMemo(() => ({
+    customers: crmLoading ? 'loading' : crmError ? 'error' : crmLoadedAt ? 'ready' : 'unloaded',
+    traffic: crmTrafficLoading ? 'loading' : crmTrafficError ? 'error' : crmTrafficLoadedAt && crmTrafficLoadedRange === crmRangeDays ? 'ready' : 'unloaded',
+  }), [crmLoading, crmError, crmLoadedAt, crmTrafficLoading, crmTrafficError, crmTrafficLoadedAt, crmTrafficLoadedRange, crmRangeDays])
   const crmAdvancedAnalysis = useMemo(() => buildCrmAdvancedAnalysis({
-    allRows: crmRows,
-    rangeDays: crmRangeDays,
-    trafficByChannel: crmTrafficChannelSummary,
-    sessions: Number(crmTrafficExternal.summary.uniqueSessions || 0),
-  }), [crmRows, crmRangeDays, crmTrafficChannelSummary, crmTrafficExternal.summary.uniqueSessions])
-
-  const crmDecisionMetrics = useMemo(() => {
-    const sessions = Number(crmTrafficExternal.summary.uniqueSessions || 0)
-    const signups = crmSalesSummary.signups
-    const activated = crmSalesSummary.activated
-    const premiumIntent = crmGrowthKpis.premiumIntent
-    const visitToSignupPct = sessions > 0 ? Math.round((signups / sessions) * 1000) / 10 : 0
-    const signupToActivationPct = signups > 0 ? Math.round((activated / signups) * 1000) / 10 : 0
-    const activationToIntentPct = activated > 0 ? Math.round((premiumIntent / activated) * 1000) / 10 : 0
-    const dataQualityScore = Math.round(
-      (crmSalesSummary.attributionPct * 0.5)
-      + (crmSalesSummary.utmPct * 0.3)
-      + (Math.min(100, signupToActivationPct) * 0.2),
-    )
-    const trafficById = new Map(crmTrafficChannelSummary.map((row) => [row.id || row.label, Number(row.count || 0)]))
-    const channelPerformance = crmSignupChannelSummary.map((row) => {
-      const traffic = trafficById.get(row.id || row.label) || 0
-      const channelSignups = Number(row.count || 0)
-      return {
-        ...row,
-        traffic,
-        signups: channelSignups,
-        conversionPct: traffic > 0 ? Math.round((channelSignups / traffic) * 1000) / 10 : null,
-      }
-    }).sort((a, b) => (b.signups - a.signups) || ((b.conversionPct || 0) - (a.conversionPct || 0)))
-    return {
-      sessions,
-      signups,
-      activated,
-      premiumIntent,
-      visitToSignupPct,
-      signupToActivationPct,
-      activationToIntentPct,
-      visitToSignupDropoffPct: Math.max(0, Math.round((100 - visitToSignupPct) * 10) / 10),
-      signupToActivationDropoffPct: Math.max(0, Math.round((100 - signupToActivationPct) * 10) / 10),
-      dataQualityScore,
-      channelPerformance: channelPerformance.slice(0, 12),
-    }
-  }, [crmTrafficExternal.summary.uniqueSessions, crmSalesSummary, crmGrowthKpis.premiumIntent, crmTrafficChannelSummary, crmSignupChannelSummary])
+    allRows: crmRows, rangeDays: crmRangeDays, trafficByChannel: crmTrafficChannelSummary,
+    sessions: crmTrafficExternal.summary.uniqueSessions, dataStatus: crmDataStatus,
+    loadedAt: { customers: crmLoadedAt, traffic: crmTrafficLoadedAt },
+  }), [crmRows, crmRangeDays, crmTrafficChannelSummary, crmTrafficExternal.summary.uniqueSessions, crmDataStatus, crmLoadedAt, crmTrafficLoadedAt])
+  const crmDecisionMetrics = useMemo(() => buildCrmDecisionMetrics(crmAdvancedAnalysis), [crmAdvancedAnalysis])
 
   const crmUserCreatedAtById = useMemo(() => {
     const map = new Map()
@@ -3073,13 +3055,28 @@ export default function AdminPage() {
     [analyticsTopReferrersExternal],
   )
 
+  const crmAiRequestRef = useRef(0)
+  useEffect(() => {
+    crmAiRequestRef.current += 1
+    setCrmAiLoading(false)
+    setCrmAiResult(null)
+    setCrmAiGeneratedAt(null)
+    setCrmAiError('')
+  }, [crmRangeDays, crmLoadedAt, crmTrafficLoadedAt])
+
   const runCrmAiInsights = async () => {
+    const requestId = ++crmAiRequestRef.current
     setCrmAiLoading(true)
     setCrmAiError('')
     try {
       const cred = typeof window !== 'undefined' ? sessionStorage.getItem('mm_admin_auth') : null
       if (!cred) throw new Error('Admin session missing. Reload and sign in again.')
+      if (!crmAdvancedAnalysis.coverage.customerReady || !crmAdvancedAnalysis.coverage.trafficReady || !crmAdvancedAnalysis.coverage.currentComplete) {
+        throw new Error('Complete customer and traffic measurements are required before generating CRM analysis.')
+      }
       const snapshot = {
+        rangeDays: crmRangeDays,
+        analysis: crmAdvancedAnalysis,
         generatedAt: new Date().toISOString(),
         note: 'CRM aggregates: customer signups in range + filtered cohort. No raw emails sent to the model.',
         sales: crmSalesSummary,
@@ -3094,7 +3091,6 @@ export default function AdminPage() {
           topReferrers: (crmTrafficExternal.topReferrers || []).slice(0, 10),
           topLandingPaths: (crmTrafficExternal.topLandingPaths || []).slice(0, 10),
         },
-        growth: buildAdminGrowthSnapshot({ dashboard, analytics, analyticsRangeDays }),
       }
       const res = await fetch('/api/admin-crm-insights', {
         method: 'POST',
@@ -3106,14 +3102,16 @@ export default function AdminPage() {
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data?.error || `Failed to fetch AI insights (${res.status})`)
+      if (requestId !== crmAiRequestRef.current) return
       setCrmAiResult(data.insights || null)
       setCrmAiGeneratedAt(data.generatedAt || new Date().toISOString())
     } catch (e) {
+      if (requestId !== crmAiRequestRef.current) return
       setCrmAiError(String(e?.message || e || 'failed'))
       setCrmAiResult(null)
       setCrmAiGeneratedAt(null)
     } finally {
-      setCrmAiLoading(false)
+      if (requestId === crmAiRequestRef.current) setCrmAiLoading(false)
     }
   }
 
@@ -3225,7 +3223,7 @@ export default function AdminPage() {
             aiResult={crmAiResult}
             aiGeneratedAt={crmAiGeneratedAt}
             onRunAi={() => runCrmAiInsights()}
-            aiDisabled={crmLoading || Boolean(crmError)}
+            aiDisabled={!crmAdvancedAnalysis.coverage.customerReady || !crmAdvancedAnalysis.coverage.trafficReady || !crmAdvancedAnalysis.coverage.currentComplete}
           />
         )}
 

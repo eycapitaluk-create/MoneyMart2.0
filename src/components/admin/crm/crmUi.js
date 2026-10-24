@@ -30,6 +30,6 @@ export const thClass =
 
 export const tdClass = 'px-3 py-2 text-xs text-gray-700 dark:text-gray-300'
 
-export const fmt = (n) => Number(n || 0).toLocaleString('en-US')
+export const fmt = (n) => (n == null || !Number.isFinite(Number(n)) ? '—' : Number(n).toLocaleString('en-US'))
 
 export const pctOrDash = (v) => (v == null || !Number.isFinite(Number(v)) ? '—' : `${Number(v)}%`)

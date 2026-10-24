@@ -8,6 +8,7 @@ export default function CrmChannelsPanel({
   channelFilter = null,
   onSelectChannel,
   minN = 8,
+  coverage,
 }) {
   const rows = useMemo(() => {
     const qualityMap = new Map((channelQuality || []).map((r) => [r.id, r]))
@@ -34,7 +35,10 @@ export default function CrmChannelsPanel({
         const q = qualityMap.get(row.id) || {}
         return {
           ...row,
-          conversionPct: row.traffic > 0 ? Math.round((row.signups / row.traffic) * 1000) / 10 : q.conversionPct ?? null,
+          traffic: coverage?.trafficReady ? row.traffic : null,
+          signups: coverage?.customerReady ? row.signups : null,
+          conversionPct: q.conversionPct ?? null,
+          maturedSignups: q.maturedSignups ?? 0,
           activationPct: q.activationPct ?? null,
           wilson: q.activationWilson,
           quality: q.quality ?? null,
@@ -43,7 +47,7 @@ export default function CrmChannelsPanel({
         }
       })
       .sort((a, b) => (Number(b.quality || 0) - Number(a.quality || 0)) || (b.signups - a.signups))
-  }, [trafficChannels, signupChannels, channelQuality, minN])
+  }, [trafficChannels, signupChannels, channelQuality, minN, coverage])
 
   return (
     <div className={`${panelClass} ${panelPad}`}>
@@ -51,7 +55,7 @@ export default function CrmChannelsPanel({
         <div>
           <h3 className={titleClass}>Channel quality</h3>
           <p className="text-[11px] text-gray-500 mt-0.5">
-            Ranked by quality score, not volume. Conversion is directional (sessions ≠ first-touch). n &lt; {minN} is unreliable.
+            Exploratory score, not ROI. Signup / session is directional (sessions ≠ first-touch). Eligible n &lt; {minN} is unreliable.
           </p>
         </div>
         <p className={labelClass}>{rows.length} channels</p>
@@ -63,8 +67,8 @@ export default function CrmChannelsPanel({
               <th className={thClass}>Channel</th>
               <th className={`${thClass} text-right`}>Sessions</th>
               <th className={`${thClass} text-right`}>Signups</th>
-              <th className={`${thClass} text-right`}>Conv</th>
-              <th className={`${thClass} text-right`}>Activated</th>
+              <th className={`${thClass} text-right`}>Signup / session</th>
+              <th className={`${thClass} text-right`}>7d activated</th>
               <th className={`${thClass} text-right`}>Wilson 95%</th>
               <th className={`${thClass} text-right`}>Quality</th>
             </tr>
@@ -82,7 +86,7 @@ export default function CrmChannelsPanel({
                 >
                   <td className={`${tdClass} font-medium`}>
                     {row.label}
-                    {row.unreliable ? <span className="ml-1 text-[10px] text-amber-700">small n</span> : null}
+                    {row.unreliable ? <span className="ml-1 text-[10px] text-amber-700">eligible n={row.maturedSignups}</span> : null}
                   </td>
                   <td className={`${tdClass} text-right tabular-nums`}>{fmt(row.traffic)}</td>
                   <td className={`${tdClass} text-right tabular-nums`}>{fmt(row.signups)}</td>

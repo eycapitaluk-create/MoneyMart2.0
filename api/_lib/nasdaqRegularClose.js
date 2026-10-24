@@ -1,3 +1,5 @@
+import { isUsListedEtfSymbol } from '../../src/data/usListedEtfUniverse.js'
+
 // Independent fallback: an explicitly dated regular close, never last sale
 // during an open session or primary after-hours data. Missing OHLC stays NULL.
 const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
@@ -34,7 +36,7 @@ export function nasdaqRegularClose(payload, { symbol, expectedDate, expectedPrev
   }
 }
 export async function fetchNasdaqRegularClose(target, { fetchImpl = fetch, now = new Date() } = {}) {
-  const assetclass = /^(VWO|IY[A-Z]|SPY|VOO|IVV|QQQ|VT|ACWI)$/.test(target.symbol) ? 'etf' : 'stocks'
+  const assetclass = isUsListedEtfSymbol(target.symbol) ? 'etf' : 'stocks'
   const url = `https://api.nasdaq.com/api/quote/${encodeURIComponent(target.yahoo)}/info?assetclass=${assetclass}`
   const response = await fetchImpl(url, {signal:AbortSignal.timeout(7000), headers:{'user-agent':'Mozilla/5.0','accept':'application/json','origin':'https://www.nasdaq.com'}})
   // No retry or alternate asset class after any source rejection.

@@ -13,63 +13,63 @@
   "crons": [
     {
       "path": "/api/cron/yahoo-unadjusted-daily?scope=us&batch=0&batches=6&start_date=2026-10-11",
-      "schedule": "15 22 * * *"
+      "schedule": "0 22 * * *"
     },
     {
       "path": "/api/cron/yahoo-unadjusted-daily?scope=us&batch=1&batches=6&start_date=2026-10-11",
-      "schedule": "21 22 * * *"
+      "schedule": "6 22 * * *"
     },
     {
       "path": "/api/cron/yahoo-unadjusted-daily?scope=us&batch=2&batches=6&start_date=2026-10-11",
-      "schedule": "27 22 * * *"
+      "schedule": "12 22 * * *"
     },
     {
       "path": "/api/cron/yahoo-unadjusted-daily?scope=us&batch=3&batches=6&start_date=2026-10-11",
-      "schedule": "33 22 * * *"
+      "schedule": "18 22 * * *"
     },
     {
       "path": "/api/cron/yahoo-unadjusted-daily?scope=us&batch=4&batches=6&start_date=2026-10-11",
-      "schedule": "39 22 * * *"
+      "schedule": "24 22 * * *"
     },
     {
       "path": "/api/cron/yahoo-unadjusted-daily?scope=us&batch=5&batches=6&start_date=2026-10-11",
-      "schedule": "45 22 * * *"
+      "schedule": "30 22 * * *"
     },
     {
       "path": "/api/cron/yahoo-unadjusted-daily?scope=jp&batch=0&batches=3&start_date=2026-10-11",
-      "schedule": "51 22 * * *"
+      "schedule": "36 22 * * *"
     },
     {
       "path": "/api/cron/yahoo-unadjusted-daily?scope=jp&batch=1&batches=3&start_date=2026-10-11",
-      "schedule": "57 22 * * *"
+      "schedule": "42 22 * * *"
     },
     {
       "path": "/api/cron/yahoo-unadjusted-daily?scope=jp&batch=2&batches=3&start_date=2026-10-11",
-      "schedule": "3 23 * * *"
+      "schedule": "48 22 * * *"
     },
     {
       "path": "/api/cron/yahoo-unadjusted-daily?scope=etf&batch=0&batches=4&start_date=2026-10-11",
-      "schedule": "9 23 * * *"
+      "schedule": "54 22 * * *"
     },
     {
       "path": "/api/cron/yahoo-unadjusted-daily?scope=etf&batch=1&batches=4&start_date=2026-10-11",
-      "schedule": "15 23 * * *"
+      "schedule": "0 23 * * *"
     },
     {
       "path": "/api/cron/yahoo-unadjusted-daily?scope=etf&batch=2&batches=4&start_date=2026-10-11",
-      "schedule": "21 23 * * *"
+      "schedule": "6 23 * * *"
     },
     {
       "path": "/api/cron/yahoo-unadjusted-daily?scope=etf&batch=3&batches=4&start_date=2026-10-11",
-      "schedule": "27 23 * * *"
+      "schedule": "12 23 * * *"
     },
     {
       "path": "/api/cron/yahoo-unadjusted-daily?scope=dashboard&start_date=2026-10-11",
-      "schedule": "33 23 * * *"
+      "schedule": "18 23 * * *"
     },
     {
       "path": "/api/cron/yahoo-unadjusted-daily?scope=fx&start_date=2026-10-11",
-      "schedule": "15 0 * * *"
+      "schedule": "24 23 * * *"
     }
   ],
   "headers": [

@@ -118,12 +118,12 @@ export default function CrmWorkbench({
       ) : (
         <>
           <CrmKpiStrip
-            sessions={decisionMetrics?.sessions ?? trafficSummary?.uniqueSessions}
-            signups={salesSummary?.signups}
+            sessions={decisionMetrics?.sessions}
+            signups={decisionMetrics?.signups}
             visitToSignupPct={decisionMetrics?.visitToSignupPct}
-            activatedPct={salesSummary?.activatedPct}
-            attributionPct={salesSummary?.attributionPct}
-            premiumIntent={growthKpis?.premiumIntent ?? decisionMetrics?.premiumIntent}
+            activatedPct={analysis?.current?.matured?.activationPct}
+            attributionPct={analysis?.current?.attributionPct}
+            premiumIntent={decisionMetrics?.premiumIntent}
             rangeDays={rangeDays}
           />
 
@@ -179,6 +179,7 @@ export default function CrmWorkbench({
               trafficChannels={trafficChannels}
               signupChannels={signupChannels}
               channelQuality={analysis?.channelQuality}
+              coverage={analysis?.coverage}
               channelFilter={channelFilter}
               onSelectChannel={selectChannel}
               minN={analysis?.minN}

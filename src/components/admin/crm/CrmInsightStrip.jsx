@@ -23,10 +23,11 @@ export default function CrmInsightStrip({
     <div className={`${panelClass} ${panelPad} space-y-3`}>
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <p className={labelClass}>Insight</p>
+          <p className={labelClass}>Evidence-based review</p>
           <p className={`mt-1 text-sm font-semibold leading-snug ${severity ? 'text-amber-800 dark:text-amber-200' : 'text-gray-900 dark:text-white'}`}>
             {executiveSummary?.headline || 'No summary yet'}
           </p>
+          <div className="mt-2 space-y-1">{(executiveSummary?.bullets || []).slice(0, 4).map(b => <p key={b} className="text-xs text-gray-500 leading-relaxed">{b}</p>)}</div>
           {action ? (
             <p className="mt-1.5 text-xs text-gray-600 dark:text-gray-400 leading-relaxed">
               <span className="font-medium text-gray-700 dark:text-gray-300">Next: </span>

@@ -1,3 +1,5 @@
+import { consumeIpRateLimit, sendRateLimitJson } from './_lib/rate-limit.js'
+
 const DEFAULT_GEMINI_MODEL = 'gemini-2.0-flash'
 const GEMINI_FALLBACK_MODELS = ['gemini-1.5-flash', 'gemini-1.5-flash-latest']
 const DEFAULT_ANTHROPIC_MODEL = 'claude-haiku-4-5-20251001'
@@ -182,6 +184,19 @@ export default async function handler(req, res) {
   }
   if (req.method !== 'POST') {
     return sendJson(res, 405, { error: 'Method not allowed' })
+  }
+
+  // 認証ありは緩め、未認証は IP 制限（Vercel Firewall 併用推奨）
+  const authHeader = String(req.headers.authorization || '')
+  const hasBearer = /^Bearer\s+\S+/i.test(authHeader)
+  if (!hasBearer) {
+    const ipLimit = consumeIpRateLimit(req, 'news-translate-ja', {
+      limit: Number(process.env.NEWS_TRANSLATE_IP_RATE_LIMIT || 40),
+      windowMs: 60 * 60 * 1000,
+    })
+    if (!ipLimit.ok) {
+      return sendRateLimitJson(res, ipLimit.retryAfterSec, '翻訳リクエストが多すぎます。しばらくしてから再度お試しください。')
+    }
   }
 
   let body = {}

@@ -11,6 +11,7 @@ import {
   PAYJP_ELEVEN_YEN_CHATBOT_CONTEXT,
 } from '../src/constants/payjpBillingFaq.js'
 import { GOOGLE_LOGIN_CHATBOT_CONTEXT } from '../src/constants/authFaq.js'
+import { consumeIpRateLimit, sendRateLimitJson } from './_lib/rate-limit.js'
 
 const DEFAULT_MODEL = 'claude-haiku-4-5-20251001'
 const DEFAULT_ANTHROPIC_FALLBACKS = [
@@ -242,6 +243,15 @@ export default async function handler(req, res) {
 
   if (req.method !== 'POST') {
     return sendJson(res, 405, { error: 'Method not allowed' })
+  }
+
+  // Prefer Vercel Firewall on /api/chatbot as well
+  const ipLimit = consumeIpRateLimit(req, 'chatbot', {
+    limit: Number(process.env.CHATBOT_IP_RATE_LIMIT || 30),
+    windowMs: 60 * 60 * 1000,
+  })
+  if (!ipLimit.ok) {
+    return sendRateLimitJson(res, ipLimit.retryAfterSec, 'チャットの利用上限に達しました。しばらくしてから再度お試しください。')
   }
 
   let body = {}

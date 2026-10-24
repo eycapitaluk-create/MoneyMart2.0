@@ -1,6 +1,7 @@
 import { GoogleAuth } from 'google-auth-library'
 import { TextractClient, AnalyzeExpenseCommand } from '@aws-sdk/client-textract'
 import { createClient } from '@supabase/supabase-js'
+import { consumeUserDailyLimit, sendRateLimitJson } from '../_lib/rate-limit.js'
 
 const coerceText = (v) => String(v || '').trim()
 const clamp01 = (v) => Math.max(0, Math.min(1, Number(v) || 0))
@@ -569,6 +570,15 @@ export default async function handler(req, res) {
   const { data: userData, error: userErr } = await adminClient.auth.getUser(token)
   if (userErr || !userData?.user) {
     return res.status(401).json({ ok: false, error: 'Unauthorized' })
+  }
+
+  const daily = consumeUserDailyLimit(
+    userData.user.id,
+    'ocr-receipt',
+    Number(process.env.OCR_RECEIPT_DAILY_LIMIT || 30),
+  )
+  if (!daily.ok) {
+    return sendRateLimitJson(res, daily.retryAfterSec, '本日のレシート読み取り上限に達しました。明日以降に再度お試しください。')
   }
 
   const { imageBase64, mimeType } = req.body || {}

@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { consumeUserDailyLimit, sendRateLimitJson } from './_lib/rate-limit.js'
 
 const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-20250514'
 
@@ -498,6 +499,15 @@ export default async function handler(req, res) {
   const { data: userData, error: userErr } = await adminClient.auth.getUser(accessToken)
   if (userErr || !userData?.user) {
     return sendJson(res, 401, { error: 'ログインが必要です' })
+  }
+
+  const daily = consumeUserDailyLimit(
+    userData.user.id,
+    'portfolio-diagnosis',
+    Number(process.env.PORTFOLIO_DIAGNOSIS_DAILY_LIMIT || 20),
+  )
+  if (!daily.ok) {
+    return sendRateLimitJson(res, daily.retryAfterSec, '本日の診断利用上限に達しました。明日以降に再度お試しください。')
   }
 
   try {

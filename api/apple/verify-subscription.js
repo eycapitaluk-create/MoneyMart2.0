@@ -237,6 +237,16 @@ export default async function handler(req, res) {
     return sendJson(res, 400, { ok: false, error: 'originalTransactionId がありません。' })
   }
 
+  // appAccountToken が付いている場合はログイン中のユーザーと一致必須
+  const appAccountToken = String(tx.appAccountToken || body.app_account_token || body.appAccountToken || '').trim()
+  if (appAccountToken && appAccountToken.toLowerCase() !== String(userId).toLowerCase()) {
+    return sendJson(res, 403, {
+      ok: false,
+      code: 'apple_account_token_mismatch',
+      error: 'この Apple 取引は別のアカウント向けです。',
+    })
+  }
+
   const expiresMs = Number(tx.expiresDate)
   if (!Number.isFinite(expiresMs)) {
     return sendJson(res, 400, {
@@ -249,6 +259,25 @@ export default async function handler(req, res) {
   const isActive = expiresAt.getTime() > Date.now()
 
   const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } })
+
+  // 同一 originalTransactionId を別アカウントへ付け替え禁止
+  const { data: existingEnt, error: existingErr } = await admin
+    .from('user_premium_entitlements')
+    .select('user_id')
+    .eq('provider', 'apple')
+    .eq('external_subscription_key', originalTransactionId)
+    .maybeSingle()
+  if (existingErr) {
+    console.error('[apple/verify-subscription] entitlement_lookup', existingErr)
+    return sendJson(res, 500, { ok: false, error: existingErr.message || '既存契約の確認に失敗しました。' })
+  }
+  if (existingEnt?.user_id && existingEnt.user_id !== userId) {
+    return sendJson(res, 409, {
+      ok: false,
+      code: 'apple_subscription_bound',
+      error: 'この Apple 取引は別のアカウントに既に登録されています。',
+    })
+  }
 
   const { error: upErr } = await admin.from('user_premium_entitlements').upsert(
     {

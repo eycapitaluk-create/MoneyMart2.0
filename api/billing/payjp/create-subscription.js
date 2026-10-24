@@ -153,6 +153,32 @@ export default async function handler(req, res) {
     return sendBillingJson(res, 500, { ok: false, error: 'PAY.JP customer の作成に失敗しました。' })
   }
 
+  // 二重課金防止: 生成直前に PAY.JP 側の active / trial 契約を再確認
+  try {
+    const listed = await payjpRequest(
+      `/subscriptions?customer=${encodeURIComponent(customerId)}&limit=100`,
+    )
+    const activeLike = (listed?.data || []).filter((sub) => {
+      const st = String(sub?.status || '').toLowerCase()
+      return st === 'active' || st === 'trial' || st === 'trialing'
+    })
+    if (activeLike.length > 0) {
+      return sendBillingJson(res, 409, {
+        ok: false,
+        code: 'already_subscribed',
+        error: 'すでに PAY.JP の有効な定期課金があります。追加作成はできません。',
+        subscription_id: activeLike[0]?.id || null,
+      })
+    }
+  } catch (err) {
+    console.error('[payjp/create-subscription] list subscriptions', err?.message, err?.payjp)
+    return sendBillingJson(res, 502, {
+      ok: false,
+      code: err.code || 'payjp_list_failed',
+      error: '既存契約の確認に失敗したため、新規作成を中止しました。',
+    })
+  }
+
   const trialEndsRaw = profile?.premium_trial_ends_at
   const trialActive = isPremiumTrialActive(trialEndsRaw)
   const subscriptionBody = {

@@ -1,4 +1,34 @@
 import { createClient } from '@supabase/supabase-js'
+import { getPayjpSecretKey, payjpRequest } from '../_lib/payjp-api.js'
+
+async function cancelPayjpSubscriptionOrThrow(subscriptionId) {
+  const subId = String(subscriptionId || '').trim()
+  if (!subId) return { skipped: true }
+
+  if (!getPayjpSecretKey()) {
+    const err = new Error('PAY.JP の設定が無いため定期課金を解約できず、退会を中止しました。')
+    err.status = 503
+    err.code = 'payjp_env_missing'
+    throw err
+  }
+
+  try {
+    await payjpRequest(`/subscriptions/${encodeURIComponent(subId)}/cancel`, {
+      method: 'POST',
+    })
+    return { canceled: true, subscriptionId: subId }
+  } catch (err) {
+    const msg = String(err?.message || '')
+    const alreadyGone = /no such subscription|already been canceled|already canceled|status is canceled/i.test(msg)
+    if (alreadyGone || Number(err?.status) === 404) {
+      return { alreadyCanceled: true, subscriptionId: subId }
+    }
+    const wrap = new Error(msg || 'PAY.JP 定期課金の解約に失敗したため、退会を中止しました。')
+    wrap.status = 502
+    wrap.code = err?.code || 'payjp_cancel_failed'
+    throw wrap
+  }
+}
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -23,6 +53,26 @@ export default async function handler(req, res) {
     }
 
     const userId = userData.user.id
+
+    const { data: profile, error: profileErr } = await admin
+      .from('user_profiles')
+      .select('payjp_subscription_id')
+      .eq('user_id', userId)
+      .maybeSingle()
+    if (profileErr) {
+      return res.status(500).json({ ok: false, error: profileErr.message || 'Failed to load profile' })
+    }
+
+    try {
+      await cancelPayjpSubscriptionOrThrow(profile?.payjp_subscription_id)
+    } catch (payjpErr) {
+      return res.status(payjpErr.status || 502).json({
+        ok: false,
+        code: payjpErr.code || 'payjp_cancel_failed',
+        error: payjpErr.message || 'PAY.JP 解約に失敗したため退会を中止しました。',
+      })
+    }
+
     const cleanupTables = [
       'user_expenses',
       'user_insurances',

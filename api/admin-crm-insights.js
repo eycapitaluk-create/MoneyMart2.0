@@ -3,6 +3,9 @@
  * Auth: HTTP Basic (ADMIN_BASIC_USER / ADMIN_BASIC_PASS), same as AdminIpGuard.
  * Body: { snapshot: <aggregated object> } — must not contain raw emails (client strips PII).
  */
+import { adminAuthFailure } from './_lib/admin-basic-auth.js'
+import { sendRateLimitJson } from './_lib/rate-limit.js'
+
 const MODEL =
   process.env.ANTHROPIC_ADMIN_INSIGHTS_MODEL
   || 'claude-sonnet-4-6'
@@ -50,26 +53,6 @@ function extractJsonObject(text = '') {
     }
     throw new Error('Claude response was not valid JSON')
   }
-}
-
-function assertAdminBasic(req) {
-  const expectedUser = String(process.env.ADMIN_BASIC_USER || '').trim()
-  const expectedPass = String(process.env.ADMIN_BASIC_PASS || '').trim()
-  if (!expectedUser || !expectedPass) return false
-
-  const authHeader = req.headers.authorization || req.headers.Authorization || ''
-  if (!String(authHeader).startsWith('Basic ')) return false
-  const base64 = String(authHeader).slice(6)
-  let decoded = ''
-  try {
-    decoded = Buffer.from(base64, 'base64').toString('utf-8')
-  } catch {
-    return false
-  }
-  const idx = decoded.indexOf(':')
-  const user = idx >= 0 ? decoded.slice(0, idx) : decoded
-  const pass = idx >= 0 ? decoded.slice(idx + 1) : ''
-  return user === expectedUser && pass === expectedPass
 }
 
 function clampDeep(obj, depth = 0) {
@@ -185,9 +168,13 @@ function normalizeInsights(raw) {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return sendJson(res, 405, { error: 'Method not allowed' })
 
-  if (!assertAdminBasic(req)) {
+  const authFail = adminAuthFailure(req)
+  if (authFail === 429) {
+    return sendRateLimitJson(res, 60, '管理画面への試行が多すぎます。しばらくしてから再度お試しください。')
+  }
+  if (authFail) {
     res.setHeader('WWW-Authenticate', 'Basic realm="MoneyMart Admin"')
-    return sendJson(res, 401, { error: 'Unauthorized' })
+    return sendJson(res, authFail, { error: 'Unauthorized' })
   }
 
   const apiKey =

@@ -572,11 +572,10 @@ const App = () => {
         // table missing / RLS — ignore (plan_tier / metadata のみで判定)
       }
 
+      // user_metadata はクライアントから書き換え可能なので Premium 判定に使わない
       const metadataPlan = String(
         nextSession.user?.app_metadata?.plan_tier
-        || nextSession.user?.user_metadata?.plan_tier
         || nextSession.user?.app_metadata?.membership_tier
-        || nextSession.user?.user_metadata?.membership_tier
         || ''
       ).toLowerCase()
       const profilePlan = String(

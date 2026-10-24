@@ -9,6 +9,7 @@ import {
   sendBillingJson,
 } from './_lib/supabase-bearer-auth.js'
 import { getOrCreateStockDailyBrief, normalizeStockSymbol } from './_lib/stock-daily-brief-core.js'
+import { consumeUserDailyLimit, sendRateLimitJson } from './_lib/rate-limit.js'
 
 function normalizeSecret(value) {
   const raw = String(value || '').trim()
@@ -29,11 +30,22 @@ export default async function handler(req, res) {
   }
 
   let admin
+  let user
   try {
     const authResult = await requireSupabaseUser(req)
     admin = authResult.admin
+    user = authResult.user
   } catch (err) {
     return sendBillingJson(res, err.status || 401, { ok: false, error: err.message })
+  }
+
+  const daily = consumeUserDailyLimit(
+    user.id,
+    'stock-daily-brief',
+    Number(process.env.STOCK_DAILY_BRIEF_DAILY_LIMIT || 40),
+  )
+  if (!daily.ok) {
+    return sendRateLimitJson(res, daily.retryAfterSec, '本日の銘柄解説利用上限に達しました。明日以降に再度お試しください。')
   }
 
   const url = new URL(req.url || '/', 'http://localhost')
